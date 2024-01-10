@@ -384,7 +384,7 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::FauxUnconfirmed,
+            TransactionStatus::OneSidedUnconfirmed,
             "6".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
@@ -416,7 +416,7 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::FauxConfirmed,
+            TransactionStatus::OneSidedConfirmed,
             "7".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
@@ -748,7 +748,7 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 6 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::FauxTransactionUnconfirmed {
+            .send(Arc::new(TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id: 6u64.into(),
                 num_confirmations: 2,
                 is_valid: true,
@@ -771,7 +771,7 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 7 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::FauxTransactionConfirmed {
+            .send(Arc::new(TransactionEvent::DetectedTransactionConfirmed {
                 tx_id: 7u64.into(),
                 is_valid: true,
             }))

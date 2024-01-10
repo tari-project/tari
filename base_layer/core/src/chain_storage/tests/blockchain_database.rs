@@ -520,8 +520,6 @@ mod fetch_header_containing_kernel_mmr {
         db.add_block(block).unwrap();
         let _block_and_outputs = add_many_chained_blocks(3, &db, &key_manager).await;
 
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels - 1).unwrap();
-        assert_eq!(header.height(), 0);
         let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
         assert_eq!(header.height(), 1);
 

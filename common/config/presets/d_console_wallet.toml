@@ -23,7 +23,7 @@
 # Console wallet password. Should you wish to start your console wallet without typing in your password, the following
 # options are available:
 # 1. Start the console wallet with the --password=secret argument, or
-# 2. Set the environment variable TARI_WALLET_PASSWORD=secret before starting the console wallet, or
+# 2. Set the environment variable MINOTARI_WALLET_PASSWORD=secret before starting the console wallet, or
 # 3. Set the "password" key in this [wallet] section of the config
 # (default = )
 #password = "secret"
@@ -79,7 +79,7 @@
 #num_required_confirmations = 3
 
 # Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
-# This requires that the base node was built with the optional "libtor" feature flag. (default = false)
+# This requires that the base node was built with the optional "libtor" feature flag. (default = true)
 #use_libtor = false
 
 # A path to the file that stores your node identity and secret key (default = "none")

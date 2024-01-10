@@ -20,48 +20,48 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, path::PathBuf};
+use std::path::{Path, PathBuf};
 
 use diesel::{Connection, SqliteConnection};
+use log::trace;
 use tari_common_sqlite::{
     connection::{DbConnection, DbConnectionUrl},
-    error::StorageError,
+    error::StorageError as SqliteStorageError,
 };
 use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 
-pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, StorageError> {
-    let url: DbConnectionUrl = db_path.into_os_string().into_string().unwrap().try_into().unwrap();
+use crate::error::StorageError;
+
+const LOG_TARGET: &str = "contacts::chat_client::database";
+
+pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, SqliteStorageError> {
+    let url: DbConnectionUrl = DbConnectionUrl::File(db_path);
     let connection = DbConnection::connect_url(&url)?;
+    trace!(target: LOG_TARGET, "Connected to chat storage db {:?}", url);
     Ok(ContactsServiceSqliteDatabase::init(connection))
 }
 
-pub fn create_chat_storage(db_file_path: &PathBuf) {
+pub fn create_chat_storage(db_file_path: &Path) -> Result<(), StorageError> {
     // Create the storage db
-    std::fs::create_dir_all(
-        db_file_path
-            .parent()
-            .expect("db file cannot be set to a root directory"),
-    )
-    .expect("db directory could not be created");
-    let _db = SqliteConnection::establish(
-        db_file_path
-            .clone()
-            .into_os_string()
-            .to_str()
-            .expect("Couldn't convert db file path to string"),
-    )
-    .unwrap_or_else(|_| panic!("Error connecting to {:?}", db_file_path));
+    std::fs::create_dir_all(db_file_path.parent().ok_or(StorageError::FilePathError)?)?;
+    let db_path = db_file_path.as_os_str().to_str().ok_or(StorageError::FilePathError)?;
+    let _db = SqliteConnection::establish(db_path)?;
+    trace!(target: LOG_TARGET, "Created chat storage db {}", db_path);
+    Ok(())
 }
 
-pub fn create_peer_storage(base_path: &PathBuf) {
-    std::fs::create_dir_all(base_path).unwrap();
+pub fn create_peer_storage(base_path: &PathBuf) -> Result<(), StorageError> {
+    std::fs::create_dir_all(base_path)?;
 
     LMDBBuilder::new()
         .set_path(base_path)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
+        .build()?;
+
+    trace!(target: LOG_TARGET, "Created chat peer db {:?}", base_path.join("peerdb"));
+
+    Ok(())
 }

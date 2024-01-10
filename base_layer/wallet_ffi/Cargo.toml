@@ -3,7 +3,7 @@ name = "minotari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.53.0-pre.0"
+version = "1.0.0-pre.4"
 edition = "2018"
 
 [dependencies]
@@ -12,12 +12,12 @@ tari_common = { path="../../common" }
 tari_common_types = { path="../common_types" }
 tari_comms = {  path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = {  path = "../../comms/dht", default-features = false }
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.20" }
 tari_key_manager = {  path = "../key_manager" }
 tari_p2p = {  path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.6" }
+tari_utilities = { version = "0.7" }
 minotari_wallet = {  path = "../wallet", features = ["c_integration"]}
 tari_contacts = { path = "../../base_layer/contacts" }
 
@@ -48,7 +48,8 @@ tari_key_manager = {  path = "../key_manager" }
 tari_common_types = {  path = "../../base_layer/common_types"}
 tari_test_utils = {  path = "../../infrastructure/test_utils"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
-borsh = "0.10"
+tari_core = {  path = "../../base_layer/core", default-features = false, features = ["base_node"] }
+borsh = "1.2"
 
 [build-dependencies]
 cbindgen = "0.24.3"

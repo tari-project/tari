@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.53.0-pre.0"
+version = "1.0.0-pre.4"
 edition = "2018"
 
 [dependencies]
@@ -12,31 +12,31 @@ tari_core = { path = "../../base_layer/core", default-features = false }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
-minotari_app_utilities = { path = "../minotari_app_utilities" }
+minotari_app_utilities = { path = "../minotari_app_utilities", features = ["miner_input"] }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_crypto = { version = "0.19" }
-tari_utilities = { version = "0.6" }
+tari_crypto = { version = "0.20" }
+tari_utilities = { version = "0.7" }
 
-borsh = "0.10"
-crossterm = { version = "0.25.0" }
+base64 = "0.13.0"
+borsh = "1.2"
+bufstream = "0.1"
+chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam = "0.8"
+crossterm = { version = "0.25.0" }
+derivative = "2.2.0"
 futures = "0.3"
+hex = "0.4.2"
 log = { version = "0.4", features = ["std"] }
 log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
+native-tls = "0.2"
 num_cpus = "1.13"
 rand = "0.8"
 serde = { version = "1.0", default_features = false, features = ["derive"] }
-tonic = { version = "0.6.2", features = ["transport"] }
-tokio = { version = "1.23", default_features = false, features = ["rt-multi-thread"] }
-thiserror = "1.0"
 serde_json = "1.0.57"
-native-tls = "0.2"
-bufstream = "0.1"
-chrono = { version = "0.4.19", default-features = false }
-hex = "0.4.2"
-derivative = "2.2.0"
-base64 = "0.13.0"
+thiserror = "1.0"
+tokio = { version = "1.23", default_features = false, features = ["rt-multi-thread"] }
+tonic = { version = "0.6.2", features = ["tls", "tls-roots" ] }
 
 [dev-dependencies]
 prost-types = "0.9"

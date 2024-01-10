@@ -26,6 +26,7 @@ use std::{
 };
 
 use log::*;
+use minotari_app_grpc::tls::error::GrpcTlsError;
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,
@@ -84,6 +85,8 @@ pub enum CommandError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("ByteArrayError {0}")]
     ByteArrayError(String),
+    #[error("gRPC TLS cert error {0}")]
+    GrpcTlsError(#[from] GrpcTlsError),
 }
 
 impl From<HexError> for CommandError {

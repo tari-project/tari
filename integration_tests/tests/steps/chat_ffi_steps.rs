@@ -23,8 +23,9 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
+use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
-    chat_ffi::{spawn_ffi_chat_client, ChatCallback},
+    chat_ffi::{sideload_ffi_chat_client, spawn_ffi_chat_client, ChatCallback},
     TariWorld,
 };
 
@@ -41,6 +42,16 @@ async fn chat_ffi_client_connected_to_base_node(world: &mut TariWorld, name: Str
     )
     .await;
     world.chat_clients.insert(name, Box::new(client));
+}
+
+#[when(expr = "I have a sideloaded chat FFI client {word} from {word}")]
+async fn sideloaded_chat_ffi_client_connected_to_wallet(world: &mut TariWorld, chat_name: String, wallet_name: String) {
+    let wallet = world.get_ffi_wallet(&wallet_name).unwrap();
+    let pubkey = world.get_wallet_address(&wallet_name).await.unwrap();
+    let address = TariAddress::from_hex(&pubkey).unwrap();
+
+    let client = sideload_ffi_chat_client(address, wallet.base_dir.clone(), wallet.contacts_handle()).await;
+    world.chat_clients.insert(chat_name, Box::new(client));
 }
 
 #[then(expr = "there will be a contact status update callback of at least {int}")]

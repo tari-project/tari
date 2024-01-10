@@ -6,15 +6,15 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.53.0-pre.0"
+version = "1.0.0-pre.4"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.20" }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.6" }
+tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"

@@ -293,7 +293,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "d99f6c45b0c1051987eb5ce8f4434fbd88ae44c2d0f3a066ebc7f64114d33df8"
+        "38b03d013f941e86c027969fbbc190ca2a28fa2d7ac075d50dbfb6232deee646"
     );
 }
 
@@ -312,7 +312,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "ee7ff5ebcdc66757411afb2dced7d1bd7c09373f1717a7b6eb618fbda849ab4d"
+        "ebc852fbac798c25ce497b416f69ec11a97e186aacaa10e2bb4ca5f5a0f197f2"
     )
 }
 
@@ -534,7 +534,6 @@ async fn test_output_recover_openings() {
 mod validate_internal_consistency {
 
     use blake2::Blake2b;
-    use borsh::BorshSerialize;
     use digest::{consts::U32, Digest};
     use tari_common_types::types::FixedHash;
     use tari_crypto::hashing::DomainSeparation;
@@ -608,7 +607,10 @@ mod validate_internal_consistency {
         let mut hasher = Blake2b::<U32>::default();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
 
-        let hash = hasher.chain_update(features.try_to_vec().unwrap()).finalize().to_vec();
+        let hash = hasher
+            .chain_update(borsh::to_vec(&features).unwrap())
+            .finalize()
+            .to_vec();
 
         let mut slice = [0u8; FixedHash::byte_size()];
         slice.copy_from_slice(hash.as_ref());

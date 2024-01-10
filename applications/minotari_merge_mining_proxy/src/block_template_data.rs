@@ -28,6 +28,7 @@ use std::{collections::HashMap, sync::Arc};
 use chrono::Duration;
 use chrono::{self, DateTime, Utc};
 use minotari_node_grpc_client::grpc;
+use tari_common_types::types::FixedHash;
 use tari_core::proof_of_work::monero_rx::FixedByteArray;
 use tokio::sync::RwLock;
 use tracing::trace;
@@ -125,6 +126,8 @@ pub struct BlockTemplateData {
     pub tari_miner_data: grpc::MinerData,
     pub monero_difficulty: u64,
     pub tari_difficulty: u64,
+    pub tari_hash: FixedHash,
+    pub aux_chain_hashes: Vec<monero::Hash>,
 }
 
 impl BlockTemplateData {}
@@ -137,6 +140,8 @@ pub struct BlockTemplateDataBuilder {
     tari_miner_data: Option<grpc::MinerData>,
     monero_difficulty: Option<u64>,
     tari_difficulty: Option<u64>,
+    tari_hash: Option<FixedHash>,
+    aux_chain_hashes: Vec<monero::Hash>,
 }
 
 impl BlockTemplateDataBuilder {
@@ -169,6 +174,16 @@ impl BlockTemplateDataBuilder {
         self
     }
 
+    pub fn tari_hash(mut self, hash: FixedHash) -> Self {
+        self.tari_hash = Some(hash);
+        self
+    }
+
+    pub fn aux_hashes(mut self, aux_chain_hashes: Vec<monero::Hash>) -> Self {
+        self.aux_chain_hashes = aux_chain_hashes;
+        self
+    }
+
     /// Build a new [BlockTemplateData], all the values have to be set.
     ///
     /// # Errors
@@ -190,6 +205,12 @@ impl BlockTemplateDataBuilder {
         let tari_difficulty = self
             .tari_difficulty
             .ok_or_else(|| MmProxyError::MissingDataError("tari_difficulty not provided".to_string()))?;
+        let tari_hash = self
+            .tari_hash
+            .ok_or_else(|| MmProxyError::MissingDataError("tari_hash not provided".to_string()))?;
+        if self.aux_chain_hashes.is_empty() {
+            return Err(MmProxyError::MissingDataError("aux chain hashes are empty".to_string()));
+        };
 
         Ok(BlockTemplateData {
             monero_seed,
@@ -197,6 +218,8 @@ impl BlockTemplateDataBuilder {
             tari_miner_data,
             monero_difficulty,
             tari_difficulty,
+            tari_hash,
+            aux_chain_hashes: self.aux_chain_hashes,
         })
     }
 }
@@ -216,6 +239,7 @@ pub mod test {
         let header = BlockHeader::new(100);
         let body = AggregateBody::empty();
         let block = Block::new(header, body);
+        let hash = block.hash();
         let miner_data = grpc::MinerData {
             reward: 10000,
             target_difficulty: 600000,
@@ -227,7 +251,9 @@ pub mod test {
             .tari_block(block.try_into().unwrap())
             .tari_miner_data(miner_data)
             .monero_difficulty(123456)
-            .tari_difficulty(12345);
+            .tari_difficulty(12345)
+            .tari_hash(hash)
+            .aux_hashes(vec![monero::Hash::from_slice(hash.as_slice())]);
         btdb.build().unwrap()
     }
 

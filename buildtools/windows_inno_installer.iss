@@ -17,7 +17,6 @@
 ;          /p "<password used to create the certificate>" $f
 ;  (3) To run this script from the command line with Inno Setup console-mode compiler:
 ;      - change directory to "<project_root>/buildtools"
-;      - generate_config.bat      
 ;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign
 ;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>"
 ;         /p <password used to create the certificate> $f"
@@ -90,7 +89,6 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [PreCompile]
-Name: ".\generate_config.bat"; Flags: abortonerror cmdprompt redirectoutput
 
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.md"; Flags: ignoreversion
@@ -120,7 +118,6 @@ Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_merg
 Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_minotari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: ".\tari_config_example.toml"; DestDir: "{app}\config"; DestName: "config.toml"; Flags: ignoreversion
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "xmr_logo.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
@@ -128,9 +125,9 @@ Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversi
 Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "get_xmrig_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\common\xmrig_config\config_example_stagenet.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_stagenet.json"; Flags: ignoreversion
-Source: "..\common\xmrig_config\config_example_mainnet.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_mainnet.json"; Flags: ignoreversion
-Source: "..\common\xmrig_config\config_example_mainnet_self_select.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_mainnet_self_select.json"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example_stagenet.json"; DestDir: "{app}\xmrig_config"; DestName: "xmrig_config_example_stagenet.json"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example_mainnet.json"; DestDir: "{app}\xmrig_config"; DestName: "xmrig_config_example_mainnet.json"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example_mainnet_self_select.json"; DestDir: "{app}\xmrig_config"; DestName: "xmrig_config_example_mainnet_self_select.json"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Start {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"
@@ -162,7 +159,7 @@ Filename: "{app}\runtime\install_xmrig.bat"; Parameters: "NO_PAUSE"; Flags: runa
 Filename: "{app}\runtime\install_vs2019_redist.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Redistributable for Visual Studio 2019"
 
 [InstallDelete]
-Type: filesandordirs; Name: "{app}\config"
+Type: filesandordirs; Name: "{app}\xmrig_config"
 Type: filesandordirs; Name: "{app}\log"
 Type: filesandordirs; Name: "{app}\runtime"
 Type: files; Name: "{app}\LICENSE.md"
@@ -185,6 +182,6 @@ Type: files; Name: "{userdesktop}\Tari XMRig.lnk"
 Type: files; Name: "{userdesktop}\Tari - Tor Services.lnk"
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\config"
+Type: filesandordirs; Name: "{app}\xmrig_config"
 Type: filesandordirs; Name: "{app}\log"
 Type: filesandordirs; Name: "{app}\runtime"

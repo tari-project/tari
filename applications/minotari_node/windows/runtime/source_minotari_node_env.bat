@@ -2,16 +2,6 @@
 title Minotari Base Node
 
 rem Verify arguments
-if ["%config_path%"]==[""] (
-    echo Problem with "config_path" environment variable: '%config_path%'
-    pause
-    exit /b 10101
-)
-if not exist "%config_path%" (
-    echo Path as per "config_path" environment variable not found: '%config_path%'
-    pause
-    exit /b 10101
-)
 if ["%base_path%"]==[""] (
     echo Problem with "base_path" environment variable: '%base_path%'
     pause
@@ -59,33 +49,5 @@ if exist "%my_exe_path%\%my_exe%" (
     )
 )
 
-rem First time run
-if not exist "%config_path%\base_node_id.json" (
-    "%base_node%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
-    echo.
-    echo.
-    echo Created "%config_path%\base_node_id.json".
-    echo.
-) else (
-    echo.
-    echo.
-    echo Using existing "%config_path%\base_node_id.json"
-    echo.
-)
-if not exist "%config_path%\log4rs_base_node.yml" (
-    cd "%base_path%"
-    "%base_node%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
-    echo.
-    echo.
-    echo Created "%config_path%\log4rs_base_node.yml".
-    echo.
-) else (
-    echo.
-    echo.
-    echo Using existing "%config_path%\log4rs_base_node.yml"
-    echo.
-)
-
-rem Consecutive runs
 cd "%base_path%"
-"%base_node%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+"%base_node%"  --base-path "%base_path%"

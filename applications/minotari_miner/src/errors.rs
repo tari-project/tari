@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 use minotari_app_grpc::authentication::BasicAuthError;
-use tari_core::consensus::ConsensusBuilderError;
+use minotari_app_utilities::parse_miner_input::ParseInputError;
 use thiserror::Error;
 use tonic::codegen::http::uri::InvalidUri;
 
@@ -49,10 +49,14 @@ pub enum MinerError {
     BasicAuthError(#[from] BasicAuthError),
     #[error("Invalid gRPC url: {0}")]
     InvalidUri(#[from] InvalidUri),
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
     #[error("Coinbase error: {0}")]
     CoinbaseError(String),
     #[error("Consensus build error: {0}")]
-    ConsensusBuilderError(#[from] ConsensusBuilderError),
+    ParseInputError(#[from] ParseInputError),
+    #[error("Base node not responding to gRPC requests: {0}")]
+    BaseNodeNotResponding(String),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

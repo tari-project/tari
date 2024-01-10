@@ -23,10 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::{
-    transaction::TransactionStatus,
-    types::{BlockHash, FixedHash},
-};
+use tari_common_types::types::{BlockHash, FixedHash};
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
@@ -43,30 +40,30 @@ use crate::{
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
 #[allow(clippy::too_many_lines)]
-pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
+pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>(
     mut output_manager: OutputManagerHandle,
     db: TransactionDatabase<TBackend>,
     event_publisher: TransactionEventSender,
     tip_height: u64,
 ) {
-    let mut all_faux_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
+    let mut all_detected_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
         Ok(txs) => txs,
         Err(e) => {
             error!(target: LOG_TARGET, "Problem retrieving imported transactions: {}", e);
             return;
         },
     };
-    let mut unconfirmed_faux = match db.get_unconfirmed_faux_transactions() {
+    let mut unconfirmed_detected = match db.get_unconfirmed_detected_transactions() {
         Ok(txs) => txs,
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving unconfirmed faux transactions: {}", e
+                "Problem retrieving unconfirmed detected transactions: {}", e
             );
             return;
         },
     };
-    all_faux_transactions.append(&mut unconfirmed_faux);
+    all_detected_transactions.append(&mut unconfirmed_detected);
     // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
     // height or current tip height with safety margin to determine if these should be returned
     let last_mined_transaction = match db.fetch_last_mined_transaction() {
@@ -79,24 +76,24 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     } else {
         height_with_margin
     };
-    let mut confirmed_faux = match db.get_confirmed_faux_transactions_from_height(check_height) {
+    let mut confirmed_dectected = match db.get_confirmed_detected_transactions_from_height(check_height) {
         Ok(txs) => txs,
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving confirmed faux transactions: {}", e
+                "Problem retrieving confirmed detected transactions: {}", e
             );
             return;
         },
     };
-    all_faux_transactions.append(&mut confirmed_faux);
+    all_detected_transactions.append(&mut confirmed_dectected);
 
     debug!(
         target: LOG_TARGET,
-        "Checking {} faux transaction statuses",
-        all_faux_transactions.len()
+        "Checking {} detected transaction statuses",
+        all_detected_transactions.len()
     );
-    for tx in all_faux_transactions {
+    for tx in all_detected_transactions {
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
@@ -116,7 +113,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             FixedHash::zero()
         };
         let is_valid = tip_height >= mined_height;
-        let previously_confirmed = tx.status == TransactionStatus::FauxConfirmed;
+        let previously_confirmed = tx.status.is_confirmed();
         let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
         let num_confirmations = tip_height - mined_height;
@@ -139,7 +136,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                 .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
             num_confirmations,
             must_be_confirmed,
-            true,
+            &tx.status,
         );
         if let Err(e) = result {
             error!(
@@ -151,12 +148,12 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             // now not confirmed (i.e. confirmation changed)
             if !(previously_confirmed && must_be_confirmed) {
                 let transaction_event = if must_be_confirmed {
-                    TransactionEvent::FauxTransactionConfirmed {
+                    TransactionEvent::DetectedTransactionConfirmed {
                         tx_id: tx.tx_id,
                         is_valid,
                     }
                 } else {
-                    TransactionEvent::FauxTransactionUnconfirmed {
+                    TransactionEvent::DetectedTransactionUnconfirmed {
                         tx_id: tx.tx_id,
                         num_confirmations: 0,
                         is_valid,

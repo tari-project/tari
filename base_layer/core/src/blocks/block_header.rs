@@ -302,17 +302,13 @@ impl Display for BlockHeader {
             "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTimestamp: {}",
             self.version,
             self.height,
-            self.prev_hash.to_hex(),
+            self.prev_hash,
             self.to_chrono_datetime().to_rfc2822()
         )?;
         writeln!(
             fmt,
             "Merkle roots:\nInputs: {},\nOutputs: {} ({})\n\nKernels: {} ({})",
-            self.input_mr.to_hex(),
-            self.output_mr.to_hex(),
-            self.output_smt_size,
-            self.kernel_mr.to_hex(),
-            self.kernel_mmr_size
+            self.input_mr, self.output_mr, self.output_smt_size, self.kernel_mr, self.kernel_mmr_size
         )?;
         writeln!(fmt, "ValidatorNode: {}\n", self.validator_node_mr.to_hex())?;
         writeln!(

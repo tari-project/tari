@@ -32,7 +32,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey};
-use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
@@ -150,7 +149,7 @@ impl Display for Block {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         writeln!(f, "----------------- Block -----------------")?;
         writeln!(f, "--- Header ---")?;
-        writeln!(f, "Hash: {}", self.header.hash().to_hex())?;
+        writeln!(f, "Hash: {}", self.header.hash())?;
         writeln!(f, "{}", self.header)?;
         writeln!(f, "---  Body  ---")?;
         writeln!(f, "{}", self.body)

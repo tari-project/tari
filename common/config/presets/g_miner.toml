@@ -11,6 +11,8 @@
 #base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+# GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
+#base_node_grpc_tls_domain_name = "localhost"
 
 # Number of mining threads (default: number of logical CPU cores)
 #num_mining_threads = 8

@@ -81,7 +81,7 @@ use crate::{
         Reorg,
         TargetDifficulties,
     },
-    common::rolling_vec::RollingVec,
+    common::{rolling_vec::RollingVec, BanPeriod},
     consensus::{
         chain_strength_comparer::ChainStrengthComparer,
         ConsensusConstants,
@@ -1023,8 +1023,9 @@ where B: BlockchainBackend
 
     fn insert_block(&self, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
+
         let mut txn = DbTransaction::new();
-        insert_best_block(&mut txn, block)?;
+        insert_best_block(&mut txn, block, &self.consensus_manager)?;
         db.write(txn)
     }
 
@@ -1182,6 +1183,7 @@ where B: BlockchainBackend
             &self.config,
             &*self.validators.block,
             self.consensus_manager.chain_strength_comparer(),
+            &self.consensus_manager,
         )?;
         Ok(())
     }
@@ -1467,7 +1469,11 @@ fn add_block<T: BlockchainBackend>(
 }
 
 /// Adds a new block onto the chain tip and sets it to the best block.
-fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
+fn insert_best_block(
+    txn: &mut DbTransaction,
+    block: Arc<ChainBlock>,
+    consensus: &ConsensusManager,
+) -> Result<(), ChainStorageError> {
     let block_hash = block.accumulated_data().hash;
     debug!(
         target: LOG_TARGET,
@@ -1477,7 +1483,7 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     );
     if block.header().pow_algo() == PowAlgorithm::RandomX {
         let monero_header =
-            MoneroPowData::from_header(block.header()).map_err(|e| ChainStorageError::InvalidArguments {
+            MoneroPowData::from_header(block.header(), consensus).map_err(|e| ChainStorageError::InvalidArguments {
                 func: "insert_best_block",
                 arg: "block",
                 message: format!("block contained invalid or malformed monero PoW data: {}", e),
@@ -1663,7 +1669,10 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
 #[allow(clippy::too_many_lines)]
-fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(
+    db: &mut T,
+    target_height: u64,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
     // Delete headers
@@ -1673,11 +1682,11 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     // We use the cmp::max value here because we'll only delete headers here and leave remaining headers to be deleted
     // with the whole block
     let steps_back = last_header_height
-        .checked_sub(cmp::max(last_block_height, height))
+        .checked_sub(cmp::max(last_block_height, target_height))
         .ok_or_else(|| {
             ChainStorageError::InvalidQuery(format!(
                 "Cannot rewind to height ({}) that is greater than the tip header height {}.",
-                cmp::max(height, last_block_height),
+                cmp::max(target_height, last_block_height),
                 last_header_height
             ))
         })?;
@@ -1691,18 +1700,18 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         );
     }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
+    let mut txn = DbTransaction::new();
     for h in 0..steps_back {
-        let mut txn = DbTransaction::new();
         info!(
             target: LOG_TARGET,
             "Rewinding headers at height {}",
             last_header_height - h
         );
         txn.delete_header(last_header_height - h);
-        db.write(txn)?;
     }
+    db.write(txn)?;
     // Delete blocks
-    let mut steps_back = last_block_height.saturating_sub(height);
+    let mut steps_back = last_block_height.saturating_sub(target_height);
     // No blocks to remove, no need to update the best block
     if steps_back == 0 {
         return Ok(vec![]);
@@ -1713,10 +1722,12 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         target: LOG_TARGET,
         "Rewinding blocks from height {} to {}",
         last_block_height,
-        last_block_height - steps_back
+        target_height
     );
 
-    let effective_pruning_horizon = metadata.height_of_longest_chain() - metadata.pruned_height();
+    let effective_pruning_horizon = metadata
+        .height_of_longest_chain()
+        .saturating_sub(metadata.pruned_height());
     let prune_past_horizon = metadata.is_pruned_node() && steps_back > effective_pruning_horizon;
     if prune_past_horizon {
         warn!(
@@ -1742,7 +1753,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             txn.insert_chained_orphan(block.clone());
         }
         removed_blocks.push(block);
-        // Set best block to one before, to keep DB consistent. Or if we reached pruned horizon, set best block to 0.
+        // Set best block to one before, to keep DB consistent, or, if we reached pruned horizon, set best block to 0 as
+        // we have run out of headers.
         let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
             0
         } else {
@@ -1769,14 +1781,15 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             chain_header.height(),
             chain_header.accumulated_data().total_accumulated_difficulty
         );
+        // This write operation is inside the loop to reduce the size of the write operation; this previously caused
+        // issues.
         db.write(txn)?;
     }
 
     if prune_past_horizon {
         // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
         // have to delete the headers as they are still valid.
-        // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
-        // mempool add reorg'ed tx.
+        // We don't have these complete blocks, so we don't push them to the removed blocks.
         for h in 0..(last_block_height - steps_back) {
             let mut txn = DbTransaction::new();
             debug!(
@@ -1785,6 +1798,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
                 last_block_height - h - steps_back,
             );
             let header = fetch_header(db, last_block_height - h - steps_back)?;
+            // Although we do not have this full block, this method  will remove all remaining data that is linked to
+            // the specific header hash
             txn.delete_tip_block(header.hash());
             db.write(txn)?;
         }
@@ -1822,7 +1837,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     let hash = candidate_block.header.hash();
     insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
     let after_orphans = timer.elapsed();
-    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer);
+    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer, consensus_manager);
     trace!(
         target: LOG_TARGET,
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
@@ -1840,13 +1855,14 @@ fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
-    chain: &VecDeque<Arc<ChainBlock>>,
+    new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
+    consensus: &ConsensusManager,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let removed_blocks = rewind_to_hash(backend, fork_hash)?;
     debug!(
         target: LOG_TARGET,
         "Validate and add {} chain block(s) from block {}. Rewound blocks: [{}]",
-        chain.len(),
+        new_chain_from_fork.len(),
         fork_hash,
         removed_blocks
             .iter()
@@ -1854,8 +1870,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             .collect::<Vec<_>>()
             .join(", ")
     );
-
-    for block in chain {
+    for (i, block) in new_chain_from_fork.iter().enumerate() {
         let mut txn = DbTransaction::new();
         let block_hash = *block.hash();
         txn.delete_orphan(block_hash);
@@ -1868,15 +1883,22 @@ fn reorganize_chain<T: BlockchainBackend>(
                 block_hash,
                 e
             );
-            txn.insert_bad_block(block.header().hash(), block.header().height);
-            remove_orphan(backend, block_hash)?;
+            if e.get_ban_reason().is_some() && e.get_ban_reason().unwrap().ban_duration != BanPeriod::Short {
+                txn.insert_bad_block(block.header().hash(), block.header().height);
+            }
+            // We removed a block from the orphan chain, so the chain is now "broken", so we remove the rest of the
+            // remaining blocks as well.
+            for block in new_chain_from_fork.iter().skip(i + 1) {
+                txn.delete_orphan(*block.hash());
+            }
+            backend.write(txn)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus)?;
             return Err(e.into());
         }
 
-        insert_best_block(&mut txn, block.clone())?;
+        insert_best_block(&mut txn, block.clone(), consensus)?;
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.
@@ -1886,7 +1908,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 "Failed to commit reorg chain: {:?}. Restoring last chain.", e
             );
 
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus)?;
             return Err(e);
         }
     }
@@ -1899,6 +1921,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
     // lets clear out all remaining headers that dont have a matching block
@@ -1955,7 +1978,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
+    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, consensus)?;
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -2007,6 +2030,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
+    consensus: &ConsensusManager,
 ) -> Result<(), ChainStorageError> {
     let invalid_chain = rewind_to_hash(db, to_hash)?;
     debug!(
@@ -2022,7 +2046,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash);
-        insert_best_block(&mut txn, block)?;
+        insert_best_block(&mut txn, block, consensus)?;
     }
     db.write(txn)?;
     Ok(())
@@ -2043,11 +2067,10 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         return Ok(());
     }
 
+    let mut txn = DbTransaction::new();
     let parent = match db.fetch_orphan_chain_tip_by_hash(&candidate_block.header.prev_hash)? {
         Some(curr_parent) => {
-            let mut txn = DbTransaction::new();
             txn.remove_orphan_chain_tip(candidate_block.header.prev_hash);
-            db.write(txn)?;
             info!(
                 target: LOG_TARGET,
                 "New orphan ({}) extends a chain in the current candidate tip set",
@@ -2083,10 +2106,9 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                         hash
                     );
 
-                    let mut txn = DbTransaction::new();
                     txn.insert_orphan(candidate_block);
-                    db.write(txn)?;
                 }
+                db.write(txn)?;
                 return Ok(());
             },
         },
@@ -2100,18 +2122,18 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         Ok(achieved_target_diff) => achieved_target_diff,
         // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
         // for now and ban the peer, but wont blacklist the block.
-        Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
-            return Err(e.into())
-        },
+        Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) |
         // We dont want to mark a block as bad for internal failures
         Err(
             e @ ValidationError::FatalStorageError(_) | e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. },
-        ) => return Err(e.into()),
+        ) |
         // We dont have to mark the block twice
-        Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),
+        Err(e @ ValidationError::BadBlockFound { .. }) => {
+            db.write(txn)?;
+            return Err(e.into())
+        },
 
         Err(e) => {
-            let mut txn = DbTransaction::new();
             txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height);
             db.write(txn)?;
             return Err(e.into());
@@ -2127,21 +2149,20 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
         .build()?;
 
-    // NOTE: Panic is impossible, accumulated data constructed from block
-    let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).unwrap();
+    let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).ok_or(
+        ChainStorageError::UnexpectedResult("Somehow hash is missing from Chain block".to_string()),
+    )?;
     let chain_header = chain_block.to_chain_header();
 
     // Extend orphan chain tip.
-    let mut txn = DbTransaction::new();
-    if !db.contains(&DbKey::OrphanBlock(chain_block.accumulated_data().hash))? {
-        txn.insert_orphan(chain_block.to_arc_block());
-    }
+
+    txn.insert_orphan(chain_block.to_arc_block());
+
     txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
     db.write(txn)?;
-
     let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
-    debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
+    debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     for new_tip in &tips {
         txn.insert_orphan_chain_tip(
             *new_tip.hash(),
@@ -2259,13 +2280,6 @@ fn get_previous_timestamps<T: BlockchainBackend>(
     timestamps.sort_unstable();
 
     Ok(timestamps)
-}
-
-// Discard the the orphan block from the orphan pool that corresponds to the provided block hash.
-fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(), ChainStorageError> {
-    let mut txn = DbTransaction::new();
-    txn.delete_orphan(hash);
-    db.write(txn)
 }
 
 /// Gets all blocks ordered from the the block that connects (via prev_hash) to the main chain, to the orphan tip.

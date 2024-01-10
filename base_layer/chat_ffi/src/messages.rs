@@ -78,11 +78,18 @@ pub unsafe extern "C" fn get_chat_messages(
     let mlimit = u64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
     let mpage = u64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE);
 
-    let messages = (*client)
+    let result = (*client)
         .runtime
         .block_on((*client).client.get_messages(&*address, mlimit, mpage));
 
-    Box::into_raw(Box::new(MessageVector(messages)))
+    match result {
+        Ok(messages) => Box::into_raw(Box::new(MessageVector(messages))),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
 }
 
 /// Returns the length of the MessageVector

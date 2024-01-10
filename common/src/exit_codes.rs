@@ -128,6 +128,8 @@ pub enum ExitCode {
     ConsensusManagerBuilderError = 122,
     #[error("Payment wallet address error")]
     WalletPaymentAddress = 123,
+    #[error("Unable to configure TLS")]
+    TlsConfigurationError = 124,
 }
 
 impl From<super::ConfigError> for ExitError {

@@ -18,6 +18,8 @@ struct Confirmation;
 
 struct ContactsLivenessData;
 
+struct ContactsServiceHandle;
+
 struct ConversationalistsVector;
 
 struct Message;
@@ -70,6 +72,37 @@ struct ChatClient *create_chat_client(struct ApplicationConfig *config,
                                       CallbackMessageReceived callback_message_received,
                                       CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
                                       CallbackReadConfirmationReceived callback_read_confirmation_received);
+
+/**
+ * Side loads a chat client
+ *
+ * ## Arguments
+ * `config` - The ApplicationConfig pointer
+ * `contacts_handler` - A pointer to a contacts handler extracted from the wallet ffi
+ * `error_out` - Pointer to an int which will be modified
+ * `callback_contact_status_change` - A callback function pointer. this is called whenever a
+ * contacts liveness event comes in.
+ * `callback_message_received` - A callback function pointer. This is called whenever a chat
+ * message is received.
+ * `callback_delivery_confirmation_received` - A callback function pointer. This is called when the
+ * client receives a confirmation of message delivery.
+ * `callback_read_confirmation_received` - A callback function pointer. This is called when the
+ * client receives a confirmation of message read.
+ *
+ * ## Returns
+ * `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
+ * if any error was encountered or if the runtime could not be created.
+ *
+ * # Safety
+ * The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
+ */
+struct ChatClient *sideload_chat_client(struct ApplicationConfig *config,
+                                        struct ContactsServiceHandle *contacts_handle,
+                                        int *error_out,
+                                        CallbackContactStatusChange callback_contact_status_change,
+                                        CallbackMessageReceived callback_message_received,
+                                        CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
+                                        CallbackReadConfirmationReceived callback_read_confirmation_received);
 
 /**
  * Frees memory for a ChatClient

@@ -53,7 +53,7 @@ pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 pub struct AggregateBody {
     /// This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
     /// has been called. This may be false even if all components are sorted.
-    #[borsh_skip]
+    #[borsh(skip)]
     sorted: bool,
     /// List of inputs spent by the transaction.
     inputs: Vec<TransactionInput>,

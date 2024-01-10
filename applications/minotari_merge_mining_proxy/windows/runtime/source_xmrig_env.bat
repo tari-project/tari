@@ -1,12 +1,12 @@
 @echo off
 rem Verify arguments
-if ["%config_path%"]==[""] (
-    echo Problem with "config_path" environment variable: '%config_path%'
+if ["%xmrig_config_path%"]==[""] (
+    echo Problem with "xmrig_config_path" environment variable: '%xmrig_config_path%'
     pause
     exit /b 10101
 )
-if not exist "%config_path%" (
-    echo Path as per "config_path" environment variable not found: '%config_path%'
+if not exist "%xmrig_config_path%" (
+    echo Path as per "xmrig_config_path" environment variable not found: '%xmrig_config_path%'
     pause
     exit /b 10101
 )
@@ -32,7 +32,9 @@ if exist "%TARI_XMRIG_DIR%\%my_exe%" (
 )
 
 rem Copy the config file to the XMRig folder
-copy /y /v "%config_path%\xmrig_config_example_stagenet.json" "%TARI_XMRIG_DIR%\config.json"
+if not exist "%TARI_XMRIG_DIR%\config.json" (
+    copy /y /v "%xmrig_config_path%\xmrig_config_example_mainnet.json" "%TARI_XMRIG_DIR%\config.json"
+)
 
 rem Run
 "%xmrig%"

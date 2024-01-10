@@ -25,11 +25,14 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
+    sync::OnceLock,
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
+
+static CURRENT_NETWORK: OnceLock<Network> = OnceLock::new();
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
@@ -46,6 +49,17 @@ pub enum Network {
 }
 
 impl Network {
+    pub fn get_current_or_default() -> Self {
+        match CURRENT_NETWORK.get() {
+            Some(&network) => network,
+            None => Network::default(),
+        }
+    }
+
+    pub fn set_current(network: Network) -> Result<(), Network> {
+        CURRENT_NETWORK.set(network)
+    }
+
     pub fn as_byte(self) -> u8 {
         self as u8
     }

@@ -28,6 +28,7 @@ use digest::{
     consts::{U32, U64},
     Digest,
 };
+use tari_common::configuration::Network;
 use tari_crypto::{hash_domain, hashing::DomainSeparation};
 
 /// Domain separated consensus encoding hasher.
@@ -41,8 +42,12 @@ where D: Default
 {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(label: &'static str) -> ConsensusHasher<D> {
+        Self::new_with_network(label, Network::get_current_or_default())
+    }
+
+    pub fn new_with_network(label: &'static str, network: Network) -> ConsensusHasher<D> {
         let mut digest = D::default();
-        M::add_domain_separation_tag(&mut digest, label);
+        M::add_domain_separation_tag(&mut digest, &format!("{}.n{}", label, network.as_byte()));
         ConsensusHasher::from_digest(digest)
     }
 }
@@ -138,6 +143,7 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 mod tests {
     use blake2::Blake2b;
     use digest::consts::U32;
+    use tari_common::configuration::Network;
     use tari_crypto::hash_domain;
     use tari_script::script;
 
@@ -146,9 +152,33 @@ mod tests {
     hash_domain!(TestHashDomain, "com.tari.test.test_hash", 0);
 
     #[test]
+    fn network_yields_distinct_hash() {
+        let label = "test";
+        let input = [1u8; 32];
+
+        // Generate a mainnet hash
+        let hash_mainnet =
+            DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, Network::MainNet)
+                .chain(&input)
+                .finalize();
+
+        // Generate a stagenet hash
+        let hash_stagenet =
+            DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, Network::StageNet)
+                .chain(&input)
+                .finalize();
+
+        // They should be distinct
+        assert_ne!(hash_mainnet, hash_stagenet);
+    }
+
+    #[test]
     fn it_hashes_using_the_domain_hasher() {
+        let network = Network::get_current_or_default();
+
+        // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
+        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
 
         let expected_hash = hasher.chain_update(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
@@ -160,10 +190,12 @@ mod tests {
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
+        let network = Network::get_current_or_default();
+
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop);
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
+        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
 
         let expected_hash = hasher.chain_update(b"\x01\x73").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")

@@ -22,6 +22,7 @@ use strum_macros::Display;
     BorshDeserialize,
 )]
 #[repr(u8)]
+#[borsh(use_discriminant = true)]
 pub enum OutputFeaturesVersion {
     V0 = 0,
     V1 = 1,

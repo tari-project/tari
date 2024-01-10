@@ -21,13 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! Methods for seting up a new block.
-
-use std::{cmp, str::FromStr, sync::Arc};
+use std::{cmp, convert::TryFrom, sync::Arc};
 
 use log::*;
-use minotari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc::base_node_client::BaseNodeClient};
+use minotari_app_utilities::parse_miner_input::BaseNodeGrpcClient;
 use minotari_node_grpc_client::grpc;
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
@@ -37,7 +36,6 @@ use tari_core::{
         transaction_components::{TransactionKernel, TransactionOutput},
     },
 };
-use tonic::{codegen::InterceptedService, transport::Channel};
 
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
@@ -51,7 +49,7 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy::block_template_protocol";
 /// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {
     config: Arc<MergeMiningProxyConfig>,
-    base_node_client: &'a mut BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
+    base_node_client: &'a mut BaseNodeGrpcClient,
     key_manager: MemoryDbKeyManager,
     wallet_payment_address: TariAddress,
     consensus_manager: ConsensusManager,
@@ -59,13 +57,12 @@ pub struct BlockTemplateProtocol<'a> {
 
 impl<'a> BlockTemplateProtocol<'a> {
     pub async fn new(
-        base_node_client: &'a mut BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
+        base_node_client: &'a mut BaseNodeGrpcClient,
         config: Arc<MergeMiningProxyConfig>,
+        consensus_manager: ConsensusManager,
+        wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateProtocol<'a>, MmProxyError> {
         let key_manager = create_memory_db_key_manager();
-        let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
-            .map_err(|err| MmProxyError::WalletPaymentAddress(err.to_string()))?;
-        let consensus_manager = ConsensusManager::builder(config.network).build()?;
         Ok(Self {
             config,
             base_node_client,
@@ -242,6 +239,11 @@ impl BlockTemplateProtocol<'_> {
             .monero_seed(monero_mining_data.seed_hash)
             .monero_difficulty(monero_mining_data.difficulty)
             .tari_difficulty(tari_difficulty)
+            .tari_hash(
+                FixedHash::try_from(tari_block.merge_mining_hash.clone())
+                    .map_err(|e| MmProxyError::MissingDataError(e.to_string()))?,
+            )
+            .aux_hashes(vec![monero::Hash::from_slice(&tari_block.merge_mining_hash)])
             .build()?;
 
         // Deserialize the block template blob
@@ -250,7 +252,15 @@ impl BlockTemplateProtocol<'_> {
 
         debug!(target: LOG_TARGET, "Insert Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
-        monero_rx::insert_merge_mining_tag_into_block(&mut monero_block, &tari_block.merge_mining_hash)?;
+        // We need to send the MR al all aux chains, but a single chain, aka minotari only, means we only need the tari
+        // hash
+        let aux_chain_mr = tari_block.merge_mining_hash.clone();
+        monero_rx::insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(
+            &mut monero_block,
+            &aux_chain_mr,
+            1,
+            0,
+        )?;
 
         debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
@@ -266,12 +276,16 @@ impl BlockTemplateProtocol<'_> {
             monero_mining_data.difficulty,
             mining_difficulty
         );
+        let merge_mining_hash = FixedHash::try_from(tari_block.merge_mining_hash.clone())
+            .map_err(|e| MmProxyError::MissingDataError(e.to_string()))?;
         Ok(FinalBlockTemplateData {
             template: block_template_data,
             target_difficulty: Difficulty::from_u64(mining_difficulty)?,
             blockhashing_blob,
             blocktemplate_blob,
-            merge_mining_hash: tari_block.merge_mining_hash,
+            merge_mining_hash,
+            aux_chain_hashes: vec![monero::Hash::from_slice(&tari_block.merge_mining_hash)],
+            aux_chain_mr: tari_block.merge_mining_hash,
         })
     }
 }
@@ -296,7 +310,9 @@ pub struct FinalBlockTemplateData {
     pub target_difficulty: Difficulty,
     pub blockhashing_blob: String,
     pub blocktemplate_blob: String,
-    pub merge_mining_hash: Vec<u8>,
+    pub merge_mining_hash: FixedHash,
+    pub aux_chain_hashes: Vec<monero::Hash>,
+    pub aux_chain_mr: Vec<u8>,
 }
 
 /// Container struct for monero mining data inputs obtained from monerod

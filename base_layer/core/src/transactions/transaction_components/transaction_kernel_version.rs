@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, PartialOrd, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
+#[borsh(use_discriminant = true)]
 pub enum TransactionKernelVersion {
     V0 = 0,
 }

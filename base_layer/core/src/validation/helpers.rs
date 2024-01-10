@@ -23,6 +23,7 @@
 use std::convert::TryFrom;
 
 use log::*;
+use tari_common_types::types::FixedHash;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 
@@ -30,7 +31,7 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
         randomx_difficulty,
@@ -119,9 +120,11 @@ pub fn check_target_difficulty(
     block_header: &BlockHeader,
     target: Difficulty,
     randomx_factory: &RandomXFactory,
+    gen_hash: &FixedHash,
+    consensus: &ConsensusManager,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
 

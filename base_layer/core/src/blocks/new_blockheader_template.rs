@@ -64,9 +64,7 @@ impl Display for NewBlockHeaderTemplate {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let msg = format!(
             "Version: {}\nBlock height: {}\nPrevious block hash: {}\n",
-            self.version,
-            self.height,
-            self.prev_hash.to_hex(),
+            self.version, self.height, self.prev_hash,
         );
         fmt.write_str(&msg)?;
         fmt.write_str(&format!(

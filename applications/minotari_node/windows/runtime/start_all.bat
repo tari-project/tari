@@ -1,9 +1,5 @@
 @echo off
 
-rem This is the location of the configuration and identity files
-set config_path=%~dp0..\config
-echo config_path = %config_path%
-
 rem The default runtime location
 set my_exe_path=%~dp0
 if %my_exe_path:~-1%==\ set my_exe_path=%my_exe_path:~0,-1%

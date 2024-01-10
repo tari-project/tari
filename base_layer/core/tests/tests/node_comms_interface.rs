@@ -65,7 +65,7 @@ use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::helpers::block_builders::append_block;
+use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
 
 fn new_mempool() -> Mempool {
     let rules = create_consensus_rules();
@@ -110,11 +110,10 @@ async fn inbound_get_metadata() {
 
 #[tokio::test]
 async fn inbound_fetch_kernel_by_excess_sig() {
-    let store = create_test_blockchain_db();
+    let network = Network::LocalNet;
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
     let mempool = new_mempool();
 
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -130,7 +129,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
         connectivity,
         randomx_factory,
     );
-    let block = store.fetch_block(0, true).unwrap().block().clone();
+    let block = blocks[0].block().clone();
     let sig = block.body.kernels()[0].excess_sig.clone();
 
     if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
@@ -179,10 +178,9 @@ async fn inbound_fetch_headers() {
 
 #[tokio::test]
 async fn inbound_fetch_utxos() {
-    let store = create_test_blockchain_db();
-    let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
+    let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -198,8 +196,9 @@ async fn inbound_fetch_utxos() {
         connectivity,
         randomx_factory,
     );
-    let block = store.fetch_block(0, true).unwrap().block().clone();
-    let utxo_1 = block.body.outputs()[0].clone();
+
+    let block0 = blocks[0].block().clone();
+    let utxo_1 = block0.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
     let key_manager = create_memory_db_key_manager();

@@ -23,7 +23,7 @@
 use std::{iter, sync::Arc};
 
 use borsh::BorshSerialize;
-use monero::blockdata::block::Block as MoneroBlock;
+use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
@@ -75,6 +75,7 @@ use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
+use tiny_keccak::{Hasher, Keccak};
 use tokio::time::Instant;
 
 use crate::{
@@ -118,6 +119,7 @@ async fn test_monero_blocks() {
         .add_consensus_constants(cc)
         .build()
         .unwrap();
+    let gen_hash = *cm.get_genesis_block().hash();
     let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
     let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator);
     let db = create_store_with_consensus_and_validators(
@@ -175,7 +177,7 @@ async fn test_monero_blocks() {
     block_3.header.nonce = 1;
     let hash2 = block_3.hash();
     assert_ne!(hash1, hash2);
-    assert!(verify_header(&block_3.header).is_ok());
+    assert!(verify_header(&block_3.header, &gen_hash, &cm).is_ok());
     match db.add_block(Arc::new(block_3.clone())) {
         Err(ChainStorageError::ValidationError {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
@@ -198,11 +200,28 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 .to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
-    let hash = tblock.header.merge_mining_hash();
-    monero_rx::insert_merge_mining_tag_into_block(&mut mblock, hash).unwrap();
+    let hash = monero::Hash::from_slice(tblock.header.merge_mining_hash().as_slice());
+    monero_rx::insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut mblock, hash, 1, 0).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
-    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes).unwrap();
+    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    let aux_hashes = vec![hash];
+    let aux_chain_merkle_proof = monero_rx::create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+    let coinbase = mblock.miner_tx.clone();
+    let extra = coinbase.prefix.extra.clone();
+    let mut keccak = Keccak::v256();
+    let mut encoder_prefix = Vec::new();
+    coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+    coinbase
+        .prefix
+        .unlock_time
+        .consensus_encode(&mut encoder_prefix)
+        .unwrap();
+    coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+    coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+    keccak.update(&encoder_prefix);
+
     #[allow(clippy::cast_possible_truncation)]
     let monero_data = MoneroPowData {
         header: mblock.header,
@@ -210,7 +229,9 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
         transaction_count: hashes.len() as u16,
         merkle_root,
         coinbase_merkle_proof,
-        coinbase_tx: mblock.miner_tx,
+        coinbase_tx_extra: extra,
+        coinbase_tx_hasher: keccak,
+        aux_chain_merkle_proof,
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
