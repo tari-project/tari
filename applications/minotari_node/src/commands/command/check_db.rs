@@ -48,7 +48,7 @@ impl CommandContext {
         let mut missing_headers = Vec::new();
         print!("Searching for height: ");
         // We need to check every header, but not every block.
-        let horizon_height = meta.horizon_block_height(height);
+        let horizon_height = meta.pruned_height_at_given_chain_tip(height);
         while height > 0 {
             print!("{}", height);
             io::stdout().flush().await?;

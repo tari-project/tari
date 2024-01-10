@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -277,7 +277,7 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_status_at_header: Option<FixedHash>,
+        spend_status_at_header: Option<HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         self.db
             .as_ref()

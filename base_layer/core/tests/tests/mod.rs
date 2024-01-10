@@ -27,6 +27,7 @@ mod base_node_rpc;
 mod block_sync;
 mod block_validation;
 mod header_sync;
+mod horizon_sync;
 mod mempool;
 mod node_comms_interface;
 mod node_service;
