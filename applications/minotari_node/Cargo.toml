@@ -52,7 +52,7 @@ tonic = { version = "0.6.2", features = ["tls", "tls-roots" ] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = ["server"] }
 
 [features]
-default = ["metrics", "libtor"]
+default = ["libtor"]
 metrics = ["tari_metrics", "tari_comms/metrics"]
 safe = []
 libtor = ["tari_libtor"]
