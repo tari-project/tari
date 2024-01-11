@@ -10193,12 +10193,29 @@ mod test {
 
             let key_manager = create_memory_db_key_manager();
             for i in 0..10 {
-                let uout = (*alice_wallet)
-                    .runtime
-                    .block_on(create_test_input((1000 * i).into(), 0, &key_manager));
+                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                    (1000 * i).into(),
+                    0,
+                    &(*alice_wallet).wallet.key_manager_service,
+                ));
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
+                    .block_on(
+                        (*alice_wallet)
+                            .wallet
+                            .output_manager_service
+                            .add_output(uo.clone(), None),
+                    )
+                    .unwrap();
+                (*alice_wallet)
+                    .wallet
+                    .output_db
+                    .mark_output_as_unspent(
+                        (*alice_wallet)
+                            .runtime
+                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
+                            .unwrap(),
+                    )
                     .unwrap();
             }
 
@@ -10246,7 +10263,6 @@ mod test {
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_join() {
         unsafe {
-            let key_manager = create_memory_db_key_manager();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10279,12 +10295,12 @@ mod test {
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
 
             let alice_wallet = wallet_create(
-                alice_config,
+                alice_config.clone(),
                 ptr::null(),
                 0,
                 0,
                 0,
-                passphrase,
+                passphrase.clone(),
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -10310,15 +10326,28 @@ mod test {
 
             assert_eq!(error, 0);
             for i in 1..=5 {
+                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                    (15000 * i).into(),
+                    0,
+                    &(*alice_wallet).wallet.key_manager_service,
+                ));
                 (*alice_wallet)
                     .runtime
                     .block_on(
-                        (*alice_wallet).wallet.output_manager_service.add_output(
-                            (*alice_wallet)
-                                .runtime
-                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
-                            None,
-                        ),
+                        (*alice_wallet)
+                            .wallet
+                            .output_manager_service
+                            .add_output(uo.clone(), None),
+                    )
+                    .unwrap();
+                (*alice_wallet)
+                    .wallet
+                    .output_db
+                    .mark_output_as_unspent(
+                        (*alice_wallet)
+                            .runtime
+                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
+                            .unwrap(),
                     )
                     .unwrap();
             }
@@ -10510,15 +10539,28 @@ mod test {
             );
             assert_eq!(error, 0);
             for i in 1..=5 {
+                let uo = (*alice_wallet).runtime.block_on(create_test_input(
+                    (15000 * i).into(),
+                    0,
+                    &(*alice_wallet).wallet.key_manager_service,
+                ));
                 (*alice_wallet)
                     .runtime
                     .block_on(
-                        (*alice_wallet).wallet.output_manager_service.add_output(
-                            (*alice_wallet)
-                                .runtime
-                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
-                            None,
-                        ),
+                        (*alice_wallet)
+                            .wallet
+                            .output_manager_service
+                            .add_output(uo.clone(), None),
+                    )
+                    .unwrap();
+                (*alice_wallet)
+                    .wallet
+                    .output_db
+                    .mark_output_as_unspent(
+                        (*alice_wallet)
+                            .runtime
+                            .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
+                            .unwrap(),
                     )
                     .unwrap();
             }
