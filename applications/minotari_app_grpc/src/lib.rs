@@ -24,9 +24,7 @@ pub mod authentication;
 pub mod conversions;
 
 pub mod tls;
-#[allow(clippy::all)]
+#[allow(clippy::all, clippy::pedantic)]
 pub mod tari_rpc {
-    #![allow(clippy::all)]
-    #![allow(unknown_lints)]
     tonic::include_proto!("tari.rpc");
 }
