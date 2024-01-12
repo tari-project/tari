@@ -25,7 +25,7 @@ futures = { version = "^0.3.1" }
 lmdb-zero = "0.4.4"
 log = "0.4.6"
 pgp = { version = "0.10", optional = true }
-prost = "=0.9.0"
+prost = "0.11.9"
 rand = "0.8"
 reqwest = { version = "0.11", optional = true, default-features = false }
 rustls = "0.20.2"

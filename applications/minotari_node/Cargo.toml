@@ -46,7 +46,7 @@ serde = "1.0.136"
 strum = { version = "0.22", features = ["derive"] }
 thiserror = "^1.0.26"
 tokio = { version = "1.23", features = ["signal"] }
-tonic = { version = "0.6.2", features = ["tls", "tls-roots" ] }
+tonic = { version = "0.8.3", features = ["tls", "tls-roots" ] }
 
 # Metrics
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = ["server"] }

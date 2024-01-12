@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[allow(clippy::all, clippy::pedantic)]
 pub(crate) mod liveness {
     tari_comms::outdir_include!("tari.p2p.liveness.rs");
 }
 
+#[allow(clippy::all, clippy::pedantic)]
 pub(crate) mod message_type {
     tari_comms::outdir_include!("tari.p2p.message_type.rs");
 }
