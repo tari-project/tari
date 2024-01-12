@@ -10191,7 +10191,6 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            let key_manager = create_memory_db_key_manager();
             for i in 0..10 {
                 let uo = (*alice_wallet).runtime.block_on(create_test_input(
                     (1000 * i).into(),
@@ -10295,12 +10294,12 @@ mod test {
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
 
             let alice_wallet = wallet_create(
-                alice_config.clone(),
+                alice_config,
                 ptr::null(),
                 0,
                 0,
                 0,
-                passphrase.clone(),
+                passphrase,
                 ptr::null(),
                 network_str,
                 received_tx_callback,
@@ -10477,7 +10476,6 @@ mod test {
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_split() {
         unsafe {
-            let key_manager = create_memory_db_key_manager();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
