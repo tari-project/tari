@@ -38,10 +38,13 @@ pub enum TransactionStatus {
     OneSidedConfirmed = 9,
     /// This transaction is still being queued for initial sending
     Queued = 10,
-    /// This transaction import status is used when a one-sided transaction has been scanned but is unconfirmed
+    /// This transaction import status is used when a coinbase transaction has been scanned but is unconfirmed
     CoinbaseUnconfirmed = 11,
-    /// This transaction import status is used when a one-sided transaction has been scanned and confirmed
+    /// This transaction import status is used when a coinbase transaction has been scanned and confirmed
     CoinbaseConfirmed = 12,
+    /// This transaction import status is used when a coinbase transaction has been scanned but the outputs are not
+    /// currently confirmed on the blockchain via the output manager
+    CoinbaseNotInBlockChain = 13,
 }
 
 impl TransactionStatus {
@@ -55,7 +58,9 @@ impl TransactionStatus {
     pub fn is_coinbase(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::CoinbaseUnconfirmed | TransactionStatus::CoinbaseConfirmed
+            TransactionStatus::CoinbaseUnconfirmed |
+                TransactionStatus::CoinbaseConfirmed |
+                TransactionStatus::CoinbaseNotInBlockChain
         )
     }
 
@@ -81,9 +86,9 @@ impl TransactionStatus {
             TransactionStatus::Imported |
             TransactionStatus::OneSidedUnconfirmed |
             TransactionStatus::OneSidedConfirmed => TransactionStatus::OneSidedConfirmed,
-            TransactionStatus::CoinbaseConfirmed | TransactionStatus::CoinbaseUnconfirmed => {
-                TransactionStatus::CoinbaseConfirmed
-            },
+            TransactionStatus::CoinbaseNotInBlockChain |
+            TransactionStatus::CoinbaseConfirmed |
+            TransactionStatus::CoinbaseUnconfirmed => TransactionStatus::CoinbaseConfirmed,
         }
     }
 
@@ -100,9 +105,9 @@ impl TransactionStatus {
             TransactionStatus::Imported |
             TransactionStatus::OneSidedUnconfirmed |
             TransactionStatus::OneSidedConfirmed => TransactionStatus::OneSidedUnconfirmed,
-            TransactionStatus::CoinbaseConfirmed | TransactionStatus::CoinbaseUnconfirmed => {
-                TransactionStatus::CoinbaseUnconfirmed
-            },
+            TransactionStatus::CoinbaseConfirmed |
+            TransactionStatus::CoinbaseUnconfirmed |
+            TransactionStatus::CoinbaseNotInBlockChain => TransactionStatus::CoinbaseUnconfirmed,
         }
     }
 }
@@ -131,6 +136,7 @@ impl TryFrom<i32> for TransactionStatus {
             10 => Ok(TransactionStatus::Queued),
             11 => Ok(TransactionStatus::CoinbaseUnconfirmed),
             12 => Ok(TransactionStatus::CoinbaseConfirmed),
+            13 => Ok(TransactionStatus::CoinbaseNotInBlockChain),
             code => Err(TransactionConversionError { code }),
         }
     }
@@ -152,6 +158,7 @@ impl Display for TransactionStatus {
             TransactionStatus::OneSidedConfirmed => write!(f, "One-Sided Confirmed"),
             TransactionStatus::CoinbaseUnconfirmed => write!(f, "Coinbase Unconfirmed"),
             TransactionStatus::CoinbaseConfirmed => write!(f, "Coinbase Confirmed"),
+            TransactionStatus::CoinbaseNotInBlockChain => write!(f, "Coinbase not mined"),
             TransactionStatus::Queued => write!(f, "Queued"),
         }
     }
@@ -165,9 +172,9 @@ pub enum ImportStatus {
     OneSidedUnconfirmed,
     /// This transaction import status is used when a one-sided transaction has been scanned and confirmed
     OneSidedConfirmed,
-    /// This transaction import status is used when a one-sided transaction has been scanned but is unconfirmed
+    /// This transaction import status is used when a coinbasetransaction has been scanned but is unconfirmed
     CoinbaseUnconfirmed,
-    /// This transaction import status is used when a one-sided transaction has been scanned and confirmed
+    /// This transaction import status is used when a coinbase transaction has been scanned and confirmed
     CoinbaseConfirmed,
 }
 

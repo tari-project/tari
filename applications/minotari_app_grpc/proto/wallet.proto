@@ -227,6 +227,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE_UNCONFIRMED = 12;
     // This is Coinbase transaction that is detected from chain
     TRANSACTION_STATUS_COINBASE_CONFIRMED = 13;
+    // This is Coinbase transaction that is not currently detected as mined
+    TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN = 14;
 }
 
 message GetCompletedTransactionsRequest { }

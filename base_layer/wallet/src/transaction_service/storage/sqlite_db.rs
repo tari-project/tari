@@ -918,18 +918,23 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
-    fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+    // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to
+    // extract, thus we should not wipe it out. Coinbases can also not be mined in a different height so the data will
+    // never be wrong.
+    fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let result = diesel::update(completed_transactions::table)
+            .filter(completed_transactions::status.ne(TransactionStatus::CoinbaseNotInBlockChain as i32))
+            .filter(completed_transactions::status.ne(TransactionStatus::CoinbaseUnconfirmed as i32))
+            .filter(completed_transactions::status.ne(TransactionStatus::CoinbaseConfirmed as i32))
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&mut conn)?;
-
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1032,6 +1037,27 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut one_sided);
+        Ok(coinbases)
+    }
+
+    fn fetch_unmined_coinbase_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        let coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+            TransactionStatus::CoinbaseNotInBlockChain,
+            false,
+            height as i64,
+            &mut conn,
+        )?
+        .into_iter()
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         Ok(coinbases)
     }
 
@@ -1849,37 +1875,46 @@ impl CompletedTransactionSql {
     }
 
     pub fn set_as_unmined(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        let (current_status, current_mined_height) = TransactionStatus::try_from(
+            *completed_transactions::table
+                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+                .select(completed_transactions::status)
+                .select(completed_transactions::mined_height)
+                .load::<(i32, Option<i64>)>(conn)?
+                .first()
+                .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?,
+        )
+        .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
+        // let current_mined_height = *completed_transactions::table
+        //     .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+        //     .select(completed_transactions::mined_height)
+        //     .load::<Option<i64>>(conn)?
+        //     .first()
+        //     .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
         // This query uses two sub-queries to retrieve existing values in the table
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
-                status: {
-                    if let Some(status) = completed_transactions::table
-                        .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-                        .select(completed_transactions::status)
-                        .load::<i32>(conn)?
-                        .first()
-                    {
-                        if *status == TransactionStatus::OneSidedConfirmed as i32 ||
-                            *status == TransactionStatus::OneSidedUnconfirmed as i32
-                        {
-                            Some(TransactionStatus::OneSidedUnconfirmed as i32)
-                        } else if *status == TransactionStatus::CoinbaseUnconfirmed as i32 ||
-                            *status == TransactionStatus::CoinbaseConfirmed as i32
-                        {
-                            Some(TransactionStatus::CoinbaseUnconfirmed as i32)
-                        } else if *status == TransactionStatus::Imported as i32 {
-                            Some(TransactionStatus::Imported as i32)
-                        } else if *status == TransactionStatus::Broadcast as i32 {
-                            Some(TransactionStatus::Broadcast as i32)
-                        } else {
-                            Some(TransactionStatus::Completed as i32)
-                        }
-                    } else {
-                        return Err(TransactionStorageError::DieselError(DieselError::NotFound));
-                    }
+                status: match current_status {
+                    TransactionStatus::OneSidedConfirmed | TransactionStatus::OneSidedUnconfirmed => {
+                        Some(TransactionStatus::OneSidedUnconfirmed as i32)
+                    },
+                    TransactionStatus::CoinbaseUnconfirmed |
+                    TransactionStatus::CoinbaseConfirmed |
+                    TransactionStatus::CoinbaseNotInBlockChain => {
+                        Some(TransactionStatus::CoinbaseNotInBlockChain as i32)
+                    },
+                    TransactionStatus::Imported => Some(TransactionStatus::Imported as i32),
+                    TransactionStatus::Broadcast => Some(TransactionStatus::Broadcast as i32),
+                    _ => Some(TransactionStatus::Completed as i32),
                 },
                 mined_in_block: Some(None),
-                mined_height: Some(None),
+                mined_height: {
+                    if current_status.is_coinbase() {
+                        Some(current_mined_height)
+                    } else {
+                        Some(None)
+                    }
+                },
                 confirmations: Some(None),
                 // Turns out it should not be cancelled
                 cancelled: Some(None),
@@ -2109,6 +2144,7 @@ impl UnconfirmedTransactionInfoSql {
                     .and(completed_transactions::status.ne(TransactionStatus::OneSidedConfirmed as i32))
                     .and(completed_transactions::status.ne(TransactionStatus::CoinbaseUnconfirmed as i32))
                     .and(completed_transactions::status.ne(TransactionStatus::CoinbaseConfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::CoinbaseNotInBlockChain as i32))
                     // Filter out any transaction without a kernel signature
                     .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
                     .and(completed_transactions::transaction_signature_key.ne(vec![0u8; 32]))

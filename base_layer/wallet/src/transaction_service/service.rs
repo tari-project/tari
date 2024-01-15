@@ -2530,7 +2530,7 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        self.resources.db.mark_all_transactions_as_unvalidated()?;
+        self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
         self.start_transaction_validation_protocol(join_handles).await
     }
 
