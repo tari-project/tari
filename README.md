@@ -114,7 +114,7 @@ First you'll need to make sure you have a full development environment set up:
 
 ```
 brew update
-brew install cmake openssl tor coreutils automake
+brew install openssl cmake coreutils automake autoconf protobuf tor
 brew install --cask powershell
 ```
 

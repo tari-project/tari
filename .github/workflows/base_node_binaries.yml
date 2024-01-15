@@ -142,7 +142,7 @@ jobs:
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
         run: |
-          brew install cmake coreutils automake autoconf
+          brew install openssl cmake coreutils automake autoconf protobuf
           rustup target add ${{ matrix.builds.target }}
 
       - name: Install Windows dependencies
@@ -159,6 +159,7 @@ jobs:
 
       - name: Set environment variables - Nix
         if: ${{ ! startsWith(runner.os,'Windows') }}
+        shell: bash
         run: |
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
@@ -169,12 +170,14 @@ jobs:
 
       - name: Set environment variables - macOS
         if: startsWith(runner.os,'macOS')
+        shell: bash
         run: |
           echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
           echo "LIB_EXT=.dylib" >> $GITHUB_ENV
 
       - name: Set environment variables - Ubuntu
         if: startsWith(runner.os,'Linux')
+        shell: bash
         run: |
           echo "LIB_EXT=.so" >> $GITHUB_ENV
 
@@ -197,10 +200,11 @@ jobs:
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
-      # Don't use caches for binary builds. Start from a clean slate - on release
       - name: Cache cargo files and outputs
-        if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) }}
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.builds.target }}
 
       - name: Install and setup cargo cross
         if: ${{ matrix.builds.cross }}
