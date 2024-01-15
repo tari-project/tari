@@ -13,27 +13,44 @@ use serde::{
 };
 
 use crate::{
-    configuration::{ConfigOverrideProvider, Network},
+    configuration::{bootstrap::prompt, ConfigOverrideProvider, Network},
     ConfigError,
     LOG_TARGET,
 };
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
+/// Loads the configuration file from the specified path, or creates a new one with the embedded default presets if it
+/// does not. This also prompts the user.
 pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     create_if_not_exists: bool,
+    non_interactive: bool,
     overrides: &TOverride,
 ) -> Result<Config, ConfigError> {
     debug!(
         target: LOG_TARGET,
         "Loading configuration file from  {}",
-        config_path.as_ref().to_str().unwrap_or("[??]")
+        config_path.as_ref().display()
     );
     if !config_path.as_ref().exists() && create_if_not_exists {
-        write_default_config_to(&config_path)
+        let sources = if non_interactive {
+            get_default_config(false)
+        } else {
+            prompt_default_config()
+        };
+        write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
     }
+
+    load_configuration_with_overrides(config_path, overrides)
+}
+
+/// Loads the config at the given path applying all overrides.
+pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
+    config_path: P,
+    overrides: &TOverride,
+) -> Result<Config, ConfigError> {
     let filename = config_path
         .as_ref()
         .to_str()
@@ -83,16 +100,33 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     Ok(cfg)
 }
 
-/// Installs a new configuration file template, copied from the application type's preset and written to the given path.
+/// Returns a new configuration file template in parts from the embedded presets. If non_interactive is false, the user
+/// is prompted to select if they would like to select a base node configuration that enables mining or not.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::Error> {
-    // Use the same config file so that all the settings are easier to find, and easier to
-    // support users over chat channels
+pub fn prompt_default_config() -> [&'static str; 12] {
+    let mine = prompt(
+        "Node config does not exist.\nWould you like to mine (Y/n)?\nNOTE: this will enable additional gRPC methods \
+         that could be used to monitor and submit blocks from this node.",
+    );
+    get_default_config(mine)
+}
+
+/// Returns the default configuration file template in parts from the embedded presets. If use_mining_config is true,
+/// the base node configuration that enables mining is returned, otherwise the non-mining configuration is returned.
+pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
+    let base_node_deny_methods = if use_mining_config {
+        include_str!("../../config/presets/c_base_node_b_mining_deny_methods.toml")
+    } else {
+        include_str!("../../config/presets/c_base_node_b_non_mining_deny_methods.toml")
+    };
+
     let common = include_str!("../../config/presets/a_common.toml");
-    let source = [
+    [
         common,
         include_str!("../../config/presets/b_peer_seeds.toml"),
-        include_str!("../../config/presets/c_base_node.toml"),
+        include_str!("../../config/presets/c_base_node_a.toml"),
+        base_node_deny_methods,
+        include_str!("../../config/presets/c_base_node_c.toml"),
         include_str!("../../config/presets/d_console_wallet.toml"),
         include_str!("../../config/presets/g_miner.toml"),
         include_str!("../../config/presets/f_merge_mining_proxy.toml"),
@@ -101,13 +135,20 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
         include_str!("../../config/presets/i_indexer.toml"),
         include_str!("../../config/presets/j_dan_wallet_daemon.toml"),
     ]
-    .join("\n");
+}
 
+/// Writes a single file concatenating all the provided sources to the specified path. If the parent directory does not
+/// exist, it is created. If the file already exists, it is overwritten.
+pub fn write_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<(), std::io::Error> {
     if let Some(d) = path.as_ref().parent() {
         fs::create_dir_all(d)?
     };
     let mut file = File::create(path)?;
-    file.write_all(source.as_ref())
+    for source in sources {
+        file.write_all(source.as_bytes())?;
+        file.write_all(b"\n")?;
+    }
+    Ok(())
 }
 
 pub fn serialize_string<S, T>(source: &T, ser: S) -> Result<S::Ok, S::Error>

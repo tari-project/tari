@@ -103,12 +103,17 @@ impl OutputFeatures {
         )
     }
 
-    pub fn create_coinbase(maturity_height: u64, extra: Option<Vec<u8>>) -> OutputFeatures {
+    pub fn create_coinbase(
+        maturity_height: u64,
+        extra: Option<Vec<u8>>,
+        range_proof_type: RangeProofType,
+    ) -> OutputFeatures {
         let coinbase_extra = extra.unwrap_or_default();
         OutputFeatures {
             output_type: OutputType::Coinbase,
             maturity: maturity_height,
             coinbase_extra,
+            range_proof_type,
             ..Default::default()
         }
     }

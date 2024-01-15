@@ -343,13 +343,13 @@ mod test {
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
-        transactions::{tari_amount::MicroMinotari, test_helpers::create_test_core_key_manager_with_memory_db},
+        transactions::{key_manager::create_memory_db_key_manager, tari_amount::MicroMinotari},
         tx,
     };
 
     #[tokio::test]
     async fn test_insert_expire_by_height() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let tx1 = Arc::new(
             tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -409,7 +409,7 @@ mod test {
 
     #[tokio::test]
     async fn test_remove_all() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let tx1 = Arc::new(
             tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -446,7 +446,7 @@ mod test {
 
     #[tokio::test]
     async fn remove_scan_for_and_remove_reorged_txs() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(

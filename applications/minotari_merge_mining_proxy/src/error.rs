@@ -26,12 +26,15 @@ use std::io;
 
 use hex::FromHexError;
 use hyper::header::InvalidHeaderValue;
+use minotari_app_utilities::parse_miner_input::ParseInputError;
 use minotari_wallet_grpc_client::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{
+    consensus::ConsensusBuilderError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError},
-    transactions::CoinbaseBuildError,
+    transactions::{key_manager::CoreKeyManagerError, CoinbaseBuildError},
 };
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};
 
@@ -96,6 +99,18 @@ pub enum MmProxyError {
     ServersUnavailable,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
+    #[error("Key manager service error: `{0}`")]
+    KeyManagerServiceError(String),
+    #[error("Key manager error: {0}")]
+    CoreKeyManagerError(#[from] CoreKeyManagerError),
+    #[error("Consensus build error: {0}")]
+    ConsensusBuilderError(#[from] ConsensusBuilderError),
+    #[error("Consensus build error: {0}")]
+    ParseInputError(#[from] ParseInputError),
+    #[error("Base node not responding to gRPC requests: {0}")]
+    BaseNodeNotResponding(String),
 }
 
 impl From<tonic::Status> for MmProxyError {
@@ -104,6 +119,12 @@ impl From<tonic::Status> for MmProxyError {
             details: String::from_utf8_lossy(status.details()).to_string(),
             status,
         }
+    }
+}
+
+impl From<KeyManagerServiceError> for MmProxyError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        MmProxyError::KeyManagerServiceError(err.to_string())
     }
 }
 

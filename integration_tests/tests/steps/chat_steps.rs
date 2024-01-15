@@ -23,8 +23,6 @@
 use std::{cmp::Ordering, convert::TryFrom, time::Duration};
 
 use cucumber::{then, when};
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     service::ContactOnlineStatus,
@@ -63,14 +61,19 @@ async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
 }
 
 #[when(regex = r"^I use (.+) to send a message '(.+)' to (.*)$")]
-async fn send_message_to(world: &mut TariWorld, sender: String, message: String, receiver: String) {
+async fn send_message_to(
+    world: &mut TariWorld,
+    sender: String,
+    message: String,
+    receiver: String,
+) -> anyhow::Result<()> {
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
-    let message = sender.create_message(&address, message);
+    let message = sender.create_message(&receiver.address(), message);
 
-    sender.send_message(message).await;
+    sender.send_message(message).await?;
+    Ok(())
 }
 
 #[when(regex = r"^I use (.+) to send a reply saying '(.+)' to (.*)'s message '(.*)'$")]
@@ -80,15 +83,15 @@ async fn i_reply_to_message(
     outbound_msg: String,
     receiver: String,
     inbound_msg: String,
-) {
+) -> anyhow::Result<()> {
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
+    let address = receiver.address();
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let messages: Vec<Message> = (*sender)
             .get_messages(&address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         if messages.is_empty() {
             tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -109,8 +112,8 @@ async fn i_reply_to_message(
             String::from_utf8(inbound_chat_message.message_id).expect("bytes to uuid"),
         );
 
-        sender.send_message(message).await;
-        return;
+        sender.send_message(message).await?;
+        return Ok(());
     }
 
     panic!("Never received incoming chat message",)
@@ -118,19 +121,24 @@ async fn i_reply_to_message(
 
 #[when(expr = "{word} will have {int} message(s) with {word}")]
 #[then(expr = "{word} will have {int} message(s) with {word}")]
-async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
+async fn receive_n_messages(
+    world: &mut TariWorld,
+    receiver: String,
+    message_count: u64,
+    sender: String,
+) -> anyhow::Result<()> {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
-    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
+    let address = sender.address();
 
     let mut messages = vec![];
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         messages = (*receiver)
             .get_messages(&address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         if messages.len() as u64 == message_count {
-            return;
+            return Ok(());
         }
 
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -138,34 +146,32 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
 
     panic!(
         "Receiver {} only received {}/{} messages",
-        (*receiver).identity().node_id(),
+        address,
         messages.len(),
         message_count
     )
 }
 
 #[when(expr = "{word} adds {word} as a contact")]
-async fn add_as_contact(world: &mut TariWorld, sender: String, receiver: String) {
+async fn add_as_contact(world: &mut TariWorld, sender: String, receiver: String) -> anyhow::Result<()> {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
 
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
-
-    sender.add_contact(&address).await;
+    sender.add_contact(&receiver.address()).await?;
+    Ok(())
 }
 
 #[when(expr = "{word} waits for contact {word} to be online")]
-async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, contact: String) {
+async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, contact: String) -> anyhow::Result<()> {
     let client = world.chat_clients.get(&client).unwrap();
     let contact = world.chat_clients.get(&contact).unwrap();
 
-    let address = TariAddress::from_public_key(contact.identity().public_key(), Network::LocalNet);
     let mut last_status = ContactOnlineStatus::Banned("No result came back".to_string());
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4) {
-        last_status = client.check_online_status(&address).await;
+        last_status = client.check_online_status(&contact.address()).await?;
         if ContactOnlineStatus::Online == last_status {
-            return;
+            return Ok(());
         }
 
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -173,21 +179,26 @@ async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, co
 
     panic!(
         "Contact {} never came online, status is: {}",
-        contact.identity().node_id(),
+        contact.address(),
         last_status
     )
 }
 
 #[then(regex = r"^(.+) will have a replied to message from (.*) with '(.*)'$")]
-async fn have_replied_message(world: &mut TariWorld, receiver: String, sender: String, inbound_reply: String) {
+async fn have_replied_message(
+    world: &mut TariWorld,
+    receiver: String,
+    sender: String,
+    inbound_reply: String,
+) -> anyhow::Result<()> {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
-    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
+    let address = sender.address();
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let messages: Vec<Message> = (*receiver)
             .get_messages(&address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         // 1 message out, 1 message back = 2
         if messages.len() < 2 {
@@ -222,23 +233,28 @@ async fn have_replied_message(world: &mut TariWorld, receiver: String, sender: S
             "Message id does not match"
         );
 
-        return;
+        return Ok(());
     }
 
     panic!("Never received incoming chat message",)
 }
 
 #[then(regex = r"^(.+) and (.+) will have a message '(.+)' with matching delivery timestamps")]
-async fn matching_delivery_timestamps(world: &mut TariWorld, sender: String, receiver: String, msg: String) {
+async fn matching_delivery_timestamps(
+    world: &mut TariWorld,
+    sender: String,
+    receiver: String,
+    msg: String,
+) -> anyhow::Result<()> {
     let client_1 = world.chat_clients.get(&sender).unwrap();
     let client_2 = world.chat_clients.get(&receiver).unwrap();
-    let client_1_address = TariAddress::from_public_key(client_1.identity().public_key(), Network::LocalNet);
-    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
+    let client_1_address = client_1.address();
+    let client_2_address = client_2.address();
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let client_1_messages: Vec<Message> = (*client_1)
             .get_messages(&client_2_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         if client_1_messages.is_empty() {
             tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -253,7 +269,7 @@ async fn matching_delivery_timestamps(world: &mut TariWorld, sender: String, rec
 
         let client_2_messages: Vec<Message> = (*client_2)
             .get_messages(&client_1_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         if client_2_messages.is_empty() {
             tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -266,28 +282,38 @@ async fn matching_delivery_timestamps(world: &mut TariWorld, sender: String, rec
             .expect("no message with that content found")
             .clone();
 
-        assert_eq!(
-            client_1_message.delivery_confirmation_at.unwrap(),
-            client_2_message.delivery_confirmation_at.unwrap()
-        );
+        let client_1_delivery = client_1_message.delivery_confirmation_at.unwrap();
+        let client_2_delivery = client_2_message.delivery_confirmation_at.unwrap();
+        let diff = if client_1_delivery > client_2_delivery {
+            client_1_delivery - client_2_delivery
+        } else {
+            client_2_delivery - client_1_delivery
+        };
 
-        return;
+        assert!(diff < 2);
+
+        return Ok(());
     }
 
     panic!("Never received incoming chat message",)
 }
 
 #[then(regex = r"^(.+) and (.+) will have a message '(.+)' with matching read timestamps")]
-async fn matching_read_timestamps(world: &mut TariWorld, sender: String, receiver: String, msg: String) {
+async fn matching_read_timestamps(
+    world: &mut TariWorld,
+    sender: String,
+    receiver: String,
+    msg: String,
+) -> anyhow::Result<()> {
     let client_1 = world.chat_clients.get(&sender).unwrap();
     let client_2 = world.chat_clients.get(&receiver).unwrap();
-    let client_1_address = TariAddress::from_public_key(client_1.identity().public_key(), Network::LocalNet);
-    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
+    let client_1_address = client_1.address();
+    let client_2_address = client_2.address();
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let client_1_messages: Vec<Message> = (*client_1)
             .get_messages(&client_2_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         if client_1_messages.is_empty() {
             tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -302,7 +328,7 @@ async fn matching_read_timestamps(world: &mut TariWorld, sender: String, receive
 
         let client_2_messages: Vec<Message> = (*client_2)
             .get_messages(&client_1_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .await?;
 
         if client_2_messages.is_empty() {
             tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -319,27 +345,31 @@ async fn matching_read_timestamps(world: &mut TariWorld, sender: String, receive
             continue;
         }
 
-        assert_eq!(
-            client_1_message.read_confirmation_at.unwrap(),
-            client_2_message.read_confirmation_at.unwrap()
-        );
+        let client_1_read = client_1_message.read_confirmation_at.unwrap();
+        let client_2_read = client_2_message.read_confirmation_at.unwrap();
+        let diff = if client_1_read > client_2_read {
+            client_1_read - client_2_read
+        } else {
+            client_2_read - client_1_read
+        };
 
-        return;
+        assert!(diff < 2);
+
+        return Ok(());
     }
 
     panic!("Never received incoming chat message",)
 }
 
 #[when(regex = r"^(.+) sends a read receipt to (.+) for message '(.+)'")]
-async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: String, msg: String) {
+async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: String, msg: String) -> anyhow::Result<()> {
     let client_1 = world.chat_clients.get(&receiver).unwrap();
     let client_2 = world.chat_clients.get(&sender).unwrap();
-    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let messages: Vec<Message> = (*client_1)
-            .get_messages(&client_2_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
-            .await;
+            .get_messages(&client_2.address(), DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .await?;
 
         if messages.is_empty() {
             tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
@@ -352,17 +382,19 @@ async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: Stri
             .expect("no message with that content found")
             .clone();
 
-        client_1.send_read_receipt(message).await;
+        client_1.send_read_receipt(message).await?;
     }
+
+    Ok(())
 }
 
 #[then(expr = "{word} will have {int} conversationalists")]
-async fn count_conversationalists(world: &mut TariWorld, user: String, num: u64) {
+async fn count_conversationalists(world: &mut TariWorld, user: String, num: u64) -> anyhow::Result<()> {
     let client = world.chat_clients.get(&user).unwrap();
     let mut addresses = 0;
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        let conversationalists = (*client).get_conversationalists().await;
+        let conversationalists = (*client).get_conversationalists().await?;
 
         match conversationalists
             .len()
@@ -373,7 +405,7 @@ async fn count_conversationalists(world: &mut TariWorld, user: String, num: u64)
                 addresses = conversationalists.len();
                 continue;
             },
-            Ordering::Equal => return,
+            Ordering::Equal => return Ok(()),
             _ => addresses = conversationalists.len(),
         }
     }

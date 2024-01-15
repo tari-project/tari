@@ -29,10 +29,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
-use tari_utilities::{
-    hex::{to_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::{hex::Hex, ByteArray};
 
 use super::decoder::CovenantDecodeError;
 use crate::{
@@ -237,7 +234,7 @@ impl Display for CovenantArg {
         #[allow(clippy::enum_glob_use)]
         use CovenantArg::*;
         match self {
-            Hash(hash) => write!(f, "Hash({})", to_hex(&hash[..])),
+            Hash(hash) => write!(f, "Hash({})", hash),
             PublicKey(public_key) => write!(f, "PublicKey({})", public_key.to_hex()),
             Commitment(commitment) => write!(f, "Commitment({})", commitment.to_hex()),
             TariScript(_) => write!(f, "TariScript(...)"),

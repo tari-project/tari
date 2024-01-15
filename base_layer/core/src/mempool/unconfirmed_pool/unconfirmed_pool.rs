@@ -883,8 +883,9 @@ mod test {
         transactions::{
             aggregated_body::AggregateBody,
             fee::Fee,
+            key_manager::create_memory_db_key_manager,
             tari_amount::MicroMinotari,
-            test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
+            test_helpers::{TestParams, UtxoTestParams},
             weight::TransactionWeight,
             SenderTransactionProtocol,
         },
@@ -893,7 +894,7 @@ mod test {
 
     #[tokio::test]
     async fn test_find_duplicate_input() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let tx1 = Arc::new(
             tx!(MicroMinotari(5000), fee: MicroMinotari(50), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -922,7 +923,7 @@ mod test {
 
     #[tokio::test]
     async fn test_insert_and_retrieve_highest_priority_txs() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let tx1 = Arc::new(
             tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -985,7 +986,7 @@ mod test {
 
     #[tokio::test]
     async fn test_double_spend_inputs() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (tx1, _, _) = tx!(MicroMinotari(5_000), fee: MicroMinotari(10), inputs: 1, outputs: 1, &key_manager)
             .expect("Failed to get tx");
         const INPUT_AMOUNT: MicroMinotari = MicroMinotari(5_000);
@@ -1072,7 +1073,7 @@ mod test {
 
     #[tokio::test]
     async fn test_remove_reorg_txs() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
@@ -1144,7 +1145,7 @@ mod test {
 
     #[tokio::test]
     async fn test_discard_double_spend_txs() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let consensus = create_consensus_rules();
         let tx1 = Arc::new(
             tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs:2, outputs:1, &key_manager)
@@ -1219,7 +1220,7 @@ mod test {
 
     #[tokio::test]
     async fn test_multiple_transactions_with_same_outputs_in_mempool() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
             .expect("Failed to get tx");
         let (tx2, _, _) = tx!(MicroMinotari(250_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
@@ -1322,7 +1323,7 @@ mod test {
 
         #[tokio::test]
         async fn it_compiles_correct_stats_for_single_block() {
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(5), inputs:5, outputs:1, &key_manager)
                 .expect("Failed to get tx");
             let (tx2, _, _) = tx!(MicroMinotari(250_000), fee: MicroMinotari(5), inputs:5, outputs:5, &key_manager)
@@ -1352,7 +1353,7 @@ mod test {
 
         #[tokio::test]
         async fn it_compiles_correct_stats_for_multiple_blocks() {
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let expected_stats = [
                 FeePerGramStat {
                     order: 0,

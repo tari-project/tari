@@ -28,8 +28,8 @@ use tari_core::{
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, T},
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::WalletOutput,
     },
     txn_schema,
@@ -84,7 +84,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
     ConsensusManager,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
@@ -179,9 +179,9 @@ pub async fn create_new_blockchain(
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
     ConsensusManager,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .with_coinbase_lockheight(1)
@@ -211,9 +211,9 @@ pub async fn create_new_blockchain_with_constants(
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
     ConsensusManager,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (block0, output) = create_genesis_block(&constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(constants)
@@ -240,9 +240,9 @@ pub async fn create_new_blockchain_lmdb(
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
     ConsensusManager,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .with_coinbase_lockheight(1)

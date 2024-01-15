@@ -224,8 +224,6 @@ for COPY_FILE in "${COPY_FILES[@]}"; do
   cp -vr "$COPY_FILE" "$distDir/dist/"
 done
 
-cat common/config/presets/*.toml >"$distDir/dist/tari_config_example.toml"
-
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
   echo "Setup OSX Binaries signing ..."

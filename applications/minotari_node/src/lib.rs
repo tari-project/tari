@@ -42,8 +42,8 @@ use std::{process, sync::Arc};
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
-use minotari_app_grpc::authentication::ServerAuthenticationInterceptor;
-use minotari_app_utilities::{common_cli_args::CommonCliArgs, network_check::is_network_choice_valid};
+use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_utilities::{common_cli_args::CommonCliArgs, network_check::set_network_if_choice_valid};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
@@ -52,7 +52,7 @@ use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
-use tonic::transport::Server;
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 
 use crate::cli::Cli;
 pub use crate::{
@@ -88,6 +88,7 @@ pub async fn run_base_node(
         watch: None,
         profile_with_tokio_console: false,
         grpc_enabled: false,
+        mining_enabled: false,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
@@ -100,7 +101,7 @@ pub async fn run_base_node_with_cli(
     cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
-    is_network_choice_valid(config.network())?;
+    set_network_if_choice_valid(config.network())?;
 
     #[cfg(feature = "metrics")]
     {
@@ -136,12 +137,18 @@ pub async fn run_base_node_with_cli(
             format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
         });
         // Go, GRPC, go go
-        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(
-            &ctx,
-            config.base_node.grpc_server_deny_methods.clone(),
-        );
+        let grpc =
+            grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
         let auth = config.base_node.grpc_authentication.clone();
-        task::spawn(run_grpc(grpc, grpc_address, auth, shutdown.to_signal()));
+
+        let mut tls_identity = None;
+        if config.base_node.grpc_tls_enabled {
+            tls_identity = read_identity(config.base_node.config_dir.clone())
+                .await
+                .map(Some)
+                .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
+        }
+        task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
     }
 
     // Run, node, run!
@@ -176,6 +183,7 @@ async fn run_grpc(
     grpc: grpc::base_node_grpc_server::BaseNodeGrpcServer,
     grpc_address: Multiaddr,
     auth_config: GrpcAuthentication,
+    tls_identity: Option<Identity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
@@ -185,7 +193,13 @@ async fn run_grpc(
         .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
     let service = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::with_interceptor(grpc, auth);
 
-    Server::builder()
+    let mut server_builder = if let Some(identity) = tls_identity {
+        Server::builder().tls_config(ServerTlsConfig::new().identity(identity))?
+    } else {
+        Server::builder()
+    };
+
+    server_builder
         .add_service(service)
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await

@@ -126,7 +126,7 @@ use blake2::Blake2b;
 use digest::consts::{U32, U64};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
-hash_domain!(DHTCommsHashDomain, "com.tari.comms.dht");
+hash_domain!(DHTCommsHashDomain, "com.tari.comms.dht", 1);
 
 /// Hash domain used to produce binding message hashes
 pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<Blake2b<U32>, DHTCommsHashDomain> {

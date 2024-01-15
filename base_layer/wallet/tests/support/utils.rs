@@ -24,9 +24,9 @@ use rand::{CryptoRng, Rng};
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
-        test_helpers::{create_wallet_output_with_data, TestKeyManager, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,
@@ -44,7 +44,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
     val: MicroMinotari,
     features: &OutputFeatures,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
     create_wallet_output_with_data(TariScript::default(), features.clone(), &test_params, val, key_manager)
@@ -54,7 +54,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
 
 pub async fn create_wallet_output_from_sender_data(
     info: &TransactionSenderMessage,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
     let sender_data = info.single().unwrap();
@@ -104,7 +104,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     _rng: &mut R,
     value: MicroMinotari,
     features: OutputFeatures,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
     create_wallet_output_with_data(script!(Nop), features, &test_params, value, key_manager)

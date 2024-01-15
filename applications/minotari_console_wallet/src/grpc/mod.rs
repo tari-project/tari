@@ -29,7 +29,6 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             direction: completed.direction.to_string(),
             amount: completed.amount.as_u64(),
             message: completed.message.to_string(),
-            is_coinbase: completed.is_coinbase(),
         },
         TransactionWrapper::Outbound(outbound) => TransactionEvent {
             event,
@@ -40,7 +39,6 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             direction: "outbound".to_string(),
             amount: outbound.amount.as_u64(),
             message: outbound.message,
-            is_coinbase: false,
         },
         TransactionWrapper::Inbound(inbound) => TransactionEvent {
             event,
@@ -51,10 +49,6 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             direction: "inbound".to_string(),
             amount: inbound.amount.as_u64(),
             message: inbound.message.clone(),
-            // The coinbase are technically Inbound.
-            // To determine whether a transaction is coinbase
-            // we will check whether the message contains `Coinbase`.
-            is_coinbase: inbound.message.to_lowercase().contains("coinbase"),
         },
     }
 }

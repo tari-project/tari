@@ -24,6 +24,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 use diesel::result::Error as DieselError;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use log::warn;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::tari_address::TariAddress;
 use tari_utilities::ByteArray;
@@ -42,6 +43,8 @@ use crate::contacts_service::{
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
+const LOG_TARGET: &str = "contacts::contacts_service::storage::sqlite_db";
+
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct ContactsServiceSqliteDatabase<TContactServiceDbConnection> {
@@ -59,7 +62,11 @@ impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
 
     pub fn init(database_connection: TContactServiceDbConnection) -> Self {
         let db = Self::new(database_connection);
-        db.run_migrations().expect("Migrations to run");
+
+        if let Err(e) = db.run_migrations() {
+            warn!(target: LOG_TARGET, "Migrations failed to run: {}", e)
+        }
+
         db
     }
 
@@ -106,12 +113,13 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
             )),
             DbKey::Messages(address, limit, page) => {
                 match MessagesSql::find_by_address(&address.to_bytes(), *limit, *page, &mut conn) {
-                    Ok(messages) => Some(DbValue::Messages(
-                        messages
-                            .iter()
-                            .map(|m| Message::try_from(m.clone()).expect("Couldn't cast MessageSql to Message"))
-                            .collect::<Vec<Message>>(),
-                    )),
+                    Ok(messages_sql) => {
+                        let mut messages = vec![];
+                        for m in &messages_sql {
+                            messages.push(Message::try_from(m.clone())?);
+                        }
+                        Some(DbValue::Messages(messages))
+                    },
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                     Err(e) => return Err(e),
                 }

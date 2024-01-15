@@ -41,8 +41,6 @@ service Wallet {
     rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
     // This returns the tari address
     rpc GetAddress (Empty) returns (GetAddressResponse);
-    // This returns a coinbase transaction
-    rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Minotari to a number of recipients
     rpc Transfer (TransferRequest)  returns (TransferResponse);
     // Returns the transaction details for the given transaction IDs
@@ -213,16 +211,20 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE = 5;
     // This transaction is mined and confirmed at the current base node's height
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
-    // The transaction was not found by the wallet its in transaction database
-    TRANSACTION_STATUS_NOT_FOUND = 7;
     // The transaction was rejected by the mempool
-    TRANSACTION_STATUS_REJECTED = 8;
+    TRANSACTION_STATUS_REJECTED = 7;
     // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
-    TRANSACTION_STATUS_FAUX_UNCONFIRMED = 9;
+    TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED = 8;
     // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
-    TRANSACTION_STATUS_FAUX_CONFIRMED = 10;
+    TRANSACTION_STATUS_ONE_SIDED_CONFIRMED = 9;
     // This transaction is still being queued for sending
-    TRANSACTION_STATUS_QUEUED = 11;
+    TRANSACTION_STATUS_QUEUED = 10;
+    // The transaction was not found by the wallet its in transaction database
+    TRANSACTION_STATUS_NOT_FOUND = 11;
+    // This is Coinbase transaction that is detected from chain
+    TRANSACTION_STATUS_COINBASE_UNCONFIRMED = 12;
+    // This is Coinbase transaction that is detected from chain
+    TRANSACTION_STATUS_COINBASE_CONFIRMED = 13;
 }
 
 message GetCompletedTransactionsRequest { }
@@ -242,17 +244,6 @@ message GetBalanceResponse {
 
 message GetUnspentAmountsResponse {
     repeated uint64 amount = 1;
-}
-
-message GetCoinbaseRequest {
-    uint64 reward = 1;
-    uint64 fee = 2;
-    uint64 height = 3;
-    bytes extra = 4;
-}
-
-message GetCoinbaseResponse {
-    Transaction transaction = 1;
 }
 
 message CoinSplitRequest {
@@ -329,7 +320,6 @@ message TransactionEvent {
     string direction = 6;
     uint64 amount = 7;
     string message = 8;
-    bool is_coinbase = 9;
 }
 
 message TransactionEventResponse {

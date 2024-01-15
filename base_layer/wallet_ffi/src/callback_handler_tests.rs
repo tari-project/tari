@@ -29,6 +29,7 @@ mod test {
             },
         },
     };
+    use once_cell::sync::Lazy;
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
@@ -125,9 +126,7 @@ mod test {
         }
     }
 
-    lazy_static! {
-        static ref CALLBACK_STATE: Mutex<CallbackState> = Mutex::new(CallbackState::new());
-    }
+    static CALLBACK_STATE: Lazy<Mutex<CallbackState>> = Lazy::new(|| Mutex::new(CallbackState::new()));
 
     unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
@@ -323,8 +322,8 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
-            None,
-        );
+        )
+        .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
             .unwrap();
 
@@ -385,14 +384,14 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::FauxUnconfirmed,
+            TransactionStatus::OneSidedUnconfirmed,
             "6".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
-            None,
             Some(2),
             Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap_or(NaiveDateTime::MIN)),
-        );
+        )
+        .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
             .unwrap();
 
@@ -417,14 +416,14 @@ mod test {
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::FauxConfirmed,
+            TransactionStatus::OneSidedConfirmed,
             "7".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
-            None,
             Some(5),
             Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-        );
+        )
+        .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
             .unwrap();
 
@@ -749,7 +748,7 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 6 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::FauxTransactionUnconfirmed {
+            .send(Arc::new(TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id: 6u64.into(),
                 num_confirmations: 2,
                 is_valid: true,
@@ -772,7 +771,7 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 7 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::FauxTransactionConfirmed {
+            .send(Arc::new(TransactionEvent::DetectedTransactionConfirmed {
                 tx_id: 7u64.into(),
                 is_valid: true,
             }))

@@ -64,6 +64,7 @@ use crate::{
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
+    BaseNodeConfig,
 };
 
 const LOG_TARGET: &str = "minotari::base_node::grpc";
@@ -95,11 +96,11 @@ pub struct BaseNodeGrpcServer {
     comms: CommsNode,
     liveness: LivenessHandle,
     report_grpc_error: bool,
-    deny_methods: Vec<GrpcMethod>,
+    config: BaseNodeConfig,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn from_base_node_context(ctx: &BaseNodeContext, deny_methods: Vec<GrpcMethod>) -> Self {
+    pub fn from_base_node_context(ctx: &BaseNodeContext, config: BaseNodeConfig) -> Self {
         Self {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
@@ -110,7 +111,7 @@ impl BaseNodeGrpcServer {
             comms: ctx.base_node_comms().clone(),
             liveness: ctx.liveness(),
             report_grpc_error: ctx.get_report_grpc_error(),
-            deny_methods,
+            config,
         }
     }
 
@@ -119,7 +120,18 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        !self.deny_methods.contains(&grpc_method)
+        let mining_method = vec![
+            GrpcMethod::GetNewBlockTemplate,
+            GrpcMethod::GetNewBlock,
+            GrpcMethod::GetNewBlockBlob,
+            GrpcMethod::SubmitBlock,
+            GrpcMethod::SubmitBlockBlob,
+            GrpcMethod::GetTipInfo,
+        ];
+        if self.config.mining_enabled && mining_method.contains(&grpc_method) {
+            return true;
+        }
+        !self.config.grpc_server_deny_methods.contains(&grpc_method)
     }
 }
 

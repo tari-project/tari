@@ -47,8 +47,6 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetBalanceRequest,
     GetBalanceResponse,
-    GetCoinbaseRequest,
-    GetCoinbaseResponse,
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
@@ -307,24 +305,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
         Ok(Response::new(RevalidateResponse {}))
-    }
-
-    async fn get_coinbase(
-        &self,
-        request: Request<GetCoinbaseRequest>,
-    ) -> Result<Response<GetCoinbaseResponse>, Status> {
-        let request = request.into_inner();
-        let mut tx_service = self.get_transaction_service();
-
-        let coinbase = tx_service
-            .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height, request.extra)
-            .await
-            .map_err(|err| Status::unknown(err.to_string()))?;
-
-        let coinbase = coinbase.try_into().map_err(Status::internal)?;
-        Ok(Response::new(GetCoinbaseResponse {
-            transaction: Some(coinbase),
-        }))
     }
 
     async fn send_sha_atomic_swap_transaction(
@@ -702,8 +682,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                             }
                                         },
                                         ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
-                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | FauxTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
-                                        TransactionMined{tx_id, is_valid: _} | FauxTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
+                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
+                                        TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
                                         TransactionCancelled(tx_id, _) => {
                                             match transaction_service.get_any_transaction(tx_id).await{
                                                 Ok(Some(wallet_tx)) => {
@@ -1093,7 +1073,6 @@ fn simple_event(event: &str) -> TransactionEvent {
         direction: event.to_string(),
         amount: 0,
         message: String::default(),
-        is_coinbase: false,
     }
 }
 

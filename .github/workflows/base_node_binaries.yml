@@ -23,6 +23,12 @@ env:
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  CARGO: cargo
+  # CARGO_OPTIONS: "--verbose"
+  CARGO_OPTIONS: "--release"
+  # Needed for S3 as a default upload location
+  TARI_NETWORK_DIR: testnet
+  S3_DEST_OVERRIDE: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -94,7 +100,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{github.ref_name}}
+          source buildtools/multinet_envs.sh ${{ github.ref_name }}
           echo ${TARI_NETWORK}
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
@@ -104,17 +110,14 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "VBRANCH=$(echo ${{ env.GITHUB_REF_NAME }})" >> $GITHUB_ENV
+          echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Default Destination Folder
-        run: |
-          echo "S3DESTOVERRIDE=" >> $GITHUB_ENV
-
       - name: Scheduled Destination Folder Override
-        if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 01 * *' }}
+        if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
+        shell: bash
         run: |
-          echo "S3DESTOVERRIDE=daily/" >> $GITHUB_ENV
+          echo "S3_DEST_OVERRIDE=daily/" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -124,10 +127,17 @@ jobs:
           targets: ${{ matrix.builds.target }}
 
       - name: Install Linux dependencies - Ubuntu
-        if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name != 'linux-arm64' }}
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) }}
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Install Linux dependencies - Ubuntu - cross-compile arm64 on x86-64
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && matrix.builds.name == 'linux-arm64' }}
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies-arm64.sh
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
@@ -136,7 +146,6 @@ jobs:
           rustup target add ${{ matrix.builds.target }}
 
       - name: Install Windows dependencies
-        # continue-on-error: true  # WARNING: workaround
         if: startsWith(runner.os,'Windows')
         run: |
           vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
@@ -149,7 +158,7 @@ jobs:
           # choco upgrade strawberryperl -y
 
       - name: Set environment variables - Nix
-        if: "!startsWith(runner.os,'Windows')"
+        if: ${{ ! startsWith(runner.os,'Windows') }}
         run: |
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
@@ -193,23 +202,37 @@ jobs:
         if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
         uses: Swatinem/rust-cache@v2
 
-      - name: Build rust binaries
+      - name: Install and setup cargo cross
+        if: ${{ matrix.builds.cross }}
         shell: bash
         run: |
-          if [ "${{ matrix.builds.cross }}" != "true" ]; then
-            cargo build --release \
-              --target ${{ matrix.builds.target }} \
-              --features "${{ matrix.builds.features }}" \
-              ${{ matrix.builds.target_bins }} \
-              ${{ matrix.builds.flags }} --locked
-          else
-            cargo install cross
-            cross build --release \
-              --target ${{ matrix.builds.target }} \
-              --features "${{ matrix.builds.features }}" \
-              ${{ matrix.builds.target_bins }} \
-              ${{ matrix.builds.flags }} --locked
-          fi
+          cargo install cross
+          echo "CARGO=cross" >> $GITHUB_ENV
+
+      - name: Install and setup cargo-auditable
+        if: ${{ false }}
+        # if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          cargo install cargo-auditable
+          echo "CARGO=${{ env.CARGO }} auditable" >> $GITHUB_ENV
+          echo "CARGO_OPTIONS=${{ env.CARGO_OPTIONS }} --release" >> $GITHUB_ENV
+
+      - name: Show command used for Cargo
+        shell: bash
+        run: |
+          echo "cargo command is: ${{ env.CARGO }}"
+          echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
+          echo "cross flag: ${{ matrix.builds.cross }}"
+
+      - name: Build release binaries
+        shell: bash
+        run: |
+          ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
+            --target ${{ matrix.builds.target }} \
+            --features "${{ matrix.builds.features }}" \
+            ${{ matrix.builds.target_bins }} \
+            ${{ matrix.builds.flags }} --locked
 
       - name: Copy binaries to folder for archiving
         shell: bash
@@ -217,13 +240,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
-          echo "Branch: ${VBRANCH}"
-          echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
           BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
+          echo "MTS_SOURCE=$(pwd)" >> $GITHUB_ENV
           ls -la "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
           FILES=(
             "minotari_node"
@@ -239,6 +261,7 @@ jobs:
           if [ -f "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
             cp -v "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi
+          ls -la ${{ env.MTS_SOURCE }}
 
       - name: Build the macOS pkg
         if: startsWith(runner.os,'macOS')
@@ -324,46 +347,45 @@ jobs:
             xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg"
           fi
           cd ${distDirPKG}
+          ls -la
           echo "Compute pkg shasum"
           ${SHARUN} "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" \
             >> "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
           cat "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
           echo "Checksum verification for pkg is "
           ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
+          cp -v *.pkg* ${{ env.MTS_SOURCE }}
 
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}*.pkg*"
 
-      # unlike inno script studio, iscc.exe doesn't run the [precompile] step generate_config.bat
       - name: Build the Windows installer
         shell: cmd
         if: startsWith(runner.os,'Windows')
         run: |
           cd buildtools
-          call generate_config.bat
-          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=env.TBN_FILENAME" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
+          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TBN_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
           cd Output
           echo "Compute archive shasum"
-          ${{ env.SHARUN }} "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          ${{ env.SHARUN }} "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Show the shasum"
-          cat "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          cat "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Checkum verification archive is "
-          ${{ env.SHARUN }} --check "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          ${{ env.SHARUN }} --check "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Artifact upload for Windows installer
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: startsWith(runner.os,'Windows')
         with:
           name: "${{ env.TBN_FILENAME }}_windows_installer"
           path: "${{ github.workspace }}/buildtools/Output/*"
 
       - name: Archive and Checksum Binaries
-        # if: "!startsWith(runner.os,'Windows')"    # Disable checksum for Windows - workaround
         shell: bash
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
@@ -383,7 +405,7 @@ jobs:
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for Archive
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
@@ -403,7 +425,7 @@ jobs:
           ${SHARUN} --check "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
 
       - name: Artifact upload for Miner
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: minotari_miner-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
@@ -433,7 +455,7 @@ jobs:
 
       - name: Artifact upload for diag-utils
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*.zip*"
@@ -445,78 +467,53 @@ jobs:
           rm -vRf "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/"
 
       - name: Artifact Windows Installer for S3
+        if: startsWith(runner.os,'Windows')
         continue-on-error: true
         shell: bash
-        run: |  
+        run: |
           if [ -d "${{ github.workspace }}/buildtools/Output/" ]; then
             echo "Coping Windows installer ..."
             cp -v "${{ github.workspace }}/buildtools/Output/"* \
               "${{ github.workspace }}${{ env.TBN_DIST }}"
-          else
-            echo "No buildtools/Output."
           fi
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DEST_DIR: "${{ env.S3_DEST_OVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
+          S3CMD: "cp"
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*installer.exe*"'
         shell: bash
         run: |
-          echo "Starting upload ... ${{ env.SOURCE }}"
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "No ls for 'D:' on Windows"
-          else
-            ls -al ${{ env.SOURCE }}
-          fi
+          echo "Starting upload ... ${{ env.MTS_SOURCE }}"
+          ls -al ${{ env.MTS_SOURCE }}
+
+          aws --version
 
           aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.SOURCE }}" \
+            "${{ env.MTS_SOURCE }}" \
             s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
             ${{ env.S3OPTIONS }}
-          echo "Done - $?"
-          exit 0
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
-          S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
-          # S3OPTIONS: '--acl public-read'
 
-      - name: Copy tags to latest s3 - Bash
-        continue-on-error: true # Don't break if s3 upload fails
-        if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' && startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        run: |
-          echo "Starting upload ... ${{ env.SOURCE }}"
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "No ls for 'D:' on Windows"
-          else
-            ls -al ${{ env.SOURCE }}
+          if [[ "${{ github.ref }}" =~ refs\/tags\/v* ]]; then
+            echo "Copy tags to latest s3"
+            aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+              "${{ env.MTS_SOURCE }}" \
+              s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
+              ${{ env.S3OPTIONS }}
+
+            aws s3 rm --region ${{ secrets.AWS_REGION }} \
+              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
+              --recursive --include "*"
+
+            aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+              "${{ env.MTS_SOURCE }}" \
+              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
+              ${{ env.S3OPTIONS }}
           fi
-
-          aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.SOURCE }}" \
-            s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
-            ${{ env.S3OPTIONS }}
-
-          aws s3 rm --region ${{ secrets.AWS_REGION }} \
-            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/*
-
-          aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.SOURCE }}" \
-            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
-            ${{ env.S3OPTIONS }}
-          echo "Done - $?"
-          exit 0
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
-          S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
-          # S3OPTIONS: '--acl public-read'
 
   create-release:
     runs-on: ubuntu-latest
@@ -524,7 +521,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - name: Download binaries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
 
       - name: Create release
         uses: ncipollo/release-action@v1

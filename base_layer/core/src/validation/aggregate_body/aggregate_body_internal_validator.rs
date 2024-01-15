@@ -433,8 +433,8 @@ mod test {
     use crate::{
         covenants::Covenant,
         transactions::{
+            key_manager::create_memory_db_key_manager,
             test_helpers,
-            test_helpers::create_test_core_key_manager_with_memory_db,
             transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
         },
     };
@@ -499,7 +499,7 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &key_manager,
@@ -561,7 +561,7 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let mut outputs = futures::stream::unfold((), |_| async {
                 let (o, _, _) = test_helpers::create_utxo(
                     100.into(),

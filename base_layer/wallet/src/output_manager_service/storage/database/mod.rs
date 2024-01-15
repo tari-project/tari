@@ -110,7 +110,7 @@ pub enum DbValue {
 pub enum DbKeyValuePair {
     UnspentOutput(Commitment, Box<DbWalletOutput>),
     UnspentOutputWithTxId(Commitment, (TxId, Box<DbWalletOutput>)),
-    OutputToBeReceived(Commitment, (TxId, Box<DbWalletOutput>, Option<u64>)),
+    OutputToBeReceived(Commitment, (TxId, Box<DbWalletOutput>)),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
 
@@ -162,31 +162,15 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn add_output_to_be_received_remove_this(
-        &self,
-        tx_id: TxId,
-        output: DbWalletOutput,
-        coinbase_block_height: Option<u64>,
-    ) -> Result<(), OutputManagerStorageError> {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::OutputToBeReceived(
-                output.commitment.clone(),
-                (tx_id, Box::new(output), coinbase_block_height),
-            )))?;
-
-        Ok(())
-    }
-
     pub fn add_output_to_be_received(
         &self,
         tx_id: TxId,
         output: DbWalletOutput,
-        coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::OutputToBeReceived(
                 output.commitment.clone(),
-                (tx_id, Box::new(output), coinbase_block_height),
+                (tx_id, Box::new(output)),
             )))?;
 
         Ok(())
@@ -442,12 +426,6 @@ where T: OutputManagerBackend + 'static
     pub fn mark_output_as_unspent(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         db.mark_output_as_unspent(hash)?;
-        Ok(())
-    }
-
-    pub fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
-        let db = self.db.clone();
-        db.set_coinbase_abandoned(tx_id, abandoned)?;
         Ok(())
     }
 

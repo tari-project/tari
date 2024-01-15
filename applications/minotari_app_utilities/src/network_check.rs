@@ -35,6 +35,11 @@ pub enum NetworkCheckError {
     NextNetBinary(Network),
     #[error("The network {0} is invalid for this binary built for TestNet")]
     TestNetBinary(Network),
+    #[error("Could not set the network, tried to set to {attempted} but the current network is {current_network}")]
+    CouldNotSetNetwork {
+        attempted: Network,
+        current_network: Network,
+    },
 }
 
 impl From<NetworkCheckError> for ExitError {
@@ -52,15 +57,37 @@ pub const TARGET_NETWORK: Target = Target::NextNet;
 #[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
 pub const TARGET_NETWORK: Target = Target::TestNet;
 
-pub fn is_network_choice_valid(network: Network) -> Result<(), NetworkCheckError> {
+pub fn is_network_choice_valid(network: Network) -> Result<Network, NetworkCheckError> {
     match (TARGET_NETWORK, network) {
-        (Target::MainNet, Network::MainNet | Network::StageNet) => Ok(()),
+        (Target::MainNet, n @ Network::MainNet | n @ Network::StageNet) => Ok(n),
         (Target::MainNet, _) => Err(NetworkCheckError::MainNetBinary(network)),
 
-        (Target::NextNet, Network::NextNet) => Ok(()),
+        (Target::NextNet, n @ Network::NextNet) => Ok(n),
         (Target::NextNet, _) => Err(NetworkCheckError::NextNetBinary(network)),
 
-        (Target::TestNet, Network::LocalNet | Network::Igor | Network::Esmeralda) => Ok(()),
+        (Target::TestNet, n @ Network::LocalNet | n @ Network::Igor | n @ Network::Esmeralda) => Ok(n),
         (Target::TestNet, _) => Err(NetworkCheckError::TestNetBinary(network)),
+    }
+}
+
+pub fn set_network_if_choice_valid(network: Network) -> Result<(), NetworkCheckError> {
+    match is_network_choice_valid(network) {
+        Ok(network) => match Network::set_current(network) {
+            Ok(()) => Ok(()),
+            Err(instead_network) => {
+                // While you should not set the network twice, the cucumber test do this as they all share a common
+                // memory space. So we do allow you to set it twice, if and only if you set it to the current existing
+                // network.
+                if instead_network == network {
+                    Ok(())
+                } else {
+                    Err(NetworkCheckError::CouldNotSetNetwork {
+                        attempted: network,
+                        current_network: instead_network,
+                    })
+                }
+            },
+        },
+        Err(e) => Err(e),
     }
 }

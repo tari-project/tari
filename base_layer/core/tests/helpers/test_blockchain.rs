@@ -33,7 +33,7 @@ use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::Difficulty,
     test_helpers::blockchain::TempDatabase,
-    transactions::{test_helpers::TestKeyManager, transaction_components::WalletOutput},
+    transactions::{key_manager::MemoryDbKeyManager, transaction_components::WalletOutput},
 };
 
 use crate::helpers::{
@@ -51,7 +51,7 @@ pub struct TestBlockchain {
     hash_to_block: HashMap<FixedHash, String>,
     consensus_manager: ConsensusManager,
     outputs: Vec<Vec<WalletOutput>>,
-    pub key_manager: TestKeyManager,
+    pub key_manager: MemoryDbKeyManager,
 }
 
 #[allow(dead_code)]

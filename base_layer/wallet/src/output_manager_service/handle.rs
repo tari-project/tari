@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PublicKey},
+    types::{Commitment, FixedHash, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -44,7 +44,7 @@ use tower::Service;
 
 use crate::output_manager_service::{
     error::OutputManagerError,
-    service::{Balance, OutputStatusesByTxId},
+    service::{Balance, OutputInfoByTxId},
     storage::{
         database::OutputBackendQuery,
         models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
@@ -61,13 +61,6 @@ pub enum OutputManagerRequest {
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
-    GetCoinbaseTransaction {
-        tx_id: TxId,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    },
     ConfirmPendingTransaction(TxId),
     PrepareToSendTransaction {
         tx_id: TxId,
@@ -126,10 +119,9 @@ pub enum OutputManagerRequest {
     },
 
     ReinstateCancelledInboundTx(TxId),
-    SetCoinbaseAbandoned(TxId, bool),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
-    GetOutputStatusesByTxId(TxId),
+    GetOutputInfoByTxId(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -184,7 +176,6 @@ impl fmt::Display for OutputManagerRequest {
                 "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
                 commitments, fee_per_gram,
             ),
-            GetCoinbaseTransaction { .. } => write!(f, "GetCoinbaseTransaction"),
             FeeEstimate {
                 amount,
                 selection_criteria,
@@ -204,22 +195,18 @@ impl fmt::Display for OutputManagerRequest {
             },
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
-            SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
             CreateClaimShaAtomicSwapTransaction(output, pre_image, fee_per_gram) => write!(
                 f,
                 "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
-                output.to_hex(),
-                pre_image,
-                fee_per_gram,
+                output, pre_image, fee_per_gram,
             ),
             CreateHtlcRefundTransaction(output, fee_per_gram) => write!(
                 f,
                 "CreateHtlcRefundTransaction(output hash: {}, , fee_per_gram: {} )",
-                output.to_hex(),
-                fee_per_gram,
+                output, fee_per_gram,
             ),
 
-            GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
+            GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
         }
     }
 }
@@ -232,7 +219,6 @@ pub enum OutputManagerResponse {
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
-    CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
@@ -254,9 +240,8 @@ pub enum OutputManagerResponse {
     CreateOutputWithFeatures { output: Box<WalletOutputBuilder> },
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
-    CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
-    OutputStatusesByTxId(OutputStatusesByTxId),
+    OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
 }
 
@@ -300,6 +285,7 @@ pub struct PublicRewindKeys {
 pub struct RecoveredOutput {
     pub tx_id: TxId,
     pub output: WalletOutput,
+    pub hash: FixedHash,
 }
 
 #[derive(Clone)]
@@ -434,30 +420,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::RecipientTransactionGenerated(rtp) => Ok(rtp),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_coinbase_transaction(
-        &mut self,
-        tx_id: TxId,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    ) -> Result<Transaction, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetCoinbaseTransaction {
-                tx_id,
-                reward,
-                fees,
-                block_height,
-                extra,
-            })
-            .await??
-        {
-            OutputManagerResponse::CoinbaseTransaction(tx) => Ok(tx),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -800,27 +762,13 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn set_coinbase_abandoned(&mut self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
+    pub async fn get_output_info_for_tx_id(&mut self, tx_id: TxId) -> Result<OutputInfoByTxId, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned))
+            .call(OutputManagerRequest::GetOutputInfoByTxId(tx_id))
             .await??
         {
-            OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_output_statuses_by_tx_id(
-        &mut self,
-        tx_id: TxId,
-    ) -> Result<OutputStatusesByTxId, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
-            .await??
-        {
-            OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
+            OutputManagerResponse::OutputInfoByTxId(output_info_by_tx_id) => Ok(output_info_by_tx_id),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

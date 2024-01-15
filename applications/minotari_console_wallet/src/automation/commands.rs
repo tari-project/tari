@@ -34,6 +34,7 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
@@ -980,6 +981,25 @@ pub async fn command_runner(
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
                 tx_ids.push(tx_id);
+            },
+            CreateTlsCerts => match generate_self_signed_certs() {
+                Ok((cacert, cert, private_key)) => {
+                    print_warning();
+
+                    write_cert_to_disk(config.config_dir.clone(), "wallet_ca.pem", &cacert)?;
+                    write_cert_to_disk(config.config_dir.clone(), "server.pem", &cert)?;
+                    write_cert_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
+
+                    println!();
+                    println!("Certificates generated successfully.");
+                    println!(
+                        "To continue configuration move the `wallet_ca.pem` to the client service's \
+                         `application/config/` directory. Restart the base node with the configuration \
+                         grpc_tls_enabled=true"
+                    );
+                    println!();
+                },
+                Err(err) => eprintln!("Error generating certificates: {}", err),
             },
         }
     }

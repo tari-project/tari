@@ -98,6 +98,11 @@ enum RangeProofType {
     REVEALED_VALUE = 1;
 }
 
+message PermittedRangeProofs {
+    OutputType output_type = 1;
+    repeated RangeProofType range_proof_types = 2;
+}
+
 /// Range proof
 message RangeProof {
     bytes proof_bytes = 1;
@@ -135,5 +140,5 @@ message ConsensusConstants {
     uint64 validator_node_registration_min_deposit_amount = 31;
     uint64 validator_node_registration_min_lock_height = 32;
     uint64 validator_node_registration_shuffle_interval_epoch = 33;
-    repeated RangeProofType permitted_range_proof_types = 34;
+    repeated PermittedRangeProofs permitted_range_proof_types = 34;
 }

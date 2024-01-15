@@ -144,7 +144,7 @@ impl TryFrom<MessagesSql> for Message {
             direction: Direction::from_byte(
                 u8::try_from(o.direction).map_err(|_| ContactsServiceStorageError::ConversionError)?,
             )
-            .unwrap_or_else(|| panic!("Direction from byte {}", o.direction)),
+            .ok_or(ContactsServiceStorageError::ConversionError)?,
             stored_at: o.stored_at.timestamp() as u64,
             delivery_confirmation_at: Some(o.stored_at.timestamp() as u64),
             read_confirmation_at: Some(o.stored_at.timestamp() as u64),

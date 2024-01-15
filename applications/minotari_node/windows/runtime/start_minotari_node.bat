@@ -6,10 +6,6 @@ echo ----------------------------
 rem These are the base node executable and SQLite dynamic link library names
 set my_exe=minotari_node.exe
 
-rem This is the location of the configuration and identity files
-set config_path=%~dp0..\config
-echo config_path = %config_path%
-
 rem The default location for the base node executable
 set my_exe_path=%~dp0
 if %my_exe_path:~-1%==\ set my_exe_path=%my_exe_path:~0,-1%

@@ -19,7 +19,6 @@ fi
 BUNDLE='
 target/release/minotari_node
 scripts/install_tor.sh
-common/config/presets/tari_config_example.toml
 common/logging/log4rs_sample_base_node.yml
 applications/minotari_node/osx/install.sh
 applications/minotari_node/osx/osx_diag_report.sh

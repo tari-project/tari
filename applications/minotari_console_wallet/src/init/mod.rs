@@ -50,7 +50,7 @@ use tari_common::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{Peer, PeerFeatures, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -321,6 +321,13 @@ pub async fn get_base_node_peer_config(
             }
         }
     }
+    let query = PeerQuery::new().select_where(|p| p.is_seed());
+    let peer_seeds = wallet.comms.peer_manager().perform_query(query).await.map_err(|err| {
+        ExitError::new(
+            ExitCode::InterfaceError,
+            format!("Could net get seed peers from peer manager: {}", err),
+        )
+    })?;
 
     // config
     let base_node_peers = config
@@ -331,16 +338,6 @@ pub async fn get_base_node_peer_config(
         .map(|r| r.map(Peer::from))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
-
-    // peer seeds
-    let peer_seeds = config
-        .peer_seeds
-        .peer_seeds
-        .iter()
-        .map(|s| SeedPeer::from_str(s))
-        .map(|r| r.map(Peer::from))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed seed peer: {}", err)))?;
 
     let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);

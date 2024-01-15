@@ -253,9 +253,7 @@ impl TransactionsTab {
                 Style::default().fg(text_color),
             )));
 
-            let status = if matches!(t.cancelled, Some(TxCancellationReason::AbandonedCoinbase)) {
-                "Abandoned".to_string()
-            } else if matches!(t.cancelled, Some(TxCancellationReason::UserCancelled)) {
+            let status = if matches!(t.cancelled, Some(TxCancellationReason::UserCancelled)) {
                 "Cancelled".to_string()
             } else if t.cancelled.is_some() {
                 "Rejected".to_string()
@@ -364,9 +362,7 @@ impl TransactionsTab {
             let amount = tx.amount.to_string();
             let content = &amount;
             let amount = Span::styled(content, Style::default().fg(Color::White));
-            let fee_details = if tx.is_coinbase {
-                Span::raw("")
-            } else {
+            let fee_details = {
                 Span::styled(
                     format!(
                         " (weight: {}g, #inputs: {}, #outputs: {})",
@@ -602,7 +598,6 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
                 }
             },
-            'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {

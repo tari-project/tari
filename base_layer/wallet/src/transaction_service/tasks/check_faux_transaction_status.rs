@@ -23,13 +23,10 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::{
-    transaction::TransactionStatus,
-    types::{BlockHash, FixedHash},
-};
+use tari_common_types::types::{BlockHash, FixedHash};
 
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, storage::OutputStatus},
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionEventSender},
@@ -43,30 +40,30 @@ use crate::{
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
 #[allow(clippy::too_many_lines)]
-pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
+pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>(
     mut output_manager: OutputManagerHandle,
     db: TransactionDatabase<TBackend>,
     event_publisher: TransactionEventSender,
     tip_height: u64,
 ) {
-    let mut all_faux_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
+    let mut all_detected_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
         Ok(txs) => txs,
         Err(e) => {
             error!(target: LOG_TARGET, "Problem retrieving imported transactions: {}", e);
             return;
         },
     };
-    let mut unconfirmed_faux = match db.get_unconfirmed_faux_transactions() {
+    let mut unconfirmed_detected = match db.get_unconfirmed_detected_transactions() {
         Ok(txs) => txs,
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving unconfirmed faux transactions: {}", e
+                "Problem retrieving unconfirmed detected transactions: {}", e
             );
             return;
         },
     };
-    all_faux_transactions.append(&mut unconfirmed_faux);
+    all_detected_transactions.append(&mut unconfirmed_detected);
     // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
     // height or current tip height with safety margin to determine if these should be returned
     let last_mined_transaction = match db.fetch_last_mined_transaction() {
@@ -79,101 +76,97 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     } else {
         height_with_margin
     };
-    let mut confirmed_faux = match db.get_confirmed_faux_transactions_from_height(check_height) {
+    let mut confirmed_dectected = match db.get_confirmed_detected_transactions_from_height(check_height) {
         Ok(txs) => txs,
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving confirmed faux transactions: {}", e
+                "Problem retrieving confirmed detected transactions: {}", e
             );
             return;
         },
     };
-    all_faux_transactions.append(&mut confirmed_faux);
+    all_detected_transactions.append(&mut confirmed_dectected);
 
     debug!(
         target: LOG_TARGET,
-        "Checking {} faux transaction statuses",
-        all_faux_transactions.len()
+        "Checking {} detected transaction statuses",
+        all_detected_transactions.len()
     );
-    for tx in all_faux_transactions {
-        let output_statuses_by_tx_id = match output_manager.get_output_statuses_by_tx_id(tx.tx_id).await {
+    for tx in all_detected_transactions {
+        let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
                 error!(target: LOG_TARGET, "Problem retrieving output statuses: {}", e);
                 return;
             },
         };
-        if !output_statuses_by_tx_id
-            .statuses
-            .iter()
-            .any(|s| s != &OutputStatus::Unspent)
-        {
-            let mined_height = if let Some(height) = output_statuses_by_tx_id.mined_height {
-                height
-            } else {
-                tip_height
-            };
-            let mined_in_block: BlockHash = if let Some(hash) = output_statuses_by_tx_id.block_hash {
-                hash
-            } else {
-                FixedHash::zero()
-            };
-            let is_valid = tip_height >= mined_height;
-            let was_confirmed = tx.status == TransactionStatus::FauxConfirmed;
-            let is_confirmed = tip_height.saturating_sub(mined_height) >=
-                TransactionServiceConfig::default().num_confirmations_required;
-            let num_confirmations = tip_height - mined_height;
-            debug!(
+        let output_status = output_info_for_tx_id.statuses[0];
+        let mined_height = if let Some(height) = output_info_for_tx_id.mined_height {
+            height
+        } else {
+            tip_height
+        };
+        let mined_in_block: BlockHash = if let Some(hash) = output_info_for_tx_id.block_hash {
+            hash
+        } else {
+            FixedHash::zero()
+        };
+        let is_valid = tip_height >= mined_height;
+        let previously_confirmed = tx.status.is_confirmed();
+        let must_be_confirmed =
+            tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
+        let num_confirmations = tip_height - mined_height;
+        debug!(
+            target: LOG_TARGET,
+            "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \
+             output_status({}), is_valid({})",
+            tx.tx_id,
+            mined_height,
+            must_be_confirmed,
+            num_confirmations,
+            output_status,
+            is_valid,
+        );
+        let result = db.set_transaction_mined_height(
+            tx.tx_id,
+            mined_height,
+            mined_in_block,
+            tx.mined_timestamp
+                .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
+            num_confirmations,
+            must_be_confirmed,
+            &tx.status,
+        );
+        if let Err(e) = result {
+            error!(
                 target: LOG_TARGET,
-                "Updating faux transaction: TxId({}), mined_height({}), is_confirmed({}), num_confirmations({}), \
-                 is_valid({})",
-                tx.tx_id,
-                mined_height,
-                is_confirmed,
-                num_confirmations,
-                is_valid,
+                "Error setting faux transaction to mined confirmed: {}", e
             );
-            let result = db.set_transaction_mined_height(
-                tx.tx_id,
-                mined_height,
-                mined_in_block,
-                tx.mined_timestamp
-                    .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
-                num_confirmations,
-                is_confirmed,
-                is_valid,
-            );
-            if let Err(e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Error setting faux transaction to mined confirmed: {}", e
-                );
-            } else {
-                // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
-                // now not confirmed (i.e. confirmation changed)
-                if !(was_confirmed && is_confirmed) {
-                    let transaction_event = if is_confirmed {
-                        TransactionEvent::FauxTransactionConfirmed {
-                            tx_id: tx.tx_id,
-                            is_valid,
-                        }
-                    } else {
-                        TransactionEvent::FauxTransactionUnconfirmed {
-                            tx_id: tx.tx_id,
-                            num_confirmations: 0,
-                            is_valid,
-                        }
-                    };
-                    let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Error sending event, usually because there are no subscribers: {:?}",
-                            e
-                        );
+        } else {
+            // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
+            // now not confirmed (i.e. confirmation changed)
+            if !(previously_confirmed && must_be_confirmed) {
+                let transaction_event = if must_be_confirmed {
+                    TransactionEvent::DetectedTransactionConfirmed {
+                        tx_id: tx.tx_id,
+                        is_valid,
+                    }
+                } else {
+                    TransactionEvent::DetectedTransactionUnconfirmed {
+                        tx_id: tx.tx_id,
+                        num_confirmations: 0,
+                        is_valid,
+                    }
+                };
+                let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event, usually because there are no subscribers: {:?}",
                         e
-                    });
-                }
+                    );
+                    e
+                });
             }
         }
     }

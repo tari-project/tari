@@ -11,11 +11,11 @@ edition = "2018"
 default = []
 
 [dependencies]
-tari_utilities = { version = "0.6" }
-tari_crypto = { version = "0.19" }
+tari_utilities = { version = "0.7" }
+tari_crypto = { version = "0.20" }
 tari_common = { path = "../../common" }
 thiserror = "1.0"
-borsh = "0.10"
+borsh = "1.2"
 digest = "0.10"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }

@@ -109,7 +109,7 @@ impl WalletEventMonitor {
                                     ).await;
                                 },
                                 TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
-                                TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _}=> {
+                                TransactionEvent::DetectedTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _}=> {
                                     self.trigger_confirmations_refresh(tx_id, num_confirmations).await;
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
@@ -123,7 +123,7 @@ impl WalletEventMonitor {
                                     ).await;
                                 },
                                 TransactionEvent::TransactionMined{tx_id, is_valid: _} |
-                                TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _}=> {
+                                TransactionEvent::DetectedTransactionConfirmed{tx_id, is_valid: _}=> {
                                     self.trigger_confirmations_cleanup(tx_id).await;
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();

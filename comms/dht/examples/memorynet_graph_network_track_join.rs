@@ -83,7 +83,7 @@ use crate::{
 #[allow(clippy::same_item_push)]
 #[allow(clippy::too_many_lines)]
 async fn main() {
-    let _ = env_logger::from_env(Env::default())
+    let _ = env_logger::Builder::from_env(Env::default())
         .format_timestamp_millis()
         .try_init();
     let matches = App::new("MemoryNet")
