@@ -1875,16 +1875,14 @@ impl CompletedTransactionSql {
     }
 
     pub fn set_as_unmined(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        let (current_status, current_mined_height) = TransactionStatus::try_from(
-            *completed_transactions::table
-                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-                .select(completed_transactions::status)
-                .select(completed_transactions::mined_height)
-                .load::<(i32, Option<i64>)>(conn)?
-                .first()
-                .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?,
-        )
-        .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
+        let (current_status, current_mined_height) = *completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+            .select((completed_transactions::status, completed_transactions::mined_height))
+            .load::<(i32, Option<i64>)>(conn)?
+            .first()
+            .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
+        let current_status = TransactionStatus::try_from(current_status)
+            .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
         // let current_mined_height = *completed_transactions::table
         //     .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
         //     .select(completed_transactions::mined_height)
