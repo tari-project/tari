@@ -168,6 +168,9 @@ First you'll need to make sure you have a full development environment set up:
   - OpenSSL is compiled and statically linked by the included [rust-openssl](https://github.com/sfackler/rust-openssl) crate
   - Perl is required to compile this source on Windows, please download and install [StrawberryPerl](https://strawberryperl.com/)
 
+- [Protocol Buffers](https://protobuf.dev/)
+  - Install from https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation or if you using [The Package Manager for Windows](https://chocolatey.org/), run ```choco upgrade protoc -y```
+
 - Tor
   - Download [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
   - Extract to local path, e.g. `C:\Program Files (x86)\Tor Services`
