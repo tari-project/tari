@@ -40,6 +40,7 @@ use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
+use tari_hash_domains::TransactionSecureNonceKdfDomain;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
@@ -50,7 +51,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::transactions::{tari_amount::MicroMinotari, TransactionSecureNonceKdfDomain};
+use crate::transactions::tari_amount::MicroMinotari;
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
