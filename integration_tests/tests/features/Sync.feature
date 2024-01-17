@@ -30,7 +30,7 @@ Feature: Block Sync
     When I have 2 base nodes connected to all seed nodes
     Then all nodes are at height 20
 
-  @critical
+  @critical @pie
   Scenario: Sync burned output
     Given I have a seed node NODE
     When I have a base node NODE1 connected to all seed nodes
