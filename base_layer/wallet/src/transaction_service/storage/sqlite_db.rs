@@ -1883,13 +1883,6 @@ impl CompletedTransactionSql {
             .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
         let current_status = TransactionStatus::try_from(current_status)
             .map_err(|_| TransactionStorageError::UnexpectedResult("Unknown status".to_string()))?;
-        // let current_mined_height = *completed_transactions::table
-        //     .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-        //     .select(completed_transactions::mined_height)
-        //     .load::<Option<i64>>(conn)?
-        //     .first()
-        //     .ok_or(TransactionStorageError::DieselError(DieselError::NotFound))?;
-        // This query uses two sub-queries to retrieve existing values in the table
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 status: match current_status {

@@ -137,7 +137,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         let previously_confirmed = tx.status.is_confirmed();
         let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
-        let num_confirmations = tip_height - mined_height;
+        let num_confirmations = tip_height.saturating_sub(mined_height);
         debug!(
             target: LOG_TARGET,
             "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \
