@@ -63,6 +63,8 @@ service Wallet {
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
     // Will trigger a complete revalidation of all wallet outputs.
     rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+    // Will trigger a validation of all wallet outputs.
+    rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
     // This will send a XTR SHA Atomic swap transaction
     rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
     // This will create a burn transaction
@@ -288,6 +290,10 @@ message CancelTransactionResponse {
 message RevalidateRequest{}
 
 message RevalidateResponse{}
+
+message ValidateRequest{}
+
+message ValidateResponse{}
 
 message SetBaseNodeRequest {
     string public_key_hex = 1;

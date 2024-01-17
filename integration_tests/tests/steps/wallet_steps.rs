@@ -30,6 +30,7 @@ use grpc::{
     ClaimShaAtomicSwapRequest,
     Empty,
     GetBalanceRequest,
+    ValidateRequest,
     GetCompletedTransactionsRequest,
     GetIdentityRequest,
     GetTransactionInfoRequest,
@@ -1573,6 +1574,7 @@ async fn wallet_with_tari_connected_to_base_node(
     let num_retries = 100;
 
     for _ in 0..num_retries {
+        let _ = wallet_client.validate_all_transactions(ValidateRequest {}).await;
         let balance_res = wallet_client
             .get_balance(GetBalanceRequest {})
             .await
