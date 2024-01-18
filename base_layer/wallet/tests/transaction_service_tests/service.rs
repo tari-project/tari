@@ -5527,7 +5527,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             .await
             .unwrap();
         if uo.value != MicroMinotari::from(30000) {
-            let _ = alice_ts_interface
+            alice_ts_interface
                 .oms_db
                 .set_received_output_mined_height_and_status(
                     uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
