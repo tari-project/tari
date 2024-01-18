@@ -85,7 +85,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     message::EnvelopeBody,
@@ -121,7 +121,7 @@ use tari_core::{
         },
         tari_amount::*,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{KernelBuilder, OutputFeatures, Transaction},
+        transaction_components::{KernelBuilder, OutputFeatures, RangeProofType, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -5352,9 +5352,18 @@ async fn test_update_faux_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
+        let _result = alice_ts_interface
+            .oms_db
+            .mark_output_as_unspent(uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap());
         alice_ts_interface
             .oms_db
-            .mark_output_as_unspent(uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap())
+            .set_received_output_mined_height_and_status(
+                uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                5,
+                HashOutput::zero(),
+                false,
+                0,
+            )
             .unwrap();
     }
 
@@ -5424,6 +5433,179 @@ async fn test_update_faux_tx_on_oms_validation() {
     }
     assert!(
         found_imported && found_faux_unconfirmed && found_faux_confirmed,
+        "Should have found the updated statuses"
+    );
+}
+
+#[tokio::test]
+async fn test_update_coinbase_tx_on_oms_validation() {
+    let factories = CryptoFactories::default();
+
+    let (connection, _temp_dir) = make_wallet_database_connection(None);
+
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
+    let alice_address = TariAddress::new(
+        alice_ts_interface.base_node_identity.public_key().clone(),
+        Network::LocalNet,
+    );
+
+    let uo_1 = make_input(
+        &mut OsRng.clone(),
+        MicroMinotari::from(10000),
+        &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
+        &alice_ts_interface.key_manager_handle,
+    )
+    .await;
+    let uo_2 = make_input(
+        &mut OsRng.clone(),
+        MicroMinotari::from(20000),
+        &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
+        &alice_ts_interface.key_manager_handle,
+    )
+    .await;
+    let uo_3 = make_input(
+        &mut OsRng.clone(),
+        MicroMinotari::from(30000),
+        &OutputFeatures::create_coinbase(5, None, RangeProofType::BulletProofPlus),
+        &alice_ts_interface.key_manager_handle,
+    )
+    .await;
+
+    let tx_id_1 = alice_ts_interface
+        .transaction_service_handle
+        .import_utxo_with_status(
+            MicroMinotari::from(10000),
+            alice_address.clone(),
+            "coinbase_confirmed".to_string(),
+            ImportStatus::CoinbaseConfirmed,
+            None,
+            None,
+            None,
+            uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let tx_id_2 = alice_ts_interface
+        .transaction_service_handle
+        .import_utxo_with_status(
+            MicroMinotari::from(20000),
+            alice_address.clone(),
+            "one-coinbase_unconfirmed 1".to_string(),
+            ImportStatus::CoinbaseUnconfirmed,
+            None,
+            None,
+            None,
+            uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let tx_id_3 = alice_ts_interface
+        .transaction_service_handle
+        .import_utxo_with_status(
+            MicroMinotari::from(30000),
+            alice_address,
+            "Coinbase_not_mined".to_string(),
+            ImportStatus::CoinbaseUnconfirmed,
+            None,
+            None,
+            None,
+            uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    for (tx_id, uo) in [(tx_id_1, uo_1), (tx_id_2, uo_2), (tx_id_3, uo_3)] {
+        alice_ts_interface
+            .output_manager_service_handle
+            .add_output_with_tx_id(tx_id, uo.clone(), None)
+            .await
+            .unwrap();
+        if uo.value != MicroMinotari::from(30000) {
+            alice_ts_interface
+                .oms_db
+                .set_received_output_mined_height_and_status(
+                    uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                    5,
+                    HashOutput::zero(),
+                    false,
+                    0,
+                )
+                .unwrap();
+        }
+    }
+
+    for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
+        let transaction = alice_ts_interface
+            .transaction_service_handle
+            .get_any_transaction(tx_id)
+            .await
+            .unwrap()
+            .unwrap();
+        if tx_id == tx_id_1 {
+            if let WalletTransaction::Completed(tx) = &transaction {
+                assert_eq!(tx.status, TransactionStatus::CoinbaseConfirmed);
+            } else {
+                panic!("Should find a complete Imported transaction");
+            }
+        }
+        if tx_id == tx_id_2 {
+            if let WalletTransaction::Completed(tx) = &transaction {
+                assert_eq!(tx.status, TransactionStatus::CoinbaseUnconfirmed);
+            } else {
+                panic!("Should find a complete FauxUnconfirmed transaction");
+            }
+        }
+        if tx_id == tx_id_3 {
+            if let WalletTransaction::Completed(tx) = &transaction {
+                assert_eq!(tx.status, TransactionStatus::CoinbaseUnconfirmed);
+            } else {
+                panic!("Should find a complete FauxConfirmed transaction");
+            }
+        }
+    }
+
+    // This will change the status of the imported transaction
+    alice_ts_interface
+        .output_manager_service_event_publisher
+        .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
+        .unwrap();
+
+    let mut coinbase_confirmed = false;
+    let mut coinbase_unconfirmed = false;
+    let mut coinbase_unmined = false;
+    for _ in 0..20 {
+        sleep(Duration::from_secs(1)).await;
+        for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
+            let transaction = alice_ts_interface
+                .transaction_service_handle
+                .get_any_transaction(tx_id)
+                .await
+                .unwrap()
+                .unwrap();
+            if let WalletTransaction::Completed(tx) = transaction {
+                if tx_id == tx_id_1 && tx.status == TransactionStatus::CoinbaseConfirmed && !coinbase_confirmed {
+                    coinbase_confirmed = true;
+                }
+                if tx_id == tx_id_2 && tx.status == TransactionStatus::CoinbaseUnconfirmed && !coinbase_unconfirmed {
+                    coinbase_unconfirmed = true;
+                }
+                if tx_id == tx_id_3 && tx.status == TransactionStatus::CoinbaseNotInBlockChain && !coinbase_unmined {
+                    coinbase_unmined = true;
+                }
+            }
+        }
+        if coinbase_confirmed && coinbase_unconfirmed && coinbase_unmined {
+            break;
+        }
+    }
+    assert!(
+        coinbase_confirmed && coinbase_unconfirmed && coinbase_unmined,
         "Should have found the updated statuses"
     );
 }

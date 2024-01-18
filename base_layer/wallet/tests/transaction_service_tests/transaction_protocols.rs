@@ -997,7 +997,10 @@ async fn tx_revalidation() {
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
     // revalidate sets all to unvalidated, so lets check that thay are
-    resources.db.mark_all_transactions_as_unvalidated().unwrap();
+    resources
+        .db
+        .mark_all_non_coinbases_transactions_as_unvalidated()
+        .unwrap();
     let completed_txs = resources.db.get_completed_transactions().unwrap();
     assert_eq!(
         completed_txs.get(&2u64.into()).unwrap().status,
