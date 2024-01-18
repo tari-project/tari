@@ -45,7 +45,7 @@ jobs:
           #
           ## build only single target image
           # matrix_selection=$( jq -c '.[] | select( ."runs-on" == "ubuntu-latest" )' ${{ env.matrix-json-file }} )
-          # matrix_selection=$( jq -c '.[] | select( ."runs-on" == "macos-latest" )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."target" == "x86_64-linux-android" )' ${{ env.matrix-json-file }} )
           #
           ## buid select target images - build_enabled
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
