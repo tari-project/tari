@@ -121,7 +121,6 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
-//    uint64 target_difficulty = 6;
     // Sum of script offsets for all kernels in this block.
     bytes total_script_offset = 7;
 }

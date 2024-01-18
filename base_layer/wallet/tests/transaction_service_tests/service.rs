@@ -304,9 +304,7 @@ async fn setup_transaction_service_no_comms(
     factories: CryptoFactories,
     db_connection: WalletDbConnection,
     config: Option<TransactionServiceConfig>,
-) ->
-    TransactionServiceNoCommsInterface
-{
+) -> TransactionServiceNoCommsInterface {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (output_manager_service_event_publisher, _) = broadcast::channel(200);
@@ -1943,8 +1941,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
-    let mut alice_ts_interface=
-        setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
 
     let uo = make_input(
         &mut OsRng,
@@ -2039,8 +2036,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
-    let mut alice_ts_interface =
-        setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
 
     let bob_node_identity =
@@ -2164,8 +2160,7 @@ async fn finalize_tx_with_missing_output() {
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
-    let mut alice_ts_interface =
-        setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
 
     let bob_node_identity =
@@ -3623,8 +3618,7 @@ async fn test_restarting_transaction_protocols() {
     let factories = CryptoFactories::default();
     let (alice_connection, _temp_dir) = make_wallet_database_connection(None);
 
-    let mut alice_ts_interface =
-        setup_transaction_service_no_comms(factories.clone(), alice_connection, None).await;
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), alice_connection, None).await;
 
     let alice_backend = alice_ts_interface.ts_db;
 
@@ -5275,8 +5269,7 @@ async fn test_update_faux_tx_on_oms_validation() {
 
     let (connection, _temp_dir) = make_wallet_database_connection(None);
 
-    let mut alice_ts_interface =
-        setup_transaction_service_no_comms(factories.clone(), connection, None).await;
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let alice_address = TariAddress::new(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
@@ -5359,10 +5352,11 @@ async fn test_update_faux_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
+        let _result = alice_ts_interface
+            .oms_db
+            .mark_output_as_unspent(uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap());
         alice_ts_interface
             .oms_db
-            .mark_output_as_unspent(uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap())
-        alice_db
             .set_received_output_mined_height_and_status(
                 uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
                 5,
@@ -5428,7 +5422,6 @@ async fn test_update_faux_tx_on_oms_validation() {
                 if tx_id == tx_id_2 && tx.status == TransactionStatus::OneSidedUnconfirmed && !found_faux_unconfirmed {
                     found_faux_unconfirmed = true;
                 }
-                dbg!(&tx.status);
                 if tx_id == tx_id_3 && tx.status == TransactionStatus::OneSidedConfirmed && !found_faux_confirmed {
                     found_faux_confirmed = true;
                 }
@@ -5450,8 +5443,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
 
     let (connection, _temp_dir) = make_wallet_database_connection(None);
 
-    let mut alice_ts_interface =
-        setup_transaction_service_no_comms(factories.clone(), connection, None).await;
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let alice_address = TariAddress::new(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
@@ -5535,7 +5527,8 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             .await
             .unwrap();
         if uo.value != MicroMinotari::from(30000) {
-            let _ = alice_ts_interface.oms_db
+            let _ = alice_ts_interface
+                .oms_db
                 .set_received_output_mined_height_and_status(
                     uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
                     5,
