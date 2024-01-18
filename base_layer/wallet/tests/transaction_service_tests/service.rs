@@ -5362,6 +5362,14 @@ async fn test_update_faux_tx_on_oms_validation() {
         alice_ts_interface
             .oms_db
             .mark_output_as_unspent(uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap())
+        alice_db
+            .set_received_output_mined_height_and_status(
+                uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                5,
+                HashOutput::zero(),
+                false,
+                0,
+            )
             .unwrap();
     }
 
