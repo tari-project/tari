@@ -153,7 +153,7 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 
 #[when(expr = "wallet {word} detects all transactions as {word}")]
 #[then(expr = "wallet {word} detects all transactions as {word}")]
-async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String, status: String) {
+async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_name: String, status: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
     let mut completed_tx_stream = client
@@ -239,11 +239,6 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
                     _ => (),
                 },
                 "Coinbase" => match tx_info.status() {
-                    grpc::TransactionStatus::Pending |
-                    grpc::TransactionStatus::Completed |
-                    grpc::TransactionStatus::Broadcast |
-                    grpc::TransactionStatus::MinedUnconfirmed |
-                    grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::CoinbaseConfirmed |
                     grpc::TransactionStatus::CoinbaseUnconfirmed => {
                         break;
