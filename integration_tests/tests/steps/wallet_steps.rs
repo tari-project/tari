@@ -239,8 +239,7 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     _ => (),
                 },
                 "Coinbase" => match tx_info.status() {
-                    grpc::TransactionStatus::CoinbaseConfirmed |
-                    grpc::TransactionStatus::CoinbaseUnconfirmed => {
+                    grpc::TransactionStatus::CoinbaseConfirmed | grpc::TransactionStatus::CoinbaseUnconfirmed => {
                         break;
                     },
                     _ => (),
