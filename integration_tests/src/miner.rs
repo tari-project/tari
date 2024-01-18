@@ -138,7 +138,7 @@ impl MinerProcess {
             miner_max_blocks: blocks,
             miner_min_diff,
             miner_max_diff,
-            non_interactive_mode: false,
+            non_interactive_mode: true,
         };
         run_miner(cli).await.unwrap();
     }

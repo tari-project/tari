@@ -37,6 +37,7 @@ use grpc::{
     PaymentRecipient,
     SendShaAtomicSwapRequest,
     TransferRequest,
+    ValidateRequest,
 };
 use minotari_app_grpc::tari_rpc::{self as grpc};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
@@ -107,6 +108,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
     let mut curr_amount = 0;
 
     for _ in 0..=num_retries {
+        let _result = client.validate_all_transactions(ValidateRequest {}).await;
         curr_amount = client
             .get_balance(GetBalanceRequest {})
             .await
@@ -1507,6 +1509,7 @@ async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
     let mut available_balance = 0;
 
     for _ in 0..num_retries {
+        let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
         let balance_res = wallet_client
             .get_balance(GetBalanceRequest {})
             .await
@@ -1573,6 +1576,7 @@ async fn wallet_with_tari_connected_to_base_node(
     let num_retries = 100;
 
     for _ in 0..num_retries {
+        let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
         let balance_res = wallet_client
             .get_balance(GetBalanceRequest {})
             .await
@@ -2053,6 +2057,7 @@ async fn wait_for_wallet_to_have_less_than_amount(world: &mut TariWorld, wallet:
     let mut curr_amount = u64::MAX;
 
     for _ in 0..=num_retries {
+        let _result = client.validate_all_transactions(ValidateRequest {}).await;
         curr_amount = client
             .get_balance(GetBalanceRequest {})
             .await

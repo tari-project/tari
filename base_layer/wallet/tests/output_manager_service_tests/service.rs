@@ -300,7 +300,7 @@ async fn generate_sender_transaction_message(
 async fn fee_estimate() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let uo = make_input(
         &mut OsRng.clone(),
@@ -309,7 +309,11 @@ async fn fee_estimate() {
         &oms.key_manager_handle,
     )
     .await;
-    oms.output_manager_handle.add_output(uo, None).await.unwrap();
+    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
+
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // minimum fpg
     let fee_per_gram = MicroMinotari::from(1);
@@ -386,9 +390,10 @@ async fn test_utxo_selection_no_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
     // no chain metadata
     let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection), None, server_node_identity).await;
+        setup_oms_with_bn_state(backend.clone(), None, server_node_identity).await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // no utxos - not enough funds
@@ -424,6 +429,9 @@ async fn test_utxo_selection_no_chain_metadata() {
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();
+        backend
+            .mark_output_as_unspent(uo.hash(&key_manager).await.unwrap())
+            .unwrap();
     }
 
     // but we have no chain state so the lowest maturity should be used
@@ -515,12 +523,9 @@ async fn test_utxo_selection_with_chain_metadata() {
 
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection),
-        Some(6),
-        server_node_identity,
-    )
-    .await;
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let (mut oms, _shutdown, _, _, _, key_manager) =
+        setup_oms_with_bn_state(backend.clone(), Some(6), server_node_identity).await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
 
     // no utxos - not enough funds
@@ -556,6 +561,9 @@ async fn test_utxo_selection_with_chain_metadata() {
         )
         .await;
         oms.add_output(uo.clone(), None).await.unwrap();
+        backend
+            .mark_output_as_unspent(uo.hash(&key_manager).await.unwrap())
+            .unwrap();
     }
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -668,12 +676,9 @@ async fn test_utxo_selection_with_tx_priority() {
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection),
-        Some(6),
-        server_node_identity,
-    )
-    .await;
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let (mut oms, _shutdown, _, _, _, key_manager) =
+        setup_oms_with_bn_state(backend.clone(), Some(6), server_node_identity).await;
 
     let amount = MicroMinotari::from(2000);
     let fee_per_gram = MicroMinotari::from(2);
@@ -704,6 +709,9 @@ async fn test_utxo_selection_with_tx_priority() {
     oms.add_output(uo_high.clone(), Some(SpendingPriority::HtlcSpendAsap))
         .await
         .unwrap();
+    backend
+        .mark_output_as_unspent(uo_high.hash(&key_manager).await.unwrap())
+        .unwrap();
     // Low priority
     let uo_low_2 = make_input_with_features(
         &mut OsRng.clone(),
@@ -716,6 +724,9 @@ async fn test_utxo_selection_with_tx_priority() {
     )
     .await;
     oms.add_output(uo_low_2.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo_low_2.hash(&key_manager).await.unwrap())
+        .unwrap();
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 3);
@@ -756,7 +767,7 @@ async fn test_utxo_selection_with_tx_priority() {
 async fn send_not_enough_funds() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -767,7 +778,10 @@ async fn send_not_enough_funds() {
             &oms.key_manager_handle,
         )
         .await;
-        oms.output_manager_handle.add_output(uo, None).await.unwrap();
+        oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+        backend
+            .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+            .unwrap();
     }
 
     match oms
@@ -795,7 +809,7 @@ async fn send_not_enough_funds() {
 async fn send_no_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let fee_per_gram = MicroMinotari::from(4);
     let constants = create_consensus_constants(0);
@@ -808,38 +822,33 @@ async fn send_no_change() {
             .expect("Failed to get default features and scripts size byte size"),
     );
     let value1 = 5000;
-    let key_manager = create_memory_db_key_manager();
-    oms.output_manager_handle
-        .add_output(
-            create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                MicroMinotari::from(value1),
-                &key_manager,
-            )
-            .await
-            .unwrap(),
-            None,
-        )
-        .await
+    let uo_1 = create_wallet_output_with_data(
+        script!(Nop),
+        OutputFeatures::default(),
+        &TestParams::new(&oms.key_manager_handle).await,
+        MicroMinotari::from(value1),
+        &oms.key_manager_handle,
+    )
+    .await
+    .unwrap();
+    oms.output_manager_handle.add_output(uo_1.clone(), None).await.unwrap();
+
+    backend
+        .mark_output_as_unspent(uo_1.hash(&oms.key_manager_handle).await.unwrap())
         .unwrap();
     let value2 = 8000;
-    let key_manager = create_memory_db_key_manager();
-    oms.output_manager_handle
-        .add_output(
-            create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                MicroMinotari::from(value2),
-                &key_manager,
-            )
-            .await
-            .unwrap(),
-            None,
-        )
-        .await
+    let uo_2 = create_wallet_output_with_data(
+        script!(Nop),
+        OutputFeatures::default(),
+        &TestParams::new(&oms.key_manager_handle).await,
+        MicroMinotari::from(value2),
+        &oms.key_manager_handle,
+    )
+    .await
+    .unwrap();
+    oms.output_manager_handle.add_output(uo_2.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo_2.hash(&oms.key_manager_handle).await.unwrap())
         .unwrap();
 
     let stp = oms
@@ -874,43 +883,38 @@ async fn send_no_change() {
 async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let fee_per_gram = MicroMinotari::from(4);
     let constants = create_consensus_constants(0);
     let fee_without_change = Fee::new(*constants.transaction_weight_params()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = MicroMinotari(500);
-    let key_manager = create_memory_db_key_manager();
-    oms.output_manager_handle
-        .add_output(
-            create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                value1,
-                &key_manager,
-            )
-            .await
-            .unwrap(),
-            None,
-        )
-        .await
+    let uo_1 = create_wallet_output_with_data(
+        script!(Nop),
+        OutputFeatures::default(),
+        &TestParams::new(&oms.key_manager_handle).await,
+        value1,
+        &oms.key_manager_handle,
+    )
+    .await
+    .unwrap();
+    oms.output_manager_handle.add_output(uo_1.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo_1.hash(&oms.key_manager_handle).await.unwrap())
         .unwrap();
     let value2 = MicroMinotari(800);
-    oms.output_manager_handle
-        .add_output(
-            create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                value2,
-                &key_manager,
-            )
-            .await
-            .unwrap(),
-            None,
-        )
-        .await
+    let uo_2 = create_wallet_output_with_data(
+        script!(Nop),
+        OutputFeatures::default(),
+        &TestParams::new(&oms.key_manager_handle).await,
+        value2,
+        &oms.key_manager_handle,
+    )
+    .await
+    .unwrap();
+    oms.output_manager_handle.add_output(uo_2.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo_2.hash(&oms.key_manager_handle).await.unwrap())
         .unwrap();
 
     match oms
@@ -938,7 +942,7 @@ async fn send_not_enough_for_change() {
 async fn cancel_transaction() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -949,7 +953,10 @@ async fn cancel_transaction() {
             &oms.key_manager_handle,
         )
         .await;
-        oms.output_manager_handle.add_output(uo, None).await.unwrap();
+        oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+        backend
+            .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+            .unwrap();
     }
     let stp = oms
         .output_manager_handle
@@ -1021,7 +1028,7 @@ async fn cancel_transaction_and_reinstate_inbound_tx() {
 async fn test_get_balance() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -1037,7 +1044,10 @@ async fn test_get_balance() {
     )
     .await;
     total += uo.value;
-    oms.output_manager_handle.add_output(uo, None).await.unwrap();
+    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let uo = make_input(
         &mut OsRng.clone(),
@@ -1047,7 +1057,10 @@ async fn test_get_balance() {
     )
     .await;
     total += uo.value;
-    oms.output_manager_handle.add_output(uo, None).await.unwrap();
+    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let send_value = MicroMinotari::from(1000);
     let stp = oms
@@ -1099,7 +1112,10 @@ async fn sending_transaction_persisted_while_offline() {
         &oms.key_manager_handle,
     )
     .await;
-    oms.output_manager_handle.add_output(uo, None).await.unwrap();
+    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
     let uo = make_input(
         &mut OsRng.clone(),
         available_balance / 2,
@@ -1107,7 +1123,10 @@ async fn sending_transaction_persisted_while_offline() {
         &oms.key_manager_handle,
     )
     .await;
-    oms.output_manager_handle.add_output(uo, None).await.unwrap();
+    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+    backend
+        .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
@@ -1183,7 +1202,7 @@ async fn sending_transaction_persisted_while_offline() {
 async fn coin_split_with_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
@@ -1191,9 +1210,19 @@ async fn coin_split_with_change() {
     let uo1 = make_input(&mut OsRng, val1, &OutputFeatures::default(), &oms.key_manager_handle).await;
     let uo2 = make_input(&mut OsRng, val2, &OutputFeatures::default(), &oms.key_manager_handle).await;
     let uo3 = make_input(&mut OsRng, val3, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    assert!(oms.output_manager_handle.add_output(uo1, None).await.is_ok());
-    assert!(oms.output_manager_handle.add_output(uo2, None).await.is_ok());
-    assert!(oms.output_manager_handle.add_output(uo3, None).await.is_ok());
+    assert!(oms.output_manager_handle.add_output(uo1.clone(), None).await.is_ok());
+    assert!(oms.output_manager_handle.add_output(uo2.clone(), None).await.is_ok());
+    assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
+    // lets mark them as unspent so we can use them
+    backend
+        .mark_output_as_unspent(uo1.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
+    backend
+        .mark_output_as_unspent(uo2.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
+    backend
+        .mark_output_as_unspent(uo3.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let fee_per_gram = MicroMinotari::from(5);
     let split_count = 8;
@@ -1223,7 +1252,7 @@ async fn coin_split_with_change() {
 async fn coin_split_no_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let fee_per_gram = MicroMinotari::from(5);
     let split_count = 15;
@@ -1245,10 +1274,19 @@ async fn coin_split_no_change() {
     let uo1 = make_input(&mut OsRng, val1, &OutputFeatures::default(), &oms.key_manager_handle).await;
     let uo2 = make_input(&mut OsRng, val2, &OutputFeatures::default(), &oms.key_manager_handle).await;
     let uo3 = make_input(&mut OsRng, val3, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    assert!(oms.output_manager_handle.add_output(uo1, None).await.is_ok());
-    assert!(oms.output_manager_handle.add_output(uo2, None).await.is_ok());
-    assert!(oms.output_manager_handle.add_output(uo3, None).await.is_ok());
-
+    assert!(oms.output_manager_handle.add_output(uo1.clone(), None).await.is_ok());
+    assert!(oms.output_manager_handle.add_output(uo2.clone(), None).await.is_ok());
+    assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
+    // lets mark then as unspent so we can use them
+    backend
+        .mark_output_as_unspent(uo1.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
+    backend
+        .mark_output_as_unspent(uo2.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
+    backend
+        .mark_output_as_unspent(uo3.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
     let (_tx_id, coin_split_tx, amount) = oms
         .output_manager_handle
         .create_coin_split(vec![], 1000.into(), split_count, fee_per_gram)
@@ -1264,11 +1302,15 @@ async fn coin_split_no_change() {
 async fn it_handles_large_coin_splits() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let val = 20 * T;
     let uo = make_input(&mut OsRng, val, &OutputFeatures::default(), &oms.key_manager_handle).await;
-    assert!(oms.output_manager_handle.add_output(uo, None).await.is_ok());
+    assert!(oms.output_manager_handle.add_output(uo.clone(), None).await.is_ok());
+    // lets mark them as unspent so we can use them
+    backend
+        .mark_output_as_unspent(uo.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
     let split_count = 499;
@@ -1312,6 +1354,9 @@ async fn test_txo_validation() {
         .add_output_with_tx_id(TxId::from(1u64), output1.clone(), None)
         .await
         .unwrap();
+    oms_db
+        .mark_output_as_unspent(output1.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let output2_value = 2_000_000;
     let output2 = make_input(
@@ -1327,6 +1372,9 @@ async fn test_txo_validation() {
         .add_output_with_tx_id(TxId::from(2u64), output2.clone(), None)
         .await
         .unwrap();
+    oms_db
+        .mark_output_as_unspent(output2.hash(&oms.key_manager_handle).await.unwrap())
+        .unwrap();
 
     let output3_value = 4_000_000;
     let output3 = make_input(
@@ -1340,6 +1388,10 @@ async fn test_txo_validation() {
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(3u64), output3.clone(), None)
         .await
+        .unwrap();
+
+    oms_db
+        .mark_output_as_unspent(output3.hash(&oms.key_manager_handle).await.unwrap())
         .unwrap();
 
     let mut block1_header = BlockHeader::new(1);

@@ -24,9 +24,10 @@ use std::sync::Arc;
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
+use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
@@ -43,6 +44,7 @@ use crate::{
             TariKeyId,
             TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
+            TransactionKeyManagerWrapper,
             TxoStage,
         },
         tari_amount::MicroMinotari,
@@ -64,7 +66,13 @@ use crate::{
     },
 };
 
-pub async fn create_test_input(amount: MicroMinotari, maturity: u64, key_manager: &MemoryDbKeyManager) -> WalletOutput {
+pub async fn create_test_input<
+    TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone + 'static,
+>(
+    amount: MicroMinotari,
+    maturity: u64,
+    key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
         .create_input(
@@ -99,7 +107,9 @@ pub struct TestParams {
 }
 
 impl TestParams {
-    pub async fn new(key_manager: &MemoryDbKeyManager) -> TestParams {
+    pub async fn new<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone + 'static>(
+        key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+    ) -> TestParams {
         let (spend_key_id, spend_key_pk, script_key_id, script_key_pk) =
             key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let (sender_offset_key_id, sender_offset_key_pk) = key_manager
@@ -140,10 +150,12 @@ impl TestParams {
         Fee::new(self.transaction_weight)
     }
 
-    pub async fn create_output(
+    pub async fn create_output<
+        TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone + 'static,
+    >(
         &self,
         params: UtxoTestParams,
-        key_manager: &MemoryDbKeyManager,
+        key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> Result<WalletOutput, String> {
         let version = match params.output_version {
             Some(v) => v,
@@ -175,7 +187,13 @@ impl TestParams {
 
     /// Create a random transaction input for the given amount and maturity period. The input's wallet
     /// parameters are returned.
-    pub async fn create_input(&self, params: UtxoTestParams, key_manager: &MemoryDbKeyManager) -> WalletOutput {
+    pub async fn create_input<
+        TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone + 'static,
+    >(
+        &self,
+        params: UtxoTestParams,
+        key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+    ) -> WalletOutput {
         self.create_output(params, key_manager).await.unwrap()
     }
 
