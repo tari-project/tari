@@ -120,7 +120,7 @@ fn main() {
     });
 
     // If by any chance we have anything in the stdout buffer just log it.
-    flush_stdout(&stdout_buffer);
+    try_flush_stdout(&stdout_buffer);
 
     // Move the logs to the temp dir
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
