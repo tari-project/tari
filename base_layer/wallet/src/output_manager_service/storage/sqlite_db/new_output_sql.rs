@@ -71,7 +71,7 @@ impl NewOutputSql {
     #[allow(clippy::cast_possible_wrap)]
     pub fn new(
         output: DbWalletOutput,
-        status: OutputStatus,
+        status: Option<OutputStatus>,
         received_in_tx_id: Option<TxId>,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
@@ -84,7 +84,7 @@ impl NewOutputSql {
             value: output.wallet_output.value.as_u64() as i64,
             output_type: i32::from(output.wallet_output.features.output_type.as_byte()),
             maturity: output.wallet_output.features.maturity as i64,
-            status: status as i32,
+            status: status.unwrap_or(output.status) as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
             hash: output.hash.to_vec(),
             script: output.wallet_output.script.to_bytes(),

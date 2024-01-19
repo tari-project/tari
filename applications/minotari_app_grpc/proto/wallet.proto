@@ -63,6 +63,8 @@ service Wallet {
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
     // Will trigger a complete revalidation of all wallet outputs.
     rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+    // Will trigger a validation of all wallet outputs.
+    rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
     // This will send a XTR SHA Atomic swap transaction
     rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
     // This will create a burn transaction
@@ -225,6 +227,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE_UNCONFIRMED = 12;
     // This is Coinbase transaction that is detected from chain
     TRANSACTION_STATUS_COINBASE_CONFIRMED = 13;
+    // This is Coinbase transaction that is not currently detected as mined
+    TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN = 14;
 }
 
 message GetCompletedTransactionsRequest { }
@@ -288,6 +292,10 @@ message CancelTransactionResponse {
 message RevalidateRequest{}
 
 message RevalidateResponse{}
+
+message ValidateRequest{}
+
+message ValidateResponse{}
 
 message SetBaseNodeRequest {
     string public_key_hex = 1;

@@ -1,20 +1,46 @@
-[target.x86_64-linux-android]
-image = "ghcr.io/cross-rs/x86_64-linux-android:edge"
-
-[target.x86_64-linux-android.env]
+[build.env]
 passthrough = [
   "CFLAGS",
+  "TARGET",
+  "RUST_TARGET",
+  "BUILD_TARGET",
+  "CARGO_BUILD_TARGET",
+  "TARGET_CFLAGS",
+  "RUSTFLAGS",
+  "RUST_BACKTRACE",
+  "RUST_DEBUG",
+  "RUST_LOG",
+  "ARCH",
+  "FEATURES",
+  "ROARING_ARCH",
   "TARI_NETWORK",
 ]
+
+# Don't forget export:
+#  CFLAGS=-DMDB_USE_ROBUST=0
+[target.x86_64-linux-android]
+image = "ghcr.io/cross-rs/x86_64-linux-android:edge"
+pre-build = [ """
+export DEBIAN_FRONTEND=noninteractive && \
+apt-get update && \
+apt-get --assume-yes --no-install-recommends install \
+ curl unzip && \
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v25.2/protoc-25.2-linux-x86_64.zip && \
+unzip -o protoc-25.2-linux-x86_64.zip -d /usr/ && \
+/usr/bin/protoc --version
+""" ]
 
 [target.aarch64-linux-android]
 image = "ghcr.io/cross-rs/aarch64-linux-android:edge"
-
-[target.aarch64-linux-android.env]
-passthrough = [
-  "CFLAGS",
-  "TARI_NETWORK",
-]
+pre-build = [ """
+export DEBIAN_FRONTEND=noninteractive && \
+apt-get update && \
+apt-get --assume-yes --no-install-recommends install \
+ curl unzip && \
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v25.2/protoc-25.2-linux-x86_64.zip && \
+unzip -o protoc-25.2-linux-x86_64.zip -d /usr/ && \
+/usr/bin/protoc --version
+""" ]
 
 [target.aarch64-unknown-linux-gnu]
 image = "ubuntu:18.04"
@@ -49,17 +75,7 @@ rustup toolchain install stable-aarch64-unknown-linux-gnu
 
 [target.aarch64-unknown-linux-gnu.env]
 passthrough = [
-  "CFLAGS",
-  "RUST_DEBUG",
-  "RUSTFLAGS",
-  "ARCH",
-  "FEATURES",
-  "ROARING_ARCH",
-  "TARGET",
-  "RUST_TARGET",
-  "BUILD_TARGET",
   "CARGO_BUILD_TARGET",
   "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc",
   "BINDGEN_EXTRA_CLANG_ARGS=--sysroot /usr/aarch64-linux-gnu/include/",
-  "TARI_NETWORK",
 ]

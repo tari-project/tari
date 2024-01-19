@@ -136,7 +136,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Reset optional 'mined height' and 'mined in block' fields to nothing
-    fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
+    fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
     /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
     fn get_pending_inbound_transaction_sender_info(
         &self,
@@ -144,6 +144,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
     fn fetch_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
     fn fetch_confirmed_detected_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_unmined_coinbase_transactions_from_height(
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
@@ -429,6 +433,14 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
+    pub fn get_unmined_coinbase_transactions(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let t = self.db.fetch_unmined_coinbase_transactions_from_height(height)?;
+        Ok(t)
+    }
+
     pub fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.fetch_last_mined_transaction()
     }
@@ -683,8 +695,8 @@ where T: TransactionBackend + 'static
         self.db.set_transaction_as_unmined(tx_id)
     }
 
-    pub fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
-        self.db.mark_all_transactions_as_unvalidated()
+    pub fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        self.db.mark_all_non_coinbases_transactions_as_unvalidated()
     }
 
     pub fn set_transaction_mined_height(

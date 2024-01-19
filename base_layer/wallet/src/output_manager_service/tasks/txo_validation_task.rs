@@ -206,9 +206,6 @@ where
                 self.operation_id
             );
 
-            // We have to send positions to the base node because if the base node cannot find the hash of the output
-            // we can't tell if the output ever existed, as opposed to existing and was spent.
-            // This assumes that the base node has not reorged since the last time we asked.
             let response = wallet_client
                 .query_deleted(QueryDeletedRequest {
                     chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()).unwrap_or_default(),

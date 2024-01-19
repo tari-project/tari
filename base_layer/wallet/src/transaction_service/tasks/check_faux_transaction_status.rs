@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+const SAFETY_HEIGHT_MARGIN: u64 = 1000;
+
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::types::{BlockHash, FixedHash};
+use tari_common_types::types::FixedHash;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
@@ -46,6 +48,20 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     event_publisher: TransactionEventSender,
     tip_height: u64,
 ) {
+    // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
+    // height or current tip height with safety margin to determine if these should be returned
+    let last_mined_transaction = match db.fetch_last_mined_transaction() {
+        Ok(tx) => tx,
+        Err(_) => None,
+    };
+
+    let height_with_margin = tip_height.saturating_sub(SAFETY_HEIGHT_MARGIN);
+    let check_height = if let Some(tx) = last_mined_transaction {
+        tx.mined_height.unwrap_or(height_with_margin)
+    } else {
+        height_with_margin
+    };
+
     let mut all_detected_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
         Ok(txs) => txs,
         Err(e) => {
@@ -64,18 +80,19 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         },
     };
     all_detected_transactions.append(&mut unconfirmed_detected);
-    // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
-    // height or current tip height with safety margin to determine if these should be returned
-    let last_mined_transaction = match db.fetch_last_mined_transaction() {
-        Ok(tx) => tx,
-        Err(_) => None,
+
+    let mut unmined_coinbases_detected = match db.get_unmined_coinbase_transactions(height_with_margin) {
+        Ok(txs) => txs,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Problem retrieving unmined coinbase transactions: {}", e
+            );
+            return;
+        },
     };
-    let height_with_margin = tip_height.saturating_sub(100);
-    let check_height = if let Some(tx) = last_mined_transaction {
-        tx.mined_height.unwrap_or(height_with_margin)
-    } else {
-        height_with_margin
-    };
+    all_detected_transactions.append(&mut unmined_coinbases_detected);
+
     let mut confirmed_dectected = match db.get_confirmed_detected_transactions_from_height(check_height) {
         Ok(txs) => txs,
         Err(e) => {
@@ -101,22 +118,26 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
                 return;
             },
         };
+        // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
+        // be different.
         let output_status = output_info_for_tx_id.statuses[0];
-        let mined_height = if let Some(height) = output_info_for_tx_id.mined_height {
-            height
-        } else {
-            tip_height
-        };
-        let mined_in_block: BlockHash = if let Some(hash) = output_info_for_tx_id.block_hash {
-            hash
-        } else {
-            FixedHash::zero()
-        };
+        if output_info_for_tx_id.mined_height.is_none() || output_info_for_tx_id.block_hash.is_none() {
+            // this means the transaction is not detected as mined
+            if let Err(e) = db.set_transaction_as_unmined(tx.tx_id) {
+                error!(
+                    target: LOG_TARGET,
+                    "Error setting faux transaction to unmined: {}", e
+                );
+            }
+            continue;
+        }
+        let mined_height = output_info_for_tx_id.mined_height.unwrap_or(0);
+        let mined_in_block = output_info_for_tx_id.block_hash.unwrap_or(FixedHash::zero());
         let is_valid = tip_height >= mined_height;
         let previously_confirmed = tx.status.is_confirmed();
         let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
-        let num_confirmations = tip_height - mined_height;
+        let num_confirmations = tip_height.saturating_sub(mined_height);
         debug!(
             target: LOG_TARGET,
             "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \

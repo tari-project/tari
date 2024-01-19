@@ -285,7 +285,10 @@ where
                 .map_err(TransactionServiceError::ProtobufConversionError)?;
             let sig = response.signature;
             if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
-                if response.location == TxLocation::Mined && response.block_hash.is_some() {
+                if response.location == TxLocation::Mined &&
+                    response.block_hash.is_some() &&
+                    response.mined_timestamp.is_some()
+                {
                     mined.push((
                         (*unconfirmed_tx).clone(),
                         response.block_height,
@@ -296,10 +299,8 @@ where
                 } else {
                     warn!(
                         target: LOG_TARGET,
-                        "Marking transaction {} as unmined and confirmed '{}' with block '{}' (Operation ID: {})",
+                        "Transaction {} is unmined (Operation ID: {})",
                         &unconfirmed_tx.tx_id,
-                        response.confirmations >= self.config.num_confirmations_required,
-                        response.block_hash.is_some(),
                         self.operation_id,
                     );
                     unmined.push((*unconfirmed_tx).clone());

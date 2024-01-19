@@ -104,6 +104,7 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             OneSidedConfirmed => grpc::TransactionStatus::OneSidedConfirmed,
             CoinbaseUnconfirmed => grpc::TransactionStatus::CoinbaseUnconfirmed,
             CoinbaseConfirmed => grpc::TransactionStatus::CoinbaseConfirmed,
+            CoinbaseNotInBlockChain => grpc::TransactionStatus::CoinbaseNotInBlockChain,
             Queued => grpc::TransactionStatus::Queued,
         }
     }
