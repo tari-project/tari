@@ -3154,6 +3154,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_features",
+ "tari_hash_domains",
  "tari_key_manager",
  "tari_libtor",
  "tari_p2p",
@@ -5879,6 +5880,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_comms_rpc_macros",
  "tari_crypto",
+ "tari_hash_domains",
  "tari_key_manager",
  "tari_metrics",
  "tari_mmr",
@@ -5923,6 +5925,13 @@ dependencies = [
 [[package]]
 name = "tari_features"
 version = "1.0.0-pre.5"
+
+[[package]]
+name = "tari_hash_domains"
+version = "0.1.0"
+dependencies = [
+ "tari_crypto",
+]
 
 [[package]]
 name = "tari_integration_tests"
