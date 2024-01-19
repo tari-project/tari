@@ -45,6 +45,7 @@ tari_key_manager = { path = "../key_manager", features = [
   "key_manager_service",
 ] }
 tari_common_sqlite = { path = "../../common_sqlite" }
+tari_hash_domains = { path = "../../hash_domains" }
 
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
