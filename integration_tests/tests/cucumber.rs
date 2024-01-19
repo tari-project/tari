@@ -41,14 +41,17 @@ pub mod steps;
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 
-fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
+fn try_flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
     // After each test we flush the stdout to the logs.
-    info!(
-        target: LOG_TARGET_STDOUT,
-        "{}",
-        str::from_utf8(&buffer.lock().unwrap()).unwrap()
-    );
-    buffer.lock().unwrap().clear();
+    let mut lock = buffer.try_lock();
+    if let Ok(ref mut mutex) = lock {
+        info!(
+            target: LOG_TARGET_STDOUT,
+            "{}",
+            str::from_utf8(&mutex).unwrap()
+        );
+        mutex.clear();
+    }
 }
 
 fn main() {
@@ -78,7 +81,7 @@ fn main() {
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
             let stdout_buffer = stdout_buffer_clone.clone();
             Box::pin(async move {
-                flush_stdout(&stdout_buffer);
+                try_flush_stdout(&stdout_buffer);
                 match ev {
                     ScenarioFinished::StepFailed(_capture_locations, _location, _error) => {
                         error!(target: LOG_TARGET, "Scenario failed");
