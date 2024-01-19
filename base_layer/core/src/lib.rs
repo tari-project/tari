@@ -57,6 +57,7 @@ mod domain_hashing {
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+    use tari_hash_domains::ValidatorNodeBmtHashDomain;
     use tari_mmr::{
         pruned_hashset::PrunedHashSet,
         sparse_merkle_tree::SparseMerkleTree,
@@ -80,11 +81,6 @@ mod domain_hashing {
 
     pub type OutputSmt = SparseMerkleTree<OutputSmtHasherBlake256>;
 
-    hash_domain!(
-        ValidatorNodeBmtHashDomain,
-        "com.tari.base_layer.core.validator_node_mmr",
-        1
-    );
     pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeBmtHashDomain>;
     pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeBmtHasherBlake256>;
 }

@@ -60,6 +60,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
+        db.mark_output_as_unspent(kmo.hash).unwrap();
         unspent_outputs.push(kmo);
     }
 
@@ -110,6 +111,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 .await
                 .unwrap();
             db.add_unspent_output(kmo.clone()).unwrap();
+            db.mark_output_as_unspent(kmo.hash).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
         for _ in 0..2 {
@@ -334,12 +336,6 @@ pub async fn test_output_manager_sqlite_db() {
 }
 
 #[tokio::test]
-pub async fn test_output_manager_sqlite_db_encrypted() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
-}
-
-#[tokio::test]
 pub async fn test_short_term_encumberance() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);
@@ -360,6 +356,7 @@ pub async fn test_short_term_encumberance() {
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
+        db.mark_output_as_unspent(kmo.hash).unwrap();
         unspent_outputs.push(kmo);
     }
 

@@ -3095,7 +3095,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_chat_ffi"
-version = "1.0.0-pre.4"
+version = "1.0.0-pre.5"
 dependencies = [
  "cbindgen",
  "chrono",
@@ -3154,6 +3154,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_features",
+ "tari_hash_domains",
  "tari_key_manager",
  "tari_libtor",
  "tari_p2p",
@@ -3248,7 +3249,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mining_helper_ffi"
-version = "1.0.0-pre.4"
+version = "1.0.0-pre.5"
 dependencies = [
  "borsh",
  "hex",
@@ -5600,7 +5601,7 @@ dependencies = [
 
 [[package]]
 name = "tari_chat_client"
-version = "1.0.0-pre.4"
+version = "1.0.0-pre.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5879,6 +5880,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_comms_rpc_macros",
  "tari_crypto",
+ "tari_hash_domains",
  "tari_key_manager",
  "tari_metrics",
  "tari_mmr",
@@ -5923,6 +5925,13 @@ dependencies = [
 [[package]]
 name = "tari_features"
 version = "0.53.0-dan.0"
+
+[[package]]
+name = "tari_hash_domains"
+version = "0.1.0"
+dependencies = [
+ "tari_crypto",
+]
 
 [[package]]
 name = "tari_integration_tests"

@@ -2,20 +2,33 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.5](https://github.com/tari-project/tari/compare/v1.0.0-pre.4...v1.0.0-pre.5) (2024-01-18)
+
+
+### Features
+
+* add tari address as valid string for discovering a peer ([#6075](https://github.com/tari-project/tari/issues/6075)) ([a4c5bc2](https://github.com/tari-project/tari/commit/a4c5bc2c6c08a5d09b58f13ed9acf561e55478fc))
+* make all apps non interactive ([#6049](https://github.com/tari-project/tari/issues/6049)) ([bafd7e7](https://github.com/tari-project/tari/commit/bafd7e7baadd0f8b82ca8205ec3f18342d74e92a))
+* make libtor on by default for nix builds ([#6060](https://github.com/tari-project/tari/issues/6060)) ([b5e0d06](https://github.com/tari-project/tari/commit/b5e0d0639c540177373b7faa9c2fade64581e46d))
+
+
+### Bug Fixes
+
+* fix small error in config.toml ([#6052](https://github.com/tari-project/tari/issues/6052)) ([6518a60](https://github.com/tari-project/tari/commit/6518a60dce9a4b8ace6c5cc4b1ee79045e364e0e))
+* tms validation correctly updating ([#6079](https://github.com/tari-project/tari/issues/6079)) ([34222a8](https://github.com/tari-project/tari/commit/34222a88bd1746869e67ccde9c2f7529862f3b5d))
+* wallet coinbases not validated correctly ([#6074](https://github.com/tari-project/tari/issues/6074)) ([bb66df1](https://github.com/tari-project/tari/commit/bb66df13bcf3d00082e35f7305b1fde72d4ace2a))
+
 ## [1.0.0-pre.4](https://github.com/tari-project/tari/compare/v1.0.0-pre.2...v1.0.0-pre.4) (2023-12-14)
 
 
 ### Features
 
-* console wallet use dns seeds ([#6034](https://github.com/tari-project/tari/issues/6034)) ([b194954](https://github.com/tari-project/tari/commit/b194954f489bd8ac234993e65463a24808dce8f2))
 * fix windows installer ([#6043](https://github.com/tari-project/tari/issues/6043)) ([c37a0a8](https://github.com/tari-project/tari/commit/c37a0a89726eec765c9c10d3da0c990d339de9b9))
 * side load chat ([#6042](https://github.com/tari-project/tari/issues/6042)) ([d729c45](https://github.com/tari-project/tari/commit/d729c458b17406d9f5dbb8982a9bf5604f39c63c))
-* update tests and constants ([#6028](https://github.com/tari-project/tari/issues/6028)) ([d558206](https://github.com/tari-project/tari/commit/d558206ea62c12f3258ede8cfcbf9d44f139ccdd))
 
 
 ### Bug Fixes
 
-* remove duplicate config settings ([#6029](https://github.com/tari-project/tari/issues/6029)) ([662af28](https://github.com/tari-project/tari/commit/662af28bf811c771cf0fdf9b583c1296a2283188))
 
 ## [1.0.0-pre.3](https://github.com/tari-project/tari/compare/v1.0.0-pre.2...v1.0.0-pre.3) (2023-12-12)
 

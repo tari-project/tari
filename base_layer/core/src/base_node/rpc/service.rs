@@ -313,7 +313,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 location: response.location,
                 block_hash: response.block_hash,
                 confirmations: response.confirmations,
-                block_height: response.height_of_longest_chain - response.confirmations,
+                block_height: response.height_of_longest_chain.saturating_sub(response.confirmations),
                 mined_timestamp: response.mined_timestamp,
             });
         }

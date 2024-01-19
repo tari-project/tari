@@ -407,7 +407,7 @@ Feature: Wallet Transactions
   #   When I wait 15 seconds
   #   When wallet WALLET_RECV detects last transaction is Cancelled
 
-  @critical
+  @critical  @flaky
   Scenario: Create burn transaction
     Given I have a seed node NODE
     When I have 2 base nodes connected to all seed nodes

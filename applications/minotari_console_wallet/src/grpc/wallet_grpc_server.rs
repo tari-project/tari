@@ -76,6 +76,8 @@ use minotari_app_grpc::tari_rpc::{
     TransferRequest,
     TransferResponse,
     TransferResult,
+    ValidateRequest,
+    ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
@@ -305,6 +307,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
         Ok(Response::new(RevalidateResponse {}))
+    }
+
+    async fn validate_all_transactions(
+        &self,
+        _request: Request<ValidateRequest>,
+    ) -> Result<Response<ValidateResponse>, Status> {
+        let mut output_service = self.get_output_manager_service();
+        output_service
+            .validate_txos()
+            .await
+            .map_err(|e| Status::unknown(e.to_string()))?;
+        let mut tx_service = self.get_transaction_service();
+        tx_service
+            .validate_transactions()
+            .await
+            .map_err(|e| Status::unknown(e.to_string()))?;
+        Ok(Response::new(ValidateResponse {}))
     }
 
     async fn send_sha_atomic_swap_transaction(

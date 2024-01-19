@@ -85,21 +85,21 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
+                let new_output = NewOutputSql::new(*o, Some(OutputStatus::UnspentMinedUnconfirmed), None)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
+                let new_output = NewOutputSql::new(*o, Some(OutputStatus::UnspentMinedUnconfirmed), Some(tx_id))?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::OutputToBeReceived(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
+                let new_output = NewOutputSql::new(*o, Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
                 new_output.commit(conn)?
             },
 
@@ -658,7 +658,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         })?;
 
         for co in outputs_to_receive {
-            let new_output = NewOutputSql::new(co.clone(), OutputStatus::ShortTermEncumberedToBeReceived, Some(tx_id))?;
+            let new_output = NewOutputSql::new(
+                co.clone(),
+                Some(OutputStatus::ShortTermEncumberedToBeReceived),
+                Some(tx_id),
+            )?;
             new_output.commit(&mut conn)?;
         }
         if start.elapsed().as_millis() > 0 {
@@ -977,7 +981,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &mut conn).is_ok() {
             return Err(OutputManagerStorageError::DuplicateOutput);
         }
-        let new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
+        let new_output = NewOutputSql::new(output, Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
         new_output.commit(&mut conn)?;
 
         if start.elapsed().as_millis() > 0 {
@@ -1322,7 +1326,7 @@ mod test {
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
                 .await
                 .unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
+            let o = NewOutputSql::new(uo, Some(OutputStatus::Unspent), None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&mut conn).unwrap();
@@ -1333,7 +1337,7 @@ mod test {
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
                 .await
                 .unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None).unwrap();
+            let o = NewOutputSql::new(uo, Some(OutputStatus::Spent), None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&mut conn).unwrap();
