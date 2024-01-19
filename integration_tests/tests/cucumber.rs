@@ -48,7 +48,7 @@ fn try_flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
         info!(
             target: LOG_TARGET_STDOUT,
             "{}",
-            str::from_utf8(&mutex).unwrap()
+            str::from_utf8(mutex).unwrap()
         );
         mutex.clear();
     }
