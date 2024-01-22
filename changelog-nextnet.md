@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-rc.2](https://github.com/tari-project/tari/compare/v1.0.0-rc.1...v1.0.0-rc.2) (2024-01-18)
+
+
+### Features
+
+* add tari address as valid string for discovering a peer ([#6075](https://github.com/tari-project/tari/issues/6075)) ([a4c5bc2](https://github.com/tari-project/tari/commit/a4c5bc2c6c08a5d09b58f13ed9acf561e55478fc))
+* make all apps non interactive ([#6049](https://github.com/tari-project/tari/issues/6049)) ([bafd7e7](https://github.com/tari-project/tari/commit/bafd7e7baadd0f8b82ca8205ec3f18342d74e92a))
+* make libtor on by default for nix builds ([#6060](https://github.com/tari-project/tari/issues/6060)) ([b5e0d06](https://github.com/tari-project/tari/commit/b5e0d0639c540177373b7faa9c2fade64581e46d))
+
+
+### Bug Fixes
+
+* fix small error in config.toml ([#6052](https://github.com/tari-project/tari/issues/6052)) ([6518a60](https://github.com/tari-project/tari/commit/6518a60dce9a4b8ace6c5cc4b1ee79045e364e0e))
+* tms validation correctly updating ([#6079](https://github.com/tari-project/tari/issues/6079)) ([34222a8](https://github.com/tari-project/tari/commit/34222a88bd1746869e67ccde9c2f7529862f3b5d))
+* wallet coinbases not validated correctly ([#6074](https://github.com/tari-project/tari/issues/6074)) ([bb66df1](https://github.com/tari-project/tari/commit/bb66df13bcf3d00082e35f7305b1fde72d4ace2a))
+
+
 ## [1.0.0-rc.1](https://github.com/tari-project/tari/compare/v1.0.0-rc.1...v1.0.0-rc.0) (2023-12-14)
 
 
