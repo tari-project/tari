@@ -22,8 +22,7 @@
 
 #![allow(dead_code, unused)]
 
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
-use std::time::Instant;
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use log::*;
 use minotari_app_utilities::identity_management::setup_node_identity;
@@ -466,13 +465,6 @@ pub async fn init_wallet(
         WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
         e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
-    // TODO: fix this
-    // if let Some(hs) = wallet.comms.hidden_service() {
-    //     wallet
-    //         .db
-    //         .set_tor_identity(hs.tor_identity().clone())
-    //         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
-    // }
 
     error!(
         target: LOG_TARGET,

@@ -20,14 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io;
-use std::sync::Arc;
-use log::info;
+use std::{io, io::ErrorKind, sync::Arc};
+
+use log::*;
 use multiaddr::Multiaddr;
 use tokio::sync::RwLock;
-use crate::tor::HiddenServiceController;
-use crate::transports::{SocksTransport, TcpTransport, Transport};
-use crate::transports::tcp::TcpInbound;
+
+use crate::{
+    tor::{HiddenServiceController, TorIdentity},
+    transports::{SocksTransport, Transport},
+};
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
 
@@ -37,27 +39,27 @@ pub enum HiddenServiceTransportError {
     HiddenServiceControllerError(#[from] crate::tor::HiddenServiceControllerError),
     #[error("Tor hidden service socks error: `{0}`")]
     SocksTransportError(#[from] io::Error),
-
 }
 
 struct HiddenServiceTransportInner {
     socks_transport: Option<SocksTransport>,
-    hidden_service_ctl: HiddenServiceController
-
+    hidden_service_ctl: HiddenServiceController,
 }
 
 #[derive(Clone)]
-pub struct HiddenServiceTransport {
-    inner: Arc<RwLock<HiddenServiceTransportInner>>
+pub struct HiddenServiceTransport<F: Fn(TorIdentity)> {
+    inner: Arc<RwLock<HiddenServiceTransportInner>>,
+    after_init: F,
 }
 
-impl HiddenServiceTransport {
-    pub fn new(hidden_service_ctl: HiddenServiceController) -> Self {
+impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
+    pub fn new(hidden_service_ctl: HiddenServiceController, after_init: F) -> Self {
         Self {
-            inner : Arc::new(RwLock::new(HiddenServiceTransportInner {
+            inner: Arc::new(RwLock::new(HiddenServiceTransportInner {
                 socks_transport: None,
-                hidden_service_ctl
-            }))
+                hidden_service_ctl,
+            })),
+            after_init,
         }
     }
 
@@ -67,7 +69,21 @@ impl HiddenServiceTransport {
             drop(inner);
             let mut mut_inner = self.inner.write().await;
             if mut_inner.socks_transport.is_none() {
-                let transport = mut_inner.hidden_service_ctl.initialize_transport().await.expect("TODO NEED TO MAP THESE ERRORS SOMEHOW");
+                let transport = mut_inner.hidden_service_ctl.initialize_transport().await.map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Error initializing hidden transport service stack{}",
+                        e
+                    );
+                    io::Error::new(ErrorKind::Other, e.to_string())
+                })?;
+                (self.after_init)(
+                    mut_inner
+                        .hidden_service_ctl
+                        .identity
+                        .clone()
+                        .ok_or(io::Error::new(ErrorKind::Other, "Missing tor identity".to_string()))?,
+                );
                 mut_inner.socks_transport = Some(transport);
             }
         }
@@ -75,20 +91,15 @@ impl HiddenServiceTransport {
     }
 }
 #[crate::async_trait]
-impl Transport for HiddenServiceTransport {
-    type Output = <SocksTransport as Transport>::Output;
+impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
     type Error = <SocksTransport as Transport>::Error;
     type Listener = <SocksTransport as Transport>::Listener;
+    type Output = <SocksTransport as Transport>::Output;
 
     async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
         self.ensure_initialized().await?;
         let inner = self.inner.read().await;
 
-        // info!(
-        //         target: LOG_TARGET,
-        //         "Tor hidden service initialized. proxied_address = '{:?}'",
-        //         inner.proxied_address(),
-        //     );
         Ok(inner.socks_transport.as_ref().unwrap().listen(addr).await?)
     }
 

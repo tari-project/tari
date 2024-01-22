@@ -83,7 +83,7 @@ pub struct HiddenServiceController {
     proxied_port_mapping: PortMapping,
     socks_address_override: Option<Multiaddr>,
     socks_auth: socks::Authentication,
-    identity: Option<TorIdentity>,
+    pub identity: Option<TorIdentity>,
     hs_flags: HsFlags,
     is_authenticated: bool,
     proxy_opts: TorProxyOpts,
@@ -124,9 +124,7 @@ impl HiddenServiceController {
     }
 
     pub async fn initialize_transport(&mut self) -> Result<SocksTransport, HiddenServiceControllerError> {
-        dbg!("here3");
         self.connect_and_auth().await?;
-        dbg!("here4");
         let socks_addr = self.get_socks_address().await?;
         Ok(SocksTransport::new(SocksConfig {
             proxy_address: socks_addr,
@@ -237,7 +235,6 @@ impl HiddenServiceController {
     }
 
     fn client_mut(&mut self) -> Result<&mut TorControlPortClient, HiddenServiceControllerError> {
-        dbg!("here5");
         self.client
             .as_mut()
             .filter(|c| c.is_connected())

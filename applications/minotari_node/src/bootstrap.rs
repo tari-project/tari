@@ -164,10 +164,20 @@ where B: BlockchainBackend + 'static
 
         let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
-        let comms = initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone())
-            .await
-            .map_err(|e| e.to_exit_error())?;
 
+        let comms = if p2p_config.transport.transport_type == TransportType::Tor {
+            let path = base_node_config.tor_identity_file.clone();
+            let after_comms = move |identity| {
+                let _result = identity_management::save_as_json(&path, &identity);
+                trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", identity);
+            };
+            initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await
+        } else {
+            let after_comms = |_identity| {};
+            initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await
+        };
+
+        let comms = comms.map_err(|e| e.to_exit_error())?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
@@ -177,11 +187,6 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             },
         };
-        todo!("Fix this");
-        // if let Some(hs) = comms.hidden_service() {
-        //     identity_management::save_as_json(&base_node_config.tor_identity_file, hs.tor_identity())
-        //         .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-        // }
 
         handles.register(comms);
 

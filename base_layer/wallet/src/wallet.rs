@@ -36,6 +36,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    tor::TorIdentity,
     types::{CommsPublicKey, CommsSecretKey},
     CommsNode,
     NodeIdentity,
@@ -72,6 +73,7 @@ use tari_p2p::{
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     PeerSeedsConfig,
+    TransportType,
 };
 use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -255,7 +257,16 @@ where
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack");
-        let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
+        let comms = if config.p2p.transport.transport_type == TransportType::Tor {
+            let wallet_db = wallet_database.clone();
+            let after_comms = move |identity: TorIdentity| {
+                let _result = wallet_db.set_tor_identity(identity.clone());
+            };
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+        } else {
+            let after_comms = |_identity| {};
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+        };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();

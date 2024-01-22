@@ -29,7 +29,7 @@ pub use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
-use tari_comms::{peer_manager::Peer, CommsNode, UnspawnedCommsNode};
+use tari_comms::{peer_manager::Peer,  CommsNode, UnspawnedCommsNode};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -109,10 +109,17 @@ pub async fn start(
     for peer in seed_peers {
         peer_manager.add_peer(peer).await?;
     }
-
-    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone()).await?;
-
-    // Save final node identity after comms has initialized. This is required because the public_address can be
+    let comms = if p2p_config.transport.transport_type == TransportType::Tor {
+        let path = config.chat_client.tor_identity_file.clone();
+        let after_comms = move |identity| {
+            let _result = identity_management::save_as_json(&path, &identity);
+            trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", identity);
+        };
+        spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
+    } else {
+        let after_comms = |_identity| {};
+        spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
+    };
     // changed by comms during initialization when using tor.
     match p2p_config.transport.transport_type {
         TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
@@ -121,11 +128,7 @@ pub async fn start(
             trace!(target: LOG_TARGET, "save chat identity file");
         },
     };
-    todo!("Fix this");
-    // if let Some(hs) = comms.hidden_service() {
-    //     identity_management::save_as_json(&config.chat_client.tor_identity_file, hs.tor_identity())?;
-    //     trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", hs.tor_identity());
-    // }
+
     handles.register(comms);
 
     let comms = handles.expect_handle::<CommsNode>();
