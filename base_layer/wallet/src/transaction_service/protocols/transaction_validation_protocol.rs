@@ -286,13 +286,13 @@ where
             let sig = response.signature;
             if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
                 if response.location == TxLocation::Mined &&
-                    response.block_hash.is_some() &&
+                    response.best_block_hash.is_some() &&
                     response.mined_timestamp.is_some()
                 {
                     mined.push((
                         (*unconfirmed_tx).clone(),
-                        response.block_height,
-                        response.block_hash.unwrap(),
+                        response.best_block_height,
+                        response.best_block_hash.unwrap(),
                         response.confirmations,
                         response.mined_timestamp.unwrap(),
                     ));
@@ -308,13 +308,13 @@ where
             }
         }
 
-        let tip = batch_response.tip_hash.try_into()?;
+        let tip = batch_response.best_block_hash.try_into()?;
 
         Ok((
             mined,
             unmined,
             Some((
-                batch_response.height_of_longest_chain,
+                batch_response.best_block_height,
                 tip,
                 batch_response.tip_mined_timestamp,
             )),

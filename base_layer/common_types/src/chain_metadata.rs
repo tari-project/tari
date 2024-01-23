@@ -30,16 +30,16 @@ use crate::types::{BlockHash, FixedHash};
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
-    height_of_longest_chain: u64,
+    best_block_height: u64,
     /// The block hash of the current tip of the longest valid chain
-    best_block: BlockHash,
+    best_block_hash: BlockHash,
     /// The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
     /// pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
     /// was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
     /// are preserved from genesis (i.e. the database is in full archival mode).
     pruning_horizon: u64,
     /// The height of the pruning horizon. This indicates from what height a full block can be provided
-    /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+    /// (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
     /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pruned_height: u64,
     /// The total accumulated proof of work of the longest chain
@@ -50,16 +50,16 @@ pub struct ChainMetadata {
 
 impl ChainMetadata {
     pub fn new(
-        height: u64,
-        hash: BlockHash,
+        best_block_height: u64,
+        best_block_hash: BlockHash,
         pruning_horizon: u64,
         pruned_height: u64,
         accumulated_difficulty: U256,
         timestamp: u64,
     ) -> ChainMetadata {
         ChainMetadata {
-            height_of_longest_chain: height,
-            best_block: hash,
+            best_block_height,
+            best_block_hash,
             pruning_horizon,
             pruned_height,
             accumulated_difficulty,
@@ -69,8 +69,8 @@ impl ChainMetadata {
 
     pub fn empty() -> ChainMetadata {
         ChainMetadata {
-            height_of_longest_chain: 0,
-            best_block: FixedHash::zero(),
+            best_block_height: 0,
+            best_block_hash: FixedHash::zero(),
             pruning_horizon: 0,
             pruned_height: 0,
             accumulated_difficulty: 0.into(),
@@ -117,12 +117,12 @@ impl ChainMetadata {
     }
 
     /// Returns the height of longest chain.
-    pub fn height_of_longest_chain(&self) -> u64 {
-        self.height_of_longest_chain
+    pub fn best_block_height(&self) -> u64 {
+        self.best_block_height
     }
 
     /// The height of the pruning horizon. This indicates from what height a full block can be provided
-    /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+    /// (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
     /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pub fn pruned_height(&self) -> u64 {
         self.pruned_height
@@ -132,8 +132,8 @@ impl ChainMetadata {
         self.accumulated_difficulty
     }
 
-    pub fn best_block(&self) -> &BlockHash {
-        &self.best_block
+    pub fn best_block_hash(&self) -> &BlockHash {
+        &self.best_block_hash
     }
 
     pub fn timestamp(&self) -> u64 {
@@ -143,8 +143,8 @@ impl ChainMetadata {
 
 impl Display for ChainMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let height = self.height_of_longest_chain;
-        let best_block = self.best_block;
+        let height = self.best_block_height;
+        let best_block = self.best_block_hash;
         let accumulated_difficulty = self.accumulated_difficulty;
         writeln!(f, "Height of longest chain: {}", height)?;
         writeln!(f, "Total accumulated difficulty: {}", accumulated_difficulty)?;

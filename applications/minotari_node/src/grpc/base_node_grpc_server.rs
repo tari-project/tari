@@ -379,7 +379,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal(err.to_string()),
                 ));
             },
-            Ok(data) => data.height_of_longest_chain(),
+            Ok(data) => data.best_block_height(),
         };
 
         let sorting: Sorting = request.sorting();

@@ -133,9 +133,9 @@ fn test_store_and_retrieve_block() {
     let hash = blocks[0].hash();
     // Check the metadata
     let metadata = db.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 0);
+    assert_eq!(metadata.best_block_height(), 0);
     assert_eq!(metadata.best_block(), hash);
-    assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain()), 0);
+    assert_eq!(metadata.horizon_block(metadata.best_block_height()), 0);
     // Fetch the block back
     let block0 = db.fetch_block(0, true).unwrap();
     assert_eq!(block0.confirmations(), 1);
@@ -151,7 +151,7 @@ fn test_add_multiple_blocks() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_store_with_consensus(consensus_manager.clone());
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 0);
+    assert_eq!(metadata.best_block_height(), 0);
     let block0 = store.fetch_block(0, true).unwrap();
     assert_eq!(metadata.best_block(), block0.hash());
     // Add another block
@@ -165,7 +165,7 @@ fn test_add_multiple_blocks() {
     .unwrap();
     let metadata = store.get_chain_metadata().unwrap();
     let hash = block1.hash();
-    assert_eq!(metadata.height_of_longest_chain(), 1);
+    assert_eq!(metadata.best_block_height(), 1);
     assert_eq!(metadata.best_block(), hash);
     // Adding blocks is idempotent
     assert_eq!(
@@ -174,7 +174,7 @@ fn test_add_multiple_blocks() {
     );
     // Check the metadata
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 1);
+    assert_eq!(metadata.best_block_height(), 1);
     assert_eq!(metadata.best_block(), hash);
 }
 
@@ -309,15 +309,15 @@ fn test_rewind_past_horizon_height() {
     let _block4 = append_block(&store, &block3, vec![], &consensus_manager, Difficulty::min()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 4);
+    assert_eq!(metadata.best_block_height(), 4);
     // we should not be able to rewind to the future
-    assert!(store.rewind_to_height(metadata.height_of_longest_chain() + 1).is_err());
+    assert!(store.rewind_to_height(metadata.best_block_height() + 1).is_err());
     let horizon_height = metadata.pruned_height();
     assert_eq!(horizon_height, 2);
     // rewinding past pruning horizon should set us to height 0 so we can resync from gen block.
     assert!(store.rewind_to_height(horizon_height - 1).is_ok());
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 0);
+    assert_eq!(metadata.best_block_height(), 0);
 }
 
 #[test]
@@ -366,7 +366,7 @@ fn test_handle_tip_reorg_with_zero_conf() {
         &consensus_manager
     )
     .is_ok());
-    assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 3);
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 3);
 
     // Create Forked Chain
 
@@ -406,7 +406,7 @@ fn test_handle_tip_reorg_with_zero_conf() {
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
     assert!(store.fetch_orphan(*orphan_blocks[2].hash()).is_err());
     assert!(store.fetch_orphan(*blocks[2].hash()).is_ok());
-    assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 2);
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 2);
 
     // Block B3
     let txs = vec![
@@ -470,7 +470,7 @@ fn test_handle_tip_reorg_with_zero_conf() {
     } else {
         panic!();
     }
-    assert_eq!(store.get_chain_metadata().unwrap().height_of_longest_chain(), 5);
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 5);
 }
 #[test]
 #[allow(clippy::too_many_lines)]
@@ -1374,7 +1374,7 @@ fn test_restore_metadata_and_pruning_horizon_update() {
         db.add_block(block1.to_arc_block()).unwrap();
         block_hash = *block1.hash();
         let metadata = db.get_chain_metadata().unwrap();
-        assert_eq!(metadata.height_of_longest_chain(), 1);
+        assert_eq!(metadata.best_block_height(), 1);
         assert_eq!(metadata.best_block(), &block_hash);
         assert_eq!(metadata.pruning_horizon(), 1000);
     }
@@ -1394,7 +1394,7 @@ fn test_restore_metadata_and_pruning_horizon_update() {
         .unwrap();
 
         let metadata = db.get_chain_metadata().unwrap();
-        assert_eq!(metadata.height_of_longest_chain(), 1);
+        assert_eq!(metadata.best_block_height(), 1);
         assert_eq!(metadata.best_block(), &block_hash);
         assert_eq!(metadata.pruning_horizon(), 2000);
     }
@@ -1412,7 +1412,7 @@ fn test_restore_metadata_and_pruning_horizon_update() {
         .unwrap();
 
         let metadata = db.get_chain_metadata().unwrap();
-        assert_eq!(metadata.height_of_longest_chain(), 1);
+        assert_eq!(metadata.best_block_height(), 1);
         assert_eq!(metadata.best_block(), &block_hash);
         assert_eq!(metadata.pruning_horizon(), 900);
     }
@@ -1439,7 +1439,7 @@ fn test_invalid_block() {
     let mut outputs = vec![vec![output]];
     let block0_hash = *blocks[0].hash();
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 0);
+    assert_eq!(metadata.best_block_height(), 0);
     assert_eq!(metadata.best_block(), &block0_hash);
     assert_eq!(store.fetch_block(0, true).unwrap().block().hash(), block0_hash);
     assert!(store.fetch_block(1, true).is_err());
@@ -1464,7 +1464,7 @@ fn test_invalid_block() {
     );
     let block1_hash = *blocks[1].hash();
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 1);
+    assert_eq!(metadata.best_block_height(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
     assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
     assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
@@ -1487,7 +1487,7 @@ fn test_invalid_block() {
         .unwrap_err()
     );
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 1);
+    assert_eq!(metadata.best_block_height(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
     assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
     assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
@@ -1511,7 +1511,7 @@ fn test_invalid_block() {
     );
     let block2_hash = blocks[2].hash();
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 2);
+    assert_eq!(metadata.best_block_height(), 2);
     assert_eq!(metadata.best_block(), block2_hash);
     assert_eq!(store.fetch_block(0, true).unwrap().hash(), &block0_hash);
     assert_eq!(store.fetch_block(1, true).unwrap().hash(), &block1_hash);
@@ -1934,7 +1934,7 @@ fn test_fails_validation() {
     unpack_enum!(ValidationError::CustomError(_s) = source);
 
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 0);
+    assert_eq!(metadata.best_block_height(), 0);
 }
 
 #[test]
@@ -1974,7 +1974,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.pruned_height(), 2);
-    assert_eq!(metadata.height_of_longest_chain(), 5);
+    assert_eq!(metadata.best_block_height(), 5);
     assert_eq!(metadata.pruning_horizon(), 3);
 }
 

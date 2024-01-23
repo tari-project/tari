@@ -4058,7 +4058,7 @@ unsigned long long basenode_state_get_pruning_horizon(struct TariBaseNodeState *
  *
  * ## Returns
  * `c_ulonglong` - The height of the pruning horizon. This indicates from what height a full block can be provided
- * (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+ * (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
  * provided. Archival nodes wil always have an `pruned_height` of zero.
  *
  * # Safety

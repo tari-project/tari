@@ -100,8 +100,8 @@ async fn inbound_get_metadata() {
     if let Ok(NodeCommsResponse::ChainMetadata(received_metadata)) =
         inbound_nch.handle_request(NodeCommsRequest::GetChainMetadata).await
     {
-        assert_eq!(received_metadata.height_of_longest_chain(), 0);
-        assert_eq!(received_metadata.best_block(), &block.hash());
+        assert_eq!(received_metadata.best_block_height(), 0);
+        assert_eq!(received_metadata.best_block_hash(), &block.hash());
         assert_eq!(received_metadata.pruning_horizon(), 0);
     } else {
         panic!();

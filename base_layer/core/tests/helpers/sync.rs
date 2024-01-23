@@ -169,7 +169,7 @@ fn delete_block(txn: &mut DbTransaction, node: &NodeInterfaces, blocks: &[ChainB
         blocks[index + 1].height(),
         blocks[index + 1].accumulated_data().hash,
         blocks[index + 1].accumulated_data().total_accumulated_difficulty,
-        *node.blockchain_db.get_chain_metadata().unwrap().best_block(),
+        *node.blockchain_db.get_chain_metadata().unwrap().best_block_hash(),
         blocks[index + 1].to_chain_header().timestamp(),
     );
 }

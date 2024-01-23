@@ -144,7 +144,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
             let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
             let metadata = chain_tip.metadata.unwrap();
 
-            nodes_at_height.insert(name, (metadata.height_of_longest_chain, metadata.best_block));
+            nodes_at_height.insert(name, (metadata.best_block_height, metadata.best_block_hash));
         }
 
         if nodes_at_height
@@ -182,7 +182,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
             let mut client = world.get_node_client(name).await.unwrap();
 
             let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-            let chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
+            let chain_hgt = chain_tip.metadata.unwrap().best_block_height;
 
             nodes_at_height.insert(name, chain_hgt);
         }
@@ -208,7 +208,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
 
     for _ in 0..=(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-        chain_hgt = chain_tip.metadata.unwrap().height_of_longest_chain;
+        chain_hgt = chain_tip.metadata.unwrap().best_block_height;
 
         if chain_hgt >= height {
             return;
@@ -506,7 +506,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
         .into_inner()
         .metadata
         .unwrap()
-        .height_of_longest_chain;
+        .best_block_height;
 
     let mut base_node_client = world.get_node_client(&base_node).await.unwrap();
     let mut current_height = 0;
@@ -521,7 +521,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
                 .into_inner()
                 .metadata
                 .unwrap()
-                .height_of_longest_chain;
+                .best_block_height;
             if current_height >= expected_height {
                 break 'inner;
             }
@@ -536,7 +536,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
             .into_inner()
             .metadata
             .unwrap()
-            .height_of_longest_chain;
+            .best_block_height;
 
         current_height = base_node_client
             .get_tip_info(req.clone())
@@ -545,7 +545,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
             .into_inner()
             .metadata
             .unwrap()
-            .height_of_longest_chain;
+            .best_block_height;
 
         if current_height == expected_height {
             break 'outer;
@@ -644,7 +644,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
 
     // No meddling
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-    let current_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    let current_height = chain_tip.metadata.unwrap().best_block_height;
     let script_key_id = &world.script_key_id().await;
     let block = mine_block_before_submit(
         &mut client,
@@ -658,7 +658,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     let _sumbmit_res = client.submit_block(block).await.unwrap();
 
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-    let new_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    let new_height = chain_tip.metadata.unwrap().best_block_height;
     assert_eq!(
         current_height + 1,
         new_height,
@@ -736,7 +736,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP * 11) {
         let tip_info = client.get_tip_info(Empty {}).await.unwrap().into_inner();
         let metadata = tip_info.metadata.unwrap();
-        longest_chain = metadata.height_of_longest_chain;
+        longest_chain = metadata.best_block_height;
 
         if tip_info.initial_sync_achieved {
             return;

@@ -417,7 +417,7 @@ async fn validate_tip(
         .get_tip_info(minotari_app_grpc::tari_rpc::Empty {})
         .await?
         .into_inner();
-    let longest_height = tip.clone().metadata.unwrap().height_of_longest_chain;
+    let longest_height = tip.clone().metadata.unwrap().best_block_height;
     if let Some(height) = mine_until_height {
         if longest_height >= height {
             return Err(MinerError::MineUntilHeightReached(height));

@@ -198,10 +198,7 @@ impl TransactionsTab {
             .collect();
 
         let base_node_state = app_state.get_base_node_state();
-        let chain_height = base_node_state
-            .chain_metadata
-            .as_ref()
-            .map(|cm| cm.height_of_longest_chain());
+        let chain_height = base_node_state.chain_metadata.as_ref().map(|cm| cm.best_block_height());
 
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();

@@ -497,8 +497,8 @@ async fn local_get_metadata() {
         .unwrap();
 
     let metadata = node.local_nci.get_metadata().await.unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 2);
-    assert_eq!(metadata.best_block(), block2.hash());
+    assert_eq!(metadata.best_block_height(), 2);
+    assert_eq!(metadata.best_block_hash(), block2.hash());
 
     node.shutdown().await;
 }
