@@ -208,7 +208,8 @@ impl AppState {
             let current = self.get_selected_base_node();
             let list = self.get_base_node_list().clone();
             let mut index: usize = list.iter().position(|(_, p)| p == current).unwrap_or_default();
-            if !list.is_empty() {
+            if !list.is_empty()
+            {
                 if index == list.len() - 1 {
                     index = 0;
                 } else {
