@@ -18,7 +18,7 @@ name: Build Matrix of Binaries
 
 env:
   TBN_FILENAME: "tari_suite"
-  TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
+  TBN_BUNDLE_ID_BASE: "com.tarilabs.pkg"
   toolchain: nightly-2023-06-04
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
@@ -52,7 +52,7 @@ jobs:
           # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
           # matrix_selection=$( jq -c '.[] | select( ."name" == "macos-arm64" )' ${{ env.matrix-json-file }} )
           #
-          # buid select target images - build_enabled
+          # build select target images - build_enabled
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
           #
           # Setup the json build matrix
@@ -310,43 +310,43 @@ jobs:
           echo "${distDirPKG}"
           echo "distDirPKG=${distDirPKG}" >> $GITHUB_ENV
           TBN_Temp=${{ env.TBN_FILENAME }}
-          TBN_BUNDLEID_VALID_NAME=$(echo "${TBN_Temp//_/-}")
+          TBN_BUNDLE_ID_VALID_NAME=$(echo "${TBN_Temp//_/-}")
           # Strip apple-darwin
           TBN_ARCH=$(echo "${${{ matrix.builds.target }}//-apple-darwin/}")
           pkgbuild --root /tmp/tari_testnet \
-            --identifier "${{ env.TBN_BUNDLEID_BASE }}.$TBN_BUNDLEID_VALID_NAME" \
+            --identifier "${{ env.TBN_BUNDLE_ID_BASE }}.${TBN_BUNDLE_ID_VALID_NAME}" \
             --version "${TARI_VERSION}" \
             --install-location "/tmp/tari" \
             --scripts "/tmp/tari_testnet/scripts" \
-            --sign "Developer ID Installer: $MACOS_INSTALLER_ID" \
+            --sign "Developer ID Installer: ${MACOS_INSTALLER_ID}" \
             "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
           echo -e "Submitting to Apple...\n\n"
           xcrun altool --notarize-app \
-            --primary-bundle-id "${{ env.TBN_BUNDLEID_BASE }}.$TBN_BUNDLEID_VALID_NAME" \
-            --username "$MACOS_NOTARIZE_USERNAME" --password "$MACOS_NOTARIZE_PASSWORD" \
-            --asc-provider "$MACOS_ASC_PROVIDER" \
+            --primary-bundle-id "${{ env.TBN_BUNDLE_ID_BASE }}.${TBN_BUNDLE_ID_VALID_NAME}" \
+            --username "${MACOS_NOTARIZE_USERNAME}" --password "${MACOS_NOTARIZE_PASSWORD}" \
+            --asc-provider "${MACOS_ASC_PROVIDER}" \
             --file "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg" &> notarisation.result
           requestUUID=`grep RequestUUID notarisation.result | cut -d" " -f 3`
-          echo $requestUUID
-          if [[ $requestUUID == "" ]]; then
+          echo ${requestUUID}
+          if [[ ${requestUUID} == "" ]]; then
             echo "could not upload for notarization"
             exit 1
           else
-            echo "Notarization RequestUUID: $requestUUID"
+            echo "Notarization RequestUUID: ${requestUUID}"
           fi
           echo -e "\n\nChecking result of notarisation..."
           request_status="in progress"
-          while [[ "$request_status" == "in progress" ]]; do
+          while [[ "${request_status}" == "in progress" ]]; do
             echo -n "waiting... "
             sleep 10
-            request_status=$(xcrun altool --notarization-info $requestUUID --username "$MACOS_NOTARIZE_USERNAME" --password "$MACOS_NOTARIZE_PASSWORD" 2>&1)
-            echo "$request_status"
-            request_status=$(echo "$request_status" | awk -F ': ' '/Status:/ { print $2; }' )
-            echo "$request_status"
+            request_status=$(xcrun altool --notarization-info ${requestUUID} --username "${MACOS_NOTARIZE_USERNAME}" --password "${MACOS_NOTARIZE_PASSWORD}" 2>&1)
+            echo "${request_status}"
+            request_status=$(echo "${request_status}" | awk -F ': ' '/Status:/ { print $2; }' )
+            echo "${request_status}"
           done
-          echo "$request_status"
-          if [[ $request_status != "success" ]]; then
-            echo "## could not notarize - $request_status - ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
+          echo "${request_status}"
+          if [[ ${request_status} != "success" ]]; then
+            echo "## could not notarize - ${request_status} - ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
             exit 1
           else
             echo -e "\nStapling package...${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg\n"
@@ -381,7 +381,7 @@ jobs:
           ${{ env.SHARUN }} "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Show the shasum"
           cat "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
-          echo "Checkum verification archive is "
+          echo "Checksum verification archive is "
           ${{ env.SHARUN }} --check "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Artifact upload for Windows installer
@@ -407,7 +407,7 @@ jobs:
           ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
           echo "Show the shasum"
           cat "${{ env.BINFILE }}.zip.sha256"
-          echo "Checkum verification archive is "
+          echo "Checksum verification archive is "
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for Archive
