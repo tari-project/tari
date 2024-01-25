@@ -296,6 +296,10 @@ impl CommsNode {
         self.connection_manager_requester.get_event_subscription()
     }
 
+    pub fn connection_manager_requester(&mut self)-> &mut ConnectionManagerRequester{
+        &mut self.connection_manager_requester
+    }
+
     /// Get a subscription to `ConnectivityEvent`s
     pub fn subscribe_connectivity_events(&self) -> ConnectivityEventRx {
         self.connectivity_requester.get_event_subscription()

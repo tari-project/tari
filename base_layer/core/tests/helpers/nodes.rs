@@ -445,15 +445,16 @@ async fn setup_base_node_services(
         blockchain_db.clone().into(),
         base_node_service,
     ));
-    let comms = comms
+    let mut comms = comms
         .add_protocol_extension(rpc_server)
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
     // Set the public address for tests
+    let address = comms.connection_manager_requester().wait_until_listening().await.unwrap();
     comms
         .node_identity()
-        .add_public_address(comms.listening_address().clone());
+        .add_public_address(address.bind_address().clone());
 
     let outbound_nci = handles.expect_handle::<OutboundNodeCommsInterface>();
     let local_nci = handles.expect_handle::<LocalNodeCommsInterface>();

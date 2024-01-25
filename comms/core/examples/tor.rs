@@ -87,16 +87,14 @@ async fn run() -> Result<(), Error> {
 
     println!("Comms nodes started!");
     println!(
-        "Node 1 is '{}' with address '{:?}' (local_listening_addr='{}')",
+        "Node 1 is '{}' with address '{:?}')",
         node_identity1.node_id().short_str(),
         node_identity1.public_addresses(),
-        comms_node1.listening_address(),
     );
     println!(
-        "Node 2 is '{}' with address '{:?}' (local_listening_addr='{}')",
+        "Node 2 is '{}' with address '{:?}')",
         node_identity2.node_id().short_str(),
         node_identity2.public_addresses(),
-        comms_node2.listening_address(),
     );
 
     // Let's add node 2 as a peer to node 1
