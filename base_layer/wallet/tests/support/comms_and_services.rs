@@ -59,11 +59,13 @@ pub async fn setup_comms_services(
     .unwrap();
 
     let mut comms = comms.spawn_with_transport(MemoryTransport).await.unwrap();
-    let address = comms.connection_manager_requester().wait_until_listening().await.unwrap();
+    let address = comms
+        .connection_manager_requester()
+        .wait_until_listening()
+        .await
+        .unwrap();
     // Set the public address for tests
-    comms
-        .node_identity()
-        .add_public_address(address.bind_address().clone());
+    comms.node_identity().add_public_address(address.bind_address().clone());
 
     (comms, dht)
 }

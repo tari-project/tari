@@ -259,7 +259,7 @@ where
             .expect("P2pInitializer was not added to the stack");
         let comms = if config.p2p.transport.transport_type == TransportType::Tor {
             let wallet_db = wallet_database.clone();
-            let node_id = comms.node_identity().clone();
+            let node_id = comms.node_identity();
             let after_comms = move |identity: TorIdentity| {
                 let address: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
                     .parse()

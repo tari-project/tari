@@ -50,7 +50,11 @@ async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, RpcServerHandle) {
         .await
         .unwrap();
 
-    let address = comms.connection_manager_requester().wait_until_listening().await.unwrap();
+    let address = comms
+        .connection_manager_requester()
+        .wait_until_listening()
+        .await
+        .unwrap();
     comms
         .node_identity()
         .set_public_addresses(vec![address.bind_address().clone()]);

@@ -86,6 +86,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
 impl<B> BaseNodeBootstrapper<'_, B>
 where B: BlockchainBackend + 'static
 {
+    #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
         let mut base_node_config = self.app_config.base_node.clone();
         let mut p2p_config = self.app_config.base_node.p2p.clone();
@@ -174,7 +175,7 @@ where B: BlockchainBackend + 'static
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
             let path = base_node_config.tor_identity_file.clone();
-            let node_id = comms.node_identity().clone();
+            let node_id = comms.node_identity();
             let after_comms = move |identity: TorIdentity| {
                 let _result = identity_management::save_as_json(&path, &identity);
                 trace!(target: LOG_TARGET, "resave the tor identity {:?}", identity);
@@ -182,7 +183,7 @@ where B: BlockchainBackend + 'static
                     .parse()
                     .expect("Should be able to create address");
                 if !node_id.public_addresses().contains(&address) {
-                    node_id.add_public_address(address.clone());
+                    node_id.add_public_address(address);
                 }
             };
             initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await

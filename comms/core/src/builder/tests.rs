@@ -107,7 +107,11 @@ async fn spawn_node(
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
-    let address = comms_node.connection_manager_requester().wait_until_listening().await.unwrap();
+    let address = comms_node
+        .connection_manager_requester()
+        .wait_until_listening()
+        .await
+        .unwrap();
     unpack_enum!(Protocol::Memory(_port) = address.bind_address().iter().next().unwrap());
 
     (comms_node, inbound_rx, outbound_tx, messaging_events_sender)
