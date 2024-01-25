@@ -617,16 +617,16 @@ impl LMDBDatabase {
     fn input_with_output_data(
         &self,
         txn: &WriteTransaction<'_>,
-        input: &TransactionInput,
+        input: TransactionInput,
     ) -> Result<TransactionInput, ChainStorageError> {
         let input_with_output_data = match input.spent_output {
-            SpentOutput::OutputData { .. } => input.clone(),
+            SpentOutput::OutputData { .. } => input,
             SpentOutput::OutputHash(output_hash) => match self.fetch_output_in_txn(txn, output_hash.as_slice()) {
                 Ok(Some(utxo_mined_info)) => TransactionInput {
                     version: input.version,
                     spent_output: SpentOutput::create_from_output(utxo_mined_info.output),
-                    input_data: input.input_data.clone(),
-                    script_signature: input.script_signature.clone(),
+                    input_data: input.input_data,
+                    script_signature: input.script_signature,
                 },
                 Ok(None) => {
                     error!(
@@ -659,7 +659,7 @@ impl LMDBDatabase {
         height: u64,
         header_timestamp: u64,
         header_hash: &HashOutput,
-        input: &TransactionInput,
+        input: TransactionInput,
     ) -> Result<(), ChainStorageError> {
         let input_with_output_data = self.input_with_output_data(txn, input)?;
         lmdb_delete(
@@ -1235,7 +1235,7 @@ impl LMDBDatabase {
         }
 
         // unique_id_index expects inputs to be inserted before outputs
-        for input in &inputs {
+        for input in inputs {
             let input_with_output_data = self.input_with_output_data(txn, input)?;
             let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
             match output_smt.delete(&smt_key)? {
@@ -1266,7 +1266,7 @@ impl LMDBDatabase {
                 current_header_at_height.height,
                 current_header_at_height.timestamp.as_u64(),
                 &block_hash,
-                &input_with_output_data,
+                input_with_output_data,
             )?;
         }
 
