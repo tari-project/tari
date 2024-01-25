@@ -125,23 +125,18 @@ impl HiddenServiceController {
     }
 
     pub async fn initialize_transport(&mut self) -> Result<SocksTransport, HiddenServiceControllerError> {
-        dbg!("init");
-        let con = self.connect_and_auth().await;
-        dbg!(con.is_ok());
-        con?;
+        self.connect_and_auth().await?;
 
         let socks_addr = self.get_socks_address().await?;
         let mut proxied_addr = self.proxied_address();
         if proxied_addr.ends_with(&multiaddr!(Tcp(0u16))) {
-            if let Some(Protocol::Tcp(port)) = socks_addr.iter().last(){
+            if let Some(Protocol::Tcp(port)) = socks_addr.iter().last() {
                 proxied_addr.pop();
                 proxied_addr.push(Protocol::Tcp(port));
             }
             self.set_proxied_addr(&proxied_addr);
         }
-        dbg!("init_done");
-        let result = self.create_hidden_service_from_identity().await;
-        dbg!(result.is_ok());
+        self.create_hidden_service_from_identity().await?;
         let socks_addr = self.get_socks_address().await?;
         Ok(SocksTransport::new(SocksConfig {
             proxy_address: socks_addr,

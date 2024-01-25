@@ -29,7 +29,7 @@ pub use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
-use tari_comms::{peer_manager::Peer,  CommsNode, UnspawnedCommsNode};
+use tari_comms::{peer_manager::Peer, tor::TorIdentity, CommsNode, UnspawnedCommsNode};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
 use tari_p2p::{
     comms_connector::pubsub_connector,
@@ -111,9 +111,16 @@ pub async fn start(
     }
     let comms = if p2p_config.transport.transport_type == TransportType::Tor {
         let path = config.chat_client.tor_identity_file.clone();
-        let after_comms = move |identity| {
+        let node_id = comms.node_identity().clone();
+        let after_comms = move |identity: TorIdentity| {
             let _result = identity_management::save_as_json(&path, &identity);
+            let address: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
+                .parse()
+                .expect("Should be able to create address");
             trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", identity);
+            if !node_id.public_addresses().contains(&address) {
+                node_id.add_public_address(address.clone());
+            }
         };
         spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
     } else {

@@ -208,8 +208,7 @@ impl AppState {
             let current = self.get_selected_base_node();
             let list = self.get_base_node_list().clone();
             let mut index: usize = list.iter().position(|(_, p)| p == current).unwrap_or_default();
-            if !list.is_empty()
-            {
+            if !list.is_empty() {
                 if index == list.len() - 1 {
                     index = 0;
                 } else {
@@ -897,12 +896,12 @@ impl AppStateInner {
         });
 
         self.data.contacts = ui_contacts;
+        self.refresh_network_id().await?;
         self.updated = true;
         Ok(())
     }
 
     pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
-        // let db_burnt_proofs = self.wallet.db.get_burnt_proofs()?;
         let db_burnt_proofs = self.wallet.db.fetch_burnt_proofs()?;
         let mut ui_proofs: Vec<UiBurntProof> = vec![];
 
@@ -922,7 +921,43 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
+        let wallet_id = WalletIdentity::new(self.wallet.comms.node_identity(), self.wallet.network.as_network());
+        let eid = wallet_id.address.to_emoji_string();
+        let qr_link = format!(
+            "tari://{}/transactions/send?tariAddress={}",
+            wallet_id.network,
+            wallet_id.address.to_hex()
+        );
+        let code = QrCode::new(qr_link).unwrap();
+        let image = code
+            .render::<unicode::Dense1x2>()
+            .dark_color(unicode::Dense1x2::Dark)
+            .light_color(unicode::Dense1x2::Light)
+            .build()
+            .lines()
+            .skip(1)
+            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
+        let identity = MyIdentity {
+            tari_address: wallet_id.address.to_hex(),
+            network_address: wallet_id
+                .node_identity
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            emoji_id: eid,
+            qr_code: image,
+            node_id: wallet_id.node_identity.node_id().to_string(),
+        };
+        self.data.my_identity = identity;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
+        self.refresh_network_id().await?;
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());

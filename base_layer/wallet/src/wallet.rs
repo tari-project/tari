@@ -259,17 +259,19 @@ where
             .expect("P2pInitializer was not added to the stack");
         let comms = if config.p2p.transport.transport_type == TransportType::Tor {
             let wallet_db = wallet_database.clone();
-
+            let node_id = comms.node_identity().clone();
             let after_comms = move |identity: TorIdentity| {
-                dbg!(&identity);
-                let add: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
+                let address: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
                     .parse()
-                    .expect("Should be able to create memory address");
+                    .expect("Should be able to create address");
                 let _result = wallet_db.set_tor_identity(identity);
-                // Persist the comms node address and features after it has been spawned to capture any modifications made
-                // during comms startup. In the case of a Tor Transport the public address could have been generated
-                let _result = wallet_db.set_node_address(add
-                );
+                if !node_id.public_addresses().contains(&address) {
+                    node_id.add_public_address(address.clone());
+                }
+                // Persist the comms node address and features after it has been spawned to capture any modifications
+                // made during comms startup. In the case of a Tor Transport the public address could
+                // have been generated
+                let _result = wallet_db.set_node_address(address);
             };
             initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
         } else {
@@ -299,7 +301,6 @@ where
                 error!(target: LOG_TARGET, "{:?}", e);
                 e
             })?;
-
 
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
