@@ -1,1 +1,10 @@
-@stringhandler @CjS77 @sdbondi
+# CI/CD-related files require a review by the devops team
+.github/**/* @tari-project/devops
+scripts/**/* @tari-project/devops
+CODEOWNERS @tari-project/devops
+
+# Consensus code requires approvals by lead maintainers
+base_layer/core/src/consensus/**/* @tari-project/lead-maintainers
+base_layer/core/src/**/* @tari-project/tari-core-developers
+base_layer/key_manager/src/**/* @tari-project/tari-core-developers
+base_layer/wallet/src/**/* @tari-project/tari-core-developers
