@@ -18,7 +18,7 @@ name: Build Matrix of Binaries
 
 env:
   TBN_FILENAME: "tari_suite"
-  TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
+  TBN_BUNDLE_ID_BASE: "com.tarilabs.pkg"
   toolchain: nightly-2023-06-04
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
@@ -26,9 +26,6 @@ env:
   CARGO: cargo
   # CARGO_OPTIONS: "--verbose"
   CARGO_OPTIONS: "--release"
-  # Needed for S3 as a default upload location
-  TARI_NETWORK_DIR: testnet
-  S3_DEST_OVERRIDE: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -55,7 +52,7 @@ jobs:
           # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
           # matrix_selection=$( jq -c '.[] | select( ."name" == "macos-arm64" )' ${{ env.matrix-json-file }} )
           #
-          # buid select target images - build_enabled
+          # build select target images - build_enabled
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
           #
           # Setup the json build matrix
@@ -84,10 +81,12 @@ jobs:
   builds:
     name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }}
     needs: matrix-prep
+    outputs:
+      TARI_NETWORK_DIR: ${{ steps.set-tari-network.outputs.TARI_NETWORK_DIR }}
+      TARI_VERSION: ${{ steps.set-tari-vars.outputs.TARI_VERSION }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix-prep.outputs.matrix) }}
-
     runs-on: ${{ matrix.builds.runs-on }}
 
     steps:
@@ -97,6 +96,7 @@ jobs:
           submodules: recursive
 
       - name: Declare TestNet for tags
+        id: set-tari-network
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
@@ -105,13 +105,17 @@ jobs:
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
           echo "TARI_NETWORK_DIR=${TARI_NETWORK_DIR}" >> $GITHUB_ENV
+          echo "TARI_NETWORK_DIR=${TARI_NETWORK_DIR}" >> $GITHUB_OUTPUT
 
       - name: Declare Global Variables 4 GHA ${{ github.event_name }}
-        id: vars
+        id: set-tari-vars
         shell: bash
         run: |
           echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          TARI_VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
+          echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_ENV
+          echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Scheduled Destination Folder Override
         if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
@@ -244,10 +248,7 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
-          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
-          BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
+          BINFILE="${TBN_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
           echo "MTS_SOURCE=$(pwd)" >> $GITHUB_ENV
@@ -309,56 +310,56 @@ jobs:
           echo "${distDirPKG}"
           echo "distDirPKG=${distDirPKG}" >> $GITHUB_ENV
           TBN_Temp=${{ env.TBN_FILENAME }}
-          TBN_BUNDLEID_VALID_NAME=$(echo "${TBN_Temp//_/-}")
+          TBN_BUNDLE_ID_VALID_NAME=$(echo "${TBN_Temp//_/-}")
           # Strip apple-darwin
           TBN_ARCH=$(echo "${${{ matrix.builds.target }}//-apple-darwin/}")
           pkgbuild --root /tmp/tari_testnet \
-            --identifier "${{ env.TBN_BUNDLEID_BASE }}.$TBN_BUNDLEID_VALID_NAME" \
-            --version "$VERSION" \
+            --identifier "${{ env.TBN_BUNDLE_ID_BASE }}.${TBN_BUNDLE_ID_VALID_NAME}" \
+            --version "${TARI_VERSION}" \
             --install-location "/tmp/tari" \
             --scripts "/tmp/tari_testnet/scripts" \
-            --sign "Developer ID Installer: $MACOS_INSTALLER_ID" \
-            "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg"
+            --sign "Developer ID Installer: ${MACOS_INSTALLER_ID}" \
+            "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
           echo -e "Submitting to Apple...\n\n"
           xcrun altool --notarize-app \
-            --primary-bundle-id "${{ env.TBN_BUNDLEID_BASE }}.$TBN_BUNDLEID_VALID_NAME" \
-            --username "$MACOS_NOTARIZE_USERNAME" --password "$MACOS_NOTARIZE_PASSWORD" \
-            --asc-provider "$MACOS_ASC_PROVIDER" \
-            --file "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" &> notarisation.result
+            --primary-bundle-id "${{ env.TBN_BUNDLE_ID_BASE }}.${TBN_BUNDLE_ID_VALID_NAME}" \
+            --username "${MACOS_NOTARIZE_USERNAME}" --password "${MACOS_NOTARIZE_PASSWORD}" \
+            --asc-provider "${MACOS_ASC_PROVIDER}" \
+            --file "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg" &> notarisation.result
           requestUUID=`grep RequestUUID notarisation.result | cut -d" " -f 3`
-          echo $requestUUID
-          if [[ $requestUUID == "" ]]; then
+          echo ${requestUUID}
+          if [[ ${requestUUID} == "" ]]; then
             echo "could not upload for notarization"
             exit 1
           else
-            echo "Notarization RequestUUID: $requestUUID"
+            echo "Notarization RequestUUID: ${requestUUID}"
           fi
           echo -e "\n\nChecking result of notarisation..."
           request_status="in progress"
-          while [[ "$request_status" == "in progress" ]]; do
+          while [[ "${request_status}" == "in progress" ]]; do
             echo -n "waiting... "
             sleep 10
-            request_status=$(xcrun altool --notarization-info $requestUUID --username "$MACOS_NOTARIZE_USERNAME" --password "$MACOS_NOTARIZE_PASSWORD" 2>&1)
-            echo "$request_status"
-            request_status=$(echo "$request_status" | awk -F ': ' '/Status:/ { print $2; }' )
-            echo "$request_status"
+            request_status=$(xcrun altool --notarization-info ${requestUUID} --username "${MACOS_NOTARIZE_USERNAME}" --password "${MACOS_NOTARIZE_PASSWORD}" 2>&1)
+            echo "${request_status}"
+            request_status=$(echo "${request_status}" | awk -F ': ' '/Status:/ { print $2; }' )
+            echo "${request_status}"
           done
-          echo "$request_status"
-          if [[ $request_status != "success" ]]; then
-            echo "## could not notarize - $request_status - ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg"
+          echo "${request_status}"
+          if [[ ${request_status} != "success" ]]; then
+            echo "## could not notarize - ${request_status} - ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
             exit 1
           else
-            echo -e "\nStapling package...${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg\n"
-            xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg"
+            echo -e "\nStapling package...${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg\n"
+            xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
           fi
           cd ${distDirPKG}
           ls -la
           echo "Compute pkg shasum"
-          ${SHARUN} "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" \
-            >> "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
-          cat "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
+          ${SHARUN} "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg" \
+            >> "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg.sha256"
+          cat "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg.sha256"
           echo "Checksum verification for pkg is "
-          ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
+          ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg.sha256"
           cp -v *.pkg* ${{ env.MTS_SOURCE }}
 
       - name: Artifact upload for macOS pkg
@@ -366,22 +367,22 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg
-          path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}*.pkg*"
+          name: ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg
+          path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}*.pkg*"
 
       - name: Build the Windows installer
         shell: cmd
         if: startsWith(runner.os,'Windows')
         run: |
           cd buildtools
-          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TBN_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
+          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TBN_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
           cd Output
           echo "Compute archive shasum"
-          ${{ env.SHARUN }} "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          ${{ env.SHARUN }} "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Show the shasum"
-          cat "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
-          echo "Checkum verification archive is "
-          ${{ env.SHARUN }} --check "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          cat "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          echo "Checksum verification archive is "
+          ${{ env.SHARUN }} --check "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Artifact upload for Windows installer
         uses: actions/upload-artifact@v4
@@ -406,7 +407,7 @@ jobs:
           ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
           echo "Show the shasum"
           cat "${{ env.BINFILE }}.zip.sha256"
-          echo "Checkum verification archive is "
+          echo "Checksum verification archive is "
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for Archive
@@ -465,76 +466,90 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*.zip*"
 
-      - name: Artifact cleanup for diag-utils
-        continue-on-error: true
-        shell: bash
-        run: |
-          rm -vRf "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/"
-
-      - name: Artifact Windows Installer for S3
-        if: startsWith(runner.os,'Windows')
-        continue-on-error: true
-        shell: bash
-        run: |
-          if [ -d "${{ github.workspace }}/buildtools/Output/" ]; then
-            echo "Coping Windows installer ..."
-            cp -v "${{ github.workspace }}/buildtools/Output/"* \
-              "${{ github.workspace }}${{ env.TBN_DIST }}"
-          fi
-
-      - name: Sync dist to S3 - Bash
-        continue-on-error: true # Don't break if s3 upload fails
-        if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          DEST_DIR: "${{ env.S3_DEST_OVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
-          S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*installer.exe*"'
-        shell: bash
-        run: |
-          echo "Starting upload ... ${{ env.MTS_SOURCE }}"
-          ls -al ${{ env.MTS_SOURCE }}
-
-          aws --version
-
-          aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.MTS_SOURCE }}" \
-            s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
-            ${{ env.S3OPTIONS }}
-
-          if [[ "${{ github.ref }}" =~ refs\/tags\/v* ]]; then
-            echo "Copy tags to latest s3"
-            aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-              "${{ env.MTS_SOURCE }}" \
-              s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
-              ${{ env.S3OPTIONS }}
-
-            aws s3 rm --region ${{ secrets.AWS_REGION }} \
-              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
-              --recursive --include "*"
-
-            aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-              "${{ env.MTS_SOURCE }}" \
-              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
-              ${{ env.S3OPTIONS }}
-          fi
-
   create-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     needs: builds
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    env:
+      TARI_NETWORK_DIR: ${{ needs.builds.outputs.TARI_NETWORK_DIR }}
+      TARI_VERSION: ${{ needs.builds.outputs.TARI_VERSION }}
+
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v4
+        with:
+          path: ${{ env.TBN_FILENAME }}
+          pattern: "${{ env.TBN_FILENAME }}*"
+          merge-multiple: true
+
+      - name: Verify checksums and Prep Uploads
+        shell: bash
+        working-directory: ${{ env.TBN_FILENAME }}
+        run: |
+          # set -xo pipefail
+          sudo apt-get update
+          sudo apt-get --no-install-recommends --assume-yes install dos2unix
+          ls -alhtR
+          if [ -f "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned" ] ; then
+            rm -fv "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          fi
+          # Merge all sha256 files into one
+          find . -name "*.sha256" -type f -print | xargs cat >> "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          dos2unix --quiet "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          cat "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          sha256sum --ignore-missing --check "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          ls -alhtR
 
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "tari_*/**/*"
+          artifacts: "${{ env.TBN_FILENAME }}*/**/*"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: true
           draft: true
           allowUpdates: true
           updateOnlyUnreleased: true
           replacesArtifacts: true
+
+      - name: Sync assets to S3
+        continue-on-error: true # Don't break if s3 upload fails
+        if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3CMD: "cp"
+          S3OPTIONS: '--recursive --exclude "*" --include "*.sha256*" --include "*.zip*" --include "*.pkg*" --include "*installer.exe*"'
+        shell: bash
+        working-directory: ${{ env.TBN_FILENAME }}
+        run: |
+          echo "Upload processing ..."
+          ls -alhtR
+          echo "Clean up"
+          # Bash check if file with wildcards, does not work as expected
+          # if [ -f ${{ env.TBN_FILENAME }}*diag-utils* ] ; then
+          if ls ${{ env.TBN_FILENAME }}*diag-utils* > /dev/null 2>&1 ; then
+            rm -fv ${{ env.TBN_FILENAME }}*diag-utils*
+          fi
+          echo "Folder setup"
+          if ls ${{ env.TBN_FILENAME }}*linux* > /dev/null 2>&1 ; then
+            mkdir -p "linux/${{ env.TARI_NETWORK_DIR }}/"
+            mv -v ${{ env.TBN_FILENAME }}*linux* "linux/${{ env.TARI_NETWORK_DIR }}/"
+          fi
+          if ls ${{ env.TBN_FILENAME }}*macos* > /dev/null 2>&1 ; then
+            mkdir -p "osx/${{ env.TARI_NETWORK_DIR }}/"
+            mv -v ${{ env.TBN_FILENAME }}*macos* "osx/${{ env.TARI_NETWORK_DIR }}/"
+          fi
+          if ls ${{ env.TBN_FILENAME }}*windows* > /dev/null 2>&1 ; then
+            mkdir -p "windows/${{ env.TARI_NETWORK_DIR }}/"
+            mv -v ${{ env.TBN_FILENAME }}*windows* "windows/${{ env.TARI_NETWORK_DIR }}/"
+          fi
+          ls -alhtR
+          aws --version
+          echo "ls current"
+          aws s3 ls --region ${{ secrets.AWS_REGION }} \
+            s3://${{ secrets.AWS_S3_BUCKET }}/current/
+          echo "Upload current"
+          aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+            . \
+            s3://${{ secrets.AWS_S3_BUCKET }}/current/ \
+            ${{ env.S3OPTIONS }}
