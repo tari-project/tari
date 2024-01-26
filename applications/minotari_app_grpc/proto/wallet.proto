@@ -337,9 +337,8 @@ message TransactionEventResponse {
 message RegisterValidatorNodeRequest {
     bytes validator_node_public_key = 1;
     Signature validator_node_signature = 2;
-    bytes validator_node_claim_public_key = 3;
-    uint64 fee_per_gram = 4;
-    string message = 5;
+    uint64 fee_per_gram = 3;
+    string message = 4;
 }
 
 message RegisterValidatorNodeResponse {

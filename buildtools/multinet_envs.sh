@@ -24,5 +24,4 @@ v*-dan.*)
   export TARI_NETWORK=mainnet
   export TARI_NETWORK_DIR=mainnet
   ;;
-
 esac

@@ -46,36 +46,25 @@ impl ValidatorNodeSignature {
         Self { public_key, signature }
     }
 
-    pub fn sign(private_key: &PrivateKey, claim_public_key: &PublicKey, msg: &[u8]) -> Self {
+    pub fn sign(private_key: &PrivateKey, msg: &[u8]) -> Self {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
-        let challenge = Self::construct_challenge(&public_key, &public_nonce, claim_public_key, msg);
+        let challenge = Self::construct_challenge(&public_key, &public_nonce, msg);
         let signature = Signature::sign_raw_uniform(private_key, secret_nonce, &challenge)
             .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
         Self { public_key, signature }
     }
 
-    fn construct_challenge(
-        public_key: &PublicKey,
-        public_nonce: &PublicKey,
-        claim_public_key: &PublicKey,
-        msg: &[u8],
-    ) -> [u8; 64] {
+    fn construct_challenge(public_key: &PublicKey, public_nonce: &PublicKey, msg: &[u8]) -> [u8; 64] {
         let hasher = DomainSeparatedHasher::<Blake2b<U64>, ValidatorNodeHashDomain>::new_with_label("registration")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
-            .chain(claim_public_key.as_bytes())
             .chain(msg);
         digest::Digest::finalize(hasher).into()
     }
 
-    pub fn is_valid_signature_for(&self, claim_public_key: &PublicKey, msg: &[u8]) -> bool {
-        let challenge = Self::construct_challenge(
-            &self.public_key,
-            self.signature.get_public_nonce(),
-            claim_public_key,
-            msg,
-        );
+    pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
+        let challenge = Self::construct_challenge(&self.public_key, self.signature.get_public_nonce(), msg);
         self.signature.verify_raw_uniform(&self.public_key, &challenge)
     }
 

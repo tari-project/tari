@@ -18,7 +18,6 @@ message SideChainFeature {
 message ValidatorNodeRegistration {
     bytes public_key = 1;
     Signature signature = 2;
-    bytes claim_public_key = 3;
 }
 
 message TemplateRegistration {

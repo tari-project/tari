@@ -897,7 +897,7 @@ impl LMDBDatabase {
         )?;
         let mut smt = self.fetch_tip_smt()?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), height, &mut smt)?;
+        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut smt)?;
         self.insert_tip_smt(write_txn, &smt)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
@@ -908,7 +908,6 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &[u8],
-        height: u64,
         output_smt: &mut OutputSmt,
     ) -> Result<(), ChainStorageError> {
         let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash)?;
@@ -931,18 +930,6 @@ impl LMDBDatabase {
             if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
                 continue;
             }
-
-            if let Some(vn_reg) = utxo
-                .output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-            {
-                self.validator_node_store(txn)
-                    .delete(height, vn_reg.public_key(), &utxo.output.commitment)?;
-            }
-
             // if an output was burned, it was never created as an unspent utxo
             if utxo.output.is_burned() {
                 continue;
