@@ -360,6 +360,7 @@ message GetNewBlockBlobResult{
     bytes block_body = 3;
     bytes merge_mining_hash =4;
     bytes utxo_mr = 5;
+    bytes tari_unique_id =6;
 }
 
 // This is mining data for the miner asking for a new block
