@@ -635,6 +635,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 ))
             },
         };
+        let gen_hash = handler
+            .get_header(0)
+            .await
+            .map_err(|s| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Malformed block template provided: {}", s)),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found(format!("Tari genesis block not found")),
+                )
+            })?
+            .hash()
+            .to_vec();
         // construct response
         let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
@@ -651,6 +668,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             block_hash,
             block,
             merge_mining_hash: mining_hash,
+            tari_unique_id: gen_hash,
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))

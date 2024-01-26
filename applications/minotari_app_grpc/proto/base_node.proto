@@ -347,6 +347,7 @@ message GetNewBlockResult{
     // This is the completed block
     Block block = 2;
     bytes merge_mining_hash =3;
+    bytes tari_unique_id =4;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.
