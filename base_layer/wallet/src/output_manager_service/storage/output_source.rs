@@ -34,15 +34,17 @@ use crate::output_manager_service::error::OutputManagerStorageError;
 // The source of where the output came from
 #[derive(Copy, Clone, Debug, PartialEq, Display, Default)]
 pub enum OutputSource {
-    Unknown,
-    Coinbase,
-    RecoveredButUnrecognized,
     #[default]
     Standard,
+    Coinbase,
+    NonStandardScript,
     OneSided,
     StealthOneSided,
-    Refund,
+    HtlcRefund,
     AtomicSwap,
+    Burn,
+    ValidatorNodeRegistration,
+    CodeTemplateRegistration,
 }
 
 impl TryFrom<i32> for OutputSource {
@@ -50,14 +52,16 @@ impl TryFrom<i32> for OutputSource {
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         Ok(match value {
-            0 => OutputSource::Unknown,
+            0 => OutputSource::Standard,
             1 => OutputSource::Coinbase,
-            2 => OutputSource::RecoveredButUnrecognized,
-            3 => OutputSource::Standard,
-            4 => OutputSource::OneSided,
-            5 => OutputSource::StealthOneSided,
-            6 => OutputSource::Refund,
-            7 => OutputSource::AtomicSwap,
+            2 => OutputSource::NonStandardScript,
+            3 => OutputSource::OneSided,
+            4 => OutputSource::StealthOneSided,
+            5 => OutputSource::HtlcRefund,
+            6 => OutputSource::AtomicSwap,
+            7 => OutputSource::Burn,
+            8 => OutputSource::ValidatorNodeRegistration,
+            9 => OutputSource::CodeTemplateRegistration,
             _ => {
                 return Err(OutputManagerStorageError::ConversionError {
                     reason: "Was expecting value between 0 and 7 for OutputSource".to_string(),

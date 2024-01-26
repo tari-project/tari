@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 use tari_crypto::signatures::CommitmentAndPublicKeySignatureError;
-use thiserror::Error;
 use tari_key_manager::error::KeyManagerError;
+use thiserror::Error;
+
 use crate::transactions::transaction_components::TransactionError;
 
 #[derive(Debug, Error, PartialEq)]
@@ -31,8 +31,13 @@ pub enum CoreKeyManagerError {
     #[error("KeyManagerError: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
     #[error("Error generating Commitment and PublicKey signature: `{0}`")]
-    CommitmentAndPublicKeySignatureError(#[from] CommitmentAndPublicKeySignatureError),
+    CommitmentAndPublicKeySignatureError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
+}
 
+impl From<CommitmentAndPublicKeySignatureError> for CoreKeyManagerError {
+    fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
+        CoreKeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
+    }
 }

@@ -380,6 +380,7 @@ extern "C" {
     pub fn wallet_create(
         config: *mut TariCommsConfig,
         log_path: *const c_char,
+        log_level: c_int,
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,
@@ -590,4 +591,5 @@ extern "C" {
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat);
+    pub fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut c_void;
 }

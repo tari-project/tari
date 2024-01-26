@@ -26,7 +26,7 @@ use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
     keys::PublicKey,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
 };
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
@@ -36,6 +36,7 @@ use tari_utilities::{
 use crate::{
     op_codes::Message,
     slice_to_hash,
+    CheckSigSchnorrSignature,
     ExecutionStack,
     HashValue,
     Opcode,
@@ -531,14 +532,13 @@ impl TariScript {
     }
 
     fn handle_op_add(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
-        use StackItem::{Commitment, Number, PublicKey, Signature};
+        use StackItem::{Commitment, Number, PublicKey};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let two = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (top, two) {
             (Number(v1), Number(v2)) => stack.push(Number(v1.checked_add(v2).ok_or(ScriptError::ValueExceedsBounds)?)),
             (Commitment(c1), Commitment(c2)) => stack.push(Commitment(&c1 + &c2)),
             (PublicKey(p1), PublicKey(p2)) => stack.push(PublicKey(&p1 + &p2)),
-            (Signature(s1), Signature(s2)) => stack.push(Signature(&s1 + &s2)),
             (_, _) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -573,7 +573,7 @@ impl TariScript {
         let pk = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let sig = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (pk, sig) {
-            (PublicKey(p), Signature(s)) => Ok(s.verify_raw_canonical(&p, &message)),
+            (PublicKey(p), Signature(s)) => Ok(s.verify(&p, message)),
             (..) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -615,7 +615,7 @@ impl TariScript {
                 StackItem::Signature(s) => Ok(s),
                 _ => Err(ScriptError::IncompatibleTypes),
             })
-            .collect::<Result<Vec<RistrettoSchnorr>, ScriptError>>()?;
+            .collect::<Result<Vec<CheckSigSchnorrSignature>, ScriptError>>()?;
 
         // keep a hashset of unique signatures used to prevent someone putting the same signature in more than once.
         #[allow(clippy::mutable_key_type)]
@@ -638,7 +638,7 @@ impl TariScript {
             }
 
             for pk in pub_keys.by_ref() {
-                if s.verify_raw_canonical(pk, &message) {
+                if s.verify(pk, message) {
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + pk;
                     break;
@@ -663,7 +663,7 @@ impl TariScript {
             StackItem::Scalar(scalar) => scalar.as_slice(),
             _ => return Err(ScriptError::IncompatibleTypes),
         };
-        let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidInput)?;
         let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
@@ -733,7 +733,7 @@ mod test {
     use sha3::Sha3_256 as Sha3;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
-        ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+        ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::{hex::Hex, ByteArray};
 
@@ -741,6 +741,7 @@ mod test {
         error::ScriptError,
         inputs,
         op_codes::{slice_to_boxed_hash, slice_to_boxed_message, HashValue, Message},
+        CheckSigSchnorrSignature,
         ExecutionStack,
         Opcode::CheckMultiSigVerifyAggregatePubKey,
         ScriptContext,
@@ -1088,9 +1089,8 @@ mod test {
         use crate::StackItem::Number;
         let mut rng = rand::thread_rng();
         let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
-        let nonce = RistrettoSecretKey::random(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = RistrettoSchnorr::sign_raw_canonical(&pvt_key, nonce, m_key.as_bytes()).unwrap();
+        let sig = CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSig(msg));
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1110,9 +1110,8 @@ mod test {
         use crate::StackItem::Number;
         let mut rng = rand::thread_rng();
         let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
-        let nonce = RistrettoSecretKey::random(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = RistrettoSchnorr::sign_raw_canonical(&pvt_key, nonce, m_key.as_bytes()).unwrap();
+        let sig = CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSigVerify(msg) PushOne);
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1131,7 +1130,7 @@ mod test {
         n: usize,
     ) -> (
         Box<Message>,
-        Vec<(RistrettoSecretKey, RistrettoPublicKey, RistrettoSchnorr)>,
+        Vec<(RistrettoSecretKey, RistrettoPublicKey, CheckSigSchnorrSignature)>,
     ) {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(n);
@@ -1140,8 +1139,7 @@ mod test {
 
         for _ in 0..n {
             let (k, p) = RistrettoPublicKey::random_keypair(&mut rng);
-            let r = RistrettoSecretKey::random(&mut rng);
-            let s = RistrettoSchnorr::sign_raw_canonical(&k, r, m.as_bytes()).unwrap();
+            let s = CheckSigSchnorrSignature::sign(&k, m.as_bytes(), &mut rng).unwrap();
             data.push((k, p, s));
         }
 
@@ -1157,17 +1155,12 @@ mod test {
         let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_eve, _) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_carol, p_carol) = RistrettoPublicKey::random_keypair(&mut rng);
-        let r1 = RistrettoSecretKey::random(&mut rng);
-        let r2 = RistrettoSecretKey::random(&mut rng);
-        let r3 = RistrettoSecretKey::random(&mut rng);
-        let r4 = RistrettoSecretKey::random(&mut rng);
-        let r5 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
-        let s_carol = RistrettoSchnorr::sign_raw_canonical(&k_carol, r4, m.as_bytes()).unwrap();
-        let s_alice2 = RistrettoSchnorr::sign_raw_canonical(&k_alice, r5, m.as_bytes()).unwrap();
+        let s_alice = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
+        let s_bob = CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap();
+        let s_eve = CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap();
+        let s_carol = CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap();
+        let s_alice2 = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1360,15 +1353,11 @@ mod test {
         let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_eve, _) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_carol, p_carol) = RistrettoPublicKey::random_keypair(&mut rng);
-        let r1 = RistrettoSecretKey::random(&mut rng);
-        let r2 = RistrettoSecretKey::random(&mut rng);
-        let r3 = RistrettoSecretKey::random(&mut rng);
-        let r4 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
-        let s_carol = RistrettoSchnorr::sign_raw_canonical(&k_carol, r4, m.as_bytes()).unwrap();
+        let s_alice = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
+        let s_bob = CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap();
+        let s_eve = CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap();
+        let s_carol = CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap();
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1547,25 +1536,6 @@ mod test {
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
     }
-    #[test]
-    fn add_partial_signatures() {
-        use crate::StackItem::Number;
-        let mut rng = rand::thread_rng();
-        let (k1, p1) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k2, p2) = RistrettoPublicKey::random_keypair(&mut rng);
-        let r1 = RistrettoSecretKey::random(&mut rng);
-        let r2 = RistrettoSecretKey::random(&mut rng);
-
-        let m = RistrettoSecretKey::random(&mut rng);
-        let msg = slice_to_boxed_message(m.as_bytes());
-        let script = script!(Add RevRot Add CheckSigVerify(msg) PushOne);
-
-        let s1 = RistrettoSchnorr::sign_raw_canonical(&k1, r1, m.as_bytes()).unwrap();
-        let s2 = RistrettoSchnorr::sign_raw_canonical(&k2, r2, m.as_bytes()).unwrap();
-        let inputs = inputs!(p1, p2, s1, s2);
-        let result = script.execute(&inputs).unwrap();
-        assert_eq!(result, Number(1));
-    }
 
     #[test]
     fn pay_to_public_key_hash() {
@@ -1593,22 +1563,32 @@ mod test {
     }
 
     #[test]
-    fn hex_only() {
-        use crate::StackItem::Number;
-        let hex = "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c313d415e0584ef82b79e3bf9bdebeeef53d13aefdc0cfa64f616acea0229e6ee0f0456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c";
-        let inputs = ExecutionStack::from_hex(hex).unwrap();
-        let script =
-            TariScript::from_hex("71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708")
-                .unwrap();
-        let result = script.execute(&inputs).unwrap();
-        assert_eq!(result, Number(1));
+    fn hex_roundtrip() {
+        // Generate a signature
+        let mut rng = rand::thread_rng();
+        let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rng);
+        let message = [1u8; 32];
+        let sig = CheckSigSchnorrSignature::sign(&secret_key, message, &mut rng).unwrap();
 
-        // Try again with invalid sig
-        let inputs = ExecutionStack::from_hex("0500b7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03\
-        b89e170c314c7b413e971dbb85879ba990e851607454da4bdf65839456d7cac19e5a338f060456c0fa32558d6edc0916baa26b48e745de8\
-        34571534ca253ea82435f08ebbc7c").unwrap();
-        let result = script.execute(&inputs).unwrap();
-        assert_eq!(result, Number(0));
+        // Produce a script using the signature
+        let script = script!(CheckSig(slice_to_boxed_message(message.as_bytes())));
+
+        // Produce input satisfying the script
+        let input = inputs!(sig, public_key);
+
+        // Check that script execution succeeds
+        assert_eq!(script.execute(&input).unwrap(), StackItem::Number(1));
+
+        // Convert the script to hex and back
+        let parsed_script = TariScript::from_hex(script.to_hex().as_str()).unwrap();
+        assert_eq!(script.to_opcodes(), parsed_script.to_opcodes());
+
+        // Convert the input to hex and back
+        let parsed_input = ExecutionStack::from_hex(input.to_hex().as_str()).unwrap();
+        assert_eq!(input, parsed_input);
+
+        // Check that script execution still succeeds
+        assert_eq!(parsed_script.execute(&parsed_input).unwrap(), StackItem::Number(1));
     }
 
     #[test]
@@ -1688,16 +1668,13 @@ mod test {
         let (k_alice, p_alice) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_eve, _) = RistrettoPublicKey::random_keypair(&mut rng);
-        let r1 = RistrettoSecretKey::random(&mut rng);
-        let r2 = RistrettoSecretKey::random(&mut rng);
-        let r3 = RistrettoSecretKey::random(&mut rng);
 
         let m = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(m.as_bytes());
 
-        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_alice = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
+        let s_bob = CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap();
+        let s_eve = CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap();
 
         // 1 of 2
         use crate::Opcode::{CheckSig, Drop, Dup, Else, EndIf, IfThen, PushPubKey, Return};
@@ -1738,11 +1715,13 @@ mod test {
 
     #[test]
     fn to_ristretto_point() {
-        use crate::StackItem::PublicKey;
+        use crate::{Opcode::ToRistrettoPoint, StackItem::PublicKey};
+
+        // Generate a key pair
         let mut rng = rand::thread_rng();
         let (k_1, p_1) = RistrettoPublicKey::random_keypair(&mut rng);
 
-        use crate::Opcode::ToRistrettoPoint;
+        // Generate a test script
         let ops = vec![ToRistrettoPoint];
         let script = TariScript::new(ops);
 
@@ -1751,17 +1730,22 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::IncompatibleTypes));
 
-        // scalar
+        // Valid scalar
         let mut scalar = [0u8; 32];
         scalar.copy_from_slice(k_1.as_bytes());
         let inputs = inputs!(scalar);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, PublicKey(p_1.clone()));
 
-        // hash
+        // Valid hash
         let inputs = ExecutionStack::new(vec![Hash(scalar)]);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, PublicKey(p_1));
+
+        // Invalid bytes
+        let invalid = [u8::MAX; 32]; // not a canonical scalar encoding!
+        let inputs = inputs!(invalid);
+        assert!(matches!(script.execute(&inputs), Err(ScriptError::InvalidInput)));
     }
 
     #[test]

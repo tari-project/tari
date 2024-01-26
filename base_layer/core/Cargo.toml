@@ -6,42 +6,52 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.53.0-dan.0"
+version = "1.0.0-dan.5"
 edition = "2018"
 
 [features]
 default = ["base_node"]
 transactions = []
 mempool_proto = []
-base_node = ["tari_mmr", "transactions", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
+base_node = [
+  "tari_mmr",
+  "transactions",
+  "mempool_proto",
+  "base_node_proto",
+  "monero",
+  "randomx-rs",
+]
 base_node_proto = []
 benches = ["base_node"]
 metrics = ["tari_metrics"]
 
 [dependencies]
-tari_common = {  path = "../../common" }
-tari_common_types = {  path = "../../base_layer/common_types" }
-tari_comms = {  path = "../../comms/core" }
-tari_comms_dht = {  path = "../../comms/dht" }
-tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
-tari_crypto = { version = "0.19", features = ["borsh"] }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_comms = { path = "../../comms/core" }
+tari_comms_dht = { path = "../../comms/dht" }
+tari_comms_rpc_macros = { path = "../../comms/rpc_macros" }
+tari_crypto = { version = "0.20", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true }
-tari_mmr = {  path = "../../base_layer/mmr", optional = true}
-tari_p2p = {  path = "../../base_layer/p2p" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true }
+tari_p2p = { path = "../../base_layer/p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_service_framework = {  path = "../service_framework" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
-tari_utilities = { version = "0.6", features = ["borsh"] }
-tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
+tari_service_framework = { path = "../service_framework" }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_storage = { path = "../../infrastructure/storage" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_utilities = { version = "0.7", features = ["borsh"] }
+tari_key_manager = { path = "../key_manager", features = [
+  "key_manager_service",
+] }
 tari_common_sqlite = { path = "../../common_sqlite" }
+tari_hash_domains = { path = "../../hash_domains" }
 
-async-trait = {version = "0.1.50"}
+async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
-borsh = { version = "0.10", features = ["const-generics"] }
+borsh = { version = "1.2", features = ["derive"] }
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
@@ -51,23 +61,24 @@ digest = "0.10"
 fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-integer-encoding = "3.0.2"
+integer-encoding = "3.0"
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
-monero = { version = "0.18", features = ["serde-crate"], optional = true }
+monero = { version = "0.20.0", features = ["serde-crate"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"
 num-derive = "0.3.3"
 num-format = "0.4.0"
 once_cell = "1.8.0"
-prost = "0.9"
+prost = "0.11.9"
 rand = "0.8"
 randomx-rs = { version = "1.3", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1.8"
 sha3 = "0.10"
+sha2 = "0.10"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
@@ -75,20 +86,25 @@ tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
+tiny-keccak = { git = "https://github.com/tari-project/tiny-keccak", rev = "bcddc65530d8646de7282cd8d18d891dc434b643", features = [
+  "keccak",
+] }
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }
-tari_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_p2p = { path = "../../base_layer/p2p", features = ["test-mocks"] }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.13.0" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"
+toml = { version = "0.5" }
+quickcheck = "1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+tari_common = { path = "../../common", features = ["build"] }
 
 [[bench]]
 name = "mempool"

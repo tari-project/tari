@@ -229,14 +229,11 @@ mod test {
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;
-    use crate::transactions::{
-        key_manager::TransactionKeyManagerBranch,
-        test_helpers::create_test_core_key_manager_with_memory_db,
-    };
+    use crate::transactions::key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch};
 
     #[tokio::test]
     async fn test_try_build() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
@@ -278,7 +275,7 @@ mod test {
 
     #[tokio::test]
     async fn test_partial_metadata_signatures() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());

@@ -16,7 +16,7 @@ appenders:
       pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
     filters:
       - kind: threshold
-        level: warn
+        level: info
 
   # An appender named "proxy" that writes to a file with a custom pattern encoder
   proxy:

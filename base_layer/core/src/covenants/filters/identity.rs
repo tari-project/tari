@@ -39,12 +39,12 @@ mod tests {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::test_helpers::create_test_core_key_manager_with_memory_db,
+        transactions::key_manager::create_memory_db_key_manager,
     };
 
     #[tokio::test]
     async fn it_returns_the_outputset_unchanged() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let covenant = covenant!(identity());
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |_| {}, &key_manager).await;

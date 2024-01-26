@@ -26,7 +26,7 @@ use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},
     proof_of_work::Difficulty,
-    transactions::{tari_amount::MicroMinotari, test_helpers::TestKeyManager, transaction_components::Transaction},
+    transactions::{key_manager::MemoryDbKeyManager, tari_amount::MicroMinotari, transaction_components::Transaction},
 };
 
 use crate::helpers::block_builders::create_coinbase;
@@ -38,7 +38,7 @@ pub async fn create_orphan_block(
     block_height: u64,
     transactions: Vec<Transaction>,
     consensus: &ConsensusManager,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> Block {
     let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);
     let lock_height = consensus.consensus_constants(block_height).coinbase_min_maturity();

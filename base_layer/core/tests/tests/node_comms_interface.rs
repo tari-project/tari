@@ -39,15 +39,14 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
-        test_helpers::{
-            create_test_core_key_manager_with_memory_db,
-            create_utxo,
-            TestKeyManager,
-            TestParams,
-            TransactionSchema,
+        key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
         },
+        tari_amount::MicroMinotari,
+        test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
             OutputFeatures,
             TransactionOutput,
@@ -66,7 +65,7 @@ use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::helpers::block_builders::append_block;
+use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
 
 fn new_mempool() -> Mempool {
     let rules = create_consensus_rules();
@@ -111,11 +110,10 @@ async fn inbound_get_metadata() {
 
 #[tokio::test]
 async fn inbound_fetch_kernel_by_excess_sig() {
-    let store = create_test_blockchain_db();
+    let network = Network::LocalNet;
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
     let mempool = new_mempool();
 
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -131,7 +129,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
         connectivity,
         randomx_factory,
     );
-    let block = store.fetch_block(0, true).unwrap().block().clone();
+    let block = blocks[0].block().clone();
     let sig = block.body.kernels()[0].excess_sig.clone();
 
     if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
@@ -180,10 +178,9 @@ async fn inbound_fetch_headers() {
 
 #[tokio::test]
 async fn inbound_fetch_utxos() {
-    let store = create_test_blockchain_db();
-    let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let (store, blocks, _outputs, consensus_manager, _key_manager) = create_new_blockchain(network).await;
+    let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -199,11 +196,12 @@ async fn inbound_fetch_utxos() {
         connectivity,
         randomx_factory,
     );
-    let block = store.fetch_block(0, true).unwrap().block().clone();
-    let utxo_1 = block.body.outputs()[0].clone();
+
+    let block0 = blocks[0].block().clone();
+    let utxo_1 = block0.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (utxo_2, _, _) = create_utxo(
         MicroMinotari(10_000),
         &key_manager,
@@ -265,9 +263,9 @@ async fn inbound_fetch_blocks() {
 }
 
 async fn initialize_sender_transaction_protocol_for_overflow_test(
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
     txn_schema: TransactionSchema,
-) -> SenderTransactionInitializer<TestKeyManager> {
+) -> SenderTransactionInitializer<MemoryDbKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .unwrap()
@@ -361,7 +359,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
 
 #[tokio::test]
 async fn test_sender_transaction_protocol_for_overflow() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let script = script!(Nop);
     let amount = MicroMinotari(u64::MAX); // This is the adversary's attack!
     let output_features = OutputFeatures::default();
@@ -419,7 +417,7 @@ async fn test_sender_transaction_protocol_for_overflow() {
     // Test overflow in total input value (inputs + outputs to self + fee)
     let txn_schema =
         // This is the adversary's attack!
-        txn_schema!(from: vec![wallet_output], to: vec![MicroMinotari(u64::MAX)]);
+        txn_schema!(from: vec![wallet_output.clone()], to: vec![MicroMinotari(u64::MAX)]);
     let stx_builder = initialize_sender_transaction_protocol_for_overflow_test(&key_manager, txn_schema).await;
     assert_eq!(
         format!("{:?}", stx_builder.build().await.unwrap_err()),
@@ -432,7 +430,7 @@ async fn test_sender_transaction_protocol_for_overflow() {
 async fn inbound_fetch_blocks_before_horizon_height() {
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),

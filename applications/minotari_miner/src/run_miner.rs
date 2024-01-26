@@ -26,23 +26,37 @@ use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient},
+    tari_rpc::{base_node_client::BaseNodeClient, TransactionOutput as GrpcTransactionOutput},
+    tls::protocol_string,
+};
+use minotari_app_utilities::{
+    network_check::set_network_if_choice_valid,
+    parse_miner_input::{
+        base_node_socket_address,
+        verify_base_node_grpc_mining_responses,
+        wallet_payment_address,
+        BaseNodeGrpcClient,
+    },
 };
 use tari_common::{
-    configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
     load_configuration,
     DefaultConfigLoader,
 };
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
-use tari_core::blocks::BlockHeader;
+use tari_common_types::tari_address::TariAddress;
+use tari_core::{
+    blocks::BlockHeader,
+    consensus::ConsensusManager,
+    transactions::{
+        generate_coinbase,
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+        tari_amount::MicroMinotari,
+    },
+};
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
 use tokio::time::sleep;
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Channel, Endpoint},
-};
+use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     cli::Cli,
@@ -50,26 +64,37 @@ use crate::{
     errors::{err_empty, MinerError},
     miner::{Miner, MiningReport},
     stratum::stratum_controller::controller::Controller,
-    utils::{coinbase_request, extract_outputs_and_kernels},
 };
 
 pub const LOG_TARGET: &str = "minotari::miner::main";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::main";
 
-type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
-type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
-
 #[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli)?;
+    let cfg = load_configuration(config_path.as_path(), true, cli.non_interactive_mode, &cli)?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
-    debug!(target: LOG_TARGET_FILE, "{:?}", config);
-    setup_grpc_config(&mut config);
+    config.set_base_path(cli.common.get_base_path());
 
-    if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
-        let url = config.mining_pool_address.clone();
-        let mut miner_address = config.mining_wallet_address.clone();
+    set_network_if_choice_valid(config.network)?;
+
+    debug!(target: LOG_TARGET_FILE, "{:?}", config);
+    let key_manager = create_memory_db_key_manager();
+    let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)
+        .map_err(|err| {
+            ExitError::new(
+                ExitCode::WalletPaymentAddress,
+                "'wallet_payment_address' ".to_owned() + &err.to_string(),
+            )
+        })?;
+    debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {}", wallet_payment_address);
+    let consensus_manager = ConsensusManager::builder(config.network)
+        .build()
+        .map_err(|err| ExitError::new(ExitCode::ConsensusManagerBuilderError, err.to_string()))?;
+
+    if !config.stratum_mining_wallet_address.is_empty() && !config.stratum_mining_pool_address.is_empty() {
+        let url = config.stratum_mining_pool_address.clone();
+        let mut miner_address = config.stratum_mining_wallet_address.clone();
         let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
             ExitError::new(
                 ExitCode::ConfigError,
@@ -105,17 +130,36 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         Ok(())
     } else {
-        let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(|e| {
-            ExitError::new(
-                ExitCode::GrpcError,
-                format!("Could not connect to wallet or base node: {}", e),
-            )
-        })?;
+        let mut node_conn = connect(&config)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, e.to_string()))?;
+        if let Err(e) = verify_base_node_responses(&mut node_conn, &config).await {
+            if let MinerError::BaseNodeNotResponding(_) = e {
+                error!(target: LOG_TARGET, "{}", e.to_string());
+                println!();
+                let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods denied in \
+                           its 'config.toml'? Please ensure these methods are commented out:\n  \
+                           'grpc_server_deny_methods': \"get_new_block_template\", \"get_tip_info\", \
+                           \"get_new_block\", \"submit_block\"";
+                println!("{}", msg);
+                println!();
+                return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
+            }
+        }
 
         let mut blocks_found: u64 = 0;
         loop {
             debug!(target: LOG_TARGET, "Starting new mining cycle");
-            match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &cli).await {
+            match mining_cycle(
+                &mut node_conn,
+                &config,
+                &cli,
+                &key_manager,
+                &wallet_payment_address,
+                &consensus_manager,
+            )
+            .await
+            {
                 err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
                     // Any GRPC error we will try to reconnect with a standard delay
                     error!(target: LOG_TARGET, "Connection error: {:?}", err);
@@ -123,9 +167,8 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                         info!(target: LOG_TARGET, "Holding for {:?}", config.wait_timeout());
                         sleep(config.wait_timeout()).await;
                         match connect(&config).await {
-                            Ok((nc, wc)) => {
+                            Ok(nc) => {
                                 node_conn = nc;
-                                wallet_conn = wc;
                                 break;
                             },
                             Err(err) => {
@@ -168,66 +211,48 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     }
 }
 
-async fn connect(config: &MinerConfig) -> Result<(BaseNodeGrpcClient, WalletGrpcClient), MinerError> {
+async fn connect(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
     let node_conn = match connect_base_node(config).await {
         Ok(client) => client,
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not connect to base node");
-            error!(
-                target: LOG_TARGET,
-                "Is its grpc running? try running it with `--enable-grpc` or enable it in config"
-            );
+            error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
+            let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
+                       `--enable-grpc` or enable it in the config.";
+            println!("{}", msg);
             return Err(e);
         },
     };
 
-    let wallet_conn = match connect_wallet(config).await {
-        Ok(client) => client,
-        Err(e) => {
-            error!(target: LOG_TARGET, "Could not connect to wallet");
-            error!(
-                target: LOG_TARGET,
-                "Is its grpc running? try running it with `--enable-grpc` or enable it in config"
-            );
-            return Err(e);
-        },
-    };
-
-    Ok((node_conn, wallet_conn))
-}
-
-async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerError> {
-    let wallet_addr = format!(
-        "http://{}",
-        multiaddr_to_socketaddr(
-            &config
-                .wallet_grpc_address
-                .clone()
-                .expect("Wallet grpc address not found")
-        )?
-    );
-    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
-    let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
-    let wallet_conn = WalletClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&config.wallet_grpc_authentication)?,
-    );
-
-    Ok(wallet_conn)
+    Ok(node_conn)
 }
 
 async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
+    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
-        "http://{}",
-        multiaddr_to_socketaddr(
-            &config
-                .base_node_grpc_address
-                .clone()
-                .expect("Base node grpc address not found")
-        )?
+        "{}{}",
+        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
+        socketaddr,
     );
+
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
-    let channel = Endpoint::from_str(&base_node_addr)?.connect().await?;
+    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+
+    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
+        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
+            .await
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+        endpoint = endpoint
+            .tls_config(tls)
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
+    }
+
+    let channel = endpoint
+        .connect()
+        .await
+        .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
@@ -236,49 +261,76 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     Ok(node_conn)
 }
 
+async fn verify_base_node_responses(
+    node_conn: &mut BaseNodeGrpcClient,
+    config: &MinerConfig,
+) -> Result<(), MinerError> {
+    if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, config.pow_algo_request()).await {
+        return Err(MinerError::BaseNodeNotResponding(e));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_lines)]
 async fn mining_cycle(
     node_conn: &mut BaseNodeGrpcClient,
-    wallet_conn: &mut WalletGrpcClient,
     config: &MinerConfig,
     cli: &Cli,
+    key_manager: &MemoryDbKeyManager,
+    wallet_payment_address: &TariAddress,
+    consensus_manager: &ConsensusManager,
 ) -> Result<bool, MinerError> {
     debug!(target: LOG_TARGET, "Getting new block template");
-    let template = node_conn
+    let template_response = node_conn
         .get_new_block_template(config.pow_algo_request())
         .await?
         .into_inner();
-    let mut block_template = template
+    let mut block_template = template_response
         .new_block_template
         .clone()
         .ok_or_else(|| err_empty("new_block_template"))?;
+    let height = block_template
+        .header
+        .as_ref()
+        .ok_or_else(|| err_empty("header"))?
+        .height;
 
     if config.mine_on_tip_only {
         debug!(
             target: LOG_TARGET,
             "Checking if base node is synced, because mine_on_tip_only is true"
         );
-        let height = block_template
-            .header
-            .as_ref()
-            .ok_or_else(|| err_empty("header"))?
-            .height;
         validate_tip(node_conn, height, cli.mine_until_height).await?;
     }
 
     debug!(target: LOG_TARGET, "Getting coinbase");
-    let request = coinbase_request(&template, config.coinbase_extra.as_bytes().to_vec())?;
-    let coinbase = wallet_conn.get_coinbase(request).await?.into_inner();
-    let (output, kernel) = extract_outputs_and_kernels(coinbase)?;
+    let miner_data = template_response.miner_data.ok_or_else(|| err_empty("miner_data"))?;
+    let fee = MicroMinotari::from(miner_data.total_fees);
+    let reward = MicroMinotari::from(miner_data.reward);
+    let (coinbase_output, coinbase_kernel) = generate_coinbase(
+        fee,
+        reward,
+        height,
+        config.coinbase_extra.as_bytes(),
+        key_manager,
+        wallet_payment_address,
+        config.stealth_payment,
+        consensus_manager.consensus_constants(height),
+        config.range_proof_type,
+    )
+    .await
+    .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
+    debug!(target: LOG_TARGET, "Coinbase kernel: {}", coinbase_kernel);
+    debug!(target: LOG_TARGET, "Coinbase output: {}", coinbase_output);
+
     let body = block_template
         .body
         .as_mut()
         .ok_or_else(|| err_empty("new_block_template.body"))?;
-    body.outputs.push(output);
-    body.kernels.push(kernel);
-    let target_difficulty = template
-        .miner_data
-        .ok_or_else(|| err_empty("miner_data"))?
-        .target_difficulty;
+    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output.clone()).map_err(MinerError::Conversion)?;
+    body.outputs.push(grpc_output);
+    body.kernels.push(coinbase_kernel.into());
+    let target_difficulty = miner_data.target_difficulty;
 
     debug!(target: LOG_TARGET, "Asking base node to assemble the MMR roots");
     let block_result = node_conn.get_new_block(block_template).await?.into_inner();
@@ -381,28 +433,4 @@ async fn validate_tip(
         return Err(MinerError::MinerLostBlock(height));
     }
     Ok(())
-}
-
-fn setup_grpc_config(config: &mut MinerConfig) {
-    if config.base_node_grpc_address.is_none() {
-        config.base_node_grpc_address = Some(
-            format!(
-                "/ip4/127.0.0.1/tcp/{}",
-                grpc_default_port(ApplicationType::BaseNode, config.network)
-            )
-            .parse()
-            .unwrap(),
-        );
-    }
-
-    if config.wallet_grpc_address.is_none() {
-        config.wallet_grpc_address = Some(
-            format!(
-                "/ip4/127.0.0.1/tcp/{}",
-                grpc_default_port(ApplicationType::ConsoleWallet, config.network)
-            )
-            .parse()
-            .unwrap(),
-        );
-    }
 }

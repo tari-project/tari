@@ -47,6 +47,8 @@ pub struct Cli {
     pub profile_with_tokio_console: bool,
     #[clap(long, env = "MINOTARI_NODE_ENABLE_GRPC", alias = "enable-grpc")]
     pub grpc_enabled: bool,
+    #[clap(long, env = "MINOTARI_NODE_ENABLE_MINING", alias = "enable-mining")]
+    pub mining_enabled: bool,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -58,6 +60,13 @@ impl ConfigOverrideProvider for Cli {
         overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
         overrides.push(("auto_update.override_from".to_string(), network.to_string()));
         overrides.push(("metrics.override_from".to_string(), network.to_string()));
+        if self.grpc_enabled {
+            overrides.push(("base_node.grpc_enabled".to_string(), "true".to_string()));
+        }
+        if self.mining_enabled {
+            overrides.push(("base_node.grpc_enabled".to_string(), "true".to_string()));
+            overrides.push(("base_node.mining_enabled".to_string(), "true".to_string()));
+        }
         overrides
     }
 }

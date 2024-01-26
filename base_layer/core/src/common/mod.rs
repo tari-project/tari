@@ -22,7 +22,7 @@
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use tari_crypto::hash_domain;
+use tari_hash_domains::ConfidentialOutputHashDomain;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
@@ -35,7 +35,6 @@ pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;
 
-hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 
@@ -48,7 +47,7 @@ pub struct BanReason {
     pub ban_duration: BanPeriod,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BanPeriod {
     Short,
     Long,

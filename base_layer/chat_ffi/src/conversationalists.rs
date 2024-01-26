@@ -58,9 +58,16 @@ pub unsafe extern "C" fn get_conversationalists(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let conversationalists = (*client).runtime.block_on((*client).client.get_conversationalists());
+    let result = (*client).runtime.block_on((*client).client.get_conversationalists());
 
-    Box::into_raw(Box::new(ConversationalistsVector(conversationalists)))
+    match result {
+        Ok(conversationalists) => Box::into_raw(Box::new(ConversationalistsVector(conversationalists))),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
 }
 
 /// Returns the length of the ConversationalistsVector

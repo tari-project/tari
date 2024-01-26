@@ -33,8 +33,8 @@ use minotari_wallet::output_manager_service::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
+    key_manager::create_memory_db_key_manager,
     tari_amount::MicroMinotari,
-    test_helpers::create_test_core_key_manager_with_memory_db,
     transaction_components::OutputFeatures,
 };
 
@@ -46,7 +46,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
@@ -55,11 +55,12 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             &key_manager,
         )
         .await;
-        let mut kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+        let mut kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
             .await
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
+        db.mark_output_as_unspent(kmo.hash).unwrap();
         unspent_outputs.push(kmo);
     }
 
@@ -106,10 +107,11 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &key_manager,
             )
             .await;
-            let kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
+            let kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Standard, None, None)
                 .await
                 .unwrap();
             db.add_unspent_output(kmo.clone()).unwrap();
+            db.mark_output_as_unspent(kmo.hash).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
         for _ in 0..2 {
@@ -120,7 +122,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &key_manager,
             )
             .await;
-            let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
                 .await
                 .unwrap();
             pending_tx.outputs_to_be_received.push(kmo);
@@ -257,10 +259,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     )
     .await;
     let output_to_be_received =
-        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
             .await
             .unwrap();
-    db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
+    db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone())
         .unwrap();
     pending_incoming_balance += output_to_be_received.wallet_output.value;
 
@@ -334,19 +336,13 @@ pub async fn test_output_manager_sqlite_db() {
 }
 
 #[tokio::test]
-pub async fn test_output_manager_sqlite_db_encrypted() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
-}
-
-#[tokio::test]
 pub async fn test_short_term_encumberance() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);
     let db = OutputManagerDatabase::new(backend);
 
     let mut unspent_outputs = Vec::new();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     for i in 0..5 {
         let kmo = make_input(
             &mut OsRng,
@@ -355,11 +351,12 @@ pub async fn test_short_term_encumberance() {
             &key_manager,
         )
         .await;
-        let mut kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
+        let mut kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Standard, None, None)
             .await
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
+        db.mark_output_as_unspent(kmo.hash).unwrap();
         unspent_outputs.push(kmo);
     }
 
@@ -406,7 +403,7 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
@@ -414,7 +411,7 @@ pub async fn test_no_duplicate_outputs() {
         &key_manager,
     )
     .await;
-    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
         .await
         .unwrap();
 
@@ -448,7 +445,7 @@ pub async fn test_mark_as_unmined() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000),
@@ -456,7 +453,7 @@ pub async fn test_mark_as_unmined() {
         &key_manager,
     )
     .await;
-    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
         .await
         .unwrap();
 

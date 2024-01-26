@@ -67,12 +67,12 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::test_helpers::create_test_core_key_manager_with_memory_db,
+        transactions::key_manager::create_memory_db_key_manager,
     };
 
     #[tokio::test]
     async fn it_filters_all_out_if_height_not_reached() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let covenant = covenant!(absolute_height(@uint(100)));
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 42, |_| {}, &key_manager).await;
@@ -85,7 +85,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_reached() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let covenant = covenant!(absolute_height(@uint(100)));
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;
@@ -98,7 +98,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_exceeded() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let covenant = covenant!(absolute_height(@uint(42)));
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;

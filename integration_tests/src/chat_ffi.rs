@@ -34,12 +34,12 @@ type ClientFFI = c_void;
 
 use libc::{c_char, c_int, c_uchar, c_uint};
 use minotari_app_utilities::identity_management::setup_node_identity;
-use tari_chat_client::{database, ChatClient};
+use tari_chat_client::{database, error::Error as ClientError, ChatClient};
+use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    NodeIdentity,
 };
 use tari_contacts::contacts_service::{
     service::ContactOnlineStatus,
@@ -73,6 +73,15 @@ extern "C" fn callback_read_confirmation_received(_state: *mut c_void) {
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
+        error_out: *const c_int,
+        callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
+        callback_message_received: unsafe extern "C" fn(*mut c_void),
+        callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
+    ) -> *mut ClientFFI;
+    pub fn sideload_chat_client(
+        config: *mut c_void,
+        contact_handle: *mut c_void,
         error_out: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
@@ -113,7 +122,7 @@ unsafe impl Send for PtrWrapper {}
 #[derive(Debug)]
 pub struct ChatFFI {
     ptr: Arc<Mutex<PtrWrapper>>,
-    pub identity: Arc<NodeIdentity>,
+    pub address: TariAddress,
 }
 
 struct Conversationalists(Vec<TariAddress>);
@@ -121,16 +130,20 @@ struct MessagesVector(Vec<Message>);
 
 #[async_trait]
 impl ChatClient for ChatFFI {
-    async fn add_contact(&self, address: &TariAddress) {
+    async fn add_contact(&self, address: &TariAddress) -> Result<(), ClientError> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
 
         let error_out = Box::into_raw(Box::new(0));
-        unsafe { add_chat_contact(client.0, address_ptr, error_out) }
+
+        let result;
+        unsafe { result = add_chat_contact(client.0, address_ptr, error_out) }
+
+        Ok(result)
     }
 
-    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
+    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, ClientError> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
@@ -139,10 +152,10 @@ impl ChatClient for ChatFFI {
         let error_out = Box::into_raw(Box::new(0));
         unsafe { result = check_online_status(client.0, address_ptr, error_out) }
 
-        ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status")
+        Ok(ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status"))
     }
 
-    async fn send_message(&self, message: Message) {
+    async fn send_message(&self, message: Message) -> Result<(), ClientError> {
         let client = self.ptr.lock().unwrap();
 
         let error_out = Box::into_raw(Box::new(0));
@@ -151,9 +164,11 @@ impl ChatClient for ChatFFI {
         unsafe {
             send_chat_message(client.0, message_ptr, error_out);
         }
+
+        Ok(())
     }
 
-    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
+    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, ClientError> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
@@ -167,7 +182,7 @@ impl ChatClient for ChatFFI {
             messages = (*all_messages).0.clone();
         }
 
-        messages
+        Ok(messages)
     }
 
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
@@ -205,7 +220,7 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    async fn send_read_receipt(&self, message: Message) {
+    async fn send_read_receipt(&self, message: Message) -> Result<(), ClientError> {
         let client = self.ptr.lock().unwrap();
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
         let error_out = Box::into_raw(Box::new(0));
@@ -213,9 +228,11 @@ impl ChatClient for ChatFFI {
         unsafe {
             send_read_confirmation_for_message(client.0, message_ptr, error_out);
         }
+
+        Ok(())
     }
 
-    async fn get_conversationalists(&self) -> Vec<TariAddress> {
+    async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, ClientError> {
         let client = self.ptr.lock().unwrap();
 
         let addresses;
@@ -225,11 +242,11 @@ impl ChatClient for ChatFFI {
             addresses = (*vector).0.clone();
         }
 
-        addresses
+        Ok(addresses)
     }
 
-    fn identity(&self) -> &NodeIdentity {
-        &self.identity
+    fn address(&self) -> TariAddress {
+        self.address.clone()
     }
 
     fn shutdown(&mut self) {
@@ -258,8 +275,8 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
     )
     .unwrap();
 
-    database::create_chat_storage(&config.chat_client.db_file);
-    database::create_peer_storage(&config.chat_client.data_dir);
+    database::create_chat_storage(&config.chat_client.db_file).unwrap();
+    database::create_peer_storage(&config.chat_client.data_dir).unwrap();
 
     config.peer_seeds.peer_seeds = seed_peers
         .iter()
@@ -288,10 +305,41 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
-        identity,
+        address: TariAddress::from_public_key(identity.public_key(), Network::LocalNet),
     }
 }
 
+pub async fn sideload_ffi_chat_client(
+    address: TariAddress,
+    base_dir: PathBuf,
+    contacts_handle_ptr: *mut c_void,
+) -> ChatFFI {
+    let mut config = test_config(Multiaddr::empty());
+    config.chat_client.set_base_path(base_dir);
+
+    let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
+
+    let client_ptr;
+    let error_out = Box::into_raw(Box::new(0));
+    unsafe {
+        *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
+
+        client_ptr = sideload_chat_client(
+            config_ptr,
+            contacts_handle_ptr,
+            error_out,
+            callback_contact_status_change,
+            callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
+        );
+    }
+
+    ChatFFI {
+        ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
+        address,
+    }
+}
 static mut INSTANCE: Option<ChatCallback> = None;
 static START: Once = Once::new();
 

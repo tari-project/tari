@@ -189,7 +189,7 @@ pub async fn spawn_wallet(
     wait_for_service(grpc_port).await;
 
     if let Some((_, _, hacky_request)) = base_node {
-        let mut wallet_client = create_wallet_client(world, wallet_name)
+        let mut wallet_client = create_wallet_client(world, wallet_name.clone())
             .await
             .expect("wallet grpc client");
 

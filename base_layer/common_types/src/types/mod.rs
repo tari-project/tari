@@ -91,7 +91,8 @@ hasher!(
 
 hash_domain!(
     BulletRangeProofHashDomain,
-    "com.tari.base_layer.common_types.bullet_rangeproofs"
+    "com.tari.base_layer.common_types.bullet_rangeproofs",
+    1
 );
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;

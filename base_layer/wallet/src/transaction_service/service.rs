@@ -117,7 +117,7 @@ use crate::{
             models::{CompletedTransaction, TxCancellationReason},
         },
         tasks::{
-            check_faux_transaction_status::check_faux_transactions,
+            check_faux_transaction_status::check_detected_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
@@ -780,37 +780,27 @@ where
                 amount,
                 source_address,
                 message,
-                maturity,
                 import_status,
                 tx_id,
                 current_height,
                 mined_timestamp,
+                scanned_output,
             } => self
                 .add_utxo_import_transaction_with_status(
                     amount,
                     source_address,
                     message,
-                    maturity,
                     import_status,
                     tx_id,
                     current_height,
                     mined_timestamp,
-                    transaction_validation_join_handles,
+                    scanned_output,
                 )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
                 .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
-            TransactionServiceRequest::GenerateCoinbaseTransaction {
-                reward,
-                fees,
-                block_height,
-                extra,
-            } => self
-                .generate_coinbase_transaction(reward, fees, block_height, extra)
-                .await
-                .map(|tx| TransactionServiceResponse::CoinbaseTransactionGenerated(Box::new(tx))),
             TransactionServiceRequest::SetLowPowerMode => {
                 self.set_power_mode(PowerMode::Low).await?;
                 Ok(TransactionServiceResponse::LowPowerModeSet)
@@ -940,7 +930,7 @@ where
                 None => 0u64,
             };
             let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_faux_transactions(
+            tokio::spawn(check_detected_transactions(
                 output_manager_handle,
                 db,
                 event_publisher,
@@ -1015,8 +1005,7 @@ where
                     TransactionDirection::Inbound,
                     None,
                     None,
-                    None,
-                ),
+                )?,
             )?;
 
             let _result = reply_channel
@@ -1265,8 +1254,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                None,
-            ),
+            )?,
         )?;
 
         let tx_output = output
@@ -1454,8 +1442,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                None,
-            ),
+            )?,
         )?;
 
         Ok(tx_id)
@@ -1716,8 +1703,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
-                None,
-            ),
+            )?,
         )?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", tx_id);
 
@@ -2536,7 +2522,7 @@ where
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Error restarting protocols for all coinbase transactions: {:?}", resp
+                    "Error restarting protocols for all pending inbound transactions: {:?}", resp
                 );
                 resp
             })?;
@@ -2550,7 +2536,7 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        self.resources.db.mark_all_transactions_as_unvalidated()?;
+        self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
         self.start_transaction_validation_protocol(join_handles).await
     }
 
@@ -2575,7 +2561,6 @@ where
             self.resources.connectivity.clone(),
             self.resources.config.clone(),
             self.event_publisher.clone(),
-            self.resources.output_manager_service.clone(),
         );
 
         let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
@@ -2691,11 +2676,6 @@ where
             completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
-        }
-        if completed_tx.is_coinbase() {
-            return Err(TransactionServiceError::AttemptedToBroadcastCoinbaseTransaction(
-                completed_tx.tx_id,
-            ));
         }
 
         if !self.resources.connectivity.is_base_node_set() {
@@ -2819,14 +2799,11 @@ where
         value: MicroMinotari,
         source_address: TariAddress,
         message: String,
-        maturity: Option<u64>,
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
-        transaction_validation_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
+        scanned_output: TransactionOutput,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db.add_utxo_import_transaction_with_status(
@@ -2835,20 +2812,22 @@ where
             source_address,
             self.resources.wallet_identity.address.clone(),
             message,
-            maturity,
             import_status.clone(),
             current_height,
             mined_timestamp,
+            scanned_output,
         )?;
         let transaction_event = match import_status {
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
-            ImportStatus::FauxUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
-                tx_id,
-                num_confirmations: 0,
-                is_valid: true,
+            ImportStatus::OneSidedUnconfirmed | ImportStatus::CoinbaseUnconfirmed => {
+                TransactionEvent::DetectedTransactionUnconfirmed {
+                    tx_id,
+                    num_confirmations: 0,
+                    is_valid: true,
+                }
             },
-            ImportStatus::FauxConfirmed | ImportStatus::Coinbase => {
-                TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true }
+            ImportStatus::OneSidedConfirmed | ImportStatus::CoinbaseConfirmed => {
+                TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true }
             },
         };
         let _size = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
@@ -2859,9 +2838,6 @@ where
             );
             e
         });
-        // Because we added new transactions, let try to trigger a validation for them
-        self.start_transaction_validation_protocol(transaction_validation_join_handles)
-            .await?;
         Ok(tx_id)
     }
 
@@ -2919,82 +2895,9 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
-                None,
-            ),
+            )?,
         )?;
         Ok(())
-    }
-
-    async fn generate_coinbase_transaction(
-        &mut self,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    ) -> Result<Transaction, TransactionServiceError> {
-        let amount = reward + fees;
-
-        // first check if we already have a coinbase tx for this height and amount
-        let find_result = self
-            .db
-            .find_coinbase_transaction_at_block_height(block_height, amount)?;
-
-        let mut completed_transaction = None;
-        if let Some(tx) = find_result {
-            if let Some(coinbase) = tx.transaction.body.outputs().first() {
-                if coinbase.features.coinbase_extra == extra {
-                    completed_transaction = Some(tx.transaction);
-                }
-            }
-        };
-        if completed_transaction.is_none() {
-            // otherwise create a new coinbase tx
-            let tx_id = TxId::new_random();
-            let tx = self
-                .resources
-                .output_manager_service
-                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
-                .await?;
-            self.db.insert_completed_transaction(
-                tx_id,
-                CompletedTransaction::new(
-                    tx_id,
-                    self.resources.wallet_identity.address.clone(),
-                    self.resources.wallet_identity.address.clone(),
-                    amount,
-                    MicroMinotari::from(0),
-                    tx.clone(),
-                    TransactionStatus::Coinbase,
-                    format!("Coinbase Transaction for Block #{}", block_height),
-                    Utc::now().naive_utc(),
-                    TransactionDirection::Inbound,
-                    Some(block_height),
-                    None,
-                    None,
-                ),
-            )?;
-
-            let _size = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
-
-            info!(
-                target: LOG_TARGET,
-                "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
-            );
-            completed_transaction = Some(tx);
-        };
-
-        Ok(completed_transaction.unwrap())
     }
 
     /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in
@@ -3033,13 +2936,6 @@ enum PowerMode {
     Low,
     #[default]
     Normal,
-}
-
-/// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
-#[derive(Debug)]
-pub struct PendingCoinbaseSpendingKey {
-    pub tx_id: TxId,
-    pub spending_key: PrivateKey,
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result

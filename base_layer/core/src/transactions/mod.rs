@@ -9,7 +9,12 @@ pub use crypto_factories::CryptoFactories;
 use tari_crypto::hash_domain;
 
 mod coinbase_builder;
-pub use coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
+pub use coinbase_builder::{
+    generate_coinbase,
+    generate_coinbase_with_wallet_output,
+    CoinbaseBuildError,
+    CoinbaseBuilder,
+};
 
 pub mod fee;
 pub mod tari_amount;
@@ -32,10 +37,3 @@ pub mod test_helpers;
 // Hash domain for all transaction-related hashes, including the script signature challenge, transaction hash and kernel
 // signature challenge
 hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
-
-// Hash domain used to derive the final AEAD encryption key for encrypted data in UTXOs
-hash_domain!(
-    TransactionSecureNonceKdfDomain,
-    "com.tari.base_layer.core.transactions.secure_nonce_kdf",
-    0
-);

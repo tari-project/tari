@@ -1920,7 +1920,7 @@ fn test_fails_validation() {
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![]];
 
-    let schemas = vec![txn_schema!(from: vec![output], to: vec![2 * T, 500_000 * uT])];
+    let schemas = vec![txn_schema!(from: vec![output.clone()], to: vec![2 * T, 500_000 * uT])];
     let err = generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,

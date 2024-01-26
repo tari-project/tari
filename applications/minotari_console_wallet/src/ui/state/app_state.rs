@@ -27,7 +27,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use minotari_wallet::{
@@ -97,7 +96,6 @@ pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
     cache_update_cooldown: Option<Instant>,
-    completed_tx_filter: TransactionFilter,
     config: AppStateConfig,
     wallet_config: WalletConfig,
     wallet_connectivity: WalletConnectivityHandle,
@@ -122,7 +120,6 @@ impl AppState {
             inner: inner.clone(),
             cached_data,
             cache_update_cooldown: None,
-            completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
             config: AppStateConfig::default(),
             wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
@@ -559,19 +556,7 @@ impl AppState {
     }
 
     pub fn get_completed_txs(&self) -> Vec<&CompletedTransactionInfo> {
-        if self
-            .completed_tx_filter
-            .contains(TransactionFilter::ABANDONED_COINBASES)
-        {
-            self.cached_data
-                .completed_txs
-                .iter()
-                .filter(|tx| !matches!(tx.cancelled, Some(TxCancellationReason::AbandonedCoinbase)))
-                .filter(|tx| !matches!(tx.status, TransactionStatus::Coinbase))
-                .collect()
-        } else {
-            self.cached_data.completed_txs.iter().collect()
-        }
+        self.cached_data.completed_txs.iter().collect()
     }
 
     pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
@@ -655,10 +640,6 @@ impl AppState {
 
     pub fn get_required_confirmations(&self) -> u64 {
         self.wallet_config.num_required_confirmations
-    }
-
-    pub fn toggle_abandoned_coinbase_filter(&mut self) {
-        self.completed_tx_filter.toggle(TransactionFilter::ABANDONED_COINBASES);
     }
 
     pub fn get_notifications(&self) -> &[(DateTime<Local>, String)] {
@@ -1166,7 +1147,6 @@ pub struct CompletedTransactionInfo {
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub mined_height: Option<u64>,
-    pub is_coinbase: bool,
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
@@ -1182,7 +1162,6 @@ impl CompletedTransactionInfo {
             .first_kernel_excess_sig()
             .map(|s| s.get_signature().to_hex())
             .unwrap_or_default();
-        let is_coinbase = tx.is_coinbase();
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
@@ -1208,7 +1187,6 @@ impl CompletedTransactionInfo {
             cancelled: tx.cancelled,
             direction: tx.direction,
             mined_height: tx.mined_height,
-            is_coinbase,
             weight,
             inputs_count,
             outputs_count,
@@ -1342,14 +1320,6 @@ pub enum UiTransactionBurnStatus {
     Initiated,
     TransactionComplete((u32, String, String)),
     Error(String),
-}
-
-bitflags! {
-    #[derive(Clone)]
-    pub struct TransactionFilter: u8 {
-        const NONE = 0b0000_0000;
-        const ABANDONED_COINBASES = 0b0000_0001;
-    }
 }
 
 #[derive(Clone)]

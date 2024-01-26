@@ -23,6 +23,7 @@
 use std::convert::TryFrom;
 
 use log::*;
+use tari_common_types::types::FixedHash;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 
@@ -30,7 +31,7 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
         randomx_difficulty,
@@ -119,9 +120,11 @@ pub fn check_target_difficulty(
     block_header: &BlockHeader,
     target: Difficulty,
     randomx_factory: &RandomXFactory,
+    gen_hash: &FixedHash,
+    consensus: &ConsensusManager,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
 
@@ -369,8 +372,15 @@ pub fn check_permitted_range_proof_types(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    if !constants
-        .permitted_range_proof_types()
+    let binding = constants.permitted_range_proof_types();
+    let permitted_range_proof_types = binding.iter().find(|&&t| t.0 == output.features.output_type).ok_or(
+        ValidationError::OutputTypeNotMatchedToRangeProofType {
+            output_type: output.features.output_type,
+        },
+    )?;
+
+    if !permitted_range_proof_types
+        .1
         .contains(&output.features.range_proof_type)
     {
         return Err(ValidationError::RangeProofTypeNotPermitted {
@@ -534,18 +544,23 @@ mod test {
         use super::*;
         use crate::transactions::{
             aggregated_body::AggregateBody,
-            test_helpers::create_test_core_key_manager_with_memory_db,
-            transaction_components::TransactionError,
+            key_manager::create_memory_db_key_manager,
+            transaction_components::{RangeProofType, TransactionError},
         };
 
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let key_manager = create_test_core_key_manager_with_memory_db();
-            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(&test_params, height, None));
+            let key_manager = create_memory_db_key_manager();
+            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::RevealedValue,
+            ));
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
@@ -560,10 +575,12 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
+            let mut coinbase =
+                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
+                    .await;
             coinbase.features.maturity = 0;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
@@ -582,10 +599,16 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::BulletProofPlus,
+            )
+            .await;
             coinbase.value = 123.into();
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;

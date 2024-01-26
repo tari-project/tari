@@ -35,7 +35,10 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::Transaction};
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::{Transaction, TransactionOutput},
+};
 
 use crate::transaction_service::{
     error::TransactionStorageError,
@@ -115,20 +118,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<TariAddress, TransactionStorageError>;
     /// Mark a pending transaction direct send attempt as a success
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Cancel coinbase transactions at a specific block height
-    fn cancel_coinbase_transactions_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError>;
-    /// Find coinbase transaction at a specific block height for a given amount
-    fn find_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-        amount: MicroMinotari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a transactions mined height. A transaction can either be mined as valid or mined as invalid
     /// A normal transaction can only be mined with valid = true,
-    /// A coinbase transaction can either be mined as valid = true, meaning that it is the coinbase in that block
-    /// or valid =false, meaning that the coinbase has been awarded to another tx, but this has been confirmed by blocks
     /// The mined height and block are used to determine reorgs
     fn update_mined_height(
         &self,
@@ -137,24 +130,27 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         num_confirmations: u64,
-        is_confirmed: bool,
-        is_faux: bool,
+        must_be_confirmed: bool,
+        status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Reset optional 'mined height' and 'mined in block' fields to nothing
-    fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
+    fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
     /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
     fn get_pending_inbound_transaction_sender_info(
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
-    fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
-    fn fetch_confirmed_faux_transactions_from_height(
+    fn fetch_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_confirmed_detected_transactions_from_height(
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
-    fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn fetch_unmined_coinbase_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -424,16 +420,24 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
-    pub fn get_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t = self.db.fetch_unconfirmed_faux_transactions()?;
+    pub fn get_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let t = self.db.fetch_unconfirmed_detected_transactions()?;
         Ok(t)
     }
 
-    pub fn get_confirmed_faux_transactions_from_height(
+    pub fn get_confirmed_detected_transactions_from_height(
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t = self.db.fetch_confirmed_faux_transactions_from_height(height)?;
+        let t = self.db.fetch_confirmed_detected_transactions_from_height(height)?;
+        Ok(t)
+    }
+
+    pub fn get_unmined_coinbase_transactions(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let t = self.db.fetch_unmined_coinbase_transactions_from_height(height)?;
         Ok(t)
     }
 
@@ -649,10 +653,10 @@ where T: TransactionBackend + 'static
         source_address: TariAddress,
         comms_address: TariAddress,
         message: String,
-        maturity: Option<u64>,
         import_status: ImportStatus,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
+        scanned_output: TransactionOutput,
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
@@ -662,7 +666,7 @@ where T: TransactionBackend + 'static
             MicroMinotari::from(0),
             Transaction::new(
                 Vec::new(),
-                Vec::new(),
+                vec![scanned_output],
                 Vec::new(),
                 PrivateKey::default(),
                 PrivateKey::default(),
@@ -671,10 +675,9 @@ where T: TransactionBackend + 'static
             message,
             mined_timestamp.unwrap_or_else(|| Utc::now().naive_utc()),
             TransactionDirection::Inbound,
-            maturity,
             current_height,
             mined_timestamp,
-        );
+        )?;
 
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
@@ -682,21 +685,6 @@ where T: TransactionBackend + 'static
                 Box::new(transaction),
             )))?;
         Ok(())
-    }
-
-    pub fn cancel_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-    ) -> Result<(), TransactionStorageError> {
-        self.db.cancel_coinbase_transactions_at_block_height(block_height)
-    }
-
-    pub fn find_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-        amount: MicroMinotari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
-        self.db.find_coinbase_transaction_at_block_height(block_height, amount)
     }
 
     pub fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
@@ -707,8 +695,8 @@ where T: TransactionBackend + 'static
         self.db.set_transaction_as_unmined(tx_id)
     }
 
-    pub fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
-        self.db.mark_all_transactions_as_unvalidated()
+    pub fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        self.db.mark_all_non_coinbases_transactions_as_unvalidated()
     }
 
     pub fn set_transaction_mined_height(
@@ -718,8 +706,8 @@ where T: TransactionBackend + 'static
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         num_confirmations: u64,
-        is_confirmed: bool,
-        is_faux: bool,
+        must_be_confirmed: bool,
+        status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,
@@ -727,8 +715,8 @@ where T: TransactionBackend + 'static
             mined_in_block,
             mined_timestamp,
             num_confirmations,
-            is_confirmed,
-            is_faux,
+            must_be_confirmed,
+            status,
         )
     }
 
@@ -740,10 +728,6 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::PendingInboundTransactions, e),
         }?;
         Ok(t)
-    }
-
-    pub fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        self.db.abandon_coinbase_transaction(tx_id)
     }
 }
 

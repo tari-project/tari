@@ -226,7 +226,7 @@ Maximum value UTXO   : 5538.616395 T
 
 Discover a peer on the network by public key or emoji id.
 
-`minotari_console_wallet --command "discover-peer <public key or emoji id>"`
+`minotari_console_wallet --command "discover-peer <public key or emoji id or tari address>"`
 
 example output:
 

@@ -30,6 +30,8 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
+    #[clap(short, long, alias = "non-interactive", env = "TARI_NON_INTERACTIVE")]
+    pub non_interactive_mode: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

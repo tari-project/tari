@@ -22,7 +22,6 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use borsh::BorshSerialize;
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
     borsh::FromBytes,
@@ -144,11 +143,12 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .map_err(|_| "Non-compact Transaction input should contain sender_offset_public_key".to_string())?
                     .to_vec(),
                 output_hash: Vec::new(),
-                covenant: input
-                    .covenant()
-                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
-                    .try_to_vec()
-                    .map_err(|err| err.to_string())?,
+                covenant: borsh::to_vec(
+                    &input
+                        .covenant()
+                        .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?,
+                )
+                .map_err(|err| err.to_string())?,
                 version: input.version as u32,
                 encrypted_data: input
                     .encrypted_data()

@@ -59,21 +59,20 @@ pub struct NewOutputSql {
     pub metadata_signature_u_x: Vec<u8>,
     pub metadata_signature_u_y: Vec<u8>,
     pub received_in_tx_id: Option<i64>,
-    pub coinbase_block_height: Option<i64>,
     pub features_json: String,
     pub covenant: Vec<u8>,
     pub encrypted_data: Vec<u8>,
     pub minimum_value_promise: i64,
     pub source: i32,
+    pub spending_priority: i32,
 }
 
 impl NewOutputSql {
     #[allow(clippy::cast_possible_wrap)]
     pub fn new(
         output: DbWalletOutput,
-        status: OutputStatus,
+        status: Option<OutputStatus>,
         received_in_tx_id: Option<TxId>,
-        coinbase_block_height: Option<u64>,
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.wallet_output.covenant, &mut covenant)?;
@@ -85,7 +84,7 @@ impl NewOutputSql {
             value: output.wallet_output.value.as_u64() as i64,
             output_type: i32::from(output.wallet_output.features.output_type.as_byte()),
             maturity: output.wallet_output.features.maturity as i64,
-            status: status as i32,
+            status: status.unwrap_or(output.status) as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
             hash: output.hash.to_vec(),
             script: output.wallet_output.script.to_bytes(),
@@ -102,7 +101,6 @@ impl NewOutputSql {
             metadata_signature_u_a: output.wallet_output.metadata_signature.u_a().to_vec(),
             metadata_signature_u_x: output.wallet_output.metadata_signature.u_x().to_vec(),
             metadata_signature_u_y: output.wallet_output.metadata_signature.u_y().to_vec(),
-            coinbase_block_height: coinbase_block_height.map(|bh| bh as i64),
             features_json: serde_json::to_string(&output.wallet_output.features).map_err(|s| {
                 OutputManagerStorageError::ConversionError {
                     reason: format!("Could not parse features from JSON:{}", s),
@@ -112,6 +110,7 @@ impl NewOutputSql {
             encrypted_data: output.wallet_output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.wallet_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
+            spending_priority: output.spending_priority.into(),
         };
 
         Ok(output)

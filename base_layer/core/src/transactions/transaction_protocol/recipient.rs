@@ -194,9 +194,14 @@ mod test {
         test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+            key_manager::{
+                create_memory_db_key_manager,
+                TransactionKeyManagerBranch,
+                TransactionKeyManagerInterface,
+                TxoStage,
+            },
             tari_amount::*,
-            test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
+            test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{
                 OutputFeatures,
                 TransactionKernel,
@@ -213,7 +218,7 @@ mod test {
 
     #[tokio::test]
     async fn single_round_recipient() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let factories = CryptoFactories::default();
         let sender_test_params = TestParams::new(&key_manager).await;
         let m = TransactionMetadata::new(MicroMinotari(125), 0);

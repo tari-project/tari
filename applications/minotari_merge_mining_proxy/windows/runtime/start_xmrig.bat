@@ -7,8 +7,8 @@ rem This is the XMRig executable name
 set my_exe=xmrig.exe
 
 rem This is the location of the XMRig configuration file
-set config_path=%~dp0..\config
-echo config_path = %config_path%
+set xmrig_config_path=%~dp0..\xmrig_config
+echo xmrig_config_path = %xmrig_config_path%
 
 rem The default location for the XMRig start file
 set my_exe_path=%~dp0

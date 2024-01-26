@@ -45,7 +45,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # Use a "small" suffix to use the build caches where possible, but build caches won't use this
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -85,7 +85,7 @@ jobs:
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -144,8 +144,10 @@ jobs:
         run: rustup show
       - name: cargo check
         run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
-      - name: cargo check ffi separately
+      - name: cargo check wallet ffi separately
         run: cargo check --release --package minotari_wallet_ffi --locked
+      - name: cargo check chat ffi separately
+        run: cargo check --release --package minotari_chat_ffi --locked
   licenses:
     name: file licenses
     runs-on: [ubuntu-20.04]
@@ -201,7 +203,7 @@ jobs:
       - name: cargo test
         run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact
-        uses: actions/upload-artifact@v3  # upload test results as artifact
+        uses: actions/upload-artifact@v4  # upload test results as artifact
         if: always()
         with:
           name: test-results
@@ -219,7 +221,7 @@ jobs:
         run: echo $PR_NUM > pr_num.txt
 
       - name: Upload the PR number
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pr_num
           path: ./pr_num.txt
@@ -230,7 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Event File
           path: ${{ github.event_path }}
