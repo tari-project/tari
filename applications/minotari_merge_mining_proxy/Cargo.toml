@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The Tari merge mining proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.5"
+version = "0.53.0-dan.0"
 edition = "2018"
 
 [features]
@@ -14,13 +14,19 @@ default = []
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-minotari_app_utilities = { path = "../minotari_app_utilities", features = ["miner_input"] }
+tari_core = { path = "../../base_layer/core", default-features = false, features = [
+  "transactions",
+] }
+minotari_app_utilities = { path = "../minotari_app_utilities", features = [
+  "miner_input",
+] }
 tari_utilities = { version = "0.7" }
 minotari_node_grpc_client = { path = "../../clients/rust/base_node_grpc_client" }
 minotari_wallet_grpc_client = { path = "../../clients/rust/wallet_grpc_client" }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_key_manager = {  path = "../../base_layer/key_manager", features = ["key_manager_service"] }
+tari_key_manager = { path = "../../base_layer/key_manager", features = [
+  "key_manager_service",
+] }
 
 anyhow = "1.0.53"
 crossterm = { version = "0.25.0" }
@@ -46,4 +52,4 @@ tracing = "0.1"
 url = "2.1.1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features"}
+tari_features = { path = "../../common/tari_features" }

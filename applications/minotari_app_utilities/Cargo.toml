@@ -1,6 +1,6 @@
 [package]
 name = "minotari_app_utilities"
-version = "1.0.0-pre.5"
+version = "0.53.0-dan.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -14,7 +14,9 @@ tari_utilities = { version = "0.7" }
 minotari_app_grpc = { path = "../minotari_app_grpc", optional = true }
 
 clap = { version = "3.2", features = ["derive", "env"] }
-futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
+futures = { version = "^0.3.16", default-features = false, features = [
+  "alloc",
+] }
 json5 = "0.4"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.8"
@@ -26,7 +28,10 @@ tonic = "0.8.3"
 
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build", "static-application-info"] }
+tari_common = { path = "../../common", features = [
+  "build",
+  "static-application-info",
+] }
 tari_features = { path = "../../common/tari_features" }
 
 [features]

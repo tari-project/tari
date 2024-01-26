@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "1.0.0-pre.5"
+version = "0.53.0-dan.0"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../core", features = ["rpc"] }
+tari_comms = { path = "../core", features = ["rpc"] }
 tari_common = { path = "../../common" }
-tari_comms_rpc_macros = {  path = "../rpc_macros" }
+tari_comms_rpc_macros = { path = "../rpc_macros" }
 tari_crypto = { version = "0.20" }
 tari_utilities = { version = "0.7" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_storage = { path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 
 anyhow = "1.0.53"
@@ -25,7 +25,12 @@ blake2 = "0.10"
 chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false }
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "numeric"] }
+diesel = { version = "2.0.3", features = [
+  "sqlite",
+  "serde_json",
+  "chrono",
+  "numeric",
+] }
 diesel_migrations = "2.0.0"
 digest = "0.10"
 futures = "^0.3.1"
@@ -48,7 +53,7 @@ tokio = { version = "1.23", features = ["rt", "macros"] }
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 env_logger = "0.10"
 futures-test = { version = "0.3.5" }
@@ -62,7 +67,7 @@ clap = "3.2"
 
 
 [build-dependencies]
-tari_common = {  path = "../../common" }
+tari_common = { path = "../../common" }
 
 [features]
 test-mocks = []

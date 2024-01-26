@@ -6,14 +6,14 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.5"
+version = "0.53.0-dan.0"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.20" }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
+tari_storage = { path = "../../infrastructure/storage" }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -21,7 +21,10 @@ async-trait = "0.1.36"
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
 bytes = { version = "1", features = ["serde"] }
-chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock"] }
+chrono = { version = "0.4.19", default-features = false, features = [
+  "serde",
+  "clock",
+] }
 cidr = "0.1.0"
 data-encoding = "2.2.0"
 derivative = "2.2.0"
@@ -41,16 +44,24 @@ serde_derive = "1.0.119"
 sha3 = "0.10"
 snow = { version = "0.9.4", features = ["default-resolver"] }
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
+tokio = { version = "1.23", features = [
+  "rt-multi-thread",
+  "time",
+  "sync",
+  "signal",
+  "net",
+  "macros",
+  "io-util",
+] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-util = { version = "0.6.7", features = ["codec", "compat"] }
-tower = {version = "0.4", features = ["util"]}
+tower = { version = "0.4", features = ["util"] }
 tracing = "0.1.26"
 yamux = "=0.10.2"
 zeroize = "1"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 tari_comms_rpc_macros = { path = "../rpc_macros" }
 
 env_logger = "0.7.0"
@@ -58,7 +69,7 @@ serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+tari_common = { path = "../../common", features = ["build"] }
 
 [features]
 c_integration = []

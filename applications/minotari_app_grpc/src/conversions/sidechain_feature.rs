@@ -87,13 +87,21 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
     type Error = String;
 
     fn try_from(value: grpc::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
-        Ok(ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
-            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
-            value
-                .signature
-                .map(Signature::try_from)
-                .ok_or("signature not provided")??,
-        )))
+        let public_key =
+            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("Invalid public key: {}", e))?;
+        let claim_public_key = PublicKey::from_canonical_bytes(&value.claim_public_key)
+            .map_err(|e| format!("Invalid claim public key: {}", e))?;
+
+        Ok(ValidatorNodeRegistration::new(
+            ValidatorNodeSignature::new(
+                public_key,
+                value
+                    .signature
+                    .map(Signature::try_from)
+                    .ok_or("signature not provided")??,
+            ),
+            claim_public_key,
+        ))
     }
 }
 
@@ -102,6 +110,7 @@ impl From<ValidatorNodeRegistration> for grpc::ValidatorNodeRegistration {
         Self {
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
+            claim_public_key: value.claim_public_key().to_vec(),
         }
     }
 }

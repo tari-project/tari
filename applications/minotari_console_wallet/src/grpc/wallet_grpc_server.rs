@@ -1002,12 +1002,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
-            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+            .map_err(|_| Status::invalid_argument("Validator node address is malformed"))?;
         let validator_node_signature = request
             .validator_node_signature
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+        let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
+            .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
@@ -1019,6 +1021,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 constants.validator_node_registration_min_deposit_amount(),
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_claim_public_key,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,
