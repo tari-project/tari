@@ -39,19 +39,15 @@ use crate::{
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
-    claim_public_key: PublicKey,
 }
 
 impl ValidatorNodeRegistration {
-    pub fn new(signature: ValidatorNodeSignature, claim_public_key: PublicKey) -> Self {
-        Self {
-            signature,
-            claim_public_key,
-        }
+    pub fn new(signature: ValidatorNodeSignature) -> Self {
+        Self { signature }
     }
 
     pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
-        self.signature.is_valid_signature_for(&self.claim_public_key, msg)
+        self.signature.is_valid_signature_for(msg)
     }
 
     pub fn derive_shard_key(
@@ -77,10 +73,6 @@ impl ValidatorNodeRegistration {
         self.signature.public_key()
     }
 
-    pub fn claim_public_key(&self) -> &PublicKey {
-        &self.claim_public_key
-    }
-
     pub fn signature(&self) -> &Signature {
         self.signature.signature()
     }
@@ -104,19 +96,14 @@ fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
 mod test {
     use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
-    use tari_crypto::keys::{PublicKey, SecretKey};
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::test_helpers::new_public_key;
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
-        let claim_public_key = PublicKey::from_secret_key(&sk);
-
-        ValidatorNodeRegistration::new(
-            ValidatorNodeSignature::sign(&sk, &claim_public_key, b"valid"),
-            claim_public_key,
-        )
+        ValidatorNodeRegistration::new(ValidatorNodeSignature::sign(&sk, b"valid"))
     }
 
     mod is_valid_signature_for {
@@ -137,10 +124,10 @@ mod test {
         #[test]
         fn it_returns_false_for_invalid_signature() {
             let mut reg = create_instance();
-            reg = ValidatorNodeRegistration::new(
-                ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
-                Default::default(),
-            );
+            reg = ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
+                reg.public_key().clone(),
+                Signature::default(),
+            ));
             assert!(!reg.is_valid_signature_for(b"valid"));
         }
     }

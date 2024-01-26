@@ -46,20 +46,17 @@ peer_seeds = [
 [igor.p2p.seeds]
 # Custom specified peer seed nodes
 peer_seeds = [
-    # 2222bb888618d65d7b16e355f9 / 9412
-    "2ef6e02aeaa6e22d637f03a19999730eb7768bb04e35cbc056f4abbda019a577::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
-    # dddd69c587a10c41ef2bf51397 /  b382
-    "94d674cc134afe26f56f499f6fed1af5b9ee8d8e3e848a1361798dae40b24f57::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
-    # aaaaf562a6ef070706fb9a7244 / a933
-    "5a3b226660a56044fe54a055098dd9b45448452ab7052433cff661c04b4ced04::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
+    # 2222bb888618d65d7b16e355f9
+    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
+    # aaaaf562a6ef070706fb9a7244
+    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
+    # dddd69c587a10c41ef2bf51397
+    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
 
-    # stringhandler's seed - b864effe95a2bade7ac7d8279d
-    "c6222cb64297275572c04017e3f60457d4bb8249722bcfa6f236296cb561986f::/onion3/6zjczklptyqfcvbb37wy3724cxm42fjtdyepx2alhdh5m7cmztltguqd:18141",
 
-    # DAN Seeds
-    # ef7f17fb7f97dd8513537bf8ee
-    "54ab9581d09bd4a1475c21732cf8399ad414b757b15cbe8f02687e1c477e5361::/onion3/eugxfqyllc7xzfxeah7kvrs7msbwog3g4htnmb545kjjpiaf5dewynqd:18141",
-    # Stringhandler's node:
-    # aaaaaa1d18d0e26e184336371e
-    "30f70a860a1a8852d9fd3697516dbb1dacc62356c15495d73827fd2e6b69057f::/onion3/4dmisrtut6yk4re4aaompkywptnostwebavx7slnb6hgjibm457qbkyd:18141",
+    # Local DAN Seeds, Stringhandler
+    # da100065d065f839dab6b6fb4f
+    "f24a6ed54362cee25c8e08e92bcd33e4d8ab2b733862948f863c982040d0d447::/onion3/s7sto2fd6cqf3wak2ec23gygb3d77p2ro7pcl2vesk6notgedjhy4nyd:18141",
+    # da4000fb6a031eced4ce65fe31
+    "9c127e9451d6721bfbe2b75434fcc19f6c7ab23523d4dacf7f5f5d601d2c8840::/onion3/kfh6trtkccp6mdbob42sb3sd464lzorn2ufys4zglnqhoxzsa4souaqd:18141"
 ]

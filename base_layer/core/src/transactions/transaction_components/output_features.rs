@@ -147,14 +147,16 @@ impl OutputFeatures {
     }
 
     pub fn for_validator_node_registration(
-        public_key: PublicKey,
-        signature: Signature,
-        claim_public_key: PublicKey,
+        validator_node_public_key: PublicKey,
+        validator_node_signature: Signature,
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
             sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
-                ValidatorNodeRegistration::new(ValidatorNodeSignature::new(public_key, signature), claim_public_key),
+                ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
+                    validator_node_public_key,
+                    validator_node_signature,
+                )),
             )),
             ..Default::default()
         }
