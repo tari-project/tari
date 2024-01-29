@@ -22,7 +22,7 @@
 
 #![allow(dead_code, unused)]
 
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use log::*;
 use minotari_app_utilities::identity_management::setup_node_identity;
@@ -442,6 +442,8 @@ pub async fn init_wallet(
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {}", e)))?;
     let factories = CryptoFactories::default();
 
+    let now = Instant::now();
+
     let mut wallet = Wallet::start(
         wallet_config,
         config.peer_seeds.clone(),
@@ -463,12 +465,11 @@ pub async fn init_wallet(
         WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
         e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
-    if let Some(hs) = wallet.comms.hidden_service() {
-        wallet
-            .db
-            .set_tor_identity(hs.tor_identity().clone())
-            .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
-    }
+
+    error!(
+        target: LOG_TARGET,
+        "Wallet started in {}ms", now.elapsed().as_millis()
+    );
 
     if let Some(file_name) = seed_words_file_name {
         let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?.join(" ");

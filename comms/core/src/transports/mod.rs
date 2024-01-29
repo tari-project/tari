@@ -47,7 +47,9 @@ pub use socks::{SocksConfig, SocksTransport};
 mod tcp;
 pub use tcp::TcpTransport;
 
+mod hidden_service_transport;
 mod tcp_with_tor;
+pub use hidden_service_transport::HiddenServiceTransport;
 pub use tcp_with_tor::TcpWithTorTransport;
 
 /// Defines an abstraction for implementations that can dial and listen for connections over a provided address.

@@ -23,7 +23,6 @@
 use std::{iter, sync::Arc, time::Duration};
 
 use log::*;
-use multiaddr::{multiaddr, Protocol};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -37,7 +36,6 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequest,
         ConnectionManagerRequester,
-        ListenerInfo,
         LivenessCheck,
         LivenessStatus,
     },
@@ -143,7 +141,7 @@ impl UnspawnedCommsNode {
         let UnspawnedCommsNode {
             builder,
             connection_manager_request_rx,
-            mut connection_manager_requester,
+            connection_manager_requester,
             connectivity_requester,
             connectivity_rx,
             node_identity,
@@ -155,7 +153,6 @@ impl UnspawnedCommsNode {
 
         let CommsBuilder {
             dial_backoff,
-            hidden_service_ctl,
             connection_manager_config,
             connectivity_config,
             ..
@@ -217,29 +214,6 @@ impl UnspawnedCommsNode {
             "Your node's network ID is '{}'",
             node_identity.node_id()
         );
-
-        let listening_info = connection_manager_requester.wait_until_listening().await?;
-
-        // Final setup of the hidden service.
-        let mut hidden_service = None;
-        if let Some(mut ctl) = hidden_service_ctl {
-            // Only set the address to the bind address it is set to TCP port 0
-            let mut proxied_addr = ctl.proxied_address();
-            if proxied_addr.ends_with(&multiaddr!(Tcp(0u16))) {
-                // Remove the TCP port 0 address and replace it with the actual listener port
-                if let Some(Protocol::Tcp(port)) = listening_info.bind_address().iter().last() {
-                    proxied_addr.pop();
-                    proxied_addr.push(Protocol::Tcp(port));
-                    ctl.set_proxied_addr(&proxied_addr);
-                }
-            }
-            let hs = ctl.create_hidden_service().await?;
-            let onion_addr = hs.get_onion_address();
-            if !node_identity.public_addresses().contains(&onion_addr) {
-                node_identity.add_public_address(onion_addr);
-            }
-            hidden_service = Some(hs);
-        }
         info!(
             target: LOG_TARGET,
             "Your node's public addresses are '{}'",
@@ -266,11 +240,9 @@ impl UnspawnedCommsNode {
             shutdown_signal,
             connection_manager_requester,
             connectivity_requester,
-            listening_info,
             node_identity,
             peer_manager,
             liveness_watch,
-            hidden_service,
             complete_signals: ext_context.drain_complete_signals(),
         })
     }
@@ -312,12 +284,8 @@ pub struct CommsNode {
     node_identity: Arc<NodeIdentity>,
     /// Shared PeerManager instance
     peer_manager: Arc<PeerManager>,
-    /// The bind addresses of the listener(s)
-    listening_info: ListenerInfo,
     /// Current liveness status
     liveness_watch: watch::Receiver<LivenessStatus>,
-    /// `Some` if the comms node is configured to run via a hidden service, otherwise `None`
-    hidden_service: Option<tor::HiddenService>,
     /// The 'reciprocal' shutdown signals for each comms service
     complete_signals: Vec<ShutdownSignal>,
 }
@@ -326,6 +294,10 @@ impl CommsNode {
     /// Get a subscription to `ConnectionManagerEvent`s
     pub fn subscribe_connection_manager_events(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
         self.connection_manager_requester.get_event_subscription()
+    }
+
+    pub fn connection_manager_requester(&mut self) -> &mut ConnectionManagerRequester {
+        &mut self.connection_manager_requester
     }
 
     /// Get a subscription to `ConnectivityEvent`s
@@ -348,24 +320,9 @@ impl CommsNode {
         &self.node_identity
     }
 
-    /// Return the Ip/Tcp address that this node is listening on
-    pub fn listening_address(&self) -> &Multiaddr {
-        self.listening_info.bind_address()
-    }
-
-    /// Return [ListenerInfo]
-    pub fn listening_info(&self) -> &ListenerInfo {
-        &self.listening_info
-    }
-
     /// Returns the current liveness status
     pub fn liveness_status(&self) -> LivenessStatus {
         *self.liveness_watch.borrow()
-    }
-
-    /// Return the Ip/Tcp address that this node is listening on
-    pub fn hidden_service(&self) -> Option<&tor::HiddenService> {
-        self.hidden_service.as_ref()
     }
 
     /// Return a handle that is used to call the connectivity service.
