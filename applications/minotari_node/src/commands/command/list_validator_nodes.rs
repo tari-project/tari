@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::{epoch::VnEpoch, types::PublicKey};
@@ -72,6 +72,12 @@ impl CommandContext {
         let current_epoch = constants.block_height_to_epoch(height);
         let next_epoch = VnEpoch(current_epoch.as_u64() + 1);
         let next_epoch_height = constants.epoch_to_block_height(next_epoch);
+
+        let header = self
+            .blockchain_db
+            .fetch_header(height)
+            .await?
+            .ok_or_else(|| anyhow!("Block at height {height} not found"))?;
         let vns = self.blockchain_db.fetch_active_validator_nodes(height).await?;
         let next_vns = self
             .blockchain_db
@@ -80,6 +86,7 @@ impl CommandContext {
 
         println!();
         println!("Registered validator nodes for epoch {}", current_epoch.as_u64());
+        println!("Merkle root: {}", header.validator_node_mr);
         println!("----------------------------------");
         if vns.is_empty() {
             println!("No active validator nodes.");
