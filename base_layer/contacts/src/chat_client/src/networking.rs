@@ -22,11 +22,11 @@
 
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use log::trace;
+use log::{error, trace};
 use minotari_app_utilities::{identity_management, identity_management::load_from_json};
 // Re-exports
 pub use tari_comms::{
-    multiaddr::Multiaddr,
+    multiaddr::{Error as MultiaddrError, Multiaddr},
     peer_manager::{NodeIdentity, PeerFeatures},
 };
 use tari_comms::{peer_manager::Peer, tor::TorIdentity, CommsNode, UnspawnedCommsNode};
@@ -113,10 +113,16 @@ pub async fn start(
         let path = config.chat_client.tor_identity_file.clone();
         let node_id = comms.node_identity();
         let after_comms = move |identity: TorIdentity| {
-            let _result = identity_management::save_as_json(&path, &identity);
-            let address: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
-                .parse()
-                .expect("Should be able to create address");
+            let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
+            if let Err(e) = identity_management::save_as_json(&path, &identity) {
+                error!(target: LOG_TARGET, "Failed to save tor identity{:?}", e);
+            }
+            let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
+            if result.is_err() {
+                error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                return;
+            }
+            let address = result.unwrap();
             trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", identity);
             if !node_id.public_addresses().contains(&address) {
                 node_id.add_public_address(address);

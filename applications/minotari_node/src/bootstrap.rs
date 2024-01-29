@@ -29,7 +29,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{
-    multiaddr::Multiaddr,
+    multiaddr::{Error as MultiaddrError, Multiaddr},
     peer_manager::Peer,
     protocol::rpc::RpcServer,
     tor::TorIdentity,
@@ -177,11 +177,17 @@ where B: BlockchainBackend + 'static
             let path = base_node_config.tor_identity_file.clone();
             let node_id = comms.node_identity();
             let after_comms = move |identity: TorIdentity| {
-                let _result = identity_management::save_as_json(&path, &identity);
+                let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
+                if let Err(e) = identity_management::save_as_json(&path, &identity) {
+                    error!(target: LOG_TARGET, "Failed to save tor identity{:?}", e);
+                }
                 trace!(target: LOG_TARGET, "resave the tor identity {:?}", identity);
-                let address: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
-                    .parse()
-                    .expect("Should be able to create address");
+                let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
+                if result.is_err() {
+                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                    return;
+                }
+                let address = result.unwrap();
                 if !node_id.public_addresses().contains(&address) {
                     node_id.add_public_address(address);
                 }

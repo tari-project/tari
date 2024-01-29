@@ -33,7 +33,7 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
 };
 use tari_comms::{
-    multiaddr::Multiaddr,
+    multiaddr::{Error as MultiaddrError, Multiaddr},
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     tor::TorIdentity,
@@ -261,10 +261,16 @@ where
             let wallet_db = wallet_database.clone();
             let node_id = comms.node_identity();
             let after_comms = move |identity: TorIdentity| {
-                let address: Multiaddr = format!("/onion3/{}:{}", identity.service_id, identity.onion_port)
-                    .parse()
-                    .expect("Should be able to create address");
-                let _result = wallet_db.set_tor_identity(identity);
+                let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
+                if let Err(e) = wallet_db.set_tor_identity(identity) {
+                    error!(target: LOG_TARGET, "Failed to set wallet db tor identity{:?}", e);
+                }
+                let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
+                if result.is_err() {
+                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                    return;
+                }
+                let address = result.unwrap();
                 if !node_id.public_addresses().contains(&address) {
                     node_id.add_public_address(address.clone());
                 }
