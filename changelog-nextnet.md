@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-rc.3](https://github.com/tari-project/tari/compare/v1.0.0-rc.2...v1.0.0-rc.3) (2024-01-29)
+
+
+### Features
+
+* add search kernels method to nodejs client ([#6082](https://github.com/tari-project/tari/issues/6082)) ([0190221](https://github.com/tari-project/tari/commit/019022149d94afb3c0ed3f75490dd777d60bad1c))
+* prevent runtime error with compact error input ([#6096](https://github.com/tari-project/tari/issues/6096)) ([69421f5](https://github.com/tari-project/tari/commit/69421f5ef97f0ba4c194162bca0b367dc7714ffe))
+* update api ([#6101](https://github.com/tari-project/tari/issues/6101)) ([47e73ac](https://github.com/tari-project/tari/commit/47e73ac2b692bbfc924a4329e29597e49f84af0f))
+* update codeowners ([#6088](https://github.com/tari-project/tari/issues/6088)) ([58a131d](https://github.com/tari-project/tari/commit/58a131d302fd7295134c708e75a0b788205d287e))
+
+
+### Bug Fixes
+
+* faster tor startup ([#6092](https://github.com/tari-project/tari/issues/6092)) ([a2872bb](https://github.com/tari-project/tari/commit/a2872bba188c456578ed5b5ad5eb2e37e26a46e6))
+
 ## [1.0.0-rc.2](https://github.com/tari-project/tari/compare/v1.0.0-rc.1...v1.0.0-rc.2) (2024-01-18)
 
 
