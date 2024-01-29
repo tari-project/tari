@@ -51,8 +51,15 @@ use tari_comms::{
         ProtocolId,
     },
     tor,
-    tor::HiddenServiceControllerError,
-    transports::{predicate::FalsePredicate, MemoryTransport, SocksConfig, SocksTransport, TcpWithTorTransport},
+    tor::{HiddenServiceControllerError, TorIdentity},
+    transports::{
+        predicate::FalsePredicate,
+        HiddenServiceTransport,
+        MemoryTransport,
+        SocksConfig,
+        SocksTransport,
+        TcpWithTorTransport,
+    },
     utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
@@ -209,9 +216,10 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     Ok((comms, dht, event_sender))
 }
 
-pub async fn spawn_comms_using_transport(
+pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpin + Clone + 'static>(
     comms: UnspawnedCommsNode,
     transport_config: TransportConfig,
+    after_comms: F,
 ) -> Result<CommsNode, CommsInitializationError> {
     let comms = match transport_config.transport_type {
         TransportType::Memory => {
@@ -249,22 +257,16 @@ pub async fn spawn_comms_using_transport(
             let tor_config = transport_config.tor;
             debug!(target: LOG_TARGET, "Building TOR comms stack ({:?})", tor_config);
             let listener_address_override = tor_config.listener_address_override.clone();
-            let mut hidden_service_ctl = initialize_hidden_service(tor_config)?;
+            let hidden_service_ctl = initialize_hidden_service(tor_config)?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
-            let transport = hidden_service_ctl.initialize_transport().await?;
-
-            info!(
-                target: LOG_TARGET,
-                "Tor hidden service initialized. proxied_address = '{:?}', listener_override_address = {:?}",
-                hidden_service_ctl.proxied_address(),
-                listener_address_override,
-            );
+            let instant = Instant::now();
+            let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms);
+            debug!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
 
             comms
                 .with_listener_address(
                     listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
                 )
-                .with_hidden_service_controller(hidden_service_ctl)
                 .spawn_with_transport(transport)
                 .await?
         },

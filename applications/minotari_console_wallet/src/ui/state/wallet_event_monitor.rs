@@ -74,13 +74,6 @@ impl WalletEventMonitor {
         let mut base_node_changed = wallet_connectivity.get_current_base_node_watcher();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
-        // let mut software_update_notif = self
-        //     .app_state_inner
-        //     .read()
-        //     .await
-        //     .get_software_updater()
-        //     .new_update_notifier()
-        //     .clone();
 
         let mut contacts_liveness_events = self.app_state_inner.read().await.get_contacts_liveness_event_stream();
 

@@ -28,7 +28,14 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
+use tari_comms::{
+    multiaddr::{Error as MultiaddrError, Multiaddr},
+    peer_manager::Peer,
+    protocol::rpc::RpcServer,
+    tor::TorIdentity,
+    NodeIdentity,
+    UnspawnedCommsNode,
+};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node,
@@ -79,6 +86,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
 impl<B> BaseNodeBootstrapper<'_, B>
 where B: BlockchainBackend + 'static
 {
+    #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
         let mut base_node_config = self.app_config.base_node.clone();
         let mut p2p_config = self.app_config.base_node.p2p.clone();
@@ -164,10 +172,33 @@ where B: BlockchainBackend + 'static
 
         let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
-        let comms = initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone())
-            .await
-            .map_err(|e| e.to_exit_error())?;
 
+        let comms = if p2p_config.transport.transport_type == TransportType::Tor {
+            let path = base_node_config.tor_identity_file.clone();
+            let node_id = comms.node_identity();
+            let after_comms = move |identity: TorIdentity| {
+                let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
+                if let Err(e) = identity_management::save_as_json(&path, &identity) {
+                    error!(target: LOG_TARGET, "Failed to save tor identity{:?}", e);
+                }
+                trace!(target: LOG_TARGET, "resave the tor identity {:?}", identity);
+                let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
+                if result.is_err() {
+                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                    return;
+                }
+                let address = result.unwrap();
+                if !node_id.public_addresses().contains(&address) {
+                    node_id.add_public_address(address);
+                }
+            };
+            initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await
+        } else {
+            let after_comms = |_identity| {};
+            initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await
+        };
+
+        let comms = comms.map_err(|e| e.to_exit_error())?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
@@ -177,10 +208,6 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             },
         };
-        if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&base_node_config.tor_identity_file, hs.tor_identity())
-                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-        }
 
         handles.register(comms);
 

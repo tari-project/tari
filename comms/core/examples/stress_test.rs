@@ -95,7 +95,7 @@ async fn run() -> Result<(), Error> {
         temp_dir.as_ref(),
         public_ip,
         port,
-        tor_identity,
+        tor_identity.clone(),
         is_tcp,
         shutdown.to_signal(),
     )
@@ -105,7 +105,7 @@ async fn run() -> Result<(), Error> {
     }
     if !is_tcp {
         if let Some(tor_identity_path) = tor_identity_path.as_ref() {
-            save_json(comms_node.hidden_service().unwrap().tor_identity(), tor_identity_path)?;
+            save_json(&tor_identity.unwrap(), tor_identity_path)?;
         }
     }
 
