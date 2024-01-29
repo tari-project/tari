@@ -26,4 +26,4 @@
 mod metrics;
 
 mod yamux;
-pub use self::yamux::{ConnectionError, Control, IncomingSubstreams, Substream, Yamux};
+pub use self::yamux::{Control, IncomingSubstreams, Substream, Yamux};
