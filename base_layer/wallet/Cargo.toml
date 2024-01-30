@@ -3,7 +3,7 @@ name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.53.0-dan.0"
+version = "1.0.0-dan.5"
 edition = "2018"
 
 [dependencies]
@@ -12,14 +12,14 @@ tari_common = { path = "../../common" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.20" }
 tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_utilities = { version = "0.6" }
+tari_utilities = { version = "0.7" }
 tari_contacts = { path = "../../base_layer/contacts" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
@@ -32,7 +32,7 @@ async-trait = "0.1.50"
 argon2 = "0.4.1"
 bincode = "1.3.1"
 blake2 = "0.10"
-borsh = "0.10"
+borsh = "1.2"
 sha2 = "0.10"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
@@ -51,7 +51,7 @@ strum_macros = "0.22"
 tempfile = "3.1.0"
 thiserror = "1.0.26"
 tower = "0.4"
-prost = "0.9"
+prost = "0.11.9"
 itertools = "0.10.3"
 chacha20poly1305 = "0.10.1"
 zeroize = "1"
@@ -65,7 +65,7 @@ tari_comms_dht = {  path = "../../comms/dht", features = ["test-mocks"] }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_core = { path = "../../base_layer/core",  default-features = false, features = ["transactions", "mempool_proto", "base_node_proto", "base_node"] }
 env_logger = "0.7.1"
-prost = "0.9.0"
+prost = "0.11.9"
 
 [features]
 default = ["bundled_sqlite"]

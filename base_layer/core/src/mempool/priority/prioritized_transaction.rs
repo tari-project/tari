@@ -118,11 +118,12 @@ impl Display for PrioritizedTransaction {
 mod tests {
     use super::*;
     use crate::transactions::{
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, MicroMinotari, T},
-        test_helpers::{create_test_core_key_manager_with_memory_db, create_tx, TestKeyManager},
+        test_helpers::create_tx,
     };
 
-    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &TestKeyManager) -> Transaction {
+    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &MemoryDbKeyManager) -> Transaction {
         let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
             .await
             .expect("Failed to get tx");
@@ -131,7 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn fee_increases_priority() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;
@@ -145,7 +146,7 @@ mod tests {
 
     #[tokio::test]
     async fn age_increases_priority() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;

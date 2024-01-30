@@ -38,27 +38,33 @@ use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{proto::dht::JoinMessage, rpc::UnvalidatedPeerInfo};
 
+#[allow(clippy::all, clippy::pedantic)]
 pub mod common {
     tari_comms::outdir_include!("tari.dht.common.rs");
 }
 
+#[allow(clippy::all, clippy::pedantic)]
 pub mod envelope {
     tari_comms::outdir_include!("tari.dht.envelope.rs");
 }
 
+#[allow(clippy::all, clippy::pedantic)]
 pub mod dht {
     use super::common;
     tari_comms::outdir_include!("tari.dht.rs");
 }
 
+#[allow(clippy::all, clippy::pedantic)]
 pub mod rpc {
     tari_comms::outdir_include!("tari.dht.rpc.rs");
 }
 
+#[allow(clippy::all, clippy::pedantic)]
 pub mod store_forward {
     tari_comms::outdir_include!("tari.dht.store_forward.rs");
 }
 
+#[allow(clippy::all, clippy::pedantic)]
 pub mod message_header {
     tari_comms::outdir_include!("tari.dht.message_header.rs");
 }

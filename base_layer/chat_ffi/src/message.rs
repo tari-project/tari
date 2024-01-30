@@ -122,9 +122,14 @@ pub unsafe extern "C" fn send_chat_message(client: *mut ChatClient, message: *mu
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    (*client)
+    let result = (*client)
         .runtime
         .block_on((*client).client.send_message((*message).clone()));
+
+    if let Err(e) = result {
+        error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
 }
 
 /// Reads the message metadata of a message and returns a ptr to the metadata at the given position

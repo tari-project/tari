@@ -36,4 +36,14 @@ mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;
 
 mod inner;
+/// This is a memory database implementation of the `TransactionKeyManager` trait.
+mod memory_db_key_manager;
 pub use inner::TransactionKeyManagerInner;
+pub use memory_db_key_manager::{
+    create_memory_db_key_manager,
+    create_memory_db_key_manager_with_range_proof_size,
+    MemoryDbKeyManager,
+};
+
+mod error;
+pub use error::CoreKeyManagerError;

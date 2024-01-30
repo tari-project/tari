@@ -83,6 +83,7 @@ impl<T> ServiceInitializer for ContactsServiceInitializer<T>
 where T: ContactsBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        trace!(target: LOG_TARGET, "Initializing ContactsServiceInitializer");
         let (liveness_tx, liveness_rx) = reply_channel::unbounded();
         let (publisher, _) = broadcast::channel(250);
         let (message_publisher, _) = broadcast::channel(250);

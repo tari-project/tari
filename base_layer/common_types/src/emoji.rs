@@ -27,6 +27,7 @@ use std::{
     iter,
 };
 
+use once_cell::sync::Lazy;
 use tari_crypto::tari_utilities::ByteArray;
 use thiserror::Error;
 
@@ -94,15 +95,13 @@ pub const EMOJI: [char; DICT_SIZE] = [
 ];
 
 // The reverse table, mapping emoji to characters to byte values
-lazy_static! {
-    pub static ref REVERSE_EMOJI: HashMap<char, u8> = {
-        let mut m = HashMap::with_capacity(DICT_SIZE);
-        EMOJI.iter().enumerate().for_each(|(i, c)| {
-            m.insert(*c, u8::try_from(i).expect("Invalid emoji"));
-        });
-        m
-    };
-}
+pub static REVERSE_EMOJI: Lazy<HashMap<char, u8>> = Lazy::new(|| {
+    let mut m = HashMap::with_capacity(DICT_SIZE);
+    EMOJI.iter().enumerate().for_each(|(i, c)| {
+        m.insert(*c, u8::try_from(i).expect("Invalid emoji"));
+    });
+    m
+});
 
 /// Returns the current emoji set as a character array
 pub const fn emoji_set() -> [char; DICT_SIZE] {

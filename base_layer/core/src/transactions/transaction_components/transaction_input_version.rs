@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, PartialOrd, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
+#[borsh(use_discriminant = true)]
 pub enum TransactionInputVersion {
     V0 = 0,
     /// Currently only used in tests, this can be used as the next version

@@ -27,7 +27,16 @@ pub use op_codes::{slice_to_boxed_hash, slice_to_hash, HashValue, Message, Opcod
 pub use script::TariScript;
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{
+    hash_domain,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    signatures::SchnorrSignature,
+};
+
+hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
+
+/// The type used for `CheckSig`, `CheckMultiSig`, and related opcodes' signatures
+pub type CheckSigSchnorrSignature = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, CheckSigHashDomain>;
 
 /// The standard payment script to be used for one-sided payment to stealth addresses
 pub fn stealth_payment_script(

@@ -39,14 +39,13 @@ use futures::{
     task::{Context, Poll},
 };
 use log::*;
+use once_cell::sync::Lazy;
 use tokio::{
     io,
     io::{AsyncRead, AsyncWrite, ErrorKind, ReadBuf},
 };
 
-lazy_static! {
-    static ref SWITCHBOARD: Mutex<SwitchBoard> = Mutex::new(SwitchBoard(HashMap::default(), 1));
-}
+static SWITCHBOARD: Lazy<Mutex<SwitchBoard>> = Lazy::new(|| Mutex::new(SwitchBoard(HashMap::default(), 1)));
 
 enum Slot<T> {
     InUse(T),

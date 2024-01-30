@@ -1,8 +1,16 @@
-apt-get -y install \
+apt-get install --no-install-recommends --assume-yes \
+  apt-transport-https \
+  ca-certificates \
+  curl \
+  gpg \
+  bash \
+  less \
   openssl \
   libssl-dev \
   pkg-config \
   libsqlite3-dev \
+  libsqlite3-0 \
+  libreadline-dev \
   git \
   cmake \
   dh-autoreconf \

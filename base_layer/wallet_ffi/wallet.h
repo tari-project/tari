@@ -72,6 +72,8 @@ struct Contact;
 
 struct ContactsLivenessData;
 
+struct ContactsServiceHandle;
+
 /**
  * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
  * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
@@ -2584,6 +2586,13 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * `config` - The TariCommsConfig pointer
  * `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
  * pointer.
+ * `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
+ *        0 => Off
+ *        1 => Error
+ *        2 => Warn
+ *        3 => Info
+ *        4 => Debug
+ *        5 | 11 => Trace // Cranked up to 11
  * `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
  * this to 0
  * `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
@@ -2673,6 +2682,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  */
 struct TariWallet *wallet_create(TariCommsConfig *config,
                                  const char *log_path,
+                                 int log_verbosity,
                                  unsigned int num_rolling_log_files,
                                  unsigned int size_per_log_file_bytes,
                                  const char *passphrase,
@@ -3917,6 +3927,36 @@ unsigned long long fee_per_gram_stat_get_max_fee_per_gram(TariFeePerGramStat *fe
  * None
  */
 void fee_per_gram_stat_destroy(TariFeePerGramStat *fee_per_gram_stat);
+
+/**
+ * Returns a ptr to the ContactsServiceHandle for use with chat
+ *
+ * ## Arguments
+ * `wallet` - The wallet instance
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ContactsServiceHandle` an opaque pointer used in chat sideloading initialization
+ *
+ * # Safety
+ * You should release the returned pointer after it's been used to initialize chat using `contacts_handle_destroy`
+ */
+struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
+                                              int *error_out);
+
+/**
+ * Frees memory for a ContactsServiceHandle
+ *
+ * ## Arguments
+ * `contacts_handle` - The pointer to a ContactsServiceHandle
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
 
 /**
  * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`

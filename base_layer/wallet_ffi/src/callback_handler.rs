@@ -277,11 +277,11 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _} => {
+                                TransactionEvent::DetectedTransactionConfirmed{tx_id, is_valid: _} => {
                                     self.receive_faux_transaction_confirmed_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                TransactionEvent::DetectedTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
                                     self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations);
                                     self.trigger_balance_refresh().await;
                                 },

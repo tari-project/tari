@@ -20,11 +20,11 @@ Want to contribute? Start by reading the [Contributing Guide](Contributing.md) a
 ### Versions
 The recommended running versions of each network are:
 
-| Network   | Version         |
-|-----------|-----------------|
-| Stagenet  | 0.50.0-hotfix.1 |
-| Nextnet   | 0.51.0-rc.1     |
-| Esmeralda | 0.53.0-pre.0    |
+| Network   | Version     |
+|-----------|-------------|
+| Stagenet  | ---         |
+| Nextnet   | 1.0.0-rc.2  |
+| Esmeralda | 1.0.0-pre.5 |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
@@ -114,7 +114,7 @@ First you'll need to make sure you have a full development environment set up:
 
 ```
 brew update
-brew install cmake openssl tor coreutils automake
+brew install openssl cmake coreutils automake autoconf protobuf tor
 brew install --cask powershell
 ```
 
@@ -167,6 +167,9 @@ First you'll need to make sure you have a full development environment set up:
 
   - OpenSSL is compiled and statically linked by the included [rust-openssl](https://github.com/sfackler/rust-openssl) crate
   - Perl is required to compile this source on Windows, please download and install [StrawberryPerl](https://strawberryperl.com/)
+
+- [Protocol Buffers](https://protobuf.dev/)
+  - Install from https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation or if you using [The Package Manager for Windows](https://chocolatey.org/), run ```choco upgrade protoc -y```
 
 - Tor
   - Download [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
@@ -356,7 +359,7 @@ CONTAINER ID        IMAGE                                    COMMAND            
 73427509a4bb        quay.io/tarilabs/minotari_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_minotari_node_1
 ```
 
-With the container ID `73427509a4bb`, connect to the `minotari_node`` console using `docker attach 73427509a4bb`:
+With the container ID `73427509a4bb`, connect to the `minotari_node` console using `docker attach 73427509a4bb`:
 
 ```
 >> help

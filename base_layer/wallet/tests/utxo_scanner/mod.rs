@@ -61,8 +61,8 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::{OutputFeatures, WalletOutput},
         CryptoFactories,
     },
@@ -241,7 +241,7 @@ async fn generate_block_headers_and_utxos(
     birthday_epoch_time: u64,
     birthday_offset: u64,
     only_coinbase: bool,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> TestBlockData {
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
@@ -299,7 +299,7 @@ async fn test_utxo_scanner_recovery() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         wallet_outputs,
@@ -334,7 +334,7 @@ async fn test_utxo_scanner_recovery() {
                 output.clone(),
                 &key_manager,
                 None,
-                OutputSource::Unknown,
+                OutputSource::Standard,
                 None,
                 None,
             )
@@ -398,7 +398,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         wallet_outputs,
@@ -433,7 +433,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
                 output.clone(),
                 &key_manager,
                 None,
-                OutputSource::Unknown,
+                OutputSource::Standard,
                 None,
                 None,
             )
@@ -472,11 +472,11 @@ async fn test_utxo_scanner_recovery_with_restart() {
             amount: _,
             source_address,
             message,
-            maturity: _,
             import_status: _,
             tx_id: _,
             current_height: _,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
@@ -539,11 +539,11 @@ async fn test_utxo_scanner_recovery_with_restart() {
             amount: _,
             source_address: _,
             message,
-            maturity: _,
             import_status: _,
             tx_id: _,
             current_height: _,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             assert_eq!(message, "recovery".to_string());
@@ -564,7 +564,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         mut block_headers,
         mut wallet_outputs,
@@ -597,7 +597,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                 output.clone(),
                 &key_manager,
                 None,
-                OutputSource::Unknown,
+                OutputSource::Standard,
                 None,
                 None,
             )
@@ -634,7 +634,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .filter(|u| u.height <= 4)
         .collect::<Vec<UtxosByBlock>>();
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers: new_block_headers,
         wallet_outputs: new_wallet_outputs,
@@ -675,7 +675,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                 output.clone(),
                 &key_manager,
                 None,
-                OutputSource::Unknown,
+                OutputSource::Standard,
                 None,
                 None,
             )
@@ -755,7 +755,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         wallet_outputs: _wallet_outputs,
@@ -864,7 +864,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         mut block_headers,
         wallet_outputs,
@@ -899,7 +899,7 @@ async fn test_utxo_scanner_one_sided_payments() {
                 output.clone(),
                 &key_manager,
                 None,
-                OutputSource::Unknown,
+                OutputSource::Standard,
                 None,
                 None,
             )
@@ -950,14 +950,14 @@ async fn test_utxo_scanner_one_sided_payments() {
             amount: _,
             source_address: _,
             message,
-            maturity: _,
             import_status: _,
             tx_id: _,
             current_height: _,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
-            assert_eq!(message, "one-sided non-default".to_string());
+            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
         }
     }
 
@@ -984,7 +984,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     block_headers.insert(NUM_BLOCKS, block_header11);
 
     db_wallet_outputs.push(
-        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
             .await
             .unwrap(),
     );
@@ -1048,15 +1048,15 @@ async fn test_utxo_scanner_one_sided_payments() {
             amount: _,
             source_address: _,
             message,
-            maturity: _,
             import_status: _,
             tx_id: _,
             current_height: h,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             println!("{:?}", h);
-            assert_eq!(message, "new one-sided message".to_string());
+            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
         }
     }
 }
@@ -1073,7 +1073,7 @@ async fn test_birthday_timestamp_over_chain() {
     const NUM_BLOCKS: u64 = 10;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         utxos_by_block,

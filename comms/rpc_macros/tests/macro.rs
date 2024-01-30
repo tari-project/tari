@@ -56,8 +56,8 @@ pub trait Test: Sync + Send + 'static {
     fn some_non_rpc_method(&self);
 }
 
-#[derive(prost::Message)]
-pub struct CustomMessage;
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct CustomMessage {}
 
 #[derive(Default)]
 pub struct TestService {
@@ -127,7 +127,7 @@ async fn it_correctly_maps_the_method_nums() {
         .unwrap();
     assert_eq!(*spy.read().await.get("request_response").unwrap(), 1);
     server
-        .call(Request::new(2.into(), CustomMessage.to_encoded_bytes().into()))
+        .call(Request::new(2.into(), CustomMessage {}.to_encoded_bytes().into()))
         .await
         .unwrap();
     assert_eq!(*spy.read().await.get("server_streaming").unwrap(), 1);
@@ -167,7 +167,7 @@ async fn it_generates_client_calls() {
     // This is a test that the correct client functions are generated - if this test compiles then it has already passed
     task::spawn(async move {
         let _result = client.request_response(111).await;
-        let mut streaming_resp = client.server_streaming(CustomMessage).await.unwrap();
+        let mut streaming_resp = client.server_streaming(CustomMessage {}).await.unwrap();
         streaming_resp.next().await;
         let _result = client.unit().await;
     });

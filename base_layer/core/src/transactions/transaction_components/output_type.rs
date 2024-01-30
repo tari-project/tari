@@ -44,8 +44,9 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
     BorshDeserialize,
 )]
 #[repr(u8)]
+#[borsh(use_discriminant = true)]
 pub enum OutputType {
-    /// An standard non-coinbase output.
+    /// An standard output.
     Standard = 0,
     /// Output is a coinbase output, must not be spent until maturity.
     Coinbase = 1,

@@ -72,6 +72,8 @@ pub struct WalletConfig {
     pub base_node_service_config: BaseNodeServiceConfig,
     /// The relative path to store persistent data
     pub data_dir: PathBuf,
+    /// The relative path to the config directory
+    pub config_dir: PathBuf,
     /// The main wallet db file
     pub db_file: PathBuf,
     /// The main wallet db sqlite database backend connection pool size for concurrent reads
@@ -99,6 +101,8 @@ pub struct WalletConfig {
     pub grpc_address: Option<Multiaddr>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
+    /// GRPC tls enabled
+    pub grpc_tls_enabled: bool,
     /// A custom base node peer that will be used to obtain metadata from
     pub custom_base_node: Option<String>,
     /// A list of base node peers that the wallet should use for service requests and tracking chain state
@@ -132,6 +136,7 @@ impl Default for WalletConfig {
             network: Default::default(),
             base_node_service_config: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
+            config_dir: PathBuf::from_str("config/wallet").unwrap(),
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
             db_connection_pool_size: 16, // Note: Do not reduce this default number
             password: None,
@@ -143,12 +148,13 @@ impl Default for WalletConfig {
             grpc_enabled: false,
             grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
+            grpc_tls_enabled: false,
             custom_base_node: None,
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
             fee_per_gram: 5,
             num_required_confirmations: 3,
-            use_libtor: false,
+            use_libtor: true,
             identity_file: None,
         }
     }
@@ -164,6 +170,9 @@ impl WalletConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());
+        }
+        if !self.config_dir.is_absolute() {
+            self.config_dir = base_path.as_ref().join(self.config_dir.as_path());
         }
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());

@@ -519,7 +519,7 @@ impl TransactionInput {
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self.spent_output {
-            SpentOutput::OutputHash(ref h) => write!(fmt, "Input spending Output hash: {}", h.to_hex()),
+            SpentOutput::OutputHash(ref h) => write!(fmt, "Input spending Output hash: {}", h),
             SpentOutput::OutputData {
                 ref commitment,
                 ref script,
@@ -530,12 +530,12 @@ impl Display for TransactionInput {
                 fmt,
                 "({}, {}) [{:?}], Script: ({}), Input_data : ({}), Offset_Pubkey: ({}), Input Hash: {}",
                 commitment.to_hex(),
-                self.output_hash().to_hex(),
+                self.output_hash(),
                 features,
                 script,
                 self.input_data.to_hex(),
                 sender_offset_public_key.to_hex(),
-                self.canonical_hash().to_hex(),
+                self.canonical_hash(),
             ),
         }
     }

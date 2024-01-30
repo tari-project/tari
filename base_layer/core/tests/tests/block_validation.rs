@@ -23,7 +23,7 @@
 use std::{iter, sync::Arc};
 
 use borsh::BorshSerialize;
-use monero::blockdata::block::Block as MoneroBlock;
+use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
@@ -49,7 +49,6 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
-            create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,
@@ -76,6 +75,7 @@ use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
+use tiny_keccak::{Hasher, Keccak};
 use tokio::time::Instant;
 
 use crate::{
@@ -98,7 +98,7 @@ async fn test_monero_blocks() {
     let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let network = Network::Esmeralda;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
@@ -119,6 +119,7 @@ async fn test_monero_blocks() {
         .add_consensus_constants(cc)
         .build()
         .unwrap();
+    let gen_hash = *cm.get_genesis_block().hash();
     let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
     let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator);
     let db = create_store_with_consensus_and_validators(
@@ -176,7 +177,7 @@ async fn test_monero_blocks() {
     block_3.header.nonce = 1;
     let hash2 = block_3.hash();
     assert_ne!(hash1, hash2);
-    assert!(verify_header(&block_3.header).is_ok());
+    assert!(verify_header(&block_3.header, &gen_hash, &cm).is_ok());
     match db.add_block(Arc::new(block_3.clone())) {
         Err(ChainStorageError::ValidationError {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
@@ -199,11 +200,28 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 .to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
-    let hash = tblock.header.merge_mining_hash();
-    monero_rx::insert_merge_mining_tag_into_block(&mut mblock, hash).unwrap();
+    let hash = monero::Hash::from_slice(tblock.header.merge_mining_hash().as_slice());
+    monero_rx::insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut mblock, hash, 1, 0).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
-    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes).unwrap();
+    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    let aux_hashes = vec![hash];
+    let aux_chain_merkle_proof = monero_rx::create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+    let coinbase = mblock.miner_tx.clone();
+    let extra = coinbase.prefix.extra.clone();
+    let mut keccak = Keccak::v256();
+    let mut encoder_prefix = Vec::new();
+    coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+    coinbase
+        .prefix
+        .unlock_time
+        .consensus_encode(&mut encoder_prefix)
+        .unwrap();
+    coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+    coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+    keccak.update(&encoder_prefix);
+
     #[allow(clippy::cast_possible_truncation)]
     let monero_data = MoneroPowData {
         header: mblock.header,
@@ -211,7 +229,9 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
         transaction_count: hashes.len() as u16,
         merkle_root,
         coinbase_merkle_proof,
-        coinbase_tx: mblock.miner_tx,
+        coinbase_tx_extra: extra,
+        coinbase_tx_hasher: keccak,
+        aux_chain_merkle_proof,
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
@@ -312,7 +332,7 @@ async fn inputs_are_not_malleable() {
 #[allow(clippy::too_many_lines)]
 async fn test_orphan_validator() {
     let factories = CryptoFactories::default();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(325)
@@ -460,7 +480,7 @@ async fn test_orphan_body_validation() {
         .clear_proof_of_work()
         .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
@@ -665,7 +685,7 @@ OutputFeatures::default()),
 #[allow(clippy::too_many_lines)]
 async fn test_header_validation() {
     let factories = CryptoFactories::default();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
     let sha3x_constants = PowAlgorithmConstants {
@@ -790,7 +810,7 @@ async fn test_block_sync_body_validator() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(400)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
@@ -1050,7 +1070,7 @@ async fn add_block_with_large_block() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(
         &[
             5 * T,
@@ -1095,7 +1115,7 @@ async fn add_block_with_large_block() {
     // lets make our big block (1 -> 5) * 12
     let mut schemas = Vec::new();
     for output in outputs.into_iter().skip(1) {
-        let new_schema = txn_schema!(from: vec![output], to: vec![1 * T, 1 * T, 1 * T, 1 * T]);
+        let new_schema = txn_schema!(from: vec![output.clone()], to: vec![1 * T, 1 * T, 1 * T, 1 * T]);
         schemas.push(new_schema);
     }
 
@@ -1127,7 +1147,7 @@ async fn add_block_with_large_many_output_block() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(127_795)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[501 * T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
@@ -1183,6 +1203,7 @@ async fn add_block_with_large_many_output_block() {
 use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
     transactions::{
+        key_manager::create_memory_db_key_manager,
         test_helpers::create_stx_protocol_internal,
         transaction_components::{Transaction, TransactionKernel},
     },

@@ -32,6 +32,7 @@ use thiserror::Error;
 /// Indicates the algorithm used to mine a block
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(use_discriminant = true)]
 pub enum PowAlgorithm {
     RandomX = 0,
     Sha3x = 1,

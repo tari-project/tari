@@ -9,9 +9,13 @@ name: Build ffi libraries
       - 'build-ffis-*'
   schedule:
     - cron: '05 00 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  CARGO: cargo
+  # CARGO_OPTIONS: "--verbose"
+  CARGO_OPTIONS: "--release"
   TARI_NETWORK_CHANGELOG: 'development'
   TOOLCHAIN: 'stable'
   ## Must be a JSon string
@@ -30,28 +34,30 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       libffiss: ${{ steps.set-matrix.outputs.libffiss }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code
+        uses: actions/checkout@v4
 
       - name: Set Matrix from JSon file
         id: set-matrix
         run: |
           ## build all targets images
-          # matrix=$( jq -s -c .[] .github/workflows/build_libffis_workflow.json )
-          matrix=$( jq -s -c .[] ${{ env.matrix-json-file }} )
+          # matrix=$( jq -s -c .[] ${{ env.matrix-json-file }} )
           #
           ## build only single target image
-          # matrix_selection=$( jq -c '.[] | select( ."runs-on" == "macos-latest" )' ${{ env.matrix-json-file }} )
-          # matrix_selection=$( jq -c '.[] | select( ."runs-on" == "macos-latest" )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."runs-on" == "ubuntu-latest" )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."target" == "x86_64-linux-android" )' ${{ env.matrix-json-file }} )
           #
           ## buid select target images - build_enabled
-          # matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
+          matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
           #
           ## Setup json array
-          # matrix=$(echo ${matrix_selection} | jq -s -c)
+          matrix=$(echo ${matrix_selection} | jq -s -c)
           #
           ## Setup the json build matrix
           # matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
           #
+          echo $matrix
+          echo $matrix | jq .
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
           echo "libffiss=${BUILD_LIBFFIS}" >> $GITHUB_OUTPUT
 
@@ -106,11 +112,15 @@ jobs:
           if [[ "${{ matrix.builds.target }}" =~ "android" ]]; then
             echo "CFLAGS=-DMDB_USE_ROBUST=0" >> $GITHUB_ENV
             echo "TARGET_PLATFORM=android" >> $GITHUB_ENV
-          else
+          elif [[ "${{ matrix.builds.target }}" =~ "ios" ]]; then
             echo "TARGET_PLATFORM=ios" >> $GITHUB_ENV
             if [[ "${{ matrix.builds.target }}" =~ "-sim" ]]; then
               echo "TARGET_SIM=-sim" >> $GITHUB_ENV
             fi
+          elif [[ "${{ matrix.builds.target }}" =~ "linux-gnu" ]]; then
+            echo "TARGET_PLATFORM=linux" >> $GITHUB_ENV
+          elif [[ "${{ matrix.builds.target }}" =~ "apple-darwin" ]]; then
+            echo "TARGET_PLATFORM=macos" >> $GITHUB_ENV
           fi
           # Strip begining
           tempEnv="${{ matrix.builds.target }}"
@@ -120,36 +130,63 @@ jobs:
           tempEnv=${tempEnv#*_}
           echo "TARGET_NAME=${tempEnv%_*}" >> $GITHUB_ENV
 
+      - name: Install Linux dependencies - Ubuntu
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) }}
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Install macOS dependencies
+        if: startsWith(runner.os,'macOS')
+        run: |
+          brew install openssl cmake coreutils automake autoconf protobuf
+          rustup target add ${{ matrix.builds.target }}
+
       - name: Setup Rust toolchain
+        if: ${{ ! matrix.builds.cross }}
         uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt, clippy
           toolchain: ${{ env.TOOLCHAIN }}
           targets: ${{ matrix.builds.target }}
 
-      # Don't use caches for binary builds when releasing. Start from a clean slate.
       - name: Cache cargo files and outputs
-        if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) }}
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.builds.target }}
 
-      - name: Build ${{ matrix.libffis }} libraries
+      - name: Install and setup cargo cross
+        if: ${{ matrix.builds.cross }}
         shell: bash
         run: |
-          # rustup target list
-          # rustup toolchain list
-          # rustup show
-          if [ "${{ matrix.builds.cross }}" == "true" ]; then
-            cargo install cross
-            cross build --lib --release --locked \
-              --package ${{ matrix.libffis }} \
-              --target=${{ matrix.builds.target }}
-          else
-            rustup target add ${{ matrix.builds.target }}
-            # rustup toolchain install stable-aarch64-unknown-linux-gnu --force-non-host
-            cargo build --lib --release --locked \
-              --package ${{ matrix.libffis }} \
-              --target=${{ matrix.builds.target }}
-          fi
+          cargo install cross
+          echo "CARGO=cross" >> $GITHUB_ENV
+
+      - name: Install rust target/toolchain for native/local cross-compile builds
+        if: ${{ ! matrix.builds.cross  }}
+        # if: ${{ ( ! matrix.builds.cross ) && env.TARGET_PLATFORM != 'ios' }}
+        run: |
+          rustup target add ${{ matrix.builds.target }}
+          # rustup toolchain install stable-${{ matrix.builds.target }} --force-non-host
+          rustup target list
+          rustup toolchain list
+          rustup show
+
+      - name: Show command used for Cargo
+        run: |
+          echo "cargo command is: ${{ env.CARGO }}"
+          echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
+          echo "cross flag: ${{ matrix.builds.cross }}"
+
+      - name: Build ${{ matrix.libffis }} libraries
+        # can't use bash for windows build, perl not supported (openssl)
+        # don't mess with indentation - breaks inline multiline (readiblity)
+        run: >
+          ${{ env.CARGO }} build --lib ${{ env.CARGO_OPTIONS }}
+          --package ${{ matrix.libffis }}
+          --target ${{ matrix.builds.target }}
+          --locked
 
       - name: Prepare ${{ matrix.libffis }} libraries
         shell: bash
@@ -172,7 +209,7 @@ jobs:
           ls -alhtR "${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
           path: ${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
@@ -194,7 +231,7 @@ jobs:
         run: brew install coreutils
 
       - name: Download iOS libffiss for ${{ matrix.libffis }}
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           # wildcard downloads not supported yet ( minotari_*_ffi-ios-* )
           # name: ${{ matrix.libffis }}-ios
@@ -247,7 +284,7 @@ jobs:
           ls -alhtR
 
       - name: Upload iOS universal libffis artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: lib${{ matrix.libffis }}-ios-universal
           path: libffiss/lib${{ matrix.libffis }}-ios-universal
@@ -299,7 +336,7 @@ jobs:
           ls -alhtR
 
       - name: Upload iOS xcframework libffis artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: lib${{ matrix.libffis }}-ios-xcframework
           path: libffiss/lib${{ matrix.libffis }}-ios-xcframework
@@ -311,7 +348,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - name: Download all ffi libraries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: libffiss
 

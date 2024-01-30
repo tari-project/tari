@@ -1,84 +1,8 @@
-
-########################################################################################################################
-#                                                                                                                      #
-#                      Base Node Configuration Options (BaseNodeConfig)                                                #
-#                                                                                                                      #
-########################################################################################################################
-
-# If you are not running a Minotari Base node, you can simply leave everything in this section commented out. Base nodes
-# help maintain the security of the Minotari token and are the surest way to preserve your privacy and be 100% sure that
-# no-one is cheating you out of your money.
-
-[dibbler.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_dibbler.json"
-
-[igor.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_igor.json"
-
-[esmeralda.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_esmeralda.json"
-
-[stagenet.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_stagenet.json"
-
-[nextnet.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_nextnet.json"
-
-[base_node]
-# Set to false to disable the base node GRPC server (default = true)
-#grpc_enabled = true
-
-# gRPC authentication method (default = "none")
-#grpc_authentication = { username = "admin", password = "xxxx" }
-
-# Uncomment all gRPC server methods that should be denied default (only active when `grpc_enabled = true`)
-grpc_server_deny_methods = [
-    "get_version",
-    "check_for_updates",
-    "get_sync_info",
-    "get_sync_progress",
-    "get_tip_info",
-    "identify",
-    "get_network_status",
-    #"list_headers"
-    #"get_header_by_hash"
-    #"get_blocks"
-    #"get_block_timing"
-    #"get_constants"
-    #"get_block_size"
-    #"get_block_fees"
-    #"get_tokens_in_circulation"
-    #"get_network_difficulty"
-    #"get_new_block_template"
-    #"get_new_block"
-    #"get_new_block_blob"
-    #"submit_block"
-    #"submit_block_blob"
-    #"submit_transaction"
-    #"search_kernels"
-    #"search_utxos"
-    #"fetch_matching_utxos"
-    #"get_peers"
-    #"get_mempool_transactions"
-    #"transaction_state"
-    #"list_connected_peers"
-    #"get_mempool_stats"
-    #"get_active_validator_nodes"
-    #"get_shard_key"
-    #"get_template_registrations"
-    #"get_side_chain_utxos"
-]
-
 # A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
 #identity_file = "config/base_node_id.json"
 
 # Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
-# This requires that the base node was built with the optional "libtor" feature flag. (default = false)
+# This requires that the base node was built with the optional "libtor" feature flag. (default = true)
 #use_libtor = false
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.

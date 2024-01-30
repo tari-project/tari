@@ -96,7 +96,13 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+        transaction_components::{
+            SpentOutput,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            ValidatorNodeRegistration,
+        },
     },
     OutputSmt,
     PrunedKernelMmr,
@@ -608,23 +614,63 @@ impl LMDBDatabase {
         )
     }
 
+    fn input_with_output_data(
+        &self,
+        txn: &WriteTransaction<'_>,
+        input: TransactionInput,
+    ) -> Result<TransactionInput, ChainStorageError> {
+        let input_with_output_data = match input.spent_output {
+            SpentOutput::OutputData { .. } => input,
+            SpentOutput::OutputHash(output_hash) => match self.fetch_output_in_txn(txn, output_hash.as_slice()) {
+                Ok(Some(utxo_mined_info)) => TransactionInput {
+                    version: input.version,
+                    spent_output: SpentOutput::create_from_output(utxo_mined_info.output),
+                    input_data: input.input_data,
+                    script_signature: input.script_signature,
+                },
+                Ok(None) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not retrieve output data from input's output_hash `{}`",
+                        output_hash.to_hex()
+                    );
+                    return Err(ChainStorageError::ValueNotFound {
+                        entity: "UTXO",
+                        field: "hash",
+                        value: output_hash.to_hex(),
+                    });
+                },
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not retrieve output data from input's output_hash `{}` ({})",
+                        output_hash.to_hex(), e
+                    );
+                    return Err(e);
+                },
+            },
+        };
+        Ok(input_with_output_data)
+    }
+
     fn insert_input(
         &self,
         txn: &WriteTransaction<'_>,
         height: u64,
         header_timestamp: u64,
         header_hash: &HashOutput,
-        input: &TransactionInput,
+        input: TransactionInput,
     ) -> Result<(), ChainStorageError> {
+        let input_with_output_data = self.input_with_output_data(txn, input)?;
         lmdb_delete(
             txn,
             &self.utxo_commitment_index,
-            input.commitment()?.as_bytes(),
+            input_with_output_data.commitment()?.as_bytes(),
             "utxo_commitment_index",
         )?;
 
-        let hash = input.canonical_hash();
-        let output_hash = input.output_hash();
+        let hash = input_with_output_data.canonical_hash();
+        let output_hash = input_with_output_data.output_hash();
         let key = InputKey::new(header_hash, &hash)?;
         lmdb_insert(
             txn,
@@ -639,7 +685,7 @@ impl LMDBDatabase {
             &self.inputs_db,
             &key.convert_to_comp_key(),
             &TransactionInputRowDataRef {
-                input: &input.to_compact(),
+                input: &input_with_output_data.to_compact(),
                 header_hash,
                 spent_timestamp: header_timestamp,
                 spent_height: height,
@@ -1202,35 +1248,38 @@ impl LMDBDatabase {
         }
 
         // unique_id_index expects inputs to be inserted before outputs
-        for input in &inputs {
-            let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
+        for input in inputs {
+            let input_with_output_data = self.input_with_output_data(txn, input)?;
+            let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
             match output_smt.delete(&smt_key)? {
                 DeleteResult::Deleted(_value_hash) => {},
                 DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
             };
 
-            // TODO: This is not correct
-            // let features = input.features()?;
-            // if let Some(vn_reg) = features
-            //     .sidechain_feature
-            //     .as_ref()
-            //     .and_then(|f| f.validator_node_registration())
-            // {
-            //     self.validator_node_store(txn)
-            //         .delete(header.height, vn_reg.public_key(), input.commitment()?)?;
-            // }
+            let features = input_with_output_data.features()?;
+            if let Some(vn_reg) = features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
+            {
+                self.validator_node_store(txn).delete(
+                    header.height,
+                    vn_reg.public_key(),
+                    input_with_output_data.commitment()?,
+                )?;
+            }
             trace!(
                 target: LOG_TARGET,
                 "Inserting input (`{}`, `{}`)",
-                input.commitment()?.to_hex(),
-                input.output_hash().to_hex()
+                input_with_output_data.commitment()?.to_hex(),
+                input_with_output_data.output_hash().to_hex()
             );
             self.insert_input(
                 txn,
                 current_header_at_height.height,
                 current_header_at_height.timestamp.as_u64(),
                 &block_hash,
-                input,
+                input_with_output_data,
             )?;
         }
 
@@ -2062,7 +2111,7 @@ impl BlockchainBackend for LMDBDatabase {
         };
 
         let tips_len = strongest_tips.len();
-        let mut result = Vec::new();
+        let mut chain_tips = Vec::new();
         for chain_tip in strongest_tips {
             let orphan: Block = lmdb_get(&txn, &self.orphans_db, chain_tip.hash.as_slice())?.ok_or_else(|| {
                 ChainStorageError::ValueNotFound {
@@ -2085,10 +2134,10 @@ impl BlockchainBackend for LMDBDatabase {
                     details: format!("Accumulated data mismatch at height #{}", height),
                 }
             })?;
-            result.push(chain_header);
+            chain_tips.push(chain_header);
         }
         trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ({}) completed in {:.2?}", tips_len, timer.elapsed());
-        Ok(result)
+        Ok(chain_tips)
     }
 
     fn fetch_orphan_children_of(&self, parent_hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
@@ -2491,7 +2540,7 @@ impl fmt::Display for MetadataValue {
             MetadataValue::AccumulatedWork(d) => write!(f, "Total accumulated work is {}", d),
             MetadataValue::PruningHorizon(h) => write!(f, "Pruning horizon is {}", h),
             MetadataValue::PrunedHeight(height) => write!(f, "Effective pruned height is {}", height),
-            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash.to_hex()),
+            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash),
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
             MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
             MetadataValue::MigrationVersion(n) => write!(f, "Migration version {}", n),

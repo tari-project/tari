@@ -37,6 +37,8 @@ pub struct Cli {
     pub miner_min_diff: Option<u64>,
     #[clap(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
+    #[clap(short, long, alias = "non-interactive", env = "TARI_NON_INTERACTIVE")]
+    pub non_interactive_mode: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

@@ -106,7 +106,7 @@ impl Display for UtxoSelectionOrdering {
 
 #[derive(Default, Debug, Clone)]
 pub enum UtxoSelectionFilter {
-    /// Select OutputType::Standard or OutputType::Coinbase outputs only
+    /// Select OutputType::Standard outputs only
     #[default]
     Standard,
     /// Selects specific outputs. All outputs must be exist and be spendable.

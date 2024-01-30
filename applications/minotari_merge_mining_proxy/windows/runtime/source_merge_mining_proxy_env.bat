@@ -2,16 +2,6 @@
 title Minotari Merge Mining Proxy
 
 rem Verify arguments
-if ["%config_path%"]==[""] (
-    echo Problem with "config_path" environment variable: '%config_path%'
-    pause
-    exit /b 10101
-)
-if not exist "%config_path%" (
-    echo Path as per "config_path" environment variable not found: '%config_path%'
-    pause
-    exit /b 10101
-)
 if ["%base_path%"]==[""] (
     echo Problem with "base_path" environment variable: '%base_path%'
     pause
@@ -59,19 +49,4 @@ if exist "%my_exe_path%\%my_exe%" (
     )
 )
 
-rem First time run
-if not exist "%config_path%\log4rs_merge_mining_proxy.yml" (
-    "%merge_mining_proxy%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
-    echo.
-    echo.
-    echo Created "%config_path%\log4rs_merge_mining_proxy.yml".
-    echo.
-) else (
-    echo.
-    echo.
-    echo Using existing "%config_path%\log4rs_merge_mining_proxy.yml"
-    echo.
-)
-
-rem Consecutive runs
-"%merge_mining_proxy%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
+"%merge_mining_proxy%" --base-path "%base_path%"

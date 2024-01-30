@@ -30,7 +30,7 @@ use std::{
 };
 
 use futures::future;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rand::{distributions, rngs::OsRng, Rng};
 use tari_comms::{
     backoff::ConstantBackoff,
@@ -91,10 +91,8 @@ macro_rules! banner {
     }
 }
 
-lazy_static! {
-    static ref NAME_MAP: Mutex<HashMap<NodeId, String>> = Mutex::new(HashMap::new());
-    static ref NAME_POS: Mutex<usize> = Mutex::new(0);
-}
+static NAME_MAP: Lazy<Mutex<HashMap<NodeId, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static NAME_POS: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(0));
 
 pub fn register_name(node_id: NodeId, name: String) {
     NAME_MAP.lock().unwrap().insert(node_id, name);

@@ -64,9 +64,14 @@ pub unsafe extern "C" fn send_read_confirmation_for_message(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    (*client)
+    let result = (*client)
         .runtime
         .block_on((*client).client.send_read_receipt((*message).clone()));
+
+    if let Err(e) = result {
+        error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
 }
 
 /// Get a pointer to a ChatByteVector representation of the message id associated to the confirmation

@@ -24,7 +24,7 @@ mod bytes;
 mod hashing;
 mod string;
 
-pub use hashing::{ConsensusHasher, DomainSeparatedConsensusHasher};
+pub use hashing::DomainSeparatedConsensusHasher;
 pub use string::MaxSizeString;
 
 pub use self::bytes::MaxSizeBytes;

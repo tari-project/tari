@@ -4,33 +4,34 @@ authors = ["The Tari Development Community"]
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.53.0-dan.0"
+version = "1.0.0-dan.5"
 edition = "2018"
 
 [dependencies]
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.20" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { version = "0.6" }
+tari_utilities = { version = "0.7" }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
-borsh = "0.10"
+borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 log = "0.4"
-prost = "0.9"
-prost-types = "0.9"
+prost = "0.11.9"
+prost-types = "0.11.9"
 rand = "0.8"
-thiserror = "1"
-tonic = "0.6.2"
-zeroize = "1"
+rcgen = "0.11.3"
 subtle = { version = "2.5.0", features = ["core_hint_black_box"] }
+thiserror = "1"
+tokio = { version = "1.23", features = ["fs"] }
+tonic = { version = "0.8.3", features = ["tls"]}
+zeroize = "1"
 
 [build-dependencies]
-tonic-build = "0.6.2"
+tonic-build = "0.8.4"
 
 [package.metadata.cargo-machete]
 ignored = ["prost"] # this is so we can run cargo machete without getting false positive about macro dependancies
-

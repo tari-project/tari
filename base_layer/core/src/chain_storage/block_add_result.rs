@@ -114,7 +114,7 @@ impl fmt::Display for BlockAddResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BlockAddResult::Ok(block) => {
-                write!(f, "Block {} at height {} added", block.hash().to_hex(), block.height())
+                write!(f, "Block {} at height {} added", block.hash(), block.height())
             },
             BlockAddResult::BlockExists => write!(f, "Block already exists"),
             BlockAddResult::OrphanBlock => write!(f, "Block added as orphan"),
