@@ -55,12 +55,20 @@ pub struct FixedHashSizeError;
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
 impl FixedHash {
+    pub const fn new(hash: [u8; FixedHash::byte_size()]) -> Self {
+        Self(hash)
+    }
+
     pub const fn byte_size() -> usize {
         32
     }
 
     pub const fn zero() -> Self {
         Self(ZERO_HASH)
+    }
+
+    pub const fn into_array(self) -> [u8; 32] {
+        self.0
     }
 
     pub fn as_slice(&self) -> &[u8] {
