@@ -3,7 +3,7 @@ ignore = [
 
     # We are not using a special allocator and will not suffer this issue
     "RUSTSEC-2021-0145",
-    # We are not using RSA atm
+    # We are not using RSA
     "RUSTSEC-2023-0071"
 
 ]
