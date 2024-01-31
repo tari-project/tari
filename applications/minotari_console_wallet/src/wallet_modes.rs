@@ -524,6 +524,7 @@ mod test {
                 CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
+                CliCommands::ExportTx(_) => {},
                 CliCommands::ExportSpentUtxos(_) => {},
                 CliCommands::CountUtxos => {},
                 CliCommands::SetBaseNode(_) => {},
