@@ -36,6 +36,7 @@ use tari_core::{
         },
         SyncValidators,
     },
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
@@ -58,8 +59,7 @@ use crate::helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     chain_metadata::MockChainMetadata,
     nodes::{
-        create_network_with_2_base_nodes_with_config,
-        create_network_with_3_base_nodes_with_config,
+        create_network_with_multiple_base_nodes_with_config,
         random_node_identity,
         wait_until_online,
         BaseNodeBuilder,
@@ -81,17 +81,26 @@ async fn test_listening_lagging() {
         .with_block(prev_block.clone())
         .build()
         .unwrap();
-    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        MempoolServiceConfig::default(),
-        LivenessConfig {
-            auto_ping_interval: Some(Duration::from_millis(100)),
-            ..Default::default()
-        },
-        P2pConfig::default(),
+
+    let (mut node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+        vec![MempoolServiceConfig::default(); 2],
+        vec![
+            LivenessConfig {
+                auto_ping_interval: Some(Duration::from_millis(100)),
+                ..Default::default()
+            };
+            2
+        ],
+        vec![BlockchainDatabaseConfig::default(); 2],
+        vec![P2pConfig::default(); 2],
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
+        network,
     )
     .await;
+    let alice_node = node_interfaces.remove(0);
+    let bob_node = node_interfaces.remove(0);
+
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
@@ -117,7 +126,7 @@ async fn test_listening_lagging() {
     let mut bob_local_nci = bob_node.local_nci;
 
     // Bob Block 1 - no block event
-    let prev_block = append_block(
+    let (prev_block, _) = append_block(
         &bob_db,
         &prev_block,
         vec![],
@@ -143,6 +152,7 @@ async fn test_listening_lagging() {
     assert!(matches!(next_event, StateEvent::FallenBehind(_)));
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
@@ -157,23 +167,34 @@ async fn test_listening_initial_fallen_behind() {
         .with_block(gen_block.clone())
         .build()
         .unwrap();
-    let (alice_node, bob_node, charlie_node, consensus_manager) = create_network_with_3_base_nodes_with_config(
-        MempoolServiceConfig::default(),
-        LivenessConfig {
-            auto_ping_interval: Some(Duration::from_millis(100)),
-            ..Default::default()
-        },
+
+    let (mut node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+        vec![MempoolServiceConfig::default(); 3],
+        vec![
+            LivenessConfig {
+                auto_ping_interval: Some(Duration::from_millis(100)),
+                ..Default::default()
+            };
+            3
+        ],
+        vec![BlockchainDatabaseConfig::default(); 3],
+        vec![P2pConfig::default(); 3],
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
+        network,
     )
     .await;
+    let alice_node = node_interfaces.remove(0);
+    let bob_node = node_interfaces.remove(0);
+    let charlie_node = node_interfaces.remove(0);
+
     let shutdown = Shutdown::new();
 
     let bob_db = bob_node.blockchain_db;
     let mut bob_local_nci = bob_node.local_nci;
 
     // Bob Block 1 - no block event
-    let prev_block = append_block(
+    let (prev_block, _) = append_block(
         &bob_db,
         &gen_block,
         vec![],
@@ -196,7 +217,7 @@ async fn test_listening_initial_fallen_behind() {
     let mut charlie_local_nci = charlie_node.local_nci;
 
     // charlie Block 1 - no block event
-    let prev_block = append_block(
+    let (prev_block, _) = append_block(
         &charlie_db,
         &gen_block,
         vec![],
@@ -256,7 +277,7 @@ async fn test_listening_initial_fallen_behind() {
 async fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
     // let shutdown = Shutdown::new();
     let db = create_test_blockchain_db();

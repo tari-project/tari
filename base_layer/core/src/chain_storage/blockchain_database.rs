@@ -383,12 +383,24 @@ where B: BlockchainBackend
         db.fetch_chain_metadata()
     }
 
-    pub fn fetch_unspent_output_by_commitment(
+    /// Returns a copy of the current output mined info
+    pub fn fetch_output(&self, output_hash: HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_output(&output_hash)
+    }
+
+    /// Returns a copy of the current input mined info
+    pub fn fetch_input(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_input(&output_hash)
+    }
+
+    pub fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_unspent_output_hash_by_commitment(commitment)
+        db.fetch_unspent_output_hash_by_commitment(&commitment)
     }
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
@@ -456,16 +468,21 @@ where B: BlockchainBackend
 
     pub fn fetch_outputs_in_block_with_spend_state(
         &self,
-        hash: HashOutput,
-        spend_status_at_header: Option<FixedHash>,
+        header_hash: HashOutput,
+        spend_status_at_header: Option<HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_outputs_in_block_with_spend_state(&hash, spend_status_at_header)
+        db.fetch_outputs_in_block_with_spend_state(&header_hash, spend_status_at_header)
     }
 
-    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+    pub fn fetch_outputs_in_block(&self, header_hash: HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_outputs_in_block(&hash)
+        db.fetch_outputs_in_block(&header_hash)
+    }
+
+    pub fn fetch_inputs_in_block(&self, header_hash: HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_inputs_in_block(&header_hash)
     }
 
     /// Returns the number of UTXOs in the current unspent set
@@ -2331,7 +2348,7 @@ fn find_strongest_orphan_tip(
 // block height will also be discarded.
 fn cleanup_orphans<T: BlockchainBackend>(db: &mut T, orphan_storage_capacity: usize) -> Result<(), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
-    let horizon_height = metadata.horizon_block_height(metadata.best_block_height());
+    let horizon_height = metadata.pruned_height_at_given_chain_tip(metadata.best_block_height());
 
     db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
 }

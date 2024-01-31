@@ -25,11 +25,11 @@ use std::fmt::{Display, Error, Formatter};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BlockHash, FixedHash};
+use crate::types::BlockHash;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub struct ChainMetadata {
-    /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+    /// The current chain height, or the block number of the longest valid chain
     best_block_height: u64,
     /// The block hash of the current tip of the longest valid chain
     best_block_hash: BlockHash,
@@ -40,7 +40,7 @@ pub struct ChainMetadata {
     pruning_horizon: u64,
     /// The height of the pruning horizon. This indicates from what height a full block can be provided
     /// (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
-    /// provided. Archival nodes wil always have an `pruned_height` of zero.
+    /// provided. Archival nodes wil always have a `pruned_height` of zero.
     pruned_height: u64,
     /// The total accumulated proof of work of the longest chain
     accumulated_difficulty: U256,
@@ -67,35 +67,14 @@ impl ChainMetadata {
         }
     }
 
-    pub fn empty() -> ChainMetadata {
-        ChainMetadata {
-            best_block_height: 0,
-            best_block_hash: FixedHash::zero(),
-            pruning_horizon: 0,
-            pruned_height: 0,
-            accumulated_difficulty: 0.into(),
-            timestamp: 0,
-        }
-    }
-
     /// The block height at the pruning horizon, given the chain height of the network. Typically database backends
     /// cannot provide any block data earlier than this point.
     /// Zero is returned if the blockchain still hasn't reached the pruning horizon.
-    pub fn horizon_block_height(&self, chain_tip: u64) -> u64 {
+    pub fn pruned_height_at_given_chain_tip(&self, chain_tip: u64) -> u64 {
         match self.pruning_horizon {
             0 => 0,
-            horizon => chain_tip.saturating_sub(horizon),
+            pruning_horizon => chain_tip.saturating_sub(pruning_horizon),
         }
-    }
-
-    /// Set the pruning horizon to indicate that the chain is in archival mode (i.e. a pruning horizon of zero)
-    pub fn archival_mode(&mut self) {
-        self.pruning_horizon = 0;
-    }
-
-    /// Set the pruning horizon
-    pub fn set_pruning_horizon(&mut self, pruning_horizon: u64) {
-        self.pruning_horizon = pruning_horizon;
     }
 
     /// The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
@@ -123,7 +102,7 @@ impl ChainMetadata {
 
     /// The height of the pruning horizon. This indicates from what height a full block can be provided
     /// (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
-    /// provided. Archival nodes wil always have an `pruned_height` of zero.
+    /// provided. Archival nodes wil always have a `pruned_height` of zero.
     pub fn pruned_height(&self) -> u64 {
         self.pruned_height
     }
@@ -143,14 +122,11 @@ impl ChainMetadata {
 
 impl Display for ChainMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        let height = self.best_block_height;
-        let best_block = self.best_block_hash;
-        let accumulated_difficulty = self.accumulated_difficulty;
-        writeln!(f, "Height of longest chain: {}", height)?;
-        writeln!(f, "Total accumulated difficulty: {}", accumulated_difficulty)?;
-        writeln!(f, "Best block: {}", best_block)?;
+        writeln!(f, "Best block height: {}", self.best_block_height)?;
+        writeln!(f, "Total accumulated difficulty: {}", self.accumulated_difficulty)?;
+        writeln!(f, "Best block hash: {}", self.best_block_hash)?;
         writeln!(f, "Pruning horizon: {}", self.pruning_horizon)?;
-        writeln!(f, "Effective pruned height: {}", self.pruned_height)?;
+        writeln!(f, "Pruned height: {}", self.pruned_height)?;
         Ok(())
     }
 }
@@ -161,33 +137,53 @@ mod test {
 
     #[test]
     fn horizon_block_on_default() {
-        let metadata = ChainMetadata::empty();
-        assert_eq!(metadata.horizon_block_height(0), 0);
+        let metadata = ChainMetadata {
+            best_block_height: 0,
+            best_block_hash: Default::default(),
+            pruning_horizon: 0,
+            pruned_height: 0,
+            accumulated_difficulty: Default::default(),
+            timestamp: 0,
+        };
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(0), 0);
     }
 
     #[test]
     fn pruned_mode() {
-        let mut metadata = ChainMetadata::empty();
+        let mut metadata = ChainMetadata {
+            best_block_height: 0,
+            best_block_hash: Default::default(),
+            pruning_horizon: 0,
+            pruned_height: 0,
+            accumulated_difficulty: Default::default(),
+            timestamp: 0,
+        };
         assert!(!metadata.is_pruned_node());
         assert!(metadata.is_archival_node());
-        metadata.set_pruning_horizon(2880);
+        metadata.pruning_horizon = 2880;
         assert!(metadata.is_pruned_node());
         assert!(!metadata.is_archival_node());
-        assert_eq!(metadata.horizon_block_height(0), 0);
-        assert_eq!(metadata.horizon_block_height(100), 0);
-        assert_eq!(metadata.horizon_block_height(2880), 0);
-        assert_eq!(metadata.horizon_block_height(2881), 1);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(0), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(100), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(2880), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(2881), 1);
     }
 
     #[test]
     fn archival_node() {
-        let mut metadata = ChainMetadata::empty();
-        metadata.archival_mode();
+        let metadata = ChainMetadata {
+            best_block_height: 0,
+            best_block_hash: Default::default(),
+            pruning_horizon: 0,
+            pruned_height: 0,
+            accumulated_difficulty: Default::default(),
+            timestamp: 0,
+        };
         // Chain is still empty
-        assert_eq!(metadata.horizon_block_height(0), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(0), 0);
         // When pruning horizon is zero, the horizon block is always 0, the genesis block
-        assert_eq!(metadata.horizon_block_height(0), 0);
-        assert_eq!(metadata.horizon_block_height(100), 0);
-        assert_eq!(metadata.horizon_block_height(2881), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(0), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(100), 0);
+        assert_eq!(metadata.pruned_height_at_given_chain_tip(2881), 0);
     }
 }

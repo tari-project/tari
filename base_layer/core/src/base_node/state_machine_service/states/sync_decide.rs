@@ -62,63 +62,71 @@ impl DecideNextSync {
         );
 
         if local_metadata.pruning_horizon() > 0 {
-            let last_header = match shared.db.fetch_last_header().await {
-                Ok(h) => h,
-                Err(err) => return err.into(),
-            };
-
-            let horizon_sync_height = local_metadata.horizon_block_height(last_header.height);
             // Filter sync peers that claim to be able to provide blocks up until our pruned height
-            let sync_peers = self
-                .sync_peers
+            debug!(target: LOG_TARGET, "Local metadata: {}", local_metadata);
+            let mut sync_peers = self.sync_peers.clone();
+            let sync_peers = sync_peers
                 .drain(..)
                 .filter(|sync_peer| {
                     let remote_metadata = sync_peer.claimed_chain_metadata();
-                    remote_metadata.best_block_height() >= horizon_sync_height
+                    debug!(target: LOG_TARGET, "Peer metadata: {}", remote_metadata);
+                    let remote_is_archival_node = remote_metadata.pruned_height() == 0;
+                    let general_sync_conditions =
+                        // Must be able to provide the correct amount of full blocks past the pruned height (i.e. the
+                        // pruning horizon), otherwise our horizon spec will not be met
+                        remote_metadata.best_block_height().saturating_sub(remote_metadata.pruned_height()) >=
+                            local_metadata.pruning_horizon() &&
+                        // Must have a better blockchain tip than us
+                        remote_metadata.best_block_height() > local_metadata.best_block_height() &&
+                        // Must be able to provide full blocks from the height we need detailed information
+                        remote_metadata.pruned_height() <= local_metadata.best_block_height();
+                    let sync_from_prune_node = !remote_is_archival_node &&
+                        // Must have done initial sync (to detect genesis TXO spends)
+                        local_metadata.best_block_height() > 0;
+                    general_sync_conditions && (remote_is_archival_node || sync_from_prune_node)
                 })
                 .collect::<Vec<_>>();
 
             if sync_peers.is_empty() {
                 warn!(
                     target: LOG_TARGET,
-                    "Unable to find any appropriate sync peers for horizon sync"
+                    "Unable to find any appropriate sync peers for horizon sync, trying for block sync"
                 );
-                return Continue;
-            }
-
-            debug!(
-                target: LOG_TARGET,
-                "Proceeding to horizon sync with {} sync peer(s) with a best latency of {:.2?}",
-                sync_peers.len(),
-                sync_peers.first().map(|p| p.latency()).unwrap_or_default()
-            );
-            ProceedToHorizonSync(sync_peers)
-        } else {
-            // Filter sync peers that are able to provide full blocks from our current tip
-            let sync_peers = self
-                .sync_peers
-                .drain(..)
-                .filter(|sync_peer| {
-                    sync_peer.claimed_chain_metadata().pruned_height() <= local_metadata.best_block_height()
-                })
-                .collect::<Vec<_>>();
-
-            if sync_peers.is_empty() {
-                warn!(
+            } else {
+                debug!(
                     target: LOG_TARGET,
-                    "Unable to find any appropriate sync peers for block sync"
+                    "Proceeding to horizon sync with {} sync peer(s) with a best latency of {:.2?}",
+                    sync_peers.len(),
+                    sync_peers.first().map(|p| p.latency()).unwrap_or_default()
                 );
-                return Continue;
+                return ProceedToHorizonSync(sync_peers);
             }
-
-            debug!(
-                target: LOG_TARGET,
-                "Proceeding to block sync with {} sync peer(s) with a best latency of {:.2?}",
-                sync_peers.len(),
-                sync_peers.first().map(|p| p.latency()).unwrap_or_default()
-            );
-            ProceedToBlockSync(sync_peers)
         }
+
+        // This is not a pruned node or horizon sync is not possible, try for block sync
+
+        // Filter sync peers that are able to provide full blocks from our current tip
+        let sync_peers = self
+            .sync_peers
+            .drain(..)
+            .filter(|sync_peer| {
+                let remote_metadata = sync_peer.claimed_chain_metadata();
+                remote_metadata.pruned_height() <= local_metadata.best_block_height()
+            })
+            .collect::<Vec<_>>();
+
+        if sync_peers.is_empty() {
+            warn!(target: LOG_TARGET, "Unable to find any appropriate sync peers for block sync");
+            return Continue;
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "Proceeding to block sync with {} sync peer(s) with a best latency of {:.2?}",
+            sync_peers.len(),
+            sync_peers.first().map(|p| p.latency()).unwrap_or_default()
+        );
+        ProceedToBlockSync(sync_peers)
     }
 }
 

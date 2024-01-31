@@ -30,6 +30,7 @@ use tari_comms::{
 };
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
@@ -97,6 +98,14 @@ pub enum HorizonSyncError {
     PeerNotFound,
     #[error("Sparse Merkle Tree error: {0}")]
     SMTError(#[from] SMTError),
+    #[error("ByteArrayError error: {0}")]
+    ByteArrayError(String),
+}
+
+impl From<ByteArrayError> for HorizonSyncError {
+    fn from(e: ByteArrayError) -> Self {
+        HorizonSyncError::ByteArrayError(e.to_string())
+    }
 }
 
 impl From<TryFromIntError> for HorizonSyncError {
@@ -142,7 +151,8 @@ impl HorizonSyncError {
             err @ HorizonSyncError::ConversionError(_) |
             err @ HorizonSyncError::MerkleMountainRangeError(_) |
             err @ HorizonSyncError::FixedHashSizeError(_) |
-            err @ HorizonSyncError::TransactionError(_) => Some(BanReason {
+            err @ HorizonSyncError::TransactionError(_) |
+            err @ HorizonSyncError::ByteArrayError(_) => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: BanPeriod::Long,
             }),
