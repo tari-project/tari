@@ -854,6 +854,7 @@ where
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) {
         let mut connectivity = self.resources.connectivity.clone();
+        let  mut shutdown_signal = self.resources.shutdown_signal.clone();
 
         let query_base_node_fut = async move {
             let mut client = connectivity
@@ -880,12 +881,18 @@ where
         };
 
         tokio::spawn(async move {
-            let resp = query_base_node_fut.await;
-            if reply_channel.send(resp).is_err() {
-                warn!(
-                    target: LOG_TARGET,
-                    "handle_get_fee_per_gram_stats_per_block_request: service reply cancelled"
-                );
+            tokio::select! {
+                // Check the futures in the order they are listed
+                biased;
+                _ = shutdown_signal.wait() => {}
+                resp = query_base_node_fut => {
+                    if reply_channel.send(resp).is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "handle_get_fee_per_gram_stats_per_block_request: service reply cancelled"
+                    );
+                }}
+
             }
         });
     }
