@@ -606,6 +606,10 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
+        if !found_outputs.is_empty() {
+            // this is best effort, if this fails, its very likely that its already busy with a validation.
+            let _result = self.resources.output_manager_service.validate_txos().await;
+        }
         Ok(found_outputs)
     }
 
@@ -655,6 +659,10 @@ where
                 },
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
+        }
+        if num_recovered > 0 {
+            // this is best effort, if this fails, its very likely that its already busy with a validation.
+            let _result = self.resources.transaction_service.validate_transactions().await;
         }
         Ok((num_recovered, total_amount))
     }
