@@ -33,9 +33,10 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
 };
 use tari_comms::{
-    multiaddr::Multiaddr,
+    multiaddr::{Error as MultiaddrError, Multiaddr},
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    tor::TorIdentity,
     types::{CommsPublicKey, CommsSecretKey},
     CommsNode,
     NodeIdentity,
@@ -72,6 +73,7 @@ use tari_p2p::{
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     PeerSeedsConfig,
+    TransportType,
 };
 use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -255,7 +257,33 @@ where
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack");
-        let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
+        let comms = if config.p2p.transport.transport_type == TransportType::Tor {
+            let wallet_db = wallet_database.clone();
+            let node_id = comms.node_identity();
+            let after_comms = move |identity: TorIdentity| {
+                let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
+                if let Err(e) = wallet_db.set_tor_identity(identity) {
+                    error!(target: LOG_TARGET, "Failed to set wallet db tor identity{:?}", e);
+                }
+                let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
+                if result.is_err() {
+                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                    return;
+                }
+                let address = result.unwrap();
+                if !node_id.public_addresses().contains(&address) {
+                    node_id.add_public_address(address.clone());
+                }
+                // Persist the comms node address and features after it has been spawned to capture any modifications
+                // made during comms startup. In the case of a Tor Transport the public address could
+                // have been generated
+                let _result = wallet_db.set_node_address(address);
+            };
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+        } else {
+            let after_comms = |_identity| {};
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+        };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
@@ -280,14 +308,6 @@ where
                 e
             })?;
 
-        // Persist the comms node address and features after it has been spawned to capture any modifications made
-        // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database.set_node_address(
-            comms
-                .node_identity()
-                .first_public_address()
-                .ok_or(WalletError::PublicAddressNotSet)?,
-        )?;
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {

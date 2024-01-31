@@ -769,6 +769,24 @@ char *tari_address_to_emoji_id(TariWalletAddress *address,
                                int *error_out);
 
 /**
+ * Creates a char array from a TariWalletAddress's network
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariWalletAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+ * if there was an error from TariWalletAddress
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_address_network(TariWalletAddress *address,
+                           int *error_out);
+
+/**
  * Creates a TariWalletAddress from a char array in emoji format
  *
  * ## Arguments
