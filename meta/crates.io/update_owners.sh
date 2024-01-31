@@ -104,6 +104,7 @@ package_group_map["tari_scaffolder"]="ignore"
 remove_owner() {
   echo "Removing $1 as owner of $package"
   cargo owner -q --remove $1 $package
+  sleep 3
 }
 
 verify_owner() {
@@ -114,6 +115,7 @@ verify_owner() {
 add_owner() {
   echo "Adding $1 to $package"
   cargo owner -q --add $1 $package
+  sleep 3
 }
 
 ##################################  Main script  ##################################
@@ -165,6 +167,4 @@ for package in "${!package_group_map[@]}"; do
   done
   echo "... Done processing $package"
   echo ""
-  # To avoid 429 Too Many Requests, sleep for 5 seconds between packages
-  sleep 5
 done
