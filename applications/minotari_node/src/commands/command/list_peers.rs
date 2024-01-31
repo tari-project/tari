@@ -86,7 +86,7 @@ impl CommandContext {
                     .get_metadata(1)
                     .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                 {
-                    s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
+                    s.push(format!("chain height: {}", metadata.metadata.best_block_height()));
                 }
 
                 if let Some(last_seen) = peer.addresses.last_seen() {

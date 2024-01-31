@@ -134,23 +134,23 @@ impl BaseNodeWalletRpcMockState {
             })),
             transaction_query_response: Arc::new(Mutex::new(TxQueryResponse {
                 location: TxLocation::InMempool,
-                block_hash: None,
+                best_block_hash: None,
                 confirmations: 0,
                 is_synced: true,
-                height_of_longest_chain: 0,
+                best_block_height: 0,
                 mined_timestamp: None,
             })),
             transaction_query_batch_response: Arc::new(Mutex::new(TxQueryBatchResponsesProto {
                 responses: vec![],
-                tip_hash: FixedHash::zero().to_vec(),
+                best_block_hash: FixedHash::zero().to_vec(),
                 is_synced: true,
-                height_of_longest_chain: 0,
+                best_block_height: 0,
                 tip_mined_timestamp: EpochTime::now().as_u64(),
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
-                    height_of_longest_chain: std::i64::MAX as u64,
-                    best_block: FixedHash::zero().to_vec(),
+                    best_block_height: std::i64::MAX as u64,
+                    best_block_hash: FixedHash::zero().to_vec(),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
                     timestamp: EpochTime::now().as_u64(),
@@ -930,8 +930,8 @@ mod test {
         assert_eq!(calls.len(), 1);
 
         let chain_metadata = ChainMetadata {
-            height_of_longest_chain: 444,
-            best_block: vec![],
+            best_block_height: 444,
+            best_block_hash: vec![],
             accumulated_difficulty: vec![],
             pruned_height: 0,
             timestamp: EpochTime::now().as_u64(),
@@ -943,6 +943,6 @@ mod test {
 
         let resp = client.get_tip_info().await.unwrap();
         assert!(!resp.is_synced);
-        assert_eq!(resp.metadata.unwrap().height_of_longest_chain(), 444);
+        assert_eq!(resp.metadata.unwrap().best_block_height(), 444);
     }
 }

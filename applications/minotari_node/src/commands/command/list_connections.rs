@@ -64,7 +64,7 @@ impl CommandContext {
             let chain_height = peer
                 .get_metadata(1)
                 .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
-                .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
+                .map(|metadata| format!("height: {}", metadata.metadata.best_block_height()));
 
             let ua = peer.user_agent;
             let rpc_sessions = self

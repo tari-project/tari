@@ -602,15 +602,15 @@ where B: BlockchainBackend + 'static
         // We check the current tip and orphan status of the block because we cannot guarantee that mempool state is
         // correct and the mmr root calculation is only valid if the block is building on the tip.
         let current_meta = self.blockchain_db.get_chain_metadata().await?;
-        if header.prev_hash != *current_meta.best_block() {
+        if header.prev_hash != *current_meta.best_block_hash() {
             debug!(
                 target: LOG_TARGET,
                 "Orphaned block #{}: ({}), current tip is: #{} ({}). We need to fetch the complete block from peer: \
                  ({})",
                 header.height,
                 block_hash.to_hex(),
-                current_meta.height_of_longest_chain(),
-                current_meta.best_block().to_hex(),
+                current_meta.best_block_height(),
+                current_meta.best_block_hash().to_hex(),
                 source_peer,
             );
             #[cfg(feature = "metrics")]

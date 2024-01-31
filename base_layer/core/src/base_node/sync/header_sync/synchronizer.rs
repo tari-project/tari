@@ -259,13 +259,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let best_header = self.db.fetch_last_chain_header().await?;
         let best_block_header = self
             .db
-            .fetch_chain_header(best_block_metadata.height_of_longest_chain())
+            .fetch_chain_header(best_block_metadata.best_block_height())
             .await?;
         let best_header_height = best_header.height();
         let best_block_height = best_block_header.height();
 
-        if best_header_height < best_block_height ||
-            best_block_height < self.local_cached_metadata.height_of_longest_chain()
+        if best_header_height < best_block_height || best_block_height < self.local_cached_metadata.best_block_height()
         {
             return Err(BlockHeaderSyncError::ChainStorageError(
                 ChainStorageError::CorruptedDatabase("Inconsistent block and header data".to_string()),
@@ -301,7 +300,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         .height()
                         .checked_sub(split_info.reorg_steps_back)
                         .unwrap_or_default(),
-                    sync_peer.claimed_chain_metadata().height_of_longest_chain(),
+                    sync_peer.claimed_chain_metadata().best_block_height(),
                     sync_peer,
                 );
                 self.synchronize_headers(sync_peer.clone(), &mut client, *split_info, max_latency)
@@ -694,7 +693,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer.add_sample(last_sync_timer.elapsed());
             self.hooks.call_on_progress_header_hooks(
                 current_height,
-                sync_peer.claimed_chain_metadata().height_of_longest_chain(),
+                sync_peer.claimed_chain_metadata().best_block_height(),
                 &sync_peer,
             );
 

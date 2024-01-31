@@ -1471,7 +1471,7 @@ impl LMDBDatabase {
         // Clean up bad blocks that are far from the tip
         let metadata = fetch_metadata(txn, &self.metadata_db)?;
         let deleted_before_height = metadata
-            .height_of_longest_chain()
+            .best_block_height()
             .saturating_sub(CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT);
         if deleted_before_height == 0 {
             return Ok(());
@@ -2007,14 +2007,14 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
 
         let metadata = self.fetch_chain_metadata()?;
-        let height = metadata.height_of_longest_chain();
+        let height = metadata.best_block_height();
         let header = lmdb_get(&txn, &self.headers_db, &height)?.ok_or_else(|| ChainStorageError::ValueNotFound {
             entity: "Header",
             field: "height",
             value: height.to_string(),
         })?;
         let accumulated_data = self
-            .fetch_header_accumulated_data_by_height(&txn, metadata.height_of_longest_chain())?
+            .fetch_header_accumulated_data_by_height(&txn, metadata.best_block_height())?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "BlockHeaderAccumulatedData",
                 field: "height",
@@ -2275,11 +2275,11 @@ impl BlockchainBackend for LMDBDatabase {
         };
         let metadata = fetch_metadata(&txn, &self.metadata_db)?;
 
-        if metadata.height_of_longest_chain() == last_header.height {
+        if metadata.best_block_height() == last_header.height {
             return Ok(0);
         }
 
-        let start = metadata.height_of_longest_chain() + 1;
+        let start = metadata.best_block_height() + 1;
         let end = last_header.height;
 
         let mut num_deleted = 0;

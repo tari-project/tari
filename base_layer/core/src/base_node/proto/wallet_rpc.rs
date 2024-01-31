@@ -128,10 +128,10 @@ impl From<TxSubmissionResponse> for proto::TxSubmissionResponse {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxQueryResponse {
     pub location: TxLocation,
-    pub block_hash: Option<BlockHash>,
+    pub best_block_hash: Option<BlockHash>,
     pub confirmations: u64,
     pub is_synced: bool,
-    pub height_of_longest_chain: u64,
+    pub best_block_height: u64,
     pub mined_timestamp: Option<u64>,
 }
 
@@ -139,9 +139,9 @@ pub struct TxQueryResponse {
 pub struct TxQueryBatchResponse {
     pub signature: Signature,
     pub location: TxLocation,
-    pub block_hash: Option<BlockHash>,
+    pub best_block_hash: Option<BlockHash>,
     pub confirmations: u64,
-    pub block_height: u64,
+    pub best_block_height: u64,
     pub mined_timestamp: Option<u64>,
 }
 
@@ -192,10 +192,10 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryResponse) -> Result<Self, Self::Error> {
-        let hash = if proto_response.block_hash.is_empty() {
+        let hash = if proto_response.best_block_hash.is_empty() {
             None
         } else {
-            Some(match BlockHash::try_from(proto_response.block_hash.clone()) {
+            Some(match BlockHash::try_from(proto_response.best_block_hash.clone()) {
                 Ok(h) => h,
                 Err(e) => {
                     return Err(format!("Malformed block hash: {}", e));
@@ -213,10 +213,10 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
                 proto::TxLocation::from_i32(proto_response.location)
                     .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
-            block_hash: hash,
+            best_block_hash: hash,
             confirmations: proto_response.confirmations,
             is_synced: proto_response.is_synced,
-            height_of_longest_chain: proto_response.height_of_longest_chain,
+            best_block_height: proto_response.best_block_height,
             mined_timestamp,
         })
     }
@@ -226,10 +226,10 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
     fn from(response: TxQueryResponse) -> Self {
         Self {
             location: proto::TxLocation::from(response.location) as i32,
-            block_hash: response.block_hash.map(|v| v.to_vec()).unwrap_or(vec![]),
+            best_block_hash: response.best_block_hash.map(|v| v.to_vec()).unwrap_or(vec![]),
             confirmations: response.confirmations,
             is_synced: response.is_synced,
-            height_of_longest_chain: response.height_of_longest_chain,
+            best_block_height: response.best_block_height,
             mined_timestamp: response.mined_timestamp.unwrap_or_default(),
         }
     }
@@ -239,10 +239,10 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
-        let hash = if proto_response.block_hash.is_empty() {
+        let hash = if proto_response.best_block_hash.is_empty() {
             None
         } else {
-            Some(match BlockHash::try_from(proto_response.block_hash.clone()) {
+            Some(match BlockHash::try_from(proto_response.best_block_hash.clone()) {
                 Ok(h) => h,
                 Err(e) => {
                     return Err(format!("Malformed block hash: {}", e));
@@ -263,8 +263,8 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
                 proto::TxLocation::from_i32(proto_response.location)
                     .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
-            block_hash: hash,
-            block_height: proto_response.block_height,
+            best_block_hash: hash,
+            best_block_height: proto_response.best_block_height,
             confirmations: proto_response.confirmations,
             mined_timestamp,
         })

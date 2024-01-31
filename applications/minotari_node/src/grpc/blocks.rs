@@ -55,7 +55,7 @@ pub async fn block_heights(
             .get_metadata()
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let tip = metadata.height_of_longest_chain();
+        let tip = metadata.best_block_height();
         // Avoid overflow
         let height_from_tip = cmp::min(tip, from_tip);
         let start = cmp::max(tip - height_from_tip, 0);

@@ -41,10 +41,10 @@ pub struct TariBaseNodeState {
     pub node_id: Option<NodeId>,
 
     /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
-    pub height_of_longest_chain: u64,
+    pub best_block_height: u64,
 
     /// The block hash of the current tip of the longest valid chain
-    pub best_block: BlockHash,
+    pub best_block_hash: BlockHash,
 
     /// Timestamp of the tip block in the longest valid chain
     pub best_block_timestamp: u64,
@@ -56,7 +56,7 @@ pub struct TariBaseNodeState {
     pub pruning_horizon: u64,
 
     /// The height of the pruning horizon. This indicates from what height a full block can be provided
-    /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+    /// (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
     /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pub pruned_height: u64,
 
@@ -124,7 +124,7 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
         return 0;
     }
 
-    (*ptr).height_of_longest_chain
+    (*ptr).best_block_height
 }
 
 /// Extracts a best block hash [`FixedHash`] represented as a vector of bytes wrapped into a `ByteVector`
@@ -154,7 +154,7 @@ pub unsafe extern "C" fn basenode_state_get_best_block(
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new(ByteVector((*ptr).best_block.to_vec())))
+    Box::into_raw(Box::new(ByteVector((*ptr).best_block_hash.to_vec())))
 }
 
 /// Extracts a timestamp of the best block
@@ -227,7 +227,7 @@ pub unsafe extern "C" fn basenode_state_get_pruning_horizon(
 ///
 /// ## Returns
 /// `c_ulonglong` - The height of the pruning horizon. This indicates from what height a full block can be provided
-/// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+/// (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
 /// provided. Archival nodes wil always have an `pruned_height` of zero.
 ///
 /// # Safety
@@ -345,8 +345,8 @@ mod tests {
 
         let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
             node_id: Some(original_node_id.clone()),
-            height_of_longest_chain: 123,
-            best_block: original_best_block,
+            best_block_height: 123,
+            best_block_hash: original_best_block,
             best_block_timestamp: 12345,
             pruning_horizon: 456,
             pruned_height: 789,

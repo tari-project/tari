@@ -924,7 +924,7 @@ where
                 Err(_) => None,
             };
             let tip_height = match metadata {
-                Some(val) => val.height_of_longest_chain(),
+                Some(val) => val.best_block_height(),
                 None => 0u64,
             };
             let event_publisher = self.event_publisher.clone();

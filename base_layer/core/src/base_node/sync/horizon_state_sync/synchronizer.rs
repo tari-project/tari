@@ -289,7 +289,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let db = self.db();
         let local_metadata = db.get_chain_metadata().await?;
 
-        let new_prune_height = cmp::min(local_metadata.height_of_longest_chain(), self.horizon_sync_height);
+        let new_prune_height = cmp::min(local_metadata.best_block_height(), self.horizon_sync_height);
         if local_metadata.pruned_height() < new_prune_height {
             debug!(target: LOG_TARGET, "Pruning block chain to height {}", new_prune_height);
             db.prune_to_height(new_prune_height).await?;
@@ -647,7 +647,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.height(),
                 *header.hash(),
                 header.accumulated_data().total_accumulated_difficulty,
-                *metadata.best_block(),
+                *metadata.best_block_hash(),
                 header.timestamp(),
             )
             .set_pruned_height(header.height())

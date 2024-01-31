@@ -126,7 +126,7 @@ impl Display for SyncStatus {
                 f,
                 "Lagging behind {} peers (#{}, Difficulty: {})",
                 sync_peers.len(),
-                network.height_of_longest_chain(),
+                network.best_block_height(),
                 network.accumulated_difficulty(),
             ),
             UpToDate => f.write_str("UpToDate"),

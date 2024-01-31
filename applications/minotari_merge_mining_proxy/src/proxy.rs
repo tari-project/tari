@@ -195,7 +195,7 @@ impl InnerService {
             .get_ref()
             .metadata
             .as_ref()
-            .map(|meta| meta.height_of_longest_chain)
+            .map(|meta| meta.best_block_height)
             .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
         if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::SeqCst) {
             self.initial_sync_achieved
@@ -416,7 +416,7 @@ impl InnerService {
                 self.initial_sync_achieved.store(true, Ordering::SeqCst);
                 let msg = format!(
                     "Initial base node sync achieved. Ready to mine at height #{}",
-                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
+                    metadata.as_ref().map(|h| h.best_block_height).unwrap_or_default(),
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
                 println!("{}", msg);
@@ -424,7 +424,7 @@ impl InnerService {
             } else {
                 let msg = format!(
                     "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
-                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
+                    metadata.as_ref().map(|h| h.best_block_height).unwrap_or_default(),
                     self.config.wait_for_initial_sync_at_startup,
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
@@ -590,7 +590,7 @@ impl InnerService {
 
         let tip_header = client
             .get_header_by_hash(grpc::GetHeaderByHashRequest {
-                hash: chain_metadata.best_block,
+                hash: chain_metadata.best_block_hash,
             })
             .await?;
 

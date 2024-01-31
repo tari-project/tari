@@ -69,7 +69,7 @@ impl HorizonStateSync {
         }
 
         // We're already synced because we have full blocks higher than our target pruned height
-        if local_metadata.height_of_longest_chain() >= horizon_sync_height {
+        if local_metadata.best_block_height() >= horizon_sync_height {
             info!(
                 target: LOG_TARGET,
                 "Tip height is higher than our pruned height. Horizon state is already synchronized."

@@ -330,8 +330,8 @@ fn determine_sync_mode(
     let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {
-        let local_tip_height = local.height_of_longest_chain();
-        let network_tip_height = network.claimed_chain_metadata().height_of_longest_chain();
+        let local_tip_height = local.best_block_height();
+        let network_tip_height = network.claimed_chain_metadata().best_block_height();
         info!(
             target: LOG_TARGET,
             "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{} \
@@ -350,7 +350,7 @@ fn determine_sync_mode(
         let pruned_mode = local.pruning_horizon() > 0;
         let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
             network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
-        let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.height_of_longest_chain();
+        let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.best_block_height();
         let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
             (true, true, _) => {
                 info!(
@@ -366,7 +366,7 @@ fn determine_sync_mode(
                     target: LOG_TARGET,
                     "The remote peer is a pruned node, and it cannot supply the blocks we need. Remote pruned height # {}, current local tip #{}",
                     network.claimed_chain_metadata().pruned_height(),
-                    local.height_of_longest_chain(),
+                    local.best_block_height(),
                 );
                 false
             },
@@ -421,9 +421,9 @@ fn determine_sync_mode(
                 // Equals
                 "Our blockchain is up-to-date."
             },
-            local.height_of_longest_chain(),
+            local.best_block_height(),
             local_tip_accum_difficulty,
-            network.claimed_chain_metadata().height_of_longest_chain(),
+            network.claimed_chain_metadata().best_block_height(),
             network_tip_accum_difficulty,
         );
         UpToDate

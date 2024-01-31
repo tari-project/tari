@@ -43,7 +43,7 @@ impl CommandContext {
     /// Function to process the check-db command
     pub async fn check_db(&mut self) -> Result<(), Error> {
         let meta = self.node_service.get_metadata().await?;
-        let mut height = meta.height_of_longest_chain();
+        let mut height = meta.best_block_height();
         let mut missing_blocks = Vec::new();
         let mut missing_headers = Vec::new();
         print!("Searching for height: ");

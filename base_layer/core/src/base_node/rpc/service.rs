@@ -124,13 +124,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 {
                     None => (),
                     Some(header) => {
-                        let confirmations = chain_metadata.height_of_longest_chain().saturating_sub(header.height);
+                        let confirmations = chain_metadata.best_block_height().saturating_sub(header.height);
                         let response = TxQueryResponse {
                             location: TxLocation::Mined as i32,
-                            block_hash: block_hash.to_vec(),
+                            best_block_hash: block_hash.to_vec(),
                             confirmations,
                             is_synced,
-                            height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                            best_block_height: chain_metadata.best_block_height(),
                             mined_timestamp: header.timestamp.as_u64(),
                         };
                         return Ok(response);
@@ -148,10 +148,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         {
             TxStorageResponse::UnconfirmedPool => TxQueryResponse {
                 location: TxLocation::InMempool as i32,
-                block_hash: vec![],
+                best_block_hash: vec![],
                 confirmations: 0,
                 is_synced,
-                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                best_block_height: chain_metadata.best_block_height(),
                 mined_timestamp: 0,
             },
             TxStorageResponse::ReorgPool |
@@ -163,10 +163,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
-                block_hash: vec![],
+                best_block_hash: vec![],
                 confirmations: 0,
                 is_synced,
-                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                best_block_height: chain_metadata.best_block_height(),
                 mined_timestamp: 0,
             },
         };
@@ -311,17 +311,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             responses.push(TxQueryBatchResponse {
                 signature: Some(SignatureProto::from(signature)),
                 location: response.location,
-                block_hash: response.block_hash,
+                best_block_hash: response.best_block_hash,
                 confirmations: response.confirmations,
-                block_height: response.height_of_longest_chain.saturating_sub(response.confirmations),
+                best_block_height: response.best_block_height.saturating_sub(response.confirmations),
                 mined_timestamp: response.mined_timestamp,
             });
         }
         Ok(Response::new(TxQueryBatchResponses {
             responses,
             is_synced,
-            tip_hash: metadata.best_block().to_vec(),
-            height_of_longest_chain: metadata.height_of_longest_chain(),
+            best_block_hash: metadata.best_block_hash().to_vec(),
+            best_block_height: metadata.best_block_height(),
             tip_mined_timestamp: metadata.timestamp(),
         }))
     }
@@ -421,8 +421,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(UtxoQueryResponses {
-            best_block_height: metadata.height_of_longest_chain(),
-            best_block_hash: metadata.best_block().to_vec(),
+            best_block_height: metadata.best_block_height(),
+            best_block_hash: metadata.best_block_hash().to_vec(),
             responses: mined_info_resp
                 .into_iter()
                 .flatten()
@@ -520,8 +520,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(QueryDeletedResponse {
-            best_block_height: metadata.height_of_longest_chain(),
-            best_block_hash: metadata.best_block().to_vec(),
+            best_block_height: metadata.best_block_height(),
+            best_block_hash: metadata.best_block_hash().to_vec(),
             data: return_data,
         }))
     }
@@ -671,7 +671,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
         let stats = self
             .mempool()
-            .get_fee_per_gram_stats(count, metadata.height_of_longest_chain())
+            .get_fee_per_gram_stats(count, metadata.best_block_height())
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
 
