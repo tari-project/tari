@@ -1,5 +1,11 @@
 #!/bin/bash
 
+CHECK_ONLY=0
+# Check if the first command-line argument is '-c'
+if [[ $1 == "-c" ]]; then
+  CHECK_ONLY=1
+fi
+
 # Declare associative arrays
 declare -A package_group_map
 declare -A group_user_map
@@ -102,6 +108,7 @@ remove_owner() {
 
 verify_owner() {
   # No-op
+  :
 }
 
 add_owner() {
@@ -113,6 +120,7 @@ add_owner() {
 
 # Iterate over packages
 for package in "${!package_group_map[@]}"; do
+  echo ""
   echo "Processing $package..."
   # Get the expected owners
   group=${package_group_map[$package]}
@@ -132,6 +140,10 @@ for package in "${!package_group_map[@]}"; do
 
   echo "Current owners vs: $current_owners_str"
   echo "Expected owners  : $expected_owners_str"
+
+  if [[ $CHECK_ONLY == 1 ]]; then
+    continue
+  fi
 
   # Iterate over the current owners
   for user in "${current_owners[@]}"; do
