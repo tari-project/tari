@@ -622,7 +622,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
 
-        let mut prev_header: Option<BlockHeader> = None;
         let mut inputs_to_delete = Vec::new();
         while let Some(response) = output_stream.next().await {
             let latency = last_sync_timer.elapsed();
@@ -631,15 +630,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             let output_header_hash = FixedHash::try_from(res.mined_header)
                 .map_err(|_| HorizonSyncError::IncorrectResponse("Peer sent no mined header".into()))?;
-            // We only verify the SMT per header for consecutive syncs
-            if tip_header.height() > 0 {
-                if let Some(header) = prev_header.clone() {
-                    if header.hash() != output_header_hash {
-                        // Verify the SMT for the previous header
-                        HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, &header)?;
-                    }
-                }
-            }
             let current_header = self
                 .db()
                 .fetch_header_by_block_hash(output_header_hash)
@@ -647,7 +637,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .ok_or_else(|| {
                     HorizonSyncError::IncorrectResponse("Peer sent mined header we do not know of".into())
                 })?;
-            prev_header = Some(current_header.clone());
 
             let proto_output = res
                 .txo
@@ -728,6 +717,24 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer.add_sample(last_sync_timer.elapsed());
             last_sync_timer = Instant::now();
         }
+        // The SMT can only be verified after all outputs have been downloaded, due to the way we optimize fetching
+        // outputs from the sync peer. As an example:
+        // 1. Initial sync:
+        //    - We request outputs from height 0 to 100 (the tranche)
+        //    - The sync peer only returns outputs per block that would still be unspent at height 100 and all inputs
+        //      per block. All outputs that were created and spent within the tranche are never returned.
+        //    - For example, an output is created in block 50 and spent in block 70. It would be included in the SMT for
+        //      headers from height 50 to 69, but due to the optimization, the sync peer would never know about it.
+        // 2. Consecutive sync:
+        //    - We request outputs from height 101 to 200 (the tranche)
+        //    - The sync peer only returns outputs per block that would still be unspent at height 200, as well as all
+        //      inputs per block, but in this case, only those inputs that are not an output of the current tranche of
+        //      outputs. Similarly, all outputs created and spent within the tranche are never returned.
+        //    - For example, an output is created in block 110 and spent in block 180. It would be included in the SMT
+        //      for headers from height 110 to 179, but due to the optimization, the sync peer would never know about
+        //      it.
+        // 3. In both cases it would be impossible to verify the SMT per block, as we would not be able to update the
+        //    SMT with the outputs that were created and spent within the tranche.
         HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, to_header)?;
 
         // Commit in chunks to avoid locking the database for too long
