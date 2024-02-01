@@ -301,6 +301,11 @@ where B: BlockchainBackend
         Ok(blockchain_db)
     }
 
+    /// Get the genesis block form the consensus manager
+    pub fn fetch_genesis_block(&self) -> ChainBlock {
+        self.consensus_manager.get_genesis_block()
+    }
+
     /// Returns a reference to the consensus cosntants at the current height
     pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
         let height = self.get_height()?;
@@ -2363,18 +2368,18 @@ fn prune_database_if_needed<T: BlockchainBackend>(
         return Ok(());
     }
 
-    let db_height = metadata.best_block_height();
-    let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
-
+    let prune_to_height_target = metadata.best_block_height().saturating_sub(pruning_horizon);
     debug!(
         target: LOG_TARGET,
-        "Current pruned height is: {}, pruning horizon is: {}, while the pruning interval is: {}",
+        "Blockchain height: {}, pruning horizon: {}, pruned height: {}, prune to height target: {}, pruning interval: {}",
+        metadata.best_block_height(),
+        metadata.pruning_horizon(),
         metadata.pruned_height(),
-        abs_pruning_horizon,
+        prune_to_height_target,
         pruning_interval,
     );
-    if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
-        prune_to_height(db, abs_pruning_horizon)?;
+    if metadata.pruned_height() < prune_to_height_target.saturating_sub(pruning_interval) {
+        prune_to_height(db, prune_to_height_target)?;
     }
 
     Ok(())

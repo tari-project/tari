@@ -34,9 +34,9 @@ use crate::helpers::{
 
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_horizon_sync_from_archival_node_happy_path() {
+async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     //` cargo test --release --test core_integration_tests
-    //` tests::horizon_sync::test_horizon_sync_from_archival_node_happy_path > .\target\output.txt 2>&1
+    //` tests::horizon_sync::test_initial_horizon_sync_from_archival_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice (pruning node) and Bob (archival node)
@@ -285,9 +285,9 @@ async fn test_horizon_sync_from_archival_node_happy_path() {
 
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_horizon_sync_from_prune_node_happy_path() {
+async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
-    //` tests::horizon_sync::test_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
+    //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice (pruning node) and Bob (archival node) and Carol (pruning node)
@@ -657,8 +657,185 @@ async fn test_horizon_sync_from_prune_node_happy_path() {
         alice_node.blockchain_db.get_height().unwrap(),
         alice_header_height - pruning_horizon_alice
     );
+    // Carol will not be banned
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);
+}
+
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_initial_horizon_sync_from_prune_node_happy_path() {
+    //` cargo test --release --test core_integration_tests
+    //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+
+    // Create the network with Alice (pruning node) and Bob (archival node) and Carol (pruning node)
+    let pruning_horizon_alice = 4;
+    let pruning_horizon_carol = 12;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            // Alice is a pruned node
+            BlockchainDatabaseConfig {
+                orphan_storage_capacity: 5,
+                pruning_horizon: pruning_horizon_alice,
+                pruning_interval: 5,
+                track_reorgs: false,
+                cleanup_orphans_at_startup: false,
+            },
+            // Carol is a pruned node
+            BlockchainDatabaseConfig {
+                orphan_storage_capacity: 5,
+                pruning_horizon: pruning_horizon_carol,
+                pruning_interval: 5,
+                track_reorgs: false,
+                cleanup_orphans_at_startup: false,
+            },
+            // Bob is an archival node
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let mut carol_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let carol_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    // Create a blockchain that spends the genesys coinbase early on and then later spends some more coinbase outputs
+    let follow_up_coinbases_to_spend = 5;
+    let (_blocks, _coinbases) = sync::create_block_chain_with_transactions(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        &consensus_manager,
+        &key_manager,
+        min(pruning_horizon_alice, pruning_horizon_carol),
+        28,                           // > follow_up_transaction_in_block + pruning_horizon_carol + 1
+        2,                            // < pruning_horizon_alice, < pruning_horizon_carol
+        14,                           // > pruning_horizon_alice, > pruning_horizon_carol
+        follow_up_coinbases_to_spend, // > spend_genesis_coinbase_in_block - 1, < follow_up_transaction_in_block
+    )
+    .await;
+
+    // 1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)
+    println!("\n1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)\n");
+
+    let output_hash = initial_coinbase.hash(&key_manager).await.unwrap();
+    assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+    let commitment = initial_coinbase.commitment(&key_manager).await.unwrap();
+    assert!(carol_node
+        .blockchain_db
+        .fetch_unspent_output_hash_by_commitment(commitment.clone())
+        .unwrap()
+        .is_some());
+
+    let mut header_sync_carol_from_bob = sync::initialize_sync_headers_with_ping_pong_data(&carol_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut carol_state_machine, &mut header_sync_carol_from_bob).await;
+    let carol_header_height = carol_node.blockchain_db.fetch_last_header().unwrap().height;
+    println!("Event: {} to header {}", state_event(&event), carol_header_height);
+    assert_eq!(carol_header_height, 28);
+    let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_bob).await;
+    let mut horizon_sync = match event {
+        StateEvent::ProceedToHorizonSync(sync_peers) => HorizonStateSync::from(sync_peers),
+        _ => panic!("1. Carol should proceed to horizon sync"),
+    };
+    let event = sync::horizon_sync_execute(&mut carol_state_machine, &mut horizon_sync).await;
+
+    println!(
+        "Event: {} to block {}",
+        state_event(&event),
+        carol_node.blockchain_db.get_height().unwrap()
+    );
+    assert_eq!(event, StateEvent::HorizonStateSynchronized);
+    assert_eq!(
+        carol_node.blockchain_db.get_height().unwrap(),
+        carol_header_height - pruning_horizon_carol
+    );
+
+    assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+    assert!(carol_node
+        .blockchain_db
+        .fetch_unspent_output_hash_by_commitment(commitment.clone())
+        .unwrap()
+        .is_none());
+
     // Bob will not be banned
-    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+    assert!(!sync::wait_for_is_peer_banned(&carol_node, bob_node.node_identity.node_id(), 1).await);
+
+    // 2. Carol attempts block sync from Bob to the tip (to height 28)
+    println!("\n2. Carol attempts block sync from Bob to the tip (to height 28)\n");
+
+    let mut block_sync = sync::initialize_sync_blocks(&bob_node);
+    let event = sync::sync_blocks_execute(&mut carol_state_machine, &mut block_sync).await;
+    println!(
+        "Event: {} to block {}",
+        state_event(&event),
+        carol_node.blockchain_db.get_height().unwrap()
+    );
+    assert_eq!(event, StateEvent::BlocksSynchronized);
+    assert_eq!(
+        carol_node.blockchain_db.get_height().unwrap(),
+        carol_node.blockchain_db.fetch_last_header().unwrap().height
+    );
+    // Bob will not be banned
+    assert!(!sync::wait_for_is_peer_banned(&carol_node, bob_node.node_identity.node_id(), 1).await);
+
+    // 3. Alice attempts initial horizon sync from Carol prune node (to height 24)
+    println!("\n3. Alice attempts initial horizon sync from Carol prune node (to height 24)\n");
+
+    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+    assert!(alice_node
+        .blockchain_db
+        .fetch_unspent_output_hash_by_commitment(commitment.clone())
+        .unwrap()
+        .is_some());
+
+    let mut header_sync_alice_from_carol = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &carol_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync_alice_from_carol).await;
+    let alice_header_height = alice_node.blockchain_db.fetch_last_header().unwrap().height;
+    println!("Event: {} to header {}", state_event(&event), alice_header_height);
+    assert_eq!(alice_header_height, 28);
+    let event = decide_horizon_sync(&mut alice_state_machine, header_sync_alice_from_carol).await;
+    let mut horizon_sync = match event {
+        StateEvent::ProceedToHorizonSync(sync_peers) => HorizonStateSync::from(sync_peers),
+        _ => panic!("3. Alice should proceed to horizon sync"),
+    };
+    let event = sync::horizon_sync_execute(&mut alice_state_machine, &mut horizon_sync).await;
+
+    println!(
+        "Event: {} to block {}",
+        state_event(&event),
+        alice_node.blockchain_db.get_height().unwrap()
+    );
+    assert_eq!(event, StateEvent::HorizonStateSynchronized);
+    assert_eq!(
+        alice_node.blockchain_db.get_height().unwrap(),
+        alice_header_height - pruning_horizon_alice
+    );
+
+    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+    assert!(alice_node
+        .blockchain_db
+        .fetch_unspent_output_hash_by_commitment(commitment.clone())
+        .unwrap()
+        .is_none());
+
+    // Carol will not be banned
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);
+
+    // 4. Alice attempts block sync from Carol prune node to the tip (to height 28)
+    println!("\n4. Alice attempts block sync from Carol prune node to the tip (to height 28)\n");
+
+    let mut block_sync = sync::initialize_sync_blocks(&carol_node);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    println!(
+        "Event: {} to block {}",
+        state_event(&event),
+        alice_node.blockchain_db.get_height().unwrap()
+    );
+    assert_eq!(event, StateEvent::BlocksSynchronized);
+    assert_eq!(
+        alice_node.blockchain_db.get_height().unwrap(),
+        alice_node.blockchain_db.fetch_last_header().unwrap().height
+    );
     // Carol will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);
 }

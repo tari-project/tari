@@ -70,20 +70,12 @@ impl DecideNextSync {
                 .filter(|sync_peer| {
                     let remote_metadata = sync_peer.claimed_chain_metadata();
                     debug!(target: LOG_TARGET, "Peer metadata: {}", remote_metadata);
-                    let remote_is_archival_node = remote_metadata.pruned_height() == 0;
-                    let general_sync_conditions =
-                        // Must be able to provide the correct amount of full blocks past the pruned height (i.e. the
-                        // pruning horizon), otherwise our horizon spec will not be met
-                        remote_metadata.best_block_height().saturating_sub(remote_metadata.pruned_height()) >=
-                            local_metadata.pruning_horizon() &&
-                        // Must have a better blockchain tip than us
-                        remote_metadata.best_block_height() > local_metadata.best_block_height() &&
-                        // Must be able to provide full blocks from the height we need detailed information
-                        remote_metadata.pruned_height() <= local_metadata.best_block_height();
-                    let sync_from_prune_node = !remote_is_archival_node &&
-                        // Must have done initial sync (to detect genesis TXO spends)
-                        local_metadata.best_block_height() > 0;
-                    general_sync_conditions && (remote_is_archival_node || sync_from_prune_node)
+                    // Must be able to provide the correct amount of full blocks past the pruned height (i.e. the
+                    // pruning horizon), otherwise our horizon spec will not be met
+                    remote_metadata.best_block_height().saturating_sub(remote_metadata.pruned_height()) >=
+                        local_metadata.pruning_horizon() &&
+                    // Must have a better blockchain tip than us
+                    remote_metadata.best_block_height() > local_metadata.best_block_height()
                 })
                 .collect::<Vec<_>>();
 

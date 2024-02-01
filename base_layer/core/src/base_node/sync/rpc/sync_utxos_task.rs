@@ -132,6 +132,39 @@ where B: BlockchainBackend + 'static
             current_header.hash().to_hex(),
             end_header.hash().to_hex(),
         );
+
+        // If this is a pruned node and outputs have been requested for an initial sync, we need to discover and send
+        // the outputs from the genesis block that have been pruned as well
+        let mut pruned_genesis_block_outputs = Vec::new();
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+        if current_header.height == 1 && metadata.is_pruned_node() {
+            let genesis_block = self.db.fetch_genesis_block();
+            for output in genesis_block.block().body.outputs() {
+                let output_hash = output.hash();
+                if self
+                    .db
+                    .fetch_output(output_hash)
+                    .await
+                    .rpc_status_internal_error(LOG_TARGET)?
+                    .is_none()
+                {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Spent genesis TXO (commitment '{}') to peer",
+                        output.commitment.to_hex()
+                    );
+                    pruned_genesis_block_outputs.push(Ok(SyncUtxosResponse {
+                        txo: Some(Txo::Commitment(output.commitment.as_bytes().to_vec())),
+                        mined_header: current_header.hash().to_vec(),
+                    }));
+                }
+            }
+        }
+
         let start_header = current_header.clone();
         loop {
             let timer = Instant::now();
@@ -248,6 +281,15 @@ where B: BlockchainBackend + 'static
             let mut txos = Vec::with_capacity(outputs.len() + inputs.len());
             txos.append(&mut outputs);
             txos.append(&mut inputs);
+            if start_header == current_header {
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding {} genesis block pruned inputs in response for block #{} '{}'", pruned_genesis_block_outputs.len(),
+                    current_header.height,
+                    current_header_hash
+                );
+                txos.append(&mut pruned_genesis_block_outputs);
+            }
             let txos = txos.into_iter();
 
             // Ensure task stops if the peer prematurely stops their RPC session
