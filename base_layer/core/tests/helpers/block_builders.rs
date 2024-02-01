@@ -191,6 +191,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
         let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
         mmr.insert(smt_key, smt_node).unwrap();
     }
+    header.output_smt_size = body.outputs().len() as u64;
 
     header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
     Ok(Block { header, body })
@@ -366,10 +367,10 @@ pub async fn append_block<B: BlockchainBackend>(
     consensus: &ConsensusManager,
     achieved_difficulty: Difficulty,
     key_manager: &MemoryDbKeyManager,
-) -> Result<ChainBlock, ChainStorageError> {
+) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     append_block_with_coinbase(db, prev_block, txns, consensus, achieved_difficulty, key_manager)
         .await
-        .map(|(b, _)| b)
+        .map(|(b, wo)| (b, wo))
 }
 
 /// Create a new block with the provided transactions and add a coinbase output. The new MMR roots are calculated, and
@@ -577,7 +578,7 @@ pub async fn construct_chained_blocks<B: BlockchainBackend>(
     let mut prev_block = block0;
     let mut blocks = Vec::new();
     for _i in 0..n {
-        let block = append_block(db, &prev_block, vec![], consensus, Difficulty::min(), key_manager)
+        let (block, _) = append_block(db, &prev_block, vec![], consensus, Difficulty::min(), key_manager)
             .await
             .unwrap();
         prev_block = block.clone();

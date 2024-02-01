@@ -28,6 +28,7 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
@@ -87,7 +88,7 @@ use crate::helpers::{
         generate_block,
         generate_new_block,
     },
-    nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
+    nodes::create_network_with_multiple_base_nodes_with_config,
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
 
@@ -1053,14 +1054,21 @@ async fn receive_and_propagate_transaction() {
         .with_block(block0)
         .build()
         .unwrap();
-    let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
-        create_network_with_3_base_nodes_with_config(
-            MempoolServiceConfig::default(),
-            LivenessConfig::default(),
-            consensus_manager,
-            temp_dir.path().to_str().unwrap(),
-        )
-        .await;
+
+    let (mut node_interfaces, _consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+        vec![MempoolServiceConfig::default(); 3],
+        vec![LivenessConfig::default(); 3],
+        vec![BlockchainDatabaseConfig::default(); 3],
+        vec![P2pConfig::default(); 3],
+        consensus_manager,
+        temp_dir.path().to_str().unwrap(),
+        network,
+    )
+    .await;
+    let mut alice_node = node_interfaces.remove(0);
+    let mut bob_node = node_interfaces.remove(0);
+    let mut carol_node = node_interfaces.remove(0);
+
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
@@ -1722,14 +1730,20 @@ async fn block_event_and_reorg_event_handling() {
         .with_block(block0.clone())
         .build()
         .unwrap();
-    let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        P2pConfig::default(),
+
+    let (mut node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+        vec![MempoolServiceConfig::default(); 2],
+        vec![LivenessConfig::default(); 2],
+        vec![BlockchainDatabaseConfig::default(); 2],
+        vec![P2pConfig::default(); 2],
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
+        network,
     )
     .await;
+    let mut alice = node_interfaces.remove(0);
+    let mut bob = node_interfaces.remove(0);
+
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),

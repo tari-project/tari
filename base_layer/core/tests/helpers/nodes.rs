@@ -41,7 +41,7 @@ use tari_core::{
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
-    chain_storage::{BlockchainDatabase, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::{
         service::{LocalMempoolService, MempoolHandle},
@@ -52,7 +52,7 @@ use tari_core::{
         OutboundMempoolServiceInterface,
     },
     proof_of_work::randomx_factory::RandomXFactory,
-    test_helpers::blockchain::{create_store_with_consensus_and_validators, TempDatabase},
+    test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, TempDatabase},
     validation::{
         mocks::MockValidator,
         transaction::TransactionChainLinkedValidator,
@@ -186,7 +186,11 @@ impl BaseNodeBuilder {
 
     /// Build the test base node and start its services.
     #[allow(clippy::redundant_closure)]
-    pub async fn start(self, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
+    pub async fn start(
+        self,
+        data_path: &str,
+        blockchain_db_config: BlockchainDatabaseConfig,
+    ) -> (NodeInterfaces, ConsensusManager) {
         let validators = self.validators.unwrap_or_else(|| {
             Validators::new(
                 MockValidator::new(true),
@@ -198,7 +202,11 @@ impl BaseNodeBuilder {
         let consensus_manager = self
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
-        let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
+        let blockchain_db = create_store_with_consensus_and_validators_and_config(
+            consensus_manager.clone(),
+            validators,
+            blockchain_db_config,
+        );
         let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or_default(),
@@ -234,127 +242,53 @@ pub async fn wait_until_online(nodes: &[&NodeInterfaces]) {
     }
 }
 
-// Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
-#[allow(dead_code)]
-pub async fn create_network_with_2_base_nodes(data_path: &str) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
-    let alice_node_identity = random_node_identity();
-    let bob_node_identity = random_node_identity();
-
-    let network = Network::LocalNet;
-    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(alice_node_identity.clone())
-        .with_peers(vec![bob_node_identity.clone()])
-        .start(data_path)
-        .await;
-    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(bob_node_identity)
-        .with_peers(vec![alice_node_identity])
-        .with_consensus_manager(consensus_manager)
-        .start(data_path)
-        .await;
-
-    wait_until_online(&[&alice_node, &bob_node]).await;
-
-    (alice_node, bob_node, consensus_manager)
-}
-
-// Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
-#[allow(dead_code)]
-pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
-    mempool_service_config: MempoolServiceConfig,
-    liveness_service_config: LivenessConfig,
-    p2p_config: P2pConfig,
+// Creates a network with multiple Base Nodes where each node in the network knows the other nodes in the network.
+pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>(
+    mempool_service_configs: Vec<MempoolServiceConfig>,
+    liveness_service_configs: Vec<LivenessConfig>,
+    blockchain_db_configs: Vec<BlockchainDatabaseConfig>,
+    p2p_configs: Vec<P2pConfig>,
     consensus_manager: ConsensusManager,
     data_path: P,
-) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
-    let alice_node_identity = random_node_identity();
-    let bob_node_identity = random_node_identity();
-    let network = Network::LocalNet;
-    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(alice_node_identity.clone())
-        .with_mempool_service_config(mempool_service_config.clone())
-        .with_liveness_service_config(liveness_service_config.clone())
-        .with_p2p_config(p2p_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
-        .await;
-    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(bob_node_identity)
-        .with_peers(vec![alice_node_identity])
-        .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
-        .with_p2p_config(p2p_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
-        .await;
+    network: Network,
+) -> (Vec<NodeInterfaces>, ConsensusManager) {
+    let num_of_nodes = mempool_service_configs.len();
+    if num_of_nodes != liveness_service_configs.len() ||
+        num_of_nodes != blockchain_db_configs.len() ||
+        num_of_nodes != p2p_configs.len()
+    {
+        panic!("create_network_with_multiple_base_nodes_with_config: All configs must be the same length");
+    }
+    let mut node_identities = Vec::with_capacity(num_of_nodes);
+    for i in 0..num_of_nodes {
+        node_identities.push(random_node_identity());
+        log::info!(
+            "node identity {} = `{}`",
+            i + 1,
+            node_identities[node_identities.len() - 1].node_id().short_str()
+        );
+    }
+    let mut node_interfaces = Vec::with_capacity(num_of_nodes);
+    for i in 0..num_of_nodes {
+        let (node, _) = BaseNodeBuilder::new(network.into())
+            .with_node_identity(node_identities[i].clone())
+            .with_peers(node_identities.iter().take(i).cloned().collect())
+            .with_mempool_service_config(mempool_service_configs[i].clone())
+            .with_liveness_service_config(liveness_service_configs[i].clone())
+            .with_p2p_config(p2p_configs[i].clone())
+            .with_consensus_manager(consensus_manager.clone())
+            .start(
+                data_path.as_ref().join(i.to_string()).as_os_str().to_str().unwrap(),
+                blockchain_db_configs[i],
+            )
+            .await;
+        node_interfaces.push(node);
+    }
 
-    wait_until_online(&[&alice_node, &bob_node]).await;
+    let node_interface_refs = node_interfaces.iter().collect::<Vec<&NodeInterfaces>>();
+    wait_until_online(node_interface_refs.as_slice()).await;
 
-    (alice_node, bob_node, consensus_manager)
-}
-
-// Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
-#[allow(dead_code)]
-pub async fn create_network_with_3_base_nodes(
-    data_path: &str,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build().unwrap();
-    create_network_with_3_base_nodes_with_config(
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        data_path,
-    )
-    .await
-}
-
-// Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
-#[allow(dead_code)]
-pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
-    mempool_service_config: MempoolServiceConfig,
-    liveness_service_config: LivenessConfig,
-    consensus_manager: ConsensusManager,
-    data_path: P,
-) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
-    let alice_node_identity = random_node_identity();
-    let bob_node_identity = random_node_identity();
-    let carol_node_identity = random_node_identity();
-    let network = Network::LocalNet;
-
-    log::info!(
-        "Alice = {}, Bob = {}, Carol = {}",
-        alice_node_identity.node_id().short_str(),
-        bob_node_identity.node_id().short_str(),
-        carol_node_identity.node_id().short_str()
-    );
-    let (carol_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(carol_node_identity.clone())
-        .with_mempool_service_config(mempool_service_config.clone())
-        .with_liveness_service_config(liveness_service_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("carol").as_os_str().to_str().unwrap())
-        .await;
-    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(bob_node_identity.clone())
-        .with_peers(vec![carol_node_identity.clone()])
-        .with_mempool_service_config(mempool_service_config.clone())
-        .with_liveness_service_config(liveness_service_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
-        .await;
-    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .with_node_identity(alice_node_identity)
-        .with_peers(vec![bob_node_identity, carol_node_identity])
-        .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config)
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
-        .await;
-
-    wait_until_online(&[&alice_node, &bob_node, &carol_node]).await;
-
-    (alice_node, bob_node, carol_node, consensus_manager)
+    (node_interfaces, consensus_manager)
 }
 
 // Helper function for creating a random node indentity.
