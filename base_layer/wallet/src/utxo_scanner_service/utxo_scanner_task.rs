@@ -107,7 +107,8 @@ where
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)?;
+                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
+                            .await?;
                         return Ok(());
                     },
                     Err(e) => {
@@ -146,13 +147,18 @@ where
         }
     }
 
-    fn finalize(
-        &self,
+    async fn finalize(
+        &mut self,
         num_outputs_recovered: u64,
         final_height: u64,
         total_value: MicroMinotari,
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
+        if num_outputs_recovered > 0 {
+            // this is a best effort, if this fails, its very likely that it's already busy with a validation.
+            let _result = self.resources.output_manager_service.validate_txos().await;
+            let _result = self.resources.transaction_service.validate_transactions().await;
+        }
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
             tip_height: final_height,

@@ -146,6 +146,7 @@ impl OutputManagerServiceMock {
                         e
                     });
             },
+            OutputManagerRequest::ValidateUtxos => {},
             _ => panic!("Output Manager Service Mock does not support this call"),
         }
     }
