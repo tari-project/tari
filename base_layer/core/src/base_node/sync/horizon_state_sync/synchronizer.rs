@@ -721,18 +721,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // outputs from the sync peer. As an example:
         // 1. Initial sync:
         //    - We request outputs from height 0 to 100 (the tranche)
-        //    - The sync peer only returns outputs per block that would still be unspent at height 100 and all
-        //      inputs per block. All outputs that were created and spent within the tranche are never returned.
-        //    - For example, an output is created in block 50 and spent in block 70. It would be included in the SMT
-        //      for headers from height 50 to 69, but due to the optimization, the sync peer would never know about it.
+        //    - The sync peer only returns outputs per block that would still be unspent at height 100 and all inputs
+        //      per block. All outputs that were created and spent within the tranche are never returned.
+        //    - For example, an output is created in block 50 and spent in block 70. It would be included in the SMT for
+        //      headers from height 50 to 69, but due to the optimization, the sync peer would never know about it.
         // 2. Consecutive sync:
         //    - We request outputs from height 101 to 200 (the tranche)
         //    - The sync peer only returns outputs per block that would still be unspent at height 200, as well as all
         //      inputs per block, but in this case, only those inputs that are not an output of the current tranche of
         //      outputs. Similarly, all outputs created and spent within the tranche are never returned.
-        //    - For example, an output is created in block 110 and spent in block 180. It would be included in the
-        //      SMT for headers from height 110 to 179, but due to the optimization, the sync peer would never know
-        //      about it.
+        //    - For example, an output is created in block 110 and spent in block 180. It would be included in the SMT
+        //      for headers from height 110 to 179, but due to the optimization, the sync peer would never know about
+        //      it.
         // 3. In both cases it would be impossible to verify the SMT per block, as we would not be able to update the
         //    SMT with the outputs that were created and spent within the tranche.
         HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, to_header)?;
