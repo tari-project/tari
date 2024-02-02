@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, marker::PhantomData, sync::Arc};
+use std::{cmp, marker::PhantomData, sync::Arc, thread};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -283,13 +283,15 @@ where
                 // made during comms startup. In the case of a Tor Transport the public address could
                 // have been generated
                 let _result = wallet_db.set_node_address(address);
-                let result = block_on(ts.restart_transaction_protocols());
-                if result.is_err() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Could not restart transaction negotiation protocols: {:?}", result
-                    );
-                }
+                thread::spawn(move || {
+                    let result = block_on(ts.restart_transaction_protocols());
+                    if result.is_err() {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not restart transaction negotiation protocols: {:?}", result
+                        );
+                    }
+                });
             };
             initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
         } else {
