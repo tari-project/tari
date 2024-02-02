@@ -105,8 +105,11 @@ pub fn verify_header(
 ) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header, consensus)?;
     let expected_merge_mining_hash = header.merge_mining_hash();
-    let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx_extra)
-        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
+    let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx_extra);
+    let extra_field = extra_field.unwrap_or_else(|ex_field| {
+        warn!(target: LOG_TARGET, "Error deserializing, Monero extra field");
+        ex_field
+    });
     // Check that the Tari MM hash is found in the Monero coinbase transaction
     // and that only 1 Tari header is found
 
