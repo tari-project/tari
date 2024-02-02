@@ -24,6 +24,7 @@ use std::{cmp, marker::PhantomData, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U32;
+use futures::executor::block_on;
 use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
@@ -254,13 +255,17 @@ where
 
         let mut handles = stack.build().await?;
 
+        let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack");
         let comms = if config.p2p.transport.transport_type == TransportType::Tor {
             let wallet_db = wallet_database.clone();
             let node_id = comms.node_identity();
+            let moved_ts_clone = transaction_service_handle.clone();
             let after_comms = move |identity: TorIdentity| {
+                // we do this so that we dont have to move in a mut ref and making the closure a FnMut.
+                let mut ts = moved_ts_clone.clone();
                 let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
                 if let Err(e) = wallet_db.set_tor_identity(identity) {
                     error!(target: LOG_TARGET, "Failed to set wallet db tor identity{:?}", e);
@@ -278,6 +283,13 @@ where
                 // made during comms startup. In the case of a Tor Transport the public address could
                 // have been generated
                 let _result = wallet_db.set_node_address(address);
+                let result = block_on(ts.restart_transaction_protocols());
+                if result.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not restart transaction negotiation protocols: {:?}", result
+                    );
+                }
             };
             initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
         } else {
@@ -287,7 +299,6 @@ where
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
-        let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
         let store_and_forward_requester = dht.store_and_forward_requester();
