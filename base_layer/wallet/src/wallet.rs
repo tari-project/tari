@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, io, marker::PhantomData, sync::Arc, thread};
+use std::{cmp, marker::PhantomData, sync::Arc, thread};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -287,9 +287,9 @@ where
                     let result = block_on(ts.restart_transaction_protocols());
                     if result.is_err() {
                         warn!(
-                        target: LOG_TARGET,
-                        "Could not restart transaction negotiation protocols: {:?}", result
-                    );
+                            target: LOG_TARGET,
+                            "Could not restart transaction negotiation protocols: {:?}", result
+                        );
                     }
                 });
             };
