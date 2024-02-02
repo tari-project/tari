@@ -646,6 +646,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header.hash().to_hex(),
                 latency
             );
+            trace!(
+                target: LOG_TARGET,
+                "{}",
+                header
+            );
             if let Some(prev_header_height) = prev_height {
                 if header.height != prev_header_height.saturating_add(1) {
                     warn!(
