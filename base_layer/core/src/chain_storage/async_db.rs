@@ -143,6 +143,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     pub fn inner(&self) -> &BlockchainDatabase<B> {
         &self.db
     }
+
+    pub fn fetch_genesis_block(&self) -> ChainBlock {
+        self.db.fetch_genesis_block()
+    }
 }
 
 impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
