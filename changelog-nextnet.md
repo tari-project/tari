@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-rc.4](https://github.com/tari-project/tari/compare/v1.0.0-rc.4...v1.0.0-rc.3) (2024-02-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* fix horizon sync after smt upgrade (#6006)
+
+### Features
+
+* do validation after adding utxos and txs ([#6114](https://github.com/tari-project/tari/issues/6114)) ([7d886e6](https://github.com/tari-project/tari/commit/7d886e6c85e463a4f7f4dacc5115e625bb1f37f5))
+* export transaction ([#6111](https://github.com/tari-project/tari/issues/6111)) ([70d5ad3](https://github.com/tari-project/tari/commit/70d5ad3b4f8a1b8efb83a868102b7c846f2bd50c))
+* fix horizon sync after smt upgrade ([#6006](https://github.com/tari-project/tari/issues/6006)) ([b6b80f6](https://github.com/tari-project/tari/commit/b6b80f6ee9b91255815bd2a66f51425c3a628dcf))
+* initial horizon sync from prune node ([#6109](https://github.com/tari-project/tari/issues/6109)) ([2987621](https://github.com/tari-project/tari/commit/2987621b2cef6d3b852ed9a1f4215f19b9838e0f))
+* smt verification ([#6115](https://github.com/tari-project/tari/issues/6115)) ([78a9348](https://github.com/tari-project/tari/commit/78a93480bc00235cbf221ff977f7d87f8008226a))
+* wallet add restart validation to start ([#6113](https://github.com/tari-project/tari/issues/6113)) ([5c236ce](https://github.com/tari-project/tari/commit/5c236ce9928acd3aa212adab716c93f05e8cac9d))
+
+
+### Bug Fixes
+
+* faster tor startup ([#6092](https://github.com/tari-project/tari/issues/6092)) ([a2872bb](https://github.com/tari-project/tari/commit/a2872bba188c456578ed5b5ad5eb2e37e26a46e6))
+* make monero extra data less strict ([#6117](https://github.com/tari-project/tari/issues/6117)) ([38b9113](https://github.com/tari-project/tari/commit/38b9113375bb90d667718f406e796f6a0e021861))
+
 ## [1.0.0-rc.3](https://github.com/tari-project/tari/compare/v1.0.0-rc.2...v1.0.0-rc.3) (2024-01-29)
 
 
