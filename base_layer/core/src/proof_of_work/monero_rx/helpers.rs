@@ -1251,4 +1251,27 @@ mod test {
         );
         assert_eq!(difficulty.as_u64(), 430603);
     }
+
+    #[test]
+    fn test_extra_field_deserialize() {
+        let bytes = vec![
+            3, 33, 0, 149, 5, 198, 66, 174, 39, 113, 243, 68, 202, 221, 222, 116, 10, 209, 194, 56, 247, 252, 23, 248,
+            28, 44, 81, 91, 44, 214, 211, 242, 3, 12, 70, 0, 0, 0, 1, 251, 88, 0, 0, 96, 49, 163, 82, 175, 205, 74,
+            138, 126, 250, 226, 106, 10, 255, 139, 49, 41, 168, 110, 203, 150, 252, 208, 234, 140, 2, 17, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let raw_extra_field = RawExtraField(bytes);
+        let res = ExtraField::try_parse(&raw_extra_field);
+        assert!(res.is_err());
+        let field = res.unwrap_err();
+        let mm_tag = SubField::MergeMining(
+            Some(VarInt(0)),
+            Hash::from_slice(
+                hex::decode("9505c642ae2771f344caddde740ad1c238f7fc17f81c2c515b2cd6d3f2030c46")
+                    .unwrap()
+                    .as_slice(),
+            ),
+        );
+        assert_eq!(field.0[0], mm_tag);
+    }
 }
