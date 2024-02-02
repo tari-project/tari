@@ -123,6 +123,7 @@ pub enum CliCommands {
     DiscoverPeer(DiscoverPeerArgs),
     Whois(WhoisArgs),
     ExportUtxos(ExportUtxosArgs),
+    ExportTx(ExportTxArgs),
     ExportSpentUtxos(ExportUtxosArgs),
     CountUtxos,
     SetBaseNode(SetBaseNodeArgs),
@@ -237,6 +238,13 @@ pub struct WhoisArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct ExportUtxosArgs {
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportTxArgs {
+    pub tx_id: u64,
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
 }

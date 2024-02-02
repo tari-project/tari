@@ -38,7 +38,10 @@ use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, w
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
-    transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    transaction_service::{
+        handle::{TransactionEvent, TransactionServiceHandle},
+        storage::models::WalletTransaction,
+    },
     TransactionStage,
     WalletConfig,
     WalletSqlite,
@@ -90,6 +93,7 @@ pub enum WalletCommand {
     DiscoverPeer,
     Whois,
     ExportUtxos,
+    ExportTx,
     ExportSpentUtxos,
     CountUtxos,
     SetBaseNode,
@@ -798,6 +802,21 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("ExportUtxos error! {}", e),
             },
+            ExportTx(args) => match transaction_service.get_any_transaction(args.tx_id.into()).await {
+                Ok(Some(tx)) => {
+                    if let Some(file) = args.output_file {
+                        if let Err(e) = write_tx_to_csv_file(tx, file) {
+                            eprintln!("ExportTx error! {}", e);
+                        }
+                    } else {
+                        println!("Tx: {:?}", tx);
+                    }
+                },
+                Ok(None) => {
+                    eprintln!("ExportTx error!, No tx found ")
+                },
+                Err(e) => eprintln!("ExportTx error! {}", e),
+            },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
                     let utxos: Vec<(WalletOutput, Commitment)> =
@@ -1078,6 +1097,16 @@ fn write_utxos_to_csv_file(utxos: Vec<(WalletOutput, Commitment)>, file_path: Pa
     }
     Ok(())
 }
+
+fn write_tx_to_csv_file(tx: WalletTransaction, file_path: PathBuf) -> Result<(), CommandError> {
+    let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    let mut csv_file = LineWriter::new(file);
+    let tx_string = serde_json::to_string(&tx).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    writeln!(csv_file, "{}", tx_string).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+
+    Ok(())
+}
+
 #[allow(dead_code)]
 fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, data: &T) -> Result<(), CommandError> {
     fs::create_dir_all(path.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
