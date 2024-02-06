@@ -24,7 +24,6 @@ use std::{fs, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
-use multiaddr::{multiaddr, Protocol};
 use tari_shutdown::OptionalShutdownSignal;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
@@ -127,16 +126,6 @@ impl HiddenServiceController {
     pub async fn initialize_transport(&mut self) -> Result<SocksTransport, HiddenServiceControllerError> {
         self.connect_and_auth().await?;
 
-        let socks_addr = self.get_socks_address().await?;
-        let mut proxied_addr = self.proxied_address();
-        if proxied_addr.ends_with(&multiaddr!(Tcp(0u16))) {
-            if let Some(Protocol::Tcp(port)) = socks_addr.iter().last() {
-                proxied_addr.pop();
-                proxied_addr.push(Protocol::Tcp(port));
-            }
-            self.set_proxied_addr(&proxied_addr);
-        }
-        self.create_hidden_service_from_identity().await?;
         let socks_addr = self.get_socks_address().await?;
         Ok(SocksTransport::new(SocksConfig {
             proxy_address: socks_addr,

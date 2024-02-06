@@ -147,6 +147,9 @@ impl Tor {
         tor.flag(TorFlag::DataDirectory(data_dir.clone()))
             .flag(TorFlag::SocksPort(socks_port))
             .flag(TorFlag::ControlPort(control_port))
+            // Disable signal handlers so that ctrl+c can be handled by our application
+            // https://github.com/torproject/torspec/blob/8961bb4d83fccb2b987f9899ca83aa430f84ab0c/control-spec.txt#L3946
+            .flag(TorFlag::Custom("__DisableSignalHandlers 1".to_string()))
             .flag(TorFlag::Hush())
             .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination)));
 
