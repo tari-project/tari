@@ -26,12 +26,12 @@ The recommended running versions of each network are:
 | Nextnet   | 1.0.0-rc.4  |
 | Esmeralda | 1.0.0-pre.7 |
 
-For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
+For more details about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
 ### Download
 
 [Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run a Tari node, but you're
-essentially trusting the person that built and uploaded them that nothing untoward has happened.
+essentially trusting the person who built and uploaded them that nothing untoward has happened.
 
 Hashes of the binaries are available alongside the downloads.
 You can get the hash of your download by opening a terminal or command prompt and running the following:
