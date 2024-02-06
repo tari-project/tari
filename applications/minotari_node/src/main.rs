@@ -152,7 +152,7 @@ fn main_inner() -> Result<(), ExitError> {
     if config.base_node.use_libtor && config.base_node.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
         tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
-        runtime.spawn(tor.run(shutdown.to_signal()));
+        tor.run_background();
         debug!(
             target: LOG_TARGET,
             "Updated Tor comms transport: {:?}", config.base_node.p2p.transport
