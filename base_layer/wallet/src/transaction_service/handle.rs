@@ -82,6 +82,7 @@ pub enum TransactionServiceRequest {
     GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
+    ImportTransaction(WalletTransaction),
     SendTransaction {
         destination: TariAddress,
         amount: MicroMinotari,
@@ -165,6 +166,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions => write!(f, "GetCompletedTransactions"),
+            Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => write!(f, "GetCancelledCompletedTransactions"),
@@ -243,6 +245,7 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionImported(TxId),
     BurntTransactionSent {
         tx_id: TxId,
         proof: Box<BurntProof>,
@@ -723,6 +726,17 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::AnyTransaction(t) => Ok(*t),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn import_transaction(&mut self, tx: WalletTransaction) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ImportTransaction(tx))
+            .await??
+        {
+            TransactionServiceResponse::TransactionImported(t) => Ok(t),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
