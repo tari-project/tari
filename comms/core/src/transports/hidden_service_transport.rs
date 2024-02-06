@@ -23,12 +23,12 @@
 use std::{io, io::ErrorKind, sync::Arc};
 
 use log::*;
-use multiaddr::Multiaddr;
+use multiaddr::{multiaddr, Multiaddr, Protocol};
 use tokio::sync::RwLock;
 
 use crate::{
     tor::{HiddenServiceController, TorIdentity},
-    transports::{SocksTransport, Transport},
+    transports::{tcp::TcpInbound, SocksTransport, Transport},
 };
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
@@ -43,7 +43,7 @@ pub enum HiddenServiceTransportError {
 
 struct HiddenServiceTransportInner {
     socks_transport: Option<SocksTransport>,
-    hidden_service_ctl: HiddenServiceController,
+    hidden_service_ctl: Option<HiddenServiceController>,
 }
 
 #[derive(Clone)]
@@ -57,37 +57,55 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
         Self {
             inner: Arc::new(RwLock::new(HiddenServiceTransportInner {
                 socks_transport: None,
-                hidden_service_ctl,
+                hidden_service_ctl: Some(hidden_service_ctl),
             })),
             after_init,
         }
     }
 
-    async fn ensure_initialized(&self) -> Result<(), io::Error> {
-        let inner = self.inner.read().await;
-        if inner.socks_transport.is_none() {
-            drop(inner);
-            let mut mut_inner = self.inner.write().await;
-            if mut_inner.socks_transport.is_none() {
-                let transport = mut_inner.hidden_service_ctl.initialize_transport().await.map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error initializing hidden transport service stack{}",
-                        e
-                    );
-                    io::Error::new(ErrorKind::Other, e.to_string())
-                })?;
-                (self.after_init)(
-                    mut_inner
-                        .hidden_service_ctl
-                        .identity
-                        .clone()
-                        .ok_or(io::Error::new(ErrorKind::Other, "Missing tor identity".to_string()))?,
-                );
-                mut_inner.socks_transport = Some(transport);
+    async fn is_initialized(&self) -> bool {
+        self.inner.read().await.socks_transport.is_some()
+    }
+
+    async fn initialize(&self, listen_addr: &Multiaddr) -> Result<(TcpInbound, Multiaddr), io::Error> {
+        let mut inner_mut = self.inner.write().await;
+        let mut hs_ctl = inner_mut.hidden_service_ctl.take().ok_or(io::Error::new(
+            ErrorKind::Other,
+            "BUG: Hidden service controller not set in transport".to_string(),
+        ))?;
+
+        let transport = hs_ctl.initialize_transport().await.map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Error initializing hidden transport service stack{}",
+                e
+            );
+            io::Error::new(ErrorKind::Other, e.to_string())
+        })?;
+        let (inbound, listen_addr) = transport.listen(listen_addr).await?;
+        inner_mut.socks_transport = Some(transport);
+
+        // Set the proxied address to the port we just listened on
+        let mut proxied_addr = hs_ctl.proxied_address();
+        if proxied_addr.ends_with(&multiaddr!(Tcp(0u16))) {
+            if let Some(Protocol::Tcp(port)) = listen_addr.iter().last() {
+                proxied_addr.pop();
+                proxied_addr.push(Protocol::Tcp(port));
             }
+            hs_ctl.set_proxied_addr(&proxied_addr);
         }
-        Ok(())
+
+        let hidden_service = hs_ctl.create_hidden_service().await.map_err(|err| {
+            error!(
+                target: LOG_TARGET,
+                "Error creating hidden service: {}",
+                err
+            );
+            io::Error::new(ErrorKind::Other, err.to_string())
+        })?;
+
+        (self.after_init)(hidden_service.tor_identity().clone());
+        Ok((inbound, listen_addr))
     }
 }
 #[crate::async_trait]
@@ -97,15 +115,27 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
     type Output = <SocksTransport as Transport>::Output;
 
     async fn listen(&self, addr: &Multiaddr) -> Result<(Self::Listener, Multiaddr), Self::Error> {
-        self.ensure_initialized().await?;
-        let inner = self.inner.read().await;
-
-        Ok(inner.socks_transport.as_ref().unwrap().listen(addr).await?)
+        if self.is_initialized().await {
+            // For now, we only can listen on a single Tor hidden service. This behaviour is not technically correct as
+            // per the Transport trait, but we only ever call listen once in practice. The fix for this is to
+            // improve the tor client implementation to allow for multiple hidden services.
+            return Err(io::Error::new(
+                ErrorKind::Other,
+                "BUG: Hidden service transport already initialized".to_string(),
+            ));
+        }
+        let (listener, addr) = self.initialize(addr).await?;
+        Ok((listener, addr))
     }
 
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
-        self.ensure_initialized().await?;
         let inner = self.inner.read().await;
-        Ok(inner.socks_transport.as_ref().unwrap().dial(addr).await?)
+        let transport = inner.socks_transport.as_ref().ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::Other,
+                "BUG: Hidden service transport not initialized before dialling".to_string(),
+            )
+        })?;
+        transport.dial(addr).await
     }
 }

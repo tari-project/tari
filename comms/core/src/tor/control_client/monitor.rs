@@ -53,7 +53,7 @@ where
             match either {
                 // Received a command to send to the control server
                 Either::Left(Some(line)) => {
-                    trace!(target: LOG_TARGET, "Writing command of length '{}'", line.len());
+                    trace!(target: LOG_TARGET, "Tor send: {}", line);
                     if let Err(err) = sink.send(line).await {
                         error!(
                             target: LOG_TARGET,
@@ -64,7 +64,7 @@ where
                 },
                 // Command stream ended
                 Either::Left(None) => {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Tor control server command receiver closed. Monitor is exiting."
                     );
@@ -73,7 +73,7 @@ where
 
                 // Received a line from the control server
                 Either::Right(Some(Ok(line))) => {
-                    trace!(target: LOG_TARGET, "Read line of length '{}'", line.len());
+                    trace!(target: LOG_TARGET, "Tor recv: {}", line);
                     match parsers::response_line(&line) {
                         Ok(mut line) => {
                             if line.is_multiline {
@@ -116,7 +116,7 @@ where
                 // The control server disconnected
                 Either::Right(None) => {
                     cmd_rx.close();
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Connection to tor control port closed. Monitor is exiting."
                     );
