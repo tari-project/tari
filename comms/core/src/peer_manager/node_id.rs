@@ -173,7 +173,7 @@ impl PartialEq for NodeId {
 
 impl PartialOrd<NodeId> for NodeId {
     fn partial_cmp(&self, other: &NodeId) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 

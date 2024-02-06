@@ -117,6 +117,7 @@ pub unsafe extern "C" fn read_confirmation_message_id(
 /// # Safety
 /// The ```confirmation``` When done with the Confirmation it should be destroyed
 #[no_mangle]
+#[allow(clippy::cast_possible_wrap)]
 pub unsafe extern "C" fn read_confirmation_timestamp(
     confirmation: *mut Confirmation,
     error_out: *mut c_int,

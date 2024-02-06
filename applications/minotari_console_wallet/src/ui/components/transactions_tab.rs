@@ -102,7 +102,7 @@ impl TransactionsTab {
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
 
-        for t in windowed_view.iter() {
+        for t in windowed_view {
             let text_color = text_colors
                 .get(&t.cancelled.is_some())
                 .unwrap_or(&Color::Reset)
@@ -205,7 +205,7 @@ impl TransactionsTab {
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
 
-        for t in windowed_view.iter() {
+        for t in windowed_view {
             let cancelled = t.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {

@@ -98,8 +98,6 @@ pub fn traverse_direction(
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use super::*;
     use crate::sparse_merkle_tree::{bit_utils::count_common_prefix, NodeKey};
 
@@ -120,9 +118,9 @@ mod test {
 
     #[test]
     fn traverse_directions() {
-        let parent_key = NodeKey::try_from(b"\xffbcdefgh12345678abcdefgh12345678").unwrap();
+        let parent_key = NodeKey::from(b"\xffbcdefgh12345678abcdefgh12345678");
         // 10111111 in hex is 0xBF
-        let child_key = NodeKey::try_from(b"\xBFbcdefgh12345678abcdefgh12345678").unwrap();
+        let child_key = NodeKey::from(b"\xBFbcdefgh12345678abcdefgh12345678");
         assert_eq!(
             traverse_direction(0, &parent_key, &child_key).unwrap(),
             TraverseDirection::Right
@@ -140,7 +138,7 @@ mod test {
         });
         assert_eq!(err, expected_err);
         // 11011111 in hex is 0xDF
-        let child_key = NodeKey::try_from(b"\xDFbcdefgh12345678abcdefgh12345678").unwrap();
+        let child_key = NodeKey::from(b"\xDFbcdefgh12345678abcdefgh12345678");
         assert_eq!(
             traverse_direction(0, &parent_key, &child_key).unwrap(),
             TraverseDirection::Right
@@ -156,8 +154,8 @@ mod test {
             TraverseDirection::Left
         );
 
-        let parent_key = NodeKey::try_from(b"abcdefgh\x082345678abcdefgh12345678").unwrap();
-        let child_key = NodeKey::try_from(b"abcdefgh\x0A2345678abcdefgh12345678").unwrap();
+        let parent_key = NodeKey::from(b"abcdefgh\x082345678abcdefgh12345678");
+        let child_key = NodeKey::from(b"abcdefgh\x0A2345678abcdefgh12345678");
         // 0x8 in binary is 00001000
         // 0xA in binary is 00001010
         // matches to 8*8 + 5 places, next is a 0, so is a left child
@@ -167,7 +165,7 @@ mod test {
         );
         // 0xC in binary is 00001100
         // matches to 8*8 + 5 places, next is a 1, so is a right child
-        let child_key = NodeKey::try_from(b"abcdefgh\x0C2345678abcdefgh12345678").unwrap();
+        let child_key = NodeKey::from(b"abcdefgh\x0C2345678abcdefgh12345678");
         assert_eq!(
             traverse_direction(69, &parent_key, &child_key).unwrap(),
             TraverseDirection::Right
@@ -185,7 +183,7 @@ mod test {
 
     #[test]
     fn height_keys() {
-        let key = NodeKey::try_from(b"abcdefgh12345678abcdefgh12345678").unwrap();
+        let key = NodeKey::from(b"abcdefgh12345678abcdefgh12345678");
         let hkey = height_key(&key, 0);
         assert_eq!(hkey.as_slice(), &[0u8; 32]);
         let hkey = height_key(&key, 3);

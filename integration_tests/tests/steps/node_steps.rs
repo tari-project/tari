@@ -129,7 +129,7 @@ async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, n
 async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
     let mut nodes_at_height: IndexMap<&String, (u64, Vec<u8>)> = IndexMap::new();
 
-    for (name, _) in world.base_nodes.iter() {
+    for (name, _) in &world.base_nodes {
         nodes_at_height.insert(name, (0, vec![]));
     }
 
@@ -168,7 +168,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
     let mut nodes_at_height: IndexMap<&String, u64> = IndexMap::new();
 
-    for (name, _) in world.base_nodes.iter() {
+    for (name, _) in &world.base_nodes {
         nodes_at_height.insert(name, 0);
     }
 

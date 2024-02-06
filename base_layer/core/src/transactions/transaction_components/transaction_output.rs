@@ -515,7 +515,7 @@ impl Display for TransactionOutput {
 
 impl PartialOrd for TransactionOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.commitment.partial_cmp(&other.commitment)
+        Some(self.cmp(other))
     }
 }
 

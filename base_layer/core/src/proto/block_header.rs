@@ -70,7 +70,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 impl From<BlockHeader> for proto::BlockHeader {
     fn from(header: BlockHeader) -> Self {
         Self {
-            version: u32::try_from(header.version).unwrap(),
+            version: u32::from(header.version),
             height: header.height,
             prev_hash: header.prev_hash.to_vec(),
             timestamp: header.timestamp.as_u64(),

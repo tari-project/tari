@@ -95,6 +95,7 @@ pub(super) trait CovenantReadExt: io::Read {
 
 impl<R: io::Read> CovenantReadExt for R {
     /// Reads next byte code
+    #[allow(clippy::unused_io_amount)]
     fn read_next_byte_code(&mut self) -> Result<Option<u8>, io::Error> {
         let mut buf = [0u8; 1];
         loop {

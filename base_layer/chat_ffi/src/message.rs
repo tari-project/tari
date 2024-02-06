@@ -187,6 +187,7 @@ pub unsafe extern "C" fn chat_metadata_get_at(
 /// ## Safety
 /// `message` should be destroyed eventually
 #[no_mangle]
+#[allow(clippy::cast_possible_wrap)]
 pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -289,7 +290,7 @@ pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, erro
         return -1;
     }
 
-    c_int::try_from((*message).direction.as_byte()).unwrap_or(-1)
+    c_int::from((*message).direction.as_byte())
 }
 
 /// Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch

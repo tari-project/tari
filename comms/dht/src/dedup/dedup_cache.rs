@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use chrono::{NaiveDateTime, Utc};
 use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
@@ -85,7 +87,7 @@ impl DedupCacheDatabase {
 
     /// Trims the dedup cache to the configured limit by removing the oldest entries
     pub fn trim_entries(&self) -> Result<usize, StorageError> {
-        let capacity = self.capacity as i64;
+        let capacity = i64::try_from(self.capacity).unwrap_or(i64::MAX);
         let mut num_removed = 0;
         let mut conn = self.connection.get_pooled_connection()?;
         let msg_count = dedup_cache::table

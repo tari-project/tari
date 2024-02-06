@@ -79,8 +79,10 @@ impl PeerManager {
         let peer_id = lock.add_peer(peer)?;
         #[cfg(feature = "metrics")]
         {
+            use std::convert::TryFrom;
+
             let count = lock.count();
-            metrics::peer_list_size().set(count as i64);
+            metrics::peer_list_size().set(i64::try_from(count).unwrap_or(i64::MAX));
         }
         Ok(peer_id)
     }
@@ -91,8 +93,10 @@ impl PeerManager {
         lock.delete_peer(node_id)?;
         #[cfg(feature = "metrics")]
         {
+            use std::convert::TryFrom;
+
             let count = lock.count();
-            metrics::peer_list_size().set(count as i64);
+            metrics::peer_list_size().set(i64::try_from(count).unwrap_or(i64::MAX));
         }
         Ok(())
     }
@@ -389,7 +393,7 @@ mod test {
 
         // Create 1 to 4 random addresses
         for _i in 1..=rand::thread_rng().gen_range(1..4) {
-            let n = vec![
+            let n = [
                 rand::thread_rng().gen_range(1..9),
                 rand::thread_rng().gen_range(1..9),
                 rand::thread_rng().gen_range(1..9),

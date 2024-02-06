@@ -250,7 +250,7 @@ impl BurnTab {
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
 
-        for item in windowed_view.iter() {
+        for item in windowed_view {
             column0_items.push(ListItem::new(Span::raw(item.reciprocal_claim_public_key.clone())));
             column1_items.push(ListItem::new(Span::raw(item.burned_at.to_string().clone())));
         }

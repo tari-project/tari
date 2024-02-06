@@ -43,25 +43,6 @@ mod unblinded_output;
 
 use prost_types::Timestamp;
 
-pub use self::{
-    aggregate_body::*,
-    base_node_state::*,
-    block::*,
-    block_header::*,
-    chain_metadata::*,
-    com_and_pub_signature::*,
-    consensus_constants::*,
-    historical_block::*,
-    new_block_template::*,
-    output_features::*,
-    peer::*,
-    proof_of_work::*,
-    signature::*,
-    transaction::*,
-    transaction_input::*,
-    transaction_kernel::*,
-    transaction_output::*,
-};
 use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
 
 /// Utility function that converts a `chrono::NaiveDateTime` to a `prost::Timestamp`

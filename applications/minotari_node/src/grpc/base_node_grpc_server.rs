@@ -120,7 +120,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        let mining_method = vec![
+        let mining_method = [
             GrpcMethod::GetNewBlockTemplate,
             GrpcMethod::GetNewBlock,
             GrpcMethod::GetNewBlockBlob,
@@ -1888,6 +1888,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
 
             for template_registration in template_registrations {
+                #[allow(clippy::unnecessary_fallible_conversions)]
                 let registration = match template_registration.registration_data.try_into() {
                     Ok(t) => t,
                     Err(e) => {

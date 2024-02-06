@@ -244,7 +244,7 @@ async fn test_dht_store_forward() {
         .unwrap();
     // Wait for node C to and receive a response from the SAF request
     let event = collect_try_recv!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = event.get(0).unwrap());
+    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = event.first().unwrap());
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -273,7 +273,7 @@ async fn test_dht_store_forward() {
 
     // Check that Node C emitted the StoreAndForwardMessagesReceived event when it went Online
     let event = collect_try_recv!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = event.get(0).unwrap().as_ref());
+    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = event.first().unwrap().as_ref());
 
     node_A.shutdown().await;
     node_B.shutdown().await;
@@ -926,7 +926,7 @@ fn count_messages_received(events: &[MessagingEvent], node_ids: &[&NodeId]) -> u
 }
 
 async fn wait_for_connectivity(nodes: &[&TestNode]) {
-    for node in nodes.iter() {
+    for node in nodes {
         node.comms
             .connectivity()
             .wait_for_connectivity(Duration::from_secs(10))

@@ -262,7 +262,7 @@ async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet
 #[then(expr = "I wait for ffi wallet {word} to have at least {int} contacts to be {word}")]
 async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, status: String) {
     assert!(
-        vec!["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
+        ["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
         "Unknown status: {}",
         status
     );
@@ -412,7 +412,7 @@ async fn ffi_detects_transaction(
     status: String,
 ) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    assert!(vec![
+    assert!([
         "TRANSACTION_STATUS_BROADCAST",
         "TRANSACTION_STATUS_MINED_UNCONFIRMED",
         "TRANSACTION_STATUS_MINED",

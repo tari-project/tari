@@ -787,11 +787,12 @@ impl ConnectivityManagerActor {
 
         use super::metrics;
 
-        let total = self.pool.count_connected() as i64;
-        let num_inbound = self.pool.count_filtered(|state| match state.connection() {
+        let total = i64::try_from(self.pool.count_connected()).unwrap_or(i64::MAX);
+        let num_inbound = i64::try_from(self.pool.count_filtered(|state| match state.connection() {
             Some(conn) => conn.is_connected() && conn.direction().is_inbound(),
             None => false,
-        }) as i64;
+        }))
+        .unwrap_or(i64::MAX);
 
         metrics::connections(ConnectionDirection::Inbound).set(num_inbound);
         metrics::connections(ConnectionDirection::Outbound).set(total - num_inbound);

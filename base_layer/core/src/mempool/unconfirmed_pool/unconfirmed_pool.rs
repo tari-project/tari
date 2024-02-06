@@ -544,7 +544,7 @@ impl UnconfirmedPool {
             .flat_map(|tx| tx.body.inputs())
             .map(|i| i.output_hash())
             .collect::<HashSet<_>>();
-        for (_, transaction) in current_transactions.iter() {
+        for transaction in current_transactions.values() {
             for input in transaction.body.inputs() {
                 if insert_set.contains(&input.output_hash()) {
                     return true;
@@ -646,8 +646,7 @@ impl UnconfirmedPool {
                         Ok(Some(v)) => Some(Ok(v)),
                         Ok(None) => None,
                     })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter(),
+                    .collect::<Result<Vec<_>, _>>()?,
             );
             debug!(
                 target: LOG_TARGET,
@@ -680,8 +679,7 @@ impl UnconfirmedPool {
                         Ok(Some(v)) => Some(Ok(v)),
                         Ok(None) => None,
                     })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter(),
+                    .collect::<Result<Vec<_>, _>>()?,
             );
             debug!(
                 target: LOG_TARGET,

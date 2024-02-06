@@ -299,6 +299,7 @@ pub struct DiscoveryParams {
 }
 
 impl Display for DiscoveryParams {
+    #[allow(clippy::format_collect)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

@@ -101,7 +101,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
         let token = Arc::new(peer);
         lock.push(Arc::downgrade(&token));
         #[cfg(feature = "metrics")]
-        metrics::active_sync_peers().set(lock.len() as i64);
+        metrics::active_sync_peers().set(i64::try_from(lock.len()).unwrap_or(i64::MAX));
         Ok(token)
     }
 }

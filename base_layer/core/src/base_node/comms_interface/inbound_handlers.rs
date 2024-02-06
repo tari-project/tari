@@ -614,7 +614,7 @@ where B: BlockchainBackend + 'static
                 source_peer,
             );
             #[cfg(feature = "metrics")]
-            metrics::compact_block_tx_misses(header.height).set(excess_sigs.len() as i64);
+            metrics::compact_block_tx_misses(header.height).set(i64::try_from(excess_sigs.len()).unwrap_or(i64::MAX));
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
             return Ok(block);
         }
@@ -624,7 +624,8 @@ where B: BlockchainBackend + 'static
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
         #[cfg(feature = "metrics")]
-        metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
+        metrics::compact_block_tx_misses(header.height)
+            .set(i64::try_from(missing_excess_sigs.len()).unwrap_or(i64::MAX));
 
         let mut builder = BlockBuilder::new(header.version)
             .with_coinbase_utxo(coinbase_output, coinbase_kernel)
