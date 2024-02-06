@@ -170,6 +170,20 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     (db, blocks, outputs, consensus_manager, key_manager)
 }
 
+#[cfg(not(tari_feature_mainnet_emission))]
+pub fn consensus_constants(network: Network) -> ConsensusConstantsBuilder {
+    ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .with_coinbase_lockheight(1)
+}
+
+#[cfg(tari_feature_mainnet_emission)]
+pub fn consensus_constants(network: Network) -> ConsensusConstantsBuilder {
+    ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 10, 1000)
+        .with_coinbase_lockheight(1)
+}
+
 /// Create a new blockchain database containing only the Genesis block
 #[allow(dead_code)]
 pub async fn create_new_blockchain(
@@ -182,10 +196,7 @@ pub async fn create_new_blockchain(
     MemoryDbKeyManager,
 ) {
     let key_manager = create_memory_db_key_manager();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .with_coinbase_lockheight(1)
-        .build();
+    let consensus_constants = consensus_constants(network).build();
     let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
@@ -243,10 +254,7 @@ pub async fn create_new_blockchain_lmdb(
     MemoryDbKeyManager,
 ) {
     let key_manager = create_memory_db_key_manager();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .with_coinbase_lockheight(1)
-        .build();
+    let consensus_constants = consensus_constants(network).build();
     let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)

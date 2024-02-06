@@ -27,4 +27,9 @@ mod status;
 pub use feature::Feature;
 pub use status::Status;
 
-pub const FEATURE_LIST: [Feature; 0] = [];
+pub const FEATURE_LIST: [Feature; 1] = [Feature::new(
+    "mainnet_emission",
+    "Introduces the inflating tail emission for mainnet",
+    Some(6122),
+    Status::Testing,
+)];

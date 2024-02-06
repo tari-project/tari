@@ -31,12 +31,14 @@ use tari_common_types::epoch::VnEpoch;
 use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
+#[cfg(not(tari_feature_mainnet_emission))]
+use crate::transactions::tari_amount::T;
 use crate::{
     borsh::SerializedSize,
     consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        tari_amount::{uT, MicroMinotari, T},
+        tari_amount::{uT, MicroMinotari},
         transaction_components::{
             OutputFeatures,
             OutputFeaturesVersion,
@@ -50,6 +52,8 @@ use crate::{
     },
 };
 
+#[cfg(tari_feature_mainnet_emission)]
+const ANNUAL_BLOCKS: u64 = 30 /* blocks/hr */ * 24 /* hr /d */ * 366 /* days / yr */;
 /// This is the inner struct used to control all consensus values.
 #[derive(Debug, Clone)]
 pub struct ConsensusConstants {
@@ -78,7 +82,14 @@ pub struct ConsensusConstants {
     /// would be 1/4
     pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
+    #[cfg(not(tari_feature_mainnet_emission))]
     pub(in crate::consensus) emission_tail: MicroMinotari,
+    /// The tail emission inflation rate in bips
+    #[cfg(tari_feature_mainnet_emission)]
+    pub(in crate::consensus) inflation_bips: u64,
+    /// The length, in blocks of each tail emission epoch (where the reward is held constant)
+    #[cfg(tari_feature_mainnet_emission)]
+    pub(in crate::consensus) tail_epoch_length: u64,
     /// This is the maximum age a Monero merge mined seed can be reused
     /// Monero forces a change every height mod 2048 blocks
     max_randomx_seed_height: u64,
@@ -166,8 +177,20 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, tail)
+    #[cfg(not(tari_feature_mainnet_emission))]
     pub fn emission_amounts(&self) -> (MicroMinotari, &'static [u64], MicroMinotari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
+    }
+
+    /// This gets the emission curve values as (initial, decay, inflation_bips, epoch_length)
+    #[cfg(tari_feature_mainnet_emission)]
+    pub fn emission_amounts(&self) -> (MicroMinotari, &'static [u64], u64, u64) {
+        (
+            self.emission_initial,
+            self.emission_decay,
+            self.inflation_bips,
+            self.tail_epoch_length,
+        )
     }
 
     /// The min height maturity a coinbase utxo must have.
@@ -380,7 +403,12 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
+            #[cfg(not(tari_feature_mainnet_emission))]
             emission_tail: 800 * T,
+            #[cfg(tari_feature_mainnet_emission)]
+            inflation_bips: 10,
+            #[cfg(tari_feature_mainnet_emission)]
+            tail_epoch_length: 100,
             max_randomx_seed_height: u64::MAX,
             max_extra_field_size: 200,
             proof_of_work: algos,
@@ -443,7 +471,12 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
+            #[cfg(not(tari_feature_mainnet_emission))]
             emission_tail: 100.into(),
+            #[cfg(tari_feature_mainnet_emission)]
+            inflation_bips: 1,
+            #[cfg(tari_feature_mainnet_emission)]
+            tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: u64::MAX,
             max_extra_field_size: 200,
             proof_of_work: algos,
@@ -499,7 +532,12 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: ESMERALDA_INITIAL_EMISSION,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
+            #[cfg(not(tari_feature_mainnet_emission))]
             emission_tail: 800 * T,
+            #[cfg(tari_feature_mainnet_emission)]
+            inflation_bips: 1,
+            #[cfg(tari_feature_mainnet_emission)]
+            tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
@@ -554,7 +592,12 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
+            #[cfg(not(tari_feature_mainnet_emission))]
             emission_tail: 800 * T,
+            #[cfg(tari_feature_mainnet_emission)]
+            inflation_bips: 1,
+            #[cfg(tari_feature_mainnet_emission)]
+            tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
@@ -603,7 +646,12 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
+            #[cfg(not(tari_feature_mainnet_emission))]
             emission_tail: 800 * T,
+            #[cfg(tari_feature_mainnet_emission)]
+            inflation_bips: 1,
+            #[cfg(tari_feature_mainnet_emission)]
+            tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
@@ -654,7 +702,12 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: &EMISSION_DECAY,
+            #[cfg(not(tari_feature_mainnet_emission))]
             emission_tail: 100.into(),
+            #[cfg(tari_feature_mainnet_emission)]
+            inflation_bips: 1,
+            #[cfg(tari_feature_mainnet_emission)]
+            tail_epoch_length: ANNUAL_BLOCKS,
             max_randomx_seed_height: u64::MAX,
             max_extra_field_size: 200,
             proof_of_work: algos,
@@ -835,11 +888,21 @@ impl ConsensusConstantsBuilder {
         mut self,
         intial_amount: MicroMinotari,
         decay: &'static [u64],
-        tail_amount: MicroMinotari,
+        #[cfg(not(tari_feature_mainnet_emission))] tail_amount: MicroMinotari,
+        #[cfg(tari_feature_mainnet_emission)] inflation_bips: u64,
+        #[cfg(tari_feature_mainnet_emission)] epoch_length: u64,
     ) -> Self {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
-        self.consensus.emission_tail = tail_amount;
+        #[cfg(not(tari_feature_mainnet_emission))]
+        {
+            self.consensus.emission_tail = tail_amount;
+        }
+        #[cfg(tari_feature_mainnet_emission)]
+        {
+            self.consensus.inflation_bips = inflation_bips;
+            self.consensus.tail_epoch_length = epoch_length;
+        }
         self
     }
 
@@ -868,17 +931,9 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use crate::{
-        consensus::{
-            emission::{Emission, EmissionSchedule},
-            ConsensusConstants,
-        },
-        transactions::{
-            tari_amount::{uT, MicroMinotari},
-            transaction_components::{OutputType, RangeProofType},
-        },
+        consensus::ConsensusConstants,
+        transactions::transaction_components::{OutputType, RangeProofType},
     };
 
     #[test]
@@ -889,181 +944,6 @@ mod test {
         ConsensusConstants::stagenet();
         ConsensusConstants::nextnet();
         ConsensusConstants::mainnet();
-    }
-
-    // Comment out the feature flag to run this test
-    #[test]
-    #[cfg(feature = "schedule_get_constants")]
-    fn esmeralda_schedule_get_constants() {
-        let mut esmeralda = ConsensusConstants::esmeralda();
-        loop {
-            let schedule = EmissionSchedule::new(
-                esmeralda[0].emission_initial,
-                esmeralda[0].emission_decay,
-                esmeralda[0].emission_tail,
-            );
-            // No genesis block coinbase
-            assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-            // Coinbases starts at block 1
-            let coinbase_offset = 1;
-            let first_reward = schedule.block_reward(coinbase_offset);
-            assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
-            assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-            // Tail emission starts after block 3,255,552 + coinbase_offset
-            let mut rewards = schedule
-                .iter()
-                .skip(3_255_552 + usize::try_from(coinbase_offset).unwrap());
-            let supply = loop {
-                let (block_num, reward, supply) = rewards.next().unwrap();
-                let total_supply = supply + esmeralda[0].faucet_value;
-                println!(
-                    "Initial: {}, Block: {}, Reward: {}, Supply: {}, Total supply: {}",
-                    esmeralda[0].emission_initial, block_num, reward, supply, total_supply
-                );
-                if reward == esmeralda[0].emission_tail {
-                    break supply;
-                }
-            };
-            let total_supply_up_to_tail_emission = supply + esmeralda[0].faucet_value;
-            if total_supply_up_to_tail_emission >= 21_000_000_800_000_000 * uT {
-                println!("Total supply up to tail emission: {}", total_supply_up_to_tail_emission);
-                break;
-            }
-            esmeralda[0].emission_initial = esmeralda[0].emission_initial + MicroMinotari(1);
-        }
-        panic!("\n\nThis test may not pass in CI\n\n");
-    }
-
-    #[test]
-    fn esmeralda_schedule() {
-        let esmeralda = ConsensusConstants::esmeralda();
-        let schedule = EmissionSchedule::new(
-            esmeralda[0].emission_initial,
-            esmeralda[0].emission_decay,
-            esmeralda[0].emission_tail,
-        );
-        // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-        // Coinbases starts at block 1
-        let coinbase_offset = 1;
-        let first_reward = schedule.block_reward(coinbase_offset);
-        assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
-        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
-        #[allow(clippy::cast_possible_truncation)]
-        let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
-        assert_eq!(
-            schedule.supply_at_block(half_life_block + coinbase_offset),
-            7_483_280_506_356_578 * uT
-        );
-        // Tail emission starts after block 3,255,552 + coinbase_offset
-        let mut rewards = schedule
-            .iter()
-            .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
-        let (block_num, reward, supply) = rewards.next().unwrap();
-        assert_eq!(block_num, 3255553 + coinbase_offset);
-        assert_eq!(reward, 800_000_415 * uT);
-        let total_supply_up_to_tail_emission = supply + esmeralda[0].faucet_value;
-        assert_eq!(total_supply_up_to_tail_emission, 20_999_999_999_819_869 * uT);
-        let (_, reward, _) = rewards.next().unwrap();
-        assert_eq!(reward, esmeralda[0].emission_tail);
-    }
-
-    #[test]
-    fn nextnet_schedule() {
-        let nextnet = ConsensusConstants::nextnet();
-        let schedule = EmissionSchedule::new(
-            nextnet[0].emission_initial,
-            nextnet[0].emission_decay,
-            nextnet[0].emission_tail,
-        );
-        // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-        // Coinbases starts at block 1
-        let coinbase_offset = 1;
-        let first_reward = schedule.block_reward(coinbase_offset);
-        assert_eq!(first_reward, nextnet[0].emission_initial * uT);
-        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
-        #[allow(clippy::cast_possible_truncation)]
-        let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
-        assert_eq!(
-            schedule.supply_at_block(half_life_block + coinbase_offset),
-            7_483_280_506_356_578 * uT
-        );
-        // Tail emission starts after block 3,255,552 + coinbase_offset
-        let mut rewards = schedule
-            .iter()
-            .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
-        let (block_num, reward, supply) = rewards.next().unwrap();
-        assert_eq!(block_num, 3255553 + coinbase_offset);
-        assert_eq!(reward, 800_000_415 * uT);
-        let total_supply_up_to_tail_emission = supply + nextnet[0].faucet_value;
-        assert_eq!(total_supply_up_to_tail_emission, 20_999_999_999_819_869 * uT);
-        let (_, reward, _) = rewards.next().unwrap();
-        assert_eq!(reward, nextnet[0].emission_tail);
-    }
-
-    #[test]
-    fn stagenet_schedule() {
-        let stagenet = ConsensusConstants::stagenet();
-        let schedule = EmissionSchedule::new(
-            stagenet[0].emission_initial,
-            stagenet[0].emission_decay,
-            stagenet[0].emission_tail,
-        );
-        // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-        // Coinbases starts at block 1
-        let coinbase_offset = 1;
-        let first_reward = schedule.block_reward(coinbase_offset);
-        assert_eq!(first_reward, stagenet[0].emission_initial * uT);
-        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
-        #[allow(clippy::cast_possible_truncation)]
-        let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
-        assert_eq!(
-            schedule.supply_at_block(half_life_block + coinbase_offset),
-            7_483_280_506_356_578 * uT
-        );
-        // Tail emission starts after block 3,255,552 + coinbase_offset
-        let mut rewards = schedule
-            .iter()
-            .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
-        let (block_num, reward, supply) = rewards.next().unwrap();
-        assert_eq!(block_num, 3255553 + coinbase_offset);
-        assert_eq!(reward, 800_000_415 * uT);
-        let total_supply_up_to_tail_emission = supply + stagenet[0].faucet_value;
-        assert_eq!(total_supply_up_to_tail_emission, 20_999_999_999_819_869 * uT);
-        let (_, reward, _) = rewards.next().unwrap();
-        assert_eq!(reward, stagenet[0].emission_tail);
-    }
-
-    #[test]
-    fn igor_schedule() {
-        let igor = ConsensusConstants::igor();
-        let schedule = EmissionSchedule::new(igor[0].emission_initial, igor[0].emission_decay, igor[0].emission_tail);
-        // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-        // Coinbases starts at block 1
-        let coinbase_offset = 1;
-        let first_reward = schedule.block_reward(coinbase_offset);
-        assert_eq!(first_reward, igor[0].emission_initial * uT);
-        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-        // Tail emission starts after block 11_084_819
-        let rewards = schedule.iter().skip(11_084_819 - 25);
-        let mut previous_reward = MicroMinotari(0);
-        for (block_num, reward, supply) in rewards {
-            if reward == previous_reward {
-                assert_eq!(block_num, 11_084_819 + 1);
-                assert_eq!(supply, MicroMinotari(6_326_198_792_915_738));
-                // These set of constants does not result in a tail emission equal to the specified tail emission
-                assert_ne!(reward, igor[0].emission_tail);
-                assert_eq!(reward, MicroMinotari(2_097_151));
-                break;
-            }
-            previous_reward = reward;
-        }
     }
 
     // This function is to ensure all OutputType variants are assessed in the tests

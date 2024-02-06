@@ -167,6 +167,17 @@ jobs:
     permissions:
       checks: write
       pull-requests: write
+    strategy:
+      matrix:
+        tari_target_network: [
+          { target: "testnet", network: "esmeralda" },
+          { target: "nextnet", network: "nextnet" },
+          { target: "mainnet", network: "stagenet" },
+        ]
+    env:
+      TARI_TARGET_NETWORK: ${{ matrix.tari_target_network.target }}
+      TARI_NETWORK: ${{ matrix.tari_target_network.network }}
+      RUST_LOG: debug
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -192,14 +203,15 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
           restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked --force
       - name: cargo test compile
-        run: cargo test --no-run --locked --all-features --release
+        run: cargo test -vv --no-run --locked --all-features --release
       - name: cargo test
         run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact

@@ -106,8 +106,10 @@ jobs:
         run: |
           source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
           echo ${TARI_NETWORK}
+          echo ${TARI_TARGET_NETWORK}
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+          echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_ENV
           echo "TARI_NETWORK_DIR=${TARI_NETWORK_DIR}" >> $GITHUB_ENV
           echo "TARI_NETWORK_DIR=${TARI_NETWORK_DIR}" >> $GITHUB_OUTPUT
 

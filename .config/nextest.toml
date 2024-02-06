@@ -3,3 +3,15 @@ slow-timeout = { period = "60s", terminate-after=2}
 
 [profile.ci.junit]  # this can be some other profile, too
 path = "junit.xml"
+
+[profile.intellij]
+retries = 0
+slow-timeout = { period = "30s" }
+failure-output = "immediate-final"
+fail-fast = false
+
+[profile.intellij.junit]  # this can be some other profile, too
+path = "junit.xml"
+
+
+

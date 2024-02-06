@@ -280,6 +280,11 @@ async fn sender_signature_verification() {
 
 #[test]
 fn kernel_hash() {
+    #[cfg(tari_target_network_mainnet)]
+    if let Network::MainNet = Network::get_current_or_default() {
+        eprintln!("This test is configured for stagenet only");
+        return;
+    }
     let s = PrivateKey::from_hex("6c6eebc5a9c02e1f3c16a69ba4331f9f63d0718401dea10adc4f9d3b879a2c09").unwrap();
     let r = PublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
     let sig = Signature::new(r, s);
@@ -291,6 +296,17 @@ fn kernel_hash() {
         .with_lock_height(500)
         .build()
         .unwrap();
+    #[cfg(tari_target_network_nextnet)]
+    assert_eq!(
+        &k.hash().to_hex(),
+        "c1f6174935d08358809fcf244a9a1edb078b74a1ae18ab4c7dd501b0294a2a94"
+    );
+    #[cfg(tari_target_network_mainnet)]
+    assert_eq!(
+        &k.hash().to_hex(),
+        "b94992cb59695ebad3786e9f51a220e91c627f8b38f51bcf6c87297325d1b410"
+    );
+    #[cfg(tari_target_network_testnet)]
     assert_eq!(
         &k.hash().to_hex(),
         "38b03d013f941e86c027969fbbc190ca2a28fa2d7ac075d50dbfb6232deee646"
@@ -310,10 +326,28 @@ fn kernel_metadata() {
         .with_lock_height(500)
         .build()
         .unwrap();
+    #[cfg(tari_target_network_mainnet)]
+    match Network::get_current_or_default() {
+        Network::MainNet => {
+            eprintln!("This test is configured for stagenet only");
+        },
+        Network::StageNet => assert_eq!(
+            &k.hash().to_hex(),
+            "75a357c2769098b19a6aedc7e46f6be305f4f1a1831556cd380b0b0f20bfdf12"
+        ),
+        n => panic!("Only mainnet networks should target mainnet. Network was {}", n),
+    }
+
+    #[cfg(tari_target_network_nextnet)]
+    assert_eq!(
+        &k.hash().to_hex(),
+        "22e39392dfeae9653c73437880be71e99f4b8a2b23289d54f57b8931deebfeed"
+    );
+    #[cfg(tari_target_network_testnet)]
     assert_eq!(
         &k.hash().to_hex(),
         "ebc852fbac798c25ce497b416f69ec11a97e186aacaa10e2bb4ca5f5a0f197f2"
-    )
+    );
 }
 
 #[test]

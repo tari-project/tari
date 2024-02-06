@@ -6,6 +6,7 @@ use tari_features::resolver::build_features;
 #[cfg(windows)]
 fn main() {
     build_features();
+    ();
     use std::env;
     println!("cargo:rerun-if-changed=icon.res");
     let mut path = env::current_dir().unwrap();

@@ -141,4 +141,6 @@ message ConsensusConstants {
     uint64 validator_node_registration_min_lock_height = 32;
     uint64 validator_node_registration_shuffle_interval_epoch = 33;
     repeated PermittedRangeProofs permitted_range_proof_types = 34;
+    uint64 inflation_bips = 35;
+    uint64 tail_epoch_length = 36;
 }

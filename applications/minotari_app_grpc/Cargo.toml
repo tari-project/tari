@@ -31,6 +31,7 @@ tonic = { version = "0.8.3", features = ["tls"]}
 zeroize = "1"
 
 [build-dependencies]
+tari_features = { version = "1.0.0-pre.7", path = "../../common/tari_features" }
 tonic-build = "0.8.4"
 
 [package.metadata.cargo-machete]

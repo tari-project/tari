@@ -37,7 +37,7 @@ use tari_core::{
         SyncValidators,
     },
     chain_storage::BlockchainDatabaseConfig,
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
+    consensus::ConsensusManagerBuilder,
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
@@ -66,15 +66,12 @@ use crate::helpers::{
     },
 };
 
-static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
@@ -158,9 +155,7 @@ async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)

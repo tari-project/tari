@@ -92,8 +92,14 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {
-        let total_supply =
-            self.rules.get_total_emission_at(height) + self.rules.consensus_constants(height).faucet_value();
+        // With inflating tail emission, we **must** know the value of the premine as part of the supply calc in order
+        // to determine the correct inflation curve. So we need to include the premine in the emission curve.
+        let total_supply = self.rules.get_total_emission_at(height) +
+            if cfg!(tari_feature_mainnet_emission) {
+                MicroMinotari::from(0)
+            } else {
+                self.rules.consensus_constants(height).faucet_value()
+            };
         debug!(
             target: LOG_TARGET,
             "Expected emission at height {} is {}", height, total_supply

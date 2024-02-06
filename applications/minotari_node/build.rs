@@ -16,5 +16,4 @@ fn main() {
 #[cfg(not(windows))]
 pub fn main() {
     build_features();
-    // Build as usual
 }

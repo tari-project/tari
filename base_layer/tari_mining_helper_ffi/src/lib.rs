@@ -386,8 +386,16 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 11937686248184272944;
-        let difficulty = Difficulty::from_u64(35357).expect("Failed to create difficulty");
+        #[cfg(tari_target_network_mainnet)]
+        let (nonce, difficulty) = match Network::get_current_or_default() {
+            Network::MainNet => (5341281394393564685, Difficulty::from_u64(12916).unwrap()),
+            Network::StageNet => (9657996013746357039, Difficulty::from_u64(3024).unwrap()),
+            _ => panic!("Invalid network for mainnet target"),
+        };
+        #[cfg(tari_target_network_nextnet)]
+        let (nonce, difficulty) = (3515524755266397098, Difficulty::from_u64(2607).unwrap());
+        #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
+        let (nonce, difficulty) = (16356716071633903313, Difficulty::from_u64(2051).unwrap());
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -396,10 +404,11 @@ mod tests {
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-            inject_nonce(byte_vec, NONCE, error_ptr);
+            inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
             let result = share_difficulty(byte_vec, error_ptr);
             if result != difficulty.as_u64() {
+                eprintln!("old nonce = {nonce}, old diff = {:?}", difficulty);
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
                 let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();

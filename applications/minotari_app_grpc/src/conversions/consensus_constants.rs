@@ -29,7 +29,10 @@ use crate::tari_rpc as grpc;
 impl From<ConsensusConstants> for grpc::ConsensusConstants {
     #[allow(clippy::too_many_lines)]
     fn from(cc: ConsensusConstants) -> Self {
+        #[cfg(not(tari_feature_mainnet_emission))]
         let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
+        #[cfg(tari_feature_mainnet_emission)]
+        let (emission_initial, emission_decay, inflation_bips, tail_epoch_length) = cc.emission_amounts();
         let weight_params = cc.transaction_weight_params().params();
         let input_version_range = cc.input_version_range().clone().into_inner();
         let input_version_range = grpc::Range {
@@ -100,7 +103,8 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
 
         let proof_of_work = HashMap::from_iter([(0u32, randomx_pow), (1u32, sha3x_pow)]);
 
-        Self {
+        #[cfg(not(tari_feature_mainnet_emission))]
+        let result = Self {
             coinbase_min_maturity: cc.coinbase_min_maturity(),
             blockchain_version: cc.blockchain_version().into(),
             future_time_limit: cc.ftl().as_u64(),
@@ -111,6 +115,8 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             emission_initial: emission_initial.into(),
             emission_decay: emission_decay.to_vec(),
             emission_tail: emission_tail.into(),
+            inflation_bips: 0,
+            tail_epoch_length: 0,
             min_sha3x_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).into(),
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,
@@ -136,6 +142,49 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             validator_node_registration_shuffle_interval_epoch: cc
                 .validator_node_registration_shuffle_interval()
                 .as_u64(),
-        }
+        };
+
+        #[cfg(tari_feature_mainnet_emission)]
+        let result = Self {
+            coinbase_min_maturity: cc.coinbase_min_maturity(),
+            blockchain_version: cc.blockchain_version().into(),
+            future_time_limit: cc.ftl().as_u64(),
+            difficulty_block_window: cc.difficulty_block_window(),
+            max_block_transaction_weight: cc.max_block_transaction_weight(),
+            pow_algo_count: cc.pow_algo_count(),
+            median_timestamp_count: u64::try_from(cc.median_timestamp_count()).unwrap_or(0),
+            emission_initial: emission_initial.into(),
+            emission_decay: emission_decay.to_vec(),
+            emission_tail: 0,
+            inflation_bips,
+            tail_epoch_length,
+            min_sha3x_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).into(),
+            block_weight_inputs: weight_params.input_weight,
+            block_weight_outputs: weight_params.output_weight,
+            block_weight_kernels: weight_params.kernel_weight,
+            max_script_byte_size: cc.max_script_byte_size() as u64,
+            faucet_value: cc.faucet_value().as_u64(),
+            effective_from_height: cc.effective_from_height(),
+            input_version_range: Some(input_version_range),
+            kernel_version_range: Some(kernel_version_range),
+            valid_blockchain_version_range: Some(valid_blockchain_version_range),
+            proof_of_work,
+            transaction_weight: Some(transaction_weight),
+            max_randomx_seed_height: cc.max_randomx_seed_height(),
+            output_version_range: Some(output_version_range),
+            permitted_output_types,
+            permitted_range_proof_types,
+            validator_node_validity_period: cc.validator_node_validity_period_epochs().as_u64(),
+            epoch_length: cc.epoch_length(),
+            validator_node_registration_min_deposit_amount: cc
+                .validator_node_registration_min_deposit_amount()
+                .as_u64(),
+            validator_node_registration_min_lock_height: cc.validator_node_registration_min_lock_height(),
+            validator_node_registration_shuffle_interval_epoch: cc
+                .validator_node_registration_shuffle_interval()
+                .as_u64(),
+        };
+
+        result
     }
 }

@@ -80,17 +80,20 @@ impl Network {
 
 /// The default network for all applications
 impl Default for Network {
-    #[cfg(tari_network_mainnet)]
+    #[cfg(tari_target_network_mainnet)]
     fn default() -> Self {
-        Network::StageNet
+        match std::env::var("TARI_NETWORK") {
+            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::MainNet),
+            Err(_) => Network::MainNet,
+        }
     }
 
-    #[cfg(tari_network_nextnet)]
+    #[cfg(tari_target_network_nextnet)]
     fn default() -> Self {
         Network::NextNet
     }
 
-    #[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     fn default() -> Self {
         Network::Esmeralda
     }
@@ -191,6 +194,11 @@ mod test {
     #[test]
     fn network_default() {
         let network = Network::default();
+        #[cfg(tari_target_network_mainnet)]
+        assert!(matches!(network, Network::MainNet | Network::StageNet));
+        #[cfg(tari_target_network_nextnet)]
+        assert_eq!(network, Network::NextNet);
+        #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
         assert_eq!(network, Network::Esmeralda);
     }
 

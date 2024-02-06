@@ -43,7 +43,7 @@ use tari_core::{
     },
     blocks::ChainBlock,
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
+    consensus::{ConsensusManager, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::TempDatabase,
@@ -64,9 +64,8 @@ use tokio::sync::{broadcast, watch};
 use crate::helpers::{
     block_builders::{append_block, create_genesis_block},
     nodes::{create_network_with_multiple_base_nodes_with_config, NodeInterfaces},
+    sample_blockchains,
 };
-
-static EMISSION: [u64; 2] = [10, 10];
 
 /// Helper function to initialize header sync with a single peer
 pub fn initialize_sync_headers_with_ping_pong_data(
@@ -152,9 +151,7 @@ pub async fn create_network_with_multiple_nodes(
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
+    let consensus_constants = sample_blockchains::consensus_constants(network).build();
     let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
