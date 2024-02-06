@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.8](https://github.com/tari-project/tari/compare/v1.0.0-pre.7...v1.0.0-pre.8) (2024-02-06)
+
+
+### Bug Fixes
+
+* **comms:** correctly initialize hidden service ([#6124](https://github.com/tari-project/tari/issues/6124)) ([0584782](https://github.com/tari-project/tari/commit/058478255a93e7d50d95c8ac8c196069f76b994b))
+* **libtor:** prevent metrics port conflict ([#6125](https://github.com/tari-project/tari/issues/6125)) ([661af51](https://github.com/tari-project/tari/commit/661af5177863f37f0b01c9846dccc7d24f873fc5))
+
 ## [1.0.0-pre.7](https://github.com/tari-project/tari/compare/v1.0.0-pre.5...v1.0.0-pre.7) (2024-02-02)
 
 
