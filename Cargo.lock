@@ -5987,7 +5987,6 @@ dependencies = [
  "rand",
  "tari_common",
  "tari_p2p",
- "tari_shutdown",
  "tempfile",
  "tor-hash-passwd",
 ]
