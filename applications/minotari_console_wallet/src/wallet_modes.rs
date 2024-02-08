@@ -475,6 +475,7 @@ async fn run_grpc(
 
 #[cfg(test)]
 mod test {
+    use std::path::Path;
 
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
 
@@ -501,6 +502,8 @@ mod test {
 
             export-tx 123456789 --output-file pie.txt
 
+            import-tx --input-file pie_this_message.txt
+
             # End of script file
             "
         .to_string();
@@ -514,6 +517,7 @@ mod test {
         let mut coin_split = false;
         let mut discover_peer = false;
         let mut export_tx = false;
+        let mut import_tx = false;
         let mut whois = false;
         for command in commands {
             match command {
@@ -532,6 +536,11 @@ mod test {
                         export_tx = true
                     }
                 },
+                CliCommands::ImportTx(args) => {
+                    if args.input_file == Path::new("pie_this_message.txt") {
+                        import_tx = true
+                    }
+                },
                 CliCommands::ExportSpentUtxos(_) => {},
                 CliCommands::CountUtxos => {},
                 CliCommands::SetBaseNode(_) => {},
@@ -546,7 +555,15 @@ mod test {
             }
         }
         assert!(
-            get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois && export_tx
+            get_balance &&
+                send_tari &&
+                burn_tari &&
+                make_it_rain &&
+                coin_split &&
+                discover_peer &&
+                whois &&
+                export_tx &&
+                import_tx
         );
     }
 }

@@ -124,6 +124,7 @@ pub enum CliCommands {
     Whois(WhoisArgs),
     ExportUtxos(ExportUtxosArgs),
     ExportTx(ExportTxArgs),
+    ImportTx(ImportTxArgs),
     ExportSpentUtxos(ExportUtxosArgs),
     CountUtxos,
     SetBaseNode(SetBaseNodeArgs),
@@ -247,6 +248,12 @@ pub struct ExportTxArgs {
     pub tx_id: u64,
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ImportTxArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
 }
 
 #[derive(Debug, Args, Clone)]

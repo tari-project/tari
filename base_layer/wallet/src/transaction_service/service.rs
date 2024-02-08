@@ -114,7 +114,11 @@ use crate::{
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TxCancellationReason},
+            models::{
+                CompletedTransaction,
+                TxCancellationReason,
+                WalletTransaction::{Completed, PendingInbound, PendingOutbound},
+            },
         },
         tasks::{
             check_faux_transaction_status::check_detected_transactions,
@@ -774,6 +778,26 @@ where
             TransactionServiceRequest::GetAnyTransaction(tx_id) => Ok(TransactionServiceResponse::AnyTransaction(
                 Box::new(self.db.get_any_transaction(tx_id)?),
             )),
+            TransactionServiceRequest::ImportTransaction(tx) => {
+                let tx_id = match tx {
+                    PendingInbound(inbound_tx) => {
+                        let tx_id = inbound_tx.tx_id;
+                        self.db.insert_pending_inbound_transaction(tx_id, inbound_tx)?;
+                        tx_id
+                    },
+                    PendingOutbound(outbound_tx) => {
+                        let tx_id = outbound_tx.tx_id;
+                        self.db.insert_pending_outbound_transaction(tx_id, outbound_tx)?;
+                        tx_id
+                    },
+                    Completed(completed_tx) => {
+                        let tx_id = completed_tx.tx_id;
+                        self.db.insert_completed_transaction(tx_id, completed_tx)?;
+                        tx_id
+                    },
+                };
+                Ok(TransactionServiceResponse::TransactionImported(tx_id))
+            },
             TransactionServiceRequest::ImportUtxoWithStatus {
                 amount,
                 source_address,

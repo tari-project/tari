@@ -303,7 +303,7 @@ impl From<InboundTransaction> for CompletedTransaction {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum WalletTransaction {
     PendingInbound(InboundTransaction),

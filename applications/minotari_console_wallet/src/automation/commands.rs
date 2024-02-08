@@ -94,6 +94,7 @@ pub enum WalletCommand {
     Whois,
     ExportUtxos,
     ExportTx,
+    ImportTx,
     ExportSpentUtxos,
     CountUtxos,
     SetBaseNode,
@@ -817,6 +818,19 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("ExportTx error! {}", e),
             },
+            ImportTx(args) => {
+                match load_tx_from_csv_file(args.input_file) {
+                    Ok(txs) => {
+                        for tx in txs {
+                            match transaction_service.import_transaction(tx).await {
+                                Ok(id) => println!("imported tx: {}", id),
+                                Err(e) => eprintln!("Could not import tx {}", e),
+                            };
+                        }
+                    },
+                    Err(e) => eprintln!("ImportTx error! {}", e),
+                };
+            },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
                     let utxos: Vec<(WalletOutput, Commitment)> =
@@ -1105,6 +1119,19 @@ fn write_tx_to_csv_file(tx: WalletTransaction, file_path: PathBuf) -> Result<(),
     writeln!(csv_file, "{}", tx_string).map_err(|e| CommandError::CSVFile(e.to_string()))?;
 
     Ok(())
+}
+
+fn load_tx_from_csv_file(file_path: PathBuf) -> Result<Vec<WalletTransaction>, CommandError> {
+    let file_contents = fs::read_to_string(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    let mut results = Vec::new();
+    for line in file_contents.lines() {
+        if let Ok(tx) = serde_json::from_str(line) {
+            results.push(tx);
+        } else {
+            return Err(CommandError::CSVFile("Could not read json file".to_string()));
+        }
+    }
+    Ok(results)
 }
 
 #[allow(dead_code)]
