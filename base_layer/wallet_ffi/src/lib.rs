@@ -288,6 +288,7 @@ pub struct TariUtxo {
     pub value: u64,
     pub mined_height: u64,
     pub mined_timestamp: u64,
+    pub lock_height: u64,
     pub status: u8,
 }
 
@@ -299,6 +300,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 .into_raw(),
             value: x.wallet_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
+            lock_height: x.wallet_output.features.maturity,
             mined_timestamp: x
                 .mined_timestamp
                 .map(|ts| ts.timestamp_millis() as u64)
