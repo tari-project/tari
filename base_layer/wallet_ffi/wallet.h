@@ -345,6 +345,7 @@ struct TariUtxo {
   uint64_t value;
   uint64_t mined_height;
   uint64_t mined_timestamp;
+  uint64_t lock_height;
   uint8_t status;
 };
 
