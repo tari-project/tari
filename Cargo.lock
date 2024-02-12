@@ -2882,31 +2882,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a94d21414c1f4a51209ad204c1776a3d0765002c76c6abcb602a6f09f1e881c7"
 
 [[package]]
-name = "log4rs"
-version = "1.2.0"
-source = "git+https://github.com/tari-project/log4rs.git#e1051fd3a1bec9c55d055f60176a96cf11e58505"
-dependencies = [
- "anyhow",
- "arc-swap",
- "chrono",
- "derivative",
- "fnv",
- "humantime 2.1.0",
- "libc",
- "log",
- "log-mdc",
- "parking_lot 0.12.1",
- "serde",
- "serde-value",
- "serde_json",
- "serde_yaml 0.8.26",
- "thiserror",
- "thread-id",
- "typemap-ors",
- "winapi",
-]
-
-[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3083,10 +3058,10 @@ dependencies = [
  "libc",
  "libsqlite3-sys",
  "log",
- "log4rs",
  "minotari_app_utilities",
  "openssl",
  "rand",
+ "tari-log4rs",
  "tari_chat_client",
  "tari_common",
  "tari_common_types",
@@ -3112,7 +3087,6 @@ dependencies = [
  "digest 0.10.7",
  "futures 0.3.29",
  "log",
- "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
  "minotari_wallet",
@@ -3127,6 +3101,7 @@ dependencies = [
  "sha2 0.10.8",
  "strum",
  "strum_macros",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3208,7 +3183,6 @@ dependencies = [
  "futures 0.3.29",
  "hex",
  "log",
- "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
  "native-tls",
@@ -3217,6 +3191,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3262,7 +3237,6 @@ dependencies = [
  "futures 0.3.29",
  "log",
  "log-mdc",
- "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
  "nom",
@@ -3271,6 +3245,7 @@ dependencies = [
  "rustyline-derive",
  "serde",
  "strum",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3361,13 +3336,13 @@ dependencies = [
  "itertools 0.10.5",
  "libc",
  "log",
- "log4rs",
  "minotari_wallet",
  "num-traits",
  "once_cell",
  "openssl",
  "rand",
  "serde_json",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -5537,6 +5512,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari-log4rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18f387ee6565d938a07b5d217637adfb6d359f79e04b54e5e6a508513271d45f"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "chrono",
+ "derivative",
+ "fnv",
+ "humantime 2.1.0",
+ "libc",
+ "log",
+ "log-mdc",
+ "parking_lot 0.12.1",
+ "serde",
+ "serde-value",
+ "serde_json",
+ "serde_yaml 0.8.26",
+ "thiserror",
+ "thread-id",
+ "typemap-ors",
+ "winapi",
+]
+
+[[package]]
 name = "tari_bulletproofs_plus"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5595,7 +5596,6 @@ dependencies = [
  "dirs-next 1.0.2",
  "git2",
  "log",
- "log4rs",
  "multiaddr",
  "path-clean",
  "prost-build",
@@ -5604,6 +5604,7 @@ dependencies = [
  "serde_yaml 0.9.27",
  "sha2 0.10.8",
  "structopt",
+ "tari-log4rs",
  "tari_crypto",
  "tari_features",
  "tari_test_utils",

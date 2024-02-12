@@ -26,7 +26,7 @@ chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 libc = "0.2.65"
 log = "0.4.6"
-log4rs = { git = "https://github.com/tari-project/log4rs.git", features = ["console_appender", "file_appender", "yaml_format"] }
+log4rs = {  package = "tari-log4rs", version = "1.2.0", features = ["console_appender", "file_appender", "yaml_format"] }
 rand = "0.8"
 thiserror = "1.0.26"
 tokio = "1.23"
