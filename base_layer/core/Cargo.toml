@@ -26,26 +26,26 @@ benches = ["base_node"]
 metrics = ["tari_metrics"]
 
 [dependencies]
-tari_common = { path = "../../common" }
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
-tari_comms_dht = { path = "../../comms/dht" }
-tari_comms_rpc_macros = { path = "../../comms/rpc_macros" }
+tari_common = { path = "../../common", version = "1.0.0-pre.8" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.8" }
+tari_comms = { path = "../../comms/core", version = "1.0.0-pre.8" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.8" }
+tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.8" }
 tari_crypto = { version = "0.20", features = ["borsh"] }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true }
-tari_mmr = { path = "../../base_layer/mmr", optional = true }
-tari_p2p = { path = "../../base_layer/p2p" }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_service_framework = { path = "../service_framework" }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_storage = { path = "../../infrastructure/storage" }
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.8" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true , version = "1.0.0-pre.8"}
+tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.8" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.0.0-pre.8" }
+tari_service_framework = { path = "../service_framework", version = "1.0.0-pre.8" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-pre.8" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-pre.8" }
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.0.0-pre.8" }
 tari_utilities = { version = "0.7", features = ["borsh"] }
 tari_key_manager = { path = "../key_manager", features = [
   "key_manager_service",
-] }
-tari_common_sqlite = { path = "../../common_sqlite" }
-tari_hash_domains = { path = "../../hash_domains" }
+], version = "1.0.0-pre.8" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-pre.8" }
+tari_hash_domains = { path = "../../hash_domains", version = "1.0.0-pre.8" }
 
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
@@ -86,7 +86,7 @@ tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
-tiny-keccak = { git = "https://github.com/tari-project/tiny-keccak", rev = "bcddc65530d8646de7282cd8d18d891dc434b643", features = [
+tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
   "keccak",
 ] }
 
@@ -104,7 +104,7 @@ toml = { version = "0.5" }
 quickcheck = "1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build"] }
+tari_common = { path = "../../common", features = ["build"], version = "1.0.0-pre.8" }
 
 [[bench]]
 name = "mempool"

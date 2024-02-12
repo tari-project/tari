@@ -13,9 +13,9 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 tari_crypto = { version = "0.20" }
 tari_utilities = { version = "0.7" }
-tari_common_sqlite = { path = "../../common_sqlite" }
-tari_common_types = {  path = "../../base_layer/common_types"}
-tari_service_framework = {  path = "../service_framework" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-pre.8" }
+tari_common_types = {  path = "../../base_layer/common_types", version = "1.0.0-pre.8"}
+tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.8" }
 
 async-trait = {version = "0.1.50"}
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }

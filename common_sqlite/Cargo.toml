@@ -16,7 +16,7 @@ diesel_migrations = "2.0.0"
 log = "0.4.6"
 serde = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["sync", "macros"] }
+tokio = { version = "1.23", features = ["sync", "macros", "rt"] }
 
 [dev-dependencies]
 tari_test_utils = {  path = "../infrastructure/test_utils" }
