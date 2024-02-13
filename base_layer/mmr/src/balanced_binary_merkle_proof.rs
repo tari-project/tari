@@ -23,7 +23,6 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
-    f32::consts::E,
     marker::PhantomData,
 };
 
@@ -227,11 +226,14 @@ where D: Digest + DomainDigest
 
                 let hash = match hash_or_index {
                     MergedBalancedBinaryMerkleIndexOrHash::Index(index) => {
-                        if !dangling_paths.remove(&(index as usize)) {
+                        if !dangling_paths
+                            .remove(&usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?)
+                        {
                             // If some path is joining our path, that path should have ended.
                             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
                         }
-                        consumed.insert(index as usize);
+                        consumed
+                            .insert(usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?);
                         let index = usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?;
 
                         // The index must also point to one of the proofs
