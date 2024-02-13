@@ -47,6 +47,13 @@ pub struct ChainMetadata {
     /// Timestamp of the tip block in the longest valid chain
     timestamp: u64,
 }
+#[derive(Debug, thiserror::Error)]
+pub enum ChainMetaDataError {
+    #[error("Pruning Height is higher than the Best Block height")]
+    PruningHeightAboveBestBlock,
+    #[error("The total accumulated difficulty is zero")]
+    AccumulatedDifficultyZero,
+}
 
 impl ChainMetadata {
     pub fn new(
@@ -56,15 +63,22 @@ impl ChainMetadata {
         pruned_height: u64,
         accumulated_difficulty: U256,
         timestamp: u64,
-    ) -> ChainMetadata {
-        ChainMetadata {
+    ) -> Result<ChainMetadata, ChainMetaDataError> {
+        let chain_meta_data = ChainMetadata {
             best_block_height,
             best_block_hash,
             pruning_horizon,
             pruned_height,
             accumulated_difficulty,
             timestamp,
-        }
+        };
+        if chain_meta_data.accumulated_difficulty == 0.into() {
+            return Err(ChainMetaDataError::AccumulatedDifficultyZero);
+        };
+        if chain_meta_data.pruned_height > chain_meta_data.best_block_height {
+            return Err(ChainMetaDataError::PruningHeightAboveBestBlock);
+        };
+        Ok(chain_meta_data)
     }
 
     /// The block height at the pruning horizon, given the chain height of the network. Typically database backends

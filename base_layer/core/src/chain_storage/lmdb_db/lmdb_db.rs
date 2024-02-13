@@ -2449,7 +2449,7 @@ fn fetch_metadata(txn: &ConstTransaction<'_>, db: &Database) -> Result<ChainMeta
         fetch_pruned_height(txn, db)?,
         fetch_accumulated_work(txn, db)?,
         fetch_best_block_timestamp(txn, db)?,
-    ))
+    )?)
 }
 
 // Fetches the chain height from the provided metadata db.

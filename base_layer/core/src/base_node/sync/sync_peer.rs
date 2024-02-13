@@ -135,7 +135,6 @@ mod test {
     use super::*;
 
     mod sort_by_latency {
-        use primitive_types::U256;
         use tari_common_types::types::FixedHash;
         use tari_comms::types::{CommsPublicKey, CommsSecretKey};
         use tari_crypto::keys::{PublicKey, SecretKey};
@@ -151,7 +150,7 @@ mod test {
             let latency_option = latency.map(|latency| Duration::from_millis(latency as u64));
             PeerChainMetadata::new(
                 node_id,
-                ChainMetadata::new(0, FixedHash::zero(), 0, 0, U256::zero(), 0),
+                ChainMetadata::new(0, FixedHash::zero(), 0, 0, 1.into(), 0).unwrap(),
                 latency_option,
             )
             .into()
