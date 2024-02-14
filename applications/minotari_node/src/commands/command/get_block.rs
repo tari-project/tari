@@ -62,8 +62,6 @@ impl HandleCommand<Args> for CommandContext {
 enum ArgsError {
     #[error("Block not found at height {height}")]
     NotFoundAt { height: u64 },
-    #[error("Block not found")]
-    NotFound,
     #[error("Serializing/Deserializing error: `{0}`")]
     MessageFormatError(String),
 }
@@ -101,20 +99,32 @@ impl CommandContext {
     }
 
     pub async fn get_block_by_hash(&self, hash: HashOutput, format: Format) -> Result<(), Error> {
-        let block = self
-            .blockchain_db
-            .fetch_block_by_hash(hash, false)
-            .await?
-            .ok_or(ArgsError::NotFound)?;
-        match format {
-            Format::Text => println!("{}", block),
-            Format::Json => println!(
-                "{}",
-                block
-                    .to_json()
-                    .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
-            ),
-        }
+        let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
+        match block {
+            Some(block) => match format {
+                Format::Text => println!("{}", block),
+                Format::Json => println!(
+                    "{}",
+                    block
+                        .to_json()
+                        .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
+                ),
+            },
+            None => {
+                let block = self.blockchain_db.fetch_orphan(hash).await?;
+                println!("Found in orphan database");
+                match format {
+                    Format::Text => println!("{}", block),
+                    Format::Json => println!(
+                        "{}",
+                        block
+                            .to_json()
+                            .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
+                    ),
+                }
+            },
+        };
+
         Ok(())
     }
 }
