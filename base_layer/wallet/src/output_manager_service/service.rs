@@ -171,6 +171,8 @@ where
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Output Manager Service started");
+        // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
+        self.resources.db.clear_short_term_encumberances()?;
         loop {
             tokio::select! {
                 event = base_node_service_event_stream.recv() => {
