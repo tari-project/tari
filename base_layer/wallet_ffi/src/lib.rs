@@ -5259,6 +5259,7 @@ pub unsafe extern "C" fn wallet_create(
     passphrase: *const c_char,
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
+    peer_seed_str: *const c_char,
 
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -5321,6 +5322,32 @@ pub unsafe extern "C" fn wallet_create(
         SafePassword::from(pf)
     };
 
+    let peer_seed = if peer_seed_str.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("peer seed dns".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        let peer_seed = CStr::from_ptr(peer_seed_str)
+            .to_str()
+            .expect("A non-null peer seed should be able to be converted to string");
+        info!(target: LOG_TARGET, "peer seed dns {}", peer_seed);
+        peer_seed
+    };
+
+    let recovery_seed = if seed_words.is_null() {
+        None
+    } else {
+        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            Ok(seed) => Some(seed),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
+                error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    };
+
     let network = if network_str.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -5335,20 +5362,6 @@ pub unsafe extern "C" fn wallet_create(
             Ok(n) => n,
             Err(_) => {
                 error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    };
-
-    let recovery_seed = if seed_words.is_null() {
-        None
-    } else {
-        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
-            Ok(seed) => Some(seed),
-            Err(e) => {
-                error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
-                error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
@@ -5473,6 +5486,7 @@ pub unsafe extern "C" fn wallet_create(
     let peer_seeds = PeerSeedsConfig {
         dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
         dns_seeds_use_dnssec: true,
+        dns_seeds: StringList::from(vec![peer_seed.to_string()]),
         ..Default::default()
     };
 
