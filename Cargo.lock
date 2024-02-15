@@ -5635,7 +5635,6 @@ dependencies = [
  "tari_crypto",
  "tari_utilities",
  "thiserror",
- "tokio",
 ]
 
 [[package]]
