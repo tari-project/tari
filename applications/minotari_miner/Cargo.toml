@@ -28,7 +28,7 @@ derivative = "2.2.0"
 futures = "0.3"
 hex = "0.4.2"
 log = { version = "0.4", features = ["std"] }
-log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
+log4rs = { version = "1.3.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 native-tls = "0.2"
 num_cpus = "1.13"
 rand = "0.8"
