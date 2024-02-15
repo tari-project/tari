@@ -86,8 +86,8 @@ impl TransactionInternalConsistencyValidator {
             &tx.offset,
             &tx.script_offset,
             None,
-            Some(*tip_metadata.best_block()),
-            tip_metadata.height_of_longest_chain(),
+            Some(*tip_metadata.best_block_hash()),
+            tip_metadata.best_block_height(),
         )
     }
 }

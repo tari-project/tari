@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    marker::PhantomData,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
@@ -198,22 +202,38 @@ where D: Digest + DomainDigest
             .iter()
             .max()
             .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
-
+        let mut consumed = HashSet::new();
         // We need to compute the hashes row by row to be sure they are processed correctly.
         for height in (0..max_height).rev() {
             let hashes = computed_hashes.clone();
-            for (index, leaf) in computed_hashes.iter_mut().enumerate() {
+            let mut dangling_paths = HashSet::new();
+            for (index, leaf) in computed_hashes.iter_mut().enumerate().rev() {
                 if self.heights[index] <= height {
                     continue;
                 }
 
                 let Some(hash_or_index) = self.paths[index].pop() else {
+                    // Check if we already joined with other path.
+                    if !consumed.contains(&index) {
+                        // If the path ended, it's going to be merged to some other path.
+                        if !dangling_paths.insert(index) {
+                            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+                        }
+                    }
                     // Path at this index already completely processed
                     continue;
                 };
 
                 let hash = match hash_or_index {
                     MergedBalancedBinaryMerkleIndexOrHash::Index(index) => {
+                        if !dangling_paths
+                            .remove(&usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?)
+                        {
+                            // If some path is joining our path, that path should have ended.
+                            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+                        }
+                        consumed
+                            .insert(usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?);
                         let index = usize::try_from(index).map_err(|_| BalancedBinaryMerkleProofError::MathOverflow)?;
 
                         // The index must also point to one of the proofs
@@ -235,6 +255,14 @@ where D: Digest + DomainDigest
                 // Parent
                 self.node_indices[index] = (self.node_indices[index] - 1) >> 1;
             }
+            if !dangling_paths.is_empty() {
+                // Something path ended, but it's not joined with any other path.
+                return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
+            }
+        }
+        if consumed.len() + 1 < self.paths.len() {
+            // If the proof is valid then all but one paths will be consumed by other paths.
+            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
         Ok(computed_hashes[0] == *root)
     }
@@ -292,7 +320,8 @@ mod test {
             heights: vec![1],
             _phantom: PhantomData,
         };
-        assert!(!proof.verify_consume(&vec![0u8; 32], vec![vec![]]).unwrap());
+        // This will fail because the node height is 1 and it's empty, so it's not going to compute the root hash.
+        proof.verify_consume(&vec![0u8; 32], vec![vec![]]).unwrap_err();
     }
 
     #[test]
@@ -334,10 +363,10 @@ mod test {
 
     #[test]
     fn test_merge_proof_full_tree() {
-        let leaves = (0..255).map(|i| vec![i; 32]).collect::<Vec<_>>();
+        let leaves = (0..=255).map(|i| vec![i; 32]).collect::<Vec<_>>();
         let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
         let root = bmt.get_merkle_root();
-        let proofs = (0..255)
+        let proofs = (0..=255)
             .map(|i| BalancedBinaryMerkleProof::generate_proof(&bmt, i))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
@@ -382,11 +411,23 @@ mod test {
             heights: vec![0, 0],
             _phantom: PhantomData,
         };
-        // This should fail but does not
-        // proof .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]]) .unwrap_err();
-        assert!(proof
+        // This will fail because there are more hashes on the same level as there can be.
+        proof
             .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]])
-            .unwrap());
+            .unwrap_err();
+
+        let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
+            paths: vec![vec![MergedBalancedBinaryMerkleIndexOrHash::Hash(vec![5u8; 32])], vec![
+                MergedBalancedBinaryMerkleIndexOrHash::Index(1),
+            ]],
+            node_indices: vec![1, 1],
+            heights: vec![0, 1],
+            _phantom: PhantomData,
+        };
+        // This will fail because we can't have any more nodes if we have leaf at the root.
+        proof
+            .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]])
+            .unwrap_err();
     }
 
     #[test]

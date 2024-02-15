@@ -151,7 +151,7 @@ pub fn run_wallet_with_cli(
     if config.wallet.use_libtor && config.wallet.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
         tor.update_comms_transport(&mut config.wallet.p2p.transport)?;
-        runtime.spawn(tor.run(shutdown.to_signal()));
+        tor.run_background();
         debug!(
             target: LOG_TARGET,
             "Updated Tor comms transport: {:?}", config.wallet.p2p.transport

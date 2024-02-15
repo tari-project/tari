@@ -33,7 +33,7 @@ use tari_utilities::hex::Hex;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
     OutputSmt,
 };
 
@@ -129,6 +129,26 @@ impl DbTransaction {
     pub fn prune_outputs_spent_at_hash(&mut self, block_hash: BlockHash) -> &mut Self {
         self.operations
             .push(WriteOperation::PruneOutputsSpentAtHash { block_hash });
+        self
+    }
+
+    pub fn prune_output_from_all_dbs(
+        &mut self,
+        output_hash: HashOutput,
+        commitment: Commitment,
+        output_type: OutputType,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputFromAllDbs {
+            output_hash,
+            commitment,
+            output_type,
+        });
+        self
+    }
+
+    pub fn delete_all_kernerls_in_block(&mut self, block_hash: BlockHash) -> &mut Self {
+        self.operations
+            .push(WriteOperation::DeleteAllKernelsInBlock { block_hash });
         self
     }
 
@@ -304,6 +324,14 @@ pub enum WriteOperation {
     PruneOutputsSpentAtHash {
         block_hash: BlockHash,
     },
+    PruneOutputFromAllDbs {
+        output_hash: HashOutput,
+        commitment: Commitment,
+        output_type: OutputType,
+    },
+    DeleteAllKernelsInBlock {
+        block_hash: BlockHash,
+    },
     DeleteAllInputsInBlock {
         block_hash: BlockHash,
     },
@@ -387,6 +415,18 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Update Block data for block {}", header_hash)
             },
             PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash),
+            PruneOutputFromAllDbs {
+                output_hash,
+                commitment,
+                output_type,
+            } => write!(
+                f,
+                "Prune output from all dbs, hash : {}, commitment: {},output_type: {}",
+                output_hash,
+                commitment.to_hex(),
+                output_type,
+            ),
+            DeleteAllKernelsInBlock { block_hash } => write!(f, "Delete kernels in block {}", block_hash),
             DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash),
             SetAccumulatedDataForOrphan(accumulated_data) => {
                 write!(f, "Set accumulated data for orphan {}", accumulated_data)

@@ -25,6 +25,7 @@ use async_trait::async_trait;
 use clap::Parser;
 
 use super::{CommandContext, HandleCommand};
+#[cfg(feature = "metrics")]
 use crate::table::Table;
 
 /// Displays network stats

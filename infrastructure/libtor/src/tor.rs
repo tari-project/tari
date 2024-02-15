@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, io, net::TcpListener};
+use std::{fmt, io, net::TcpListener, path::PathBuf, thread};
 
 use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
@@ -28,7 +28,6 @@ use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
-use tari_shutdown::ShutdownSignal;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
 
@@ -46,7 +45,7 @@ impl fmt::Debug for TorPassword {
 #[derivative(Debug)]
 pub struct Tor {
     control_port: u16,
-    data_dir: String,
+    data_dir: PathBuf,
     log_destination: String,
     log_level: LogLevel,
     #[derivative(Debug = "ignore")]
@@ -59,12 +58,12 @@ pub struct Tor {
 impl Default for Tor {
     fn default() -> Tor {
         Tor {
-            control_port: 19_051,
+            control_port: 0,
             data_dir: "/tmp/tor-data".into(),
             log_destination: "/tmp/tor.log".into(),
             log_level: LogLevel::Err,
             passphrase: TorPassword(None),
-            socks_port: 19_050,
+            socks_port: 0,
             temp_dir: None,
             temp_file: None,
         }
@@ -83,6 +82,7 @@ impl Tor {
 
         // check for unused ports to assign
         let (socks_port, control_port) = get_available_ports()?;
+        debug!(target: LOG_TARGET, "Using socks port {socks_port} and control_port {control_port}");
         instance.socks_port = socks_port;
         instance.control_port = control_port;
 
@@ -96,9 +96,8 @@ impl Tor {
 
         // data dir
         let temp = tempdir()?;
-        let dir = temp.path().to_string_lossy().to_string();
+        instance.data_dir = temp.path().to_path_buf();
         instance.temp_dir = Some(temp);
-        instance.data_dir = dir;
 
         // log destination
         let temp = NamedTempFile::new()?.into_temp_path();
@@ -128,8 +127,8 @@ impl Tor {
         }
     }
 
-    /// Run the Tor instance until the shutdown signal is received
-    pub async fn run(self, mut shutdown_signal: ShutdownSignal) -> Result<(), ExitError> {
+    /// Run the Tor instance in the background and return a handle to the thread.
+    pub fn run_background(self) -> thread::JoinHandle<Result<u8, libtor::Error>> {
         info!(target: LOG_TARGET, "Starting Tor instance");
 
         let Tor {
@@ -144,23 +143,35 @@ impl Tor {
 
         let mut tor = libtor::Tor::new();
 
-        tor.flag(TorFlag::DataDirectory(data_dir.clone()))
-            .flag(TorFlag::SocksPort(socks_port))
-            .flag(TorFlag::ControlPort(control_port))
+        tor.flag(TorFlag::DataDirectory(data_dir.to_string_lossy().to_string()))
+            // Disable signal handlers so that ctrl+c can be handled by our application
+            // https://github.com/torproject/torspec/blob/8961bb4d83fccb2b987f9899ca83aa430f84ab0c/control-spec.txt#L3946
+            .flag(TorFlag::Custom("__DisableSignalHandlers 1".to_string()))
+            // Prevent conflicts with multiple instances using the same listener port for Prometheus metrics
+            .flag(TorFlag::Custom("MetricsPort 0".to_string()))
+            // Write the final control port to a file. This could be used to configure the node to use this port when auto is set.
+            .flag(TorFlag::ControlPortWriteToFile(data_dir.join("control_port").to_string_lossy().to_string()))
             .flag(TorFlag::Hush())
             .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination)));
+
+        if socks_port == 0 {
+            tor.flag(TorFlag::SocksPortAuto);
+        } else {
+            tor.flag(TorFlag::SocksPort(socks_port));
+        }
+
+        if control_port == 0 {
+            tor.flag(TorFlag::ControlPortAuto);
+        } else {
+            tor.flag(TorFlag::ControlPort(control_port));
+        }
 
         if let Some(secret) = passphrase.0 {
             let hash = EncryptedKey::hash_password(&secret).to_string();
             tor.flag(TorFlag::HashedControlPassword(hash));
         }
 
-        tor.start_background();
-
-        shutdown_signal.wait().await;
-        info!(target: LOG_TARGET, "Shutting down Tor instance");
-
-        Ok(())
+        tor.start_background()
     }
 }
 

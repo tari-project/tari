@@ -660,8 +660,8 @@ where TBackend: TransactionBackend + 'static
         let state = match state.chain_metadata {
             None => TariBaseNodeState {
                 node_id: state.node_id,
-                height_of_longest_chain: 0,
-                best_block: BlockHash::zero(),
+                best_block_height: 0,
+                best_block_hash: BlockHash::zero(),
                 best_block_timestamp: 0,
                 pruning_horizon: 0,
                 pruned_height: 0,
@@ -672,8 +672,8 @@ where TBackend: TransactionBackend + 'static
 
             Some(chain_metadata) => TariBaseNodeState {
                 node_id: state.node_id,
-                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
-                best_block: *chain_metadata.best_block(),
+                best_block_height: chain_metadata.best_block_height(),
+                best_block_hash: *chain_metadata.best_block_hash(),
                 best_block_timestamp: chain_metadata.timestamp(),
                 pruning_horizon: chain_metadata.pruning_horizon(),
                 pruned_height: chain_metadata.pruned_height(),

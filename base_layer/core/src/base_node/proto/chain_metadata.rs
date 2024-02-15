@@ -41,23 +41,23 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         }
 
         let accumulated_difficulty = U256::from_big_endian(&metadata.accumulated_difficulty);
-        let height_of_longest_chain = metadata.height_of_longest_chain;
+        let best_block_height = metadata.best_block_height;
 
         let pruning_horizon = if metadata.pruned_height == 0 {
             metadata.pruned_height
         } else {
-            height_of_longest_chain.saturating_sub(metadata.pruned_height)
+            best_block_height.saturating_sub(metadata.pruned_height)
         };
 
-        if metadata.best_block.is_empty() {
+        if metadata.best_block_hash.is_empty() {
             return Err("Best block is missing".to_string());
         }
         let hash: FixedHash = metadata
-            .best_block
+            .best_block_hash
             .try_into()
             .map_err(|e| format!("Malformed best block: {}", e))?;
         Ok(ChainMetadata::new(
-            height_of_longest_chain,
+            best_block_height,
             hash,
             pruning_horizon,
             metadata.pruned_height,
@@ -74,8 +74,8 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             .accumulated_difficulty()
             .to_big_endian(&mut accumulated_difficulty);
         Self {
-            height_of_longest_chain: metadata.height_of_longest_chain(),
-            best_block: metadata.best_block().to_vec(),
+            best_block_height: metadata.best_block_height(),
+            best_block_hash: metadata.best_block_hash().to_vec(),
             pruned_height: metadata.pruned_height(),
             accumulated_difficulty: accumulated_difficulty.to_vec(),
             timestamp: metadata.timestamp(),
@@ -84,7 +84,7 @@ impl From<ChainMetadata> for proto::ChainMetadata {
 }
 
 impl proto::ChainMetadata {
-    pub fn height_of_longest_chain(&self) -> u64 {
-        self.height_of_longest_chain
+    pub fn best_block_height(&self) -> u64 {
+        self.best_block_height
     }
 }

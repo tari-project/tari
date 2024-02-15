@@ -62,7 +62,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
 
         {
             let db = self.db.db_read_access()?;
-            let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+            let tip_height = db.fetch_chain_metadata()?.best_block_height();
             self.aggregate_body_validator.validate(&tx.body, tip_height, &*db)?;
         };
 

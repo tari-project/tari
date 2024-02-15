@@ -58,7 +58,7 @@ impl CommandContext {
     ) -> Result<(), Error> {
         let meta = self.node_service.get_metadata().await?;
 
-        let mut height = meta.height_of_longest_chain();
+        let mut height = meta.best_block_height();
         // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
         let mut results: Vec<(usize, f64, u64, u64, usize)> = Vec::new();
 

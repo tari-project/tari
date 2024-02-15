@@ -313,8 +313,8 @@ async fn test_utxo_scanner_recovery() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: NUM_BLOCKS - 1,
-        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
+        best_block_height: NUM_BLOCKS - 1,
+        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
@@ -412,8 +412,8 @@ async fn test_utxo_scanner_recovery_with_restart() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: NUM_BLOCKS - 1,
-        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
+        best_block_height: NUM_BLOCKS - 1,
+        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
@@ -578,8 +578,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: NUM_BLOCKS - 1,
-        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
+        best_block_height: NUM_BLOCKS - 1,
+        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
@@ -651,8 +651,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface2.rpc_service_state.set_blocks(block_headers.clone());
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: 9,
-        best_block: block_headers.get(&9).unwrap().clone().hash().to_vec(),
+        best_block_height: 9,
+        best_block_hash: block_headers.get(&9).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
@@ -776,8 +776,8 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: 800 + NUM_BLOCKS - 1,
-        best_block: block_headers
+        best_block_height: 800 + NUM_BLOCKS - 1,
+        best_block_hash: block_headers
             .get(&(800 + NUM_BLOCKS - 1))
             .unwrap()
             .clone()
@@ -878,8 +878,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: NUM_BLOCKS - 1,
-        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
+        best_block_height: NUM_BLOCKS - 1,
+        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
@@ -998,8 +998,8 @@ async fn test_utxo_scanner_one_sided_payments() {
         .set_one_sided_payment_message("new one-sided message".to_string());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: NUM_BLOCKS,
-        best_block: block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec(),
+        best_block_height: NUM_BLOCKS,
+        best_block_hash: block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
@@ -1014,7 +1014,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     test_interface
         .base_node_service_event_publisher
         .send(Arc::new(BaseNodeEvent::NewBlockDetected(
-            chain_metadata.best_block.try_into().unwrap(),
+            chain_metadata.best_block_hash.try_into().unwrap(),
             11,
         )))
         .unwrap();
@@ -1085,8 +1085,8 @@ async fn test_birthday_timestamp_over_chain() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: NUM_BLOCKS - 1,
-        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
+        best_block_height: NUM_BLOCKS - 1,
+        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: 0,

@@ -29,8 +29,8 @@ impl From<ChainMetadata> for grpc::MetaData {
         let mut diff = [0u8; 32];
         meta.accumulated_difficulty().to_big_endian(&mut diff);
         Self {
-            height_of_longest_chain: meta.height_of_longest_chain(),
-            best_block: meta.best_block().to_vec(),
+            best_block_height: meta.best_block_height(),
+            best_block_hash: meta.best_block_hash().to_vec(),
             pruned_height: meta.pruned_height(),
             accumulated_difficulty: diff.to_vec(),
         }

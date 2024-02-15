@@ -35,27 +35,27 @@ enum TxLocation {
 
 message TxQueryResponse {
   TxLocation location = 1;
-  bytes block_hash = 2;
+  bytes best_block_hash = 2;
   uint64 confirmations = 3;
   bool is_synced = 4;
-  uint64 height_of_longest_chain = 5;
+  uint64 best_block_height = 5;
   uint64 mined_timestamp = 6;
 }
 
 message TxQueryBatchResponse {
   tari.types.Signature signature = 1;
   TxLocation location = 2;
-  bytes block_hash = 3;
+  bytes best_block_hash = 3;
   uint64 confirmations = 4;
-  uint64 block_height = 5;
+  uint64 best_block_height = 5;
   uint64 mined_timestamp = 6;
 }
 
 message TxQueryBatchResponses {
   repeated TxQueryBatchResponse responses = 1;
   bool is_synced = 2;
-  bytes tip_hash = 3;
-  uint64 height_of_longest_chain = 4;
+  bytes best_block_hash = 3;
+  uint64 best_block_height = 4;
   uint64 tip_mined_timestamp = 5;
 }
 

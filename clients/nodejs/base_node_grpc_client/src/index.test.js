@@ -20,5 +20,5 @@ test("getTipInfo", async () => {
   const response = await baseNode.getTipInfo();
   expect(response.metadata).toBeDefined();
   const metadata = response.metadata;
-  expect(metadata.height_of_longest_chain).toMatch(/\d+/);
+  expect(metadata.best_block_height).toMatch(/\d+/);
 });

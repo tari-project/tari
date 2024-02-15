@@ -82,7 +82,7 @@ where
             })
         },
         err @ Err(lmdb_zero::Error::Code(lmdb_zero::error::MAP_FULL)) => {
-            error!(
+            info!(
                 target: LOG_TARGET, "Could not insert {} bytes with key '{}' into '{}' ({:?})",
                 val_buf.len(), to_hex(key.as_lmdb_bytes()), table_name, err
             );

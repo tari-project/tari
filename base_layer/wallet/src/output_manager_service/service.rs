@@ -226,7 +226,7 @@ where
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
                 let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.height_of_longest_chain()),
+                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
                     Err(_) => None,
                 };
                 self.get_balance(current_tip_for_time_lock_calculation)
@@ -1284,7 +1284,7 @@ where
             target: LOG_TARGET,
             "select_utxos selection criteria: {}", selection_criteria
         );
-        let tip_height = chain_metadata.as_ref().map(|m| m.height_of_longest_chain());
+        let tip_height = chain_metadata.as_ref().map(|m| m.best_block_height());
         let uo = self
             .resources
             .db
@@ -1352,7 +1352,7 @@ where
         let enough_spendable = utxos_total_value > amount + fee_with_change;
 
         if !perfect_utxo_selection && !enough_spendable {
-            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.height_of_longest_chain());
+            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.best_block_height());
             let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
             let pending_incoming = balance.pending_incoming_balance;
             if utxos_total_value + pending_incoming >= amount + fee_with_change {

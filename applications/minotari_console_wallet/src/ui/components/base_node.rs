@@ -68,7 +68,7 @@ impl<B: Backend> Component<B> for BaseNode {
             OnlineStatus::Online => {
                 let base_node_state = app_state.get_base_node_state();
                 if let Some(ref metadata) = base_node_state.chain_metadata {
-                    let tip = metadata.height_of_longest_chain();
+                    let tip = metadata.best_block_height();
 
                     let synced = base_node_state.is_synced.unwrap_or_default();
                     let (tip_color, sync_text) = if synced {

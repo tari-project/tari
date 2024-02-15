@@ -31,6 +31,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::{ChainBlock, NewBlock},
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
@@ -104,25 +105,37 @@ async fn propagate_and_forward_many_valid_blocks() {
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("alice").to_str().unwrap())
+        .start(
+            temp_dir.path().join("alice").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut bob_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("bob").to_str().unwrap())
+        .start(
+            temp_dir.path().join("bob").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut carol_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("carol").to_str().unwrap())
+        .start(
+            temp_dir.path().join("carol").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut dan_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(dan_node_identity)
         .with_peers(vec![carol_node_identity, bob_node_identity])
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("dan").to_str().unwrap())
+        .start(
+            temp_dir.path().join("dan").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
 
     wait_until_online(&[&alice_node, &bob_node, &carol_node, &dan_node]).await;
@@ -166,7 +179,8 @@ async fn propagate_and_forward_many_valid_blocks() {
             &key_manager,
         )
         .await
-        .unwrap(),
+        .unwrap()
+        .0,
     );
     blocks
         .extend(construct_chained_blocks(&alice_node.blockchain_db, blocks[0].clone(), &rules, 5, &key_manager).await);
@@ -210,6 +224,7 @@ async fn propagate_and_forward_many_valid_blocks() {
 
 static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[allow(clippy::too_many_lines)]
 async fn propagate_and_forward_invalid_block_hash() {
     // Alice will propagate a "made up" block hash to Bob, Bob will request the block from Alice. Alice will not be able
     // to provide the block and so Bob will not propagate the hash further to Carol.
@@ -234,19 +249,28 @@ async fn propagate_and_forward_invalid_block_hash() {
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("alice").to_str().unwrap())
+        .start(
+            temp_dir.path().join("alice").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut bob_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("bob").to_str().unwrap())
+        .start(
+            temp_dir.path().join("bob").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut carol_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(carol_node_identity)
         .with_peers(vec![bob_node_identity])
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("carol").to_str().unwrap())
+        .start(
+            temp_dir.path().join("carol").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
 
     wait_until_online(&[&alice_node, &bob_node, &carol_node]).await;
@@ -276,7 +300,7 @@ async fn propagate_and_forward_invalid_block_hash() {
     )
     .await;
     let txs = txs.into_iter().map(|tx| (*tx).clone()).collect();
-    let block1 = append_block(
+    let (block1, _) = append_block(
         &alice_node.blockchain_db,
         &block0,
         txs,
@@ -361,7 +385,10 @@ async fn propagate_and_forward_invalid_block() {
     let (mut dan_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(dan_node_identity.clone())
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("dan").to_str().unwrap())
+        .start(
+            temp_dir.path().join("dan").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut carol_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(carol_node_identity.clone())
@@ -372,20 +399,29 @@ async fn propagate_and_forward_invalid_block() {
             mock_validator.clone(),
             stateless_block_validator.clone(),
         )
-        .start(temp_dir.path().join("carol").to_str().unwrap())
+        .start(
+            temp_dir.path().join("carol").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut bob_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![dan_node_identity])
         .with_consensus_manager(rules)
         .with_validators(mock_validator.clone(), mock_validator, stateless_block_validator)
-        .start(temp_dir.path().join("bob").to_str().unwrap())
+        .start(
+            temp_dir.path().join("bob").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity, carol_node_identity])
         .with_consensus_manager(rules)
-        .start(temp_dir.path().join("alice").to_str().unwrap())
+        .start(
+            temp_dir.path().join("alice").to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
         .await;
 
     alice_node
@@ -423,7 +459,7 @@ async fn propagate_and_forward_invalid_block() {
 
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
     // after fetching it.
-    let block1 = append_block(
+    let (block1, _) = append_block(
         &alice_node.blockchain_db,
         &block0,
         vec![],
@@ -485,20 +521,20 @@ async fn local_get_metadata() {
     let network = Network::LocalNet;
     let key_manager = create_memory_db_key_manager();
     let (mut node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager, Difficulty::min(), &key_manager)
+    let (block1, _) = append_block(db, &block0, vec![], &consensus_manager, Difficulty::min(), &key_manager)
         .await
         .unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager, Difficulty::min(), &key_manager)
+    let (block2, _) = append_block(db, &block1, vec![], &consensus_manager, Difficulty::min(), &key_manager)
         .await
         .unwrap();
 
     let metadata = node.local_nci.get_metadata().await.unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 2);
-    assert_eq!(metadata.best_block(), block2.hash());
+    assert_eq!(metadata.best_block_height(), 2);
+    assert_eq!(metadata.best_block_hash(), block2.hash());
 
     node.shutdown().await;
 }
@@ -517,7 +553,7 @@ async fn local_get_new_block_template_and_get_new_block() {
         .unwrap();
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules)
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
 
     let schema = [
@@ -566,7 +602,7 @@ async fn local_get_new_block_with_zero_conf() {
             HeaderFullValidator::new(rules.clone(), difficulty_calculator),
             BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
 
     let (tx01, tx01_out) = spend_utxos(
@@ -652,7 +688,7 @@ async fn local_get_new_block_with_combined_transaction() {
             HeaderFullValidator::new(rules.clone(), difficulty_calculator),
             BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
 
     let (tx01, tx01_out) = spend_utxos(
@@ -718,7 +754,7 @@ async fn local_submit_block() {
     let network = Network::LocalNet;
     let key_manager = create_memory_db_key_manager();
     let (mut node, consensus_manager) = BaseNodeBuilder::new(network.into())
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
 
     let db = &node.blockchain_db;

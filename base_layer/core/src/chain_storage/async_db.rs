@@ -26,7 +26,7 @@ use primitive_types::U256;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -59,9 +59,10 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
     OutputSmt,
 };
+
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
@@ -142,6 +143,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     pub fn inner(&self) -> &BlockchainDatabase<B> {
         &self.db
     }
+
+    pub fn fetch_genesis_block(&self) -> ChainBlock {
+        self.db.fetch_genesis_block()
+    }
 }
 
 impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
@@ -154,15 +159,23 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- TXO --------------------------------------------//
 
+    make_async_fn!(fetch_output(output_hash: HashOutput) -> Option<OutputMinedInfo>, "fetch_output");
+
+    make_async_fn!(fetch_input(output_hash: HashOutput) -> Option<InputMinedInfo>, "fetch_input");
+
+    make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: Commitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
+
     make_async_fn!(fetch_outputs_with_spend_status_at_tip(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_outputs_with_spend_status_at_tip");
 
     make_async_fn!(fetch_outputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<OutputMinedInfo>>, "fetch_outputs_mined_info");
 
     make_async_fn!(fetch_inputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<InputMinedInfo>>, "fetch_inputs_mined_info");
 
-    make_async_fn!(fetch_outputs_in_block_with_spend_state(hash: HashOutput, spend_header: Option<FixedHash>) -> Vec<(TransactionOutput, bool)>, "fetch_outputs_in_block_with_spend_state");
+    make_async_fn!(fetch_outputs_in_block_with_spend_state(header_hash: HashOutput, spend_status_at_header: Option<HashOutput>) -> Vec<(TransactionOutput, bool)>, "fetch_outputs_in_block_with_spend_state");
 
-    make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<TransactionOutput>, "fetch_outputs_in_block");
+    make_async_fn!(fetch_outputs_in_block(header_hash: HashOutput) -> Vec<TransactionOutput>, "fetch_outputs_in_block");
+
+    make_async_fn!(fetch_inputs_in_block(header_hash: HashOutput) -> Vec<TransactionInput>, "fetch_inputs_in_block");
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
@@ -347,6 +360,22 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     ) -> &mut Self {
         self.transaction
             .insert_utxo(output, header_hash, header_height, timestamp);
+        self
+    }
+
+    pub fn prune_output_from_all_dbs(
+        &mut self,
+        output_hash: HashOutput,
+        commitment: Commitment,
+        output_type: OutputType,
+    ) -> &mut Self {
+        self.transaction
+            .prune_output_from_all_dbs(output_hash, commitment, output_type);
+        self
+    }
+
+    pub fn delete_all_kernerls_in_block(&mut self, block_hash: BlockHash) -> &mut Self {
+        self.transaction.delete_all_kernerls_in_block(block_hash);
         self
     }
 

@@ -301,6 +301,11 @@ where B: BlockchainBackend
         Ok(blockchain_db)
     }
 
+    /// Get the genesis block form the consensus manager
+    pub fn fetch_genesis_block(&self) -> ChainBlock {
+        self.consensus_manager.get_genesis_block()
+    }
+
     /// Returns a reference to the consensus cosntants at the current height
     pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
         let height = self.get_height()?;
@@ -367,7 +372,7 @@ where B: BlockchainBackend
     /// that case to re-sync the metadata; or else just exit the program.
     pub fn get_height(&self) -> Result<u64, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_chain_metadata()?.height_of_longest_chain())
+        Ok(db.fetch_chain_metadata()?.best_block_height())
     }
 
     /// Return the accumulated proof of work of the longest chain.
@@ -383,12 +388,24 @@ where B: BlockchainBackend
         db.fetch_chain_metadata()
     }
 
-    pub fn fetch_unspent_output_by_commitment(
+    /// Returns a copy of the current output mined info
+    pub fn fetch_output(&self, output_hash: HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_output(&output_hash)
+    }
+
+    /// Returns a copy of the current input mined info
+    pub fn fetch_input(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_input(&output_hash)
+    }
+
+    pub fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_unspent_output_hash_by_commitment(commitment)
+        db.fetch_unspent_output_hash_by_commitment(&commitment)
     }
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
@@ -456,16 +473,21 @@ where B: BlockchainBackend
 
     pub fn fetch_outputs_in_block_with_spend_state(
         &self,
-        hash: HashOutput,
-        spend_status_at_header: Option<FixedHash>,
+        header_hash: HashOutput,
+        spend_status_at_header: Option<HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_outputs_in_block_with_spend_state(&hash, spend_status_at_header)
+        db.fetch_outputs_in_block_with_spend_state(&header_hash, spend_status_at_header)
     }
 
-    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+    pub fn fetch_outputs_in_block(&self, header_hash: HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_outputs_in_block(&hash)
+        db.fetch_outputs_in_block(&header_hash)
+    }
+
+    pub fn fetch_inputs_in_block(&self, header_hash: HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_inputs_in_block(&header_hash)
     }
 
     /// Returns the number of UTXOs in the current unspent set
@@ -983,7 +1005,7 @@ where B: BlockchainBackend
             info!(
                 target: LOG_TARGET,
                 "Best chain is now at height: {}",
-                db.fetch_chain_metadata()?.height_of_longest_chain()
+                db.fetch_chain_metadata()?.best_block_height()
             );
             // If blocks were added and the node is in pruned mode, perform pruning
             prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
@@ -1074,12 +1096,12 @@ where B: BlockchainBackend
         }
         if end.is_none() {
             // `(n..)` means fetch blocks until this node's tip
-            end = Some(metadata.height_of_longest_chain());
+            end = Some(metadata.best_block_height());
         }
 
         let (start, end) = (start.unwrap(), end.unwrap());
 
-        if end > metadata.height_of_longest_chain() {
+        if end > metadata.best_block_height() {
             return Err(ChainStorageError::ValueNotFound {
                 entity: "Block",
                 field: "end height",
@@ -1282,13 +1304,13 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let body = &block.body;
 
     let metadata = db.fetch_chain_metadata()?;
-    if header.prev_hash != *metadata.best_block() {
+    if header.prev_hash != *metadata.best_block_hash() {
         return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
             "Block (#{}) is not building on tip, previous hash is {} but the current tip is #{} {}",
             header.height,
             header.prev_hash,
-            metadata.height_of_longest_chain(),
-            metadata.best_block(),
+            metadata.best_block_height(),
+            metadata.best_block_hash(),
         )));
     }
 
@@ -1655,7 +1677,7 @@ fn fetch_block_by_hash<T: BlockchainBackend>(
 
 fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(u64, bool), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
-    let tip_height = metadata.height_of_longest_chain();
+    let tip_height = metadata.best_block_height();
     if height > tip_height {
         return Err(ChainStorageError::InvalidQuery(format!(
             "Cannot get block at height {}. Chain tip is at {}",
@@ -1678,7 +1700,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     // Delete headers
     let last_header_height = last_header.height;
     let metadata = db.fetch_chain_metadata()?;
-    let last_block_height = metadata.height_of_longest_chain();
+    let last_block_height = metadata.best_block_height();
     // We use the cmp::max value here because we'll only delete headers here and leave remaining headers to be deleted
     // with the whole block
     let steps_back = last_header_height
@@ -1725,9 +1747,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         target_height
     );
 
-    let effective_pruning_horizon = metadata
-        .height_of_longest_chain()
-        .saturating_sub(metadata.pruned_height());
+    let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
     let prune_past_horizon = metadata.is_pruned_node() && steps_back > effective_pruning_horizon;
     if prune_past_horizon {
         warn!(
@@ -1761,7 +1781,7 @@ fn rewind_to_height<T: BlockchainBackend>(
             last_block_height - h - 1
         })?;
         let metadata = db.fetch_chain_metadata()?;
-        let expected_block_hash = *metadata.best_block();
+        let expected_block_hash = *metadata.best_block_hash();
         txn.set_best_block(
             chain_header.height(),
             chain_header.accumulated_data().hash,
@@ -1927,7 +1947,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     // lets clear out all remaining headers that dont have a matching block
     // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
     // height it will only trim the extra headers with no blocks
-    rewind_to_height(db, metadata.height_of_longest_chain())?;
+    rewind_to_height(db, metadata.best_block_height())?;
     let strongest_orphan_tips = db.fetch_strongest_orphan_chain_tips()?;
     if strongest_orphan_tips.is_empty() {
         // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
@@ -2333,7 +2353,7 @@ fn find_strongest_orphan_tip(
 // block height will also be discarded.
 fn cleanup_orphans<T: BlockchainBackend>(db: &mut T, orphan_storage_capacity: usize) -> Result<(), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
-    let horizon_height = metadata.horizon_block_height(metadata.height_of_longest_chain());
+    let horizon_height = metadata.pruned_height_at_given_chain_tip(metadata.best_block_height());
 
     db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
 }
@@ -2348,18 +2368,18 @@ fn prune_database_if_needed<T: BlockchainBackend>(
         return Ok(());
     }
 
-    let db_height = metadata.height_of_longest_chain();
-    let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
-
+    let prune_to_height_target = metadata.best_block_height().saturating_sub(pruning_horizon);
     debug!(
         target: LOG_TARGET,
-        "Current pruned height is: {}, pruning horizon is: {}, while the pruning interval is: {}",
+        "Blockchain height: {}, pruning horizon: {}, pruned height: {}, prune to height target: {}, pruning interval: {}",
+        metadata.best_block_height(),
+        metadata.pruning_horizon(),
         metadata.pruned_height(),
-        abs_pruning_horizon,
+        prune_to_height_target,
         pruning_interval,
     );
-    if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
-        prune_to_height(db, abs_pruning_horizon)?;
+    if metadata.pruned_height() < prune_to_height_target.saturating_sub(pruning_interval) {
+        prune_to_height(db, prune_to_height_target)?;
     }
 
     Ok(())
@@ -2387,14 +2407,14 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         return Ok(());
     }
 
-    if target_horizon_height > metadata.height_of_longest_chain() {
+    if target_horizon_height > metadata.best_block_height() {
         return Err(ChainStorageError::InvalidArguments {
             func: "prune_to_height",
             arg: "target_horizon_height",
             message: format!(
                 "Target pruning horizon {} is greater than current block height {}",
                 target_horizon_height,
-                metadata.height_of_longest_chain()
+                metadata.best_block_height()
             ),
         });
     }
@@ -2825,8 +2845,8 @@ mod test {
                 let tip = access.fetch_tip_header().unwrap();
                 assert_eq!(tip.hash(), block.hash());
                 let metadata = access.fetch_chain_metadata().unwrap();
-                assert_eq!(metadata.best_block(), block.hash());
-                assert_eq!(metadata.height_of_longest_chain(), block.height());
+                assert_eq!(metadata.best_block_hash(), block.hash());
+                assert_eq!(metadata.best_block_height(), block.height());
                 assert!(access.contains(&DbKey::HeaderHash(*block.hash())).unwrap());
 
                 let mut all_blocks = main_chain
@@ -2920,8 +2940,8 @@ mod test {
                 let tip = access.fetch_tip_header().unwrap();
                 assert_eq!(tip.hash(), block.hash());
                 let metadata = access.fetch_chain_metadata().unwrap();
-                assert_eq!(metadata.best_block(), block.hash());
-                assert_eq!(metadata.height_of_longest_chain(), block.height());
+                assert_eq!(metadata.best_block_hash(), block.hash());
+                assert_eq!(metadata.best_block_height(), block.height());
                 assert!(access.contains(&DbKey::HeaderHash(*block.hash())).unwrap());
 
                 let mut all_blocks = main_chain.into_iter().chain(orphan_chain_b).collect::<HashMap<_, _>>();
@@ -3348,7 +3368,7 @@ mod test {
     }
 
     fn check_whole_chain(db: &mut TempDatabase) {
-        let mut h = db.fetch_chain_metadata().unwrap().height_of_longest_chain();
+        let mut h = db.fetch_chain_metadata().unwrap().best_block_height();
         while h > 0 {
             // fetch_chain_header_by_height will error if there are internal inconsistencies
             db.fetch_chain_header_by_height(h).unwrap();

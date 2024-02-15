@@ -283,16 +283,16 @@ impl CipherSeed {
         let expected_mac = Self::generate_mac(&birthday_bytes, entropy.reveal(), version, salt.as_ref(), &mac_key)?;
 
         // Verify the MAC in constant time to avoid leaking data
-        if mac.ct_eq(&expected_mac).unwrap_u8() == 0 {
-            return Err(KeyManagerError::DecryptionFailed);
+        if mac.ct_eq(&expected_mac).into() {
+            Ok(Self {
+                version,
+                birthday,
+                entropy: Box::from(*entropy.reveal()),
+                salt,
+            })
+        } else {
+            Err(KeyManagerError::DecryptionFailed)
         }
-
-        Ok(Self {
-            version,
-            birthday,
-            entropy: Box::from(*entropy.reveal()),
-            salt,
-        })
     }
 
     /// Encrypt or decrypt data using ChaCha20

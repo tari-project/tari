@@ -288,6 +288,7 @@ pub struct TariUtxo {
     pub value: u64,
     pub mined_height: u64,
     pub mined_timestamp: u64,
+    pub lock_height: u64,
     pub status: u8,
 }
 
@@ -299,6 +300,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 .into_raw(),
             value: x.wallet_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
+            lock_height: x.wallet_output.features.maturity,
             mined_timestamp: x
                 .mined_timestamp
                 .map(|ts| ts.timestamp_millis() as u64)
@@ -1234,6 +1236,38 @@ pub unsafe extern "C" fn tari_address_to_emoji_id(
     }
     let emoji_string = address.as_ref().expect("Address should not be empty").to_emoji_string();
     result = CString::new(emoji_string).expect("Emoji will not fail.");
+    CString::into_raw(result)
+}
+
+/// Creates a char array from a TariWalletAddress's network
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+/// if there was an error from TariWalletAddress
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_network(address: *mut TariWalletAddress, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let network_string = address
+        .as_ref()
+        .expect("Address should not be empty")
+        .network()
+        .to_string();
+    result = CString::new(network_string).expect("string will not fail.");
     CString::into_raw(result)
 }
 
@@ -5471,12 +5505,6 @@ pub unsafe extern "C" fn wallet_create(
 
     match w {
         Ok(w) => {
-            // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
-            if let Some(hs) = w.comms.hidden_service() {
-                if let Err(e) = w.db.set_tor_identity(hs.tor_identity().clone()) {
-                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
-                }
-            }
             let wallet_address = TariAddress::new(w.comms.node_identity().public_key().clone(), w.network.as_network());
 
             // Start Callback Handler
@@ -5511,16 +5539,6 @@ pub unsafe extern "C" fn wallet_create(
             );
 
             runtime.spawn(callback_handler.start());
-
-            let mut ts = w.transaction_service.clone();
-            runtime.spawn(async move {
-                if let Err(e) = ts.restart_transaction_protocols().await {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Could not restart transaction negotiation protocols: {:?}", e
-                    );
-                }
-            });
 
             let tari_wallet = TariWallet {
                 wallet: w,

@@ -64,7 +64,7 @@ impl CommandContext {
         status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
 
         let metadata = self.node_service.get_metadata().await?;
-        let height = metadata.height_of_longest_chain();
+        let height = metadata.best_block_height();
         let last_header = self
             .node_service
             .get_header(height)
@@ -76,16 +76,10 @@ impl CommandContext {
         );
         status_line.add_field(
             "Tip",
-            format!(
-                "{} ({})",
-                metadata.height_of_longest_chain(),
-                last_block_time.to_rfc2822()
-            ),
+            format!("{} ({})", metadata.best_block_height(), last_block_time.to_rfc2822()),
         );
 
-        let constants = self
-            .consensus_rules
-            .consensus_constants(metadata.height_of_longest_chain());
+        let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
         let fut = self.mempool_service.get_mempool_stats();
         if let Ok(mempool_stats) = time::timeout(Duration::from_secs(5), fut).await? {
             status_line.add_field(
