@@ -101,5 +101,5 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         current_tip_height: Option<u64>,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
-    fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by_query(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
 }

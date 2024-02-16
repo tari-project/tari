@@ -47,6 +47,7 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
+        protocols::check_transaction_size,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
@@ -126,6 +127,10 @@ where
                     "Transaction (TxId: {}) no longer in Completed state and will stop being broadcast", self.tx_id
                 );
                 return Ok(self.tx_id);
+            }
+            if let Err(e) = check_transaction_size(&completed_tx.transaction, self.tx_id) {
+                self.cancel_transaction(TxCancellationReason::Oversized).await;
+                return Err(e);
             }
 
             loop {

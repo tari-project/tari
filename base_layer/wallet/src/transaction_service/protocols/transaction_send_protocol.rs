@@ -63,6 +63,7 @@ use crate::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{TransactionEvent, TransactionSendStatus, TransactionServiceResponse},
+        protocols::check_transaction_size,
         service::{TransactionSendResult, TransactionServiceResources},
         storage::{
             database::TransactionBackend,
@@ -281,17 +282,44 @@ where
             ));
         }
 
+        // Calculate the size of the transaction - initial send transaction to the peer (always a small message) should
+        // not be attempted if the final transaction size will be too large to be broadcast
+        let outbound_tx_check = OutboundTransaction::new(
+            tx_id,
+            self.dest_address.clone(),
+            self.amount,
+            MicroMinotari::zero(), // This does not matter for the check
+            sender_protocol.clone(),
+            TransactionStatus::Pending, // This does not matter for the check
+            self.message.clone(),
+            Utc::now().naive_utc(),
+            true, // This does not matter for the check
+        );
+
         // Attempt to send the initial transaction
         let SendResult {
             direct_send_result,
             store_and_forward_send_result,
             transaction_status,
-        } = match self.send_transaction(msg).await {
-            Ok(val) => val,
+        } = match check_transaction_size(&outbound_tx_check, self.id) {
+            Ok(_) => match self.send_transaction(msg).await {
+                Ok(val) => val,
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Problem sending Outbound Transaction TxId: {:?}: {:?}", self.id, e
+                    );
+                    SendResult {
+                        direct_send_result: false,
+                        store_and_forward_send_result: false,
+                        transaction_status: TransactionStatus::Queued,
+                    }
+                },
+            },
             Err(e) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
-                    "Problem sending Outbound Transaction TxId: {:?}: {:?}", self.id, e
+                    "Initial Transaction TxId: {:?} will not be sent due to it being oversize ({:?})", self.id, e
                 );
                 SendResult {
                     direct_send_result: false,
@@ -333,8 +361,12 @@ where
             );
             self.resources
                 .db
-                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
+                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
+                self.cancel_oversized_transaction().await?;
+                return Err(e);
+            }
         }
         if transaction_status == TransactionStatus::Pending {
             self.resources
@@ -390,6 +422,12 @@ where
             .db
             .get_pending_outbound_transaction(tx_id)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        // Verify that the negotiated transaction is not too large to be broadcast
+        if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
+            self.cancel_oversized_transaction().await?;
+            return Err(e);
+        }
 
         if !outbound_tx.sender_protocol.is_collecting_single_signature() {
             error!(
@@ -883,6 +921,33 @@ where
             target: LOG_TARGET,
             "Cancelling Transaction Send Protocol (TxId: {}) due to timeout after no counterparty response", self.id
         );
+
+        self.cancel_transaction(TxCancellationReason::Timeout).await?;
+
+        info!(
+            target: LOG_TARGET,
+            "Pending Transaction (TxId: {}) timed out after no response from counterparty", self.id
+        );
+
+        Err(TransactionServiceProtocolError::new(
+            self.id,
+            TransactionServiceError::Timeout,
+        ))
+    }
+
+    async fn cancel_oversized_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
+        info!(
+            target: LOG_TARGET,
+            "Cancelling Transaction Send Protocol (TxId: {}) due to transaction being oversized", self.id
+        );
+
+        self.cancel_transaction(TxCancellationReason::Oversized).await
+    }
+
+    async fn cancel_transaction(
+        &mut self,
+        cancel_reason: TxCancellationReason,
+    ) -> Result<(), TransactionServiceProtocolError<TxId>> {
         let _ = send_transaction_cancelled_message(
             self.id,
             self.dest_address.public_key().clone(),
@@ -917,10 +982,7 @@ where
         let _size = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(
-                self.id,
-                TxCancellationReason::Timeout,
-            )))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id, cancel_reason)))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
@@ -933,15 +995,7 @@ where
                 )
             });
 
-        info!(
-            target: LOG_TARGET,
-            "Pending Transaction (TxId: {}) timed out after no response from counterparty", self.id
-        );
-
-        Err(TransactionServiceProtocolError::new(
-            self.id,
-            TransactionServiceError::Timeout,
-        ))
+        Ok(())
     }
 }
 
