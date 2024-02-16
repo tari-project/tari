@@ -28,10 +28,7 @@ use std::{
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::{
-    types::BlockHash,
-    waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
-};
+use tari_common_types::types::BlockHash;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -60,7 +57,10 @@ use crate::{
     },
     blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
-    common::BanPeriod,
+    common::{
+        waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
+        BanPeriod,
+    },
     proto as shared_protos,
     proto::base_node as proto,
 };
