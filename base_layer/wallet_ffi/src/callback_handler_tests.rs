@@ -507,7 +507,8 @@ mod test {
             0,
             123.into(),
             ts_now.timestamp_millis() as u64,
-        );
+        )
+        .unwrap();
 
         base_node_event_sender
             .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {

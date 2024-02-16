@@ -56,14 +56,15 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             .best_block_hash
             .try_into()
             .map_err(|e| format!("Malformed best block: {}", e))?;
-        Ok(ChainMetadata::new(
+        ChainMetadata::new(
             best_block_height,
             hash,
             pruning_horizon,
             metadata.pruned_height,
             accumulated_difficulty,
             metadata.timestamp,
-        ))
+        )
+        .map_err(|e| e.to_string())
     }
 }
 

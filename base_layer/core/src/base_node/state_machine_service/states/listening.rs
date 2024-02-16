@@ -456,7 +456,7 @@ mod test {
 
         let archival_node = PeerChainMetadata::new(
             random_node_id(),
-            ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_difficulty, 0),
+            ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_difficulty, 0).unwrap(),
             None,
         );
 
@@ -469,7 +469,8 @@ mod test {
                 0,
                 accumulated_difficulty - U256::from(1000),
                 0,
-            ),
+            )
+            .unwrap(),
             None,
         );
 
