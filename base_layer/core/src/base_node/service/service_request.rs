@@ -21,9 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::waiting_requests::RequestKey;
 
-use crate::base_node::comms_interface::NodeCommsRequest;
+use crate::{base_node::comms_interface::NodeCommsRequest, common::waiting_requests::RequestKey};
 
 /// Request type for a received BaseNodeService request.
 #[derive(Debug, Serialize, Deserialize)]

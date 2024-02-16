@@ -55,10 +55,9 @@ use tokio::task;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 
 use crate::cli::Cli;
-pub use crate::{
-    config::{ApplicationConfig, BaseNodeConfig, DatabaseType},
-    metrics::MetricsConfig,
-};
+pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
+#[cfg(feature = "metrics")]
+pub use crate::metrics::MetricsConfig;
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 

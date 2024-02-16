@@ -320,6 +320,30 @@ where T: TransactionBackend + 'static
             )))
     }
 
+    pub fn insert_pending_inbound_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: InboundTransaction,
+    ) -> Result<Option<DbValue>, TransactionStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
+                tx_id,
+                Box::new(transaction),
+            )))
+    }
+
+    pub fn insert_pending_outbound_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: OutboundTransaction,
+    ) -> Result<Option<DbValue>, TransactionStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
+                tx_id,
+                Box::new(transaction),
+            )))
+    }
+
     pub fn get_pending_outbound_transaction(
         &self,
         tx_id: TxId,

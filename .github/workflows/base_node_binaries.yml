@@ -19,13 +19,14 @@ name: Build Matrix of Binaries
 env:
   TBN_FILENAME: "tari_suite"
   TBN_BUNDLE_ID_BASE: "com.tarilabs.pkg"
+  TBN_SIG_FN: "sha256-unsigned.txt"
   toolchain: nightly-2023-06-04
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
   CARGO: cargo
-  # CARGO_OPTIONS: "--verbose"
   CARGO_OPTIONS: "--release"
+  CARGO_CACHE: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -98,9 +99,12 @@ jobs:
       - name: Declare TestNet for tags
         id: set-tari-network
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GHA_NETWORK: ${{ github.ref_name }}
+          # GHA_NETWORK: "v1.0.0-rc.4"
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{ github.ref_name }}
+          source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
           echo ${TARI_NETWORK}
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
@@ -180,6 +184,16 @@ jobs:
           echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
           echo "LIB_EXT=.dylib" >> $GITHUB_ENV
 
+      # Hardcoded sdk for MacOSX on ARM64
+      - name: Set environment variables - macOS - ARM64 (pin/sdk)
+        # Debug
+        if: ${{ false }}
+        # if: ${{ startsWith(runner.os,'macOS') && matrix.builds.name == 'macos-arm64' }}
+        run: |
+          xcrun --show-sdk-path
+          ls -la "/Library/Developer/CommandLineTools/SDKs/"
+          echo "RANDOMX_RS_CMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk" >> $GITHUB_ENV
+
       - name: Set environment variables - Ubuntu
         if: startsWith(runner.os,'Linux')
         shell: bash
@@ -206,7 +220,7 @@ jobs:
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
       - name: Cache cargo files and outputs
-        if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) }}
+        if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) && ( env.CARGO_CACHE ) }}
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.builds.target }}
@@ -269,6 +283,28 @@ jobs:
           fi
           ls -la ${{ env.MTS_SOURCE }}
 
+      - name: Build minotari_node metrics release binary for linux-x86_64
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && matrix.builds.name == 'linux-x86_64' }}
+        shell: bash
+        run: |
+          ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
+            --target ${{ matrix.builds.target }} \
+            --features "${{ matrix.builds.features }}, metrics" \
+            --bin minotari_node \
+            ${{ matrix.builds.flags }} --locked
+          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/minotari_node" "${{ env.MTS_SOURCE }}/minotari_node-metrics"
+          ls -la ${{ env.MTS_SOURCE }}
+
+      - name: Pre/unsigned OSX Artifact upload for Archive
+        # Debug
+        if: ${{ false }}
+        # if: startsWith(runner.os,'macOS')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TBN_FILENAME }}_unsigned-archive-${{ matrix.builds.name }}
+          path: "${{ env.MTS_SOURCE }}/*"
+
       - name: Build the macOS pkg
         if: startsWith(runner.os,'macOS')
         continue-on-error: true
@@ -302,8 +338,11 @@ jobs:
             "minotari_merge_mining_proxy"
           )
           for FILE in "${FILES[@]}"; do
-            codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
-            codesign --verify --deep --display --verbose=4 "/tmp/tari_testnet/runtime/$FILE"
+            codesign --options runtime --force --verify --verbose --timestamp \
+              --sign "Developer ID Application: $MACOS_APPLICATION_ID" \
+              "/tmp/tari_testnet/runtime/$FILE"
+            codesign --verify --deep --display --verbose=4 \
+              "/tmp/tari_testnet/runtime/$FILE"
             cp -vf "/tmp/tari_testnet/runtime/$FILE" "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
           done
           distDirPKG=$(mktemp -d -t ${{ env.TBN_FILENAME }})
@@ -360,7 +399,6 @@ jobs:
           cat "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg.sha256"
           echo "Checksum verification for pkg is "
           ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg.sha256"
-          cp -v *.pkg* ${{ env.MTS_SOURCE }}
 
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
@@ -416,26 +454,6 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
-      - name: Prep Miner for upload
-        shell: bash
-        run: |
-          cd "${{ github.workspace }}${{ env.TBN_DIST }}"
-          cp -v "minotari_miner${{ env.TBN_EXT}}" \
-            "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
-          echo "Compute miner shasum"
-          ${SHARUN} "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
-            >> "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
-          echo "Show the shasum"
-          cat "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
-          echo "Checksum verification for miner is "
-          ${SHARUN} --check "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
-
-      - name: Artifact upload for Miner
-        uses: actions/upload-artifact@v4
-        with:
-          name: minotari_miner-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
-
       - name: Prep diag-utils archive for upload
         continue-on-error: true
         shell: bash
@@ -490,14 +508,14 @@ jobs:
           sudo apt-get update
           sudo apt-get --no-install-recommends --assume-yes install dos2unix
           ls -alhtR
-          if [ -f "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned" ] ; then
-            rm -fv "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          if [ -f "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.${{ env.TBN_SIG_FN }}" ] ; then
+            rm -fv "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.${{ env.TBN_SIG_FN }}"
           fi
           # Merge all sha256 files into one
-          find . -name "*.sha256" -type f -print | xargs cat >> "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
-          dos2unix --quiet "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
-          cat "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
-          sha256sum --ignore-missing --check "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.txt.sha256-unsigned"
+          find . -name "*.sha256" -type f -print | xargs cat >> "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.${{ env.TBN_SIG_FN }}"
+          dos2unix --quiet "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.${{ env.TBN_SIG_FN }}"
+          cat "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.${{ env.TBN_SIG_FN }}"
+          sha256sum --ignore-missing --check "${{ env.TBN_FILENAME }}-${{ env.TARI_VERSION }}.${{ env.TBN_SIG_FN }}"
           ls -alhtR
 
       - name: Create release
@@ -512,7 +530,7 @@ jobs:
           replacesArtifacts: true
 
       - name: Sync assets to S3
-        continue-on-error: true # Don't break if s3 upload fails
+        continue-on-error: true
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

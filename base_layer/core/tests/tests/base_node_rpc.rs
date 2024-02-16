@@ -41,6 +41,7 @@ use tari_core::{
         sync::rpc::BaseNodeSyncRpcService,
     },
     blocks::ChainBlock,
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
@@ -94,7 +95,7 @@ async fn setup() -> (
         .unwrap();
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_consensus_manager(consensus_manager.clone())
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
@@ -160,7 +161,7 @@ async fn test_base_node_wallet_rpc() {
     let resp = TxQueryResponse::try_from(resp).unwrap();
 
     assert_eq!(resp.confirmations, 0);
-    assert_eq!(resp.block_hash, None);
+    assert_eq!(resp.best_block_hash, None);
     assert_eq!(resp.location, TxLocation::NotStored);
 
     // First lets try submit tx2 which will be an orphan tx
@@ -178,7 +179,7 @@ async fn test_base_node_wallet_rpc() {
     let resp = TxQueryResponse::try_from(service.transaction_query(req).await.unwrap().into_message()).unwrap();
 
     assert_eq!(resp.confirmations, 0);
-    assert_eq!(resp.block_hash, None);
+    assert_eq!(resp.best_block_hash, None);
     assert_eq!(resp.location, TxLocation::NotStored);
 
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
@@ -201,7 +202,7 @@ async fn test_base_node_wallet_rpc() {
     let resp = TxQueryResponse::try_from(service.transaction_query(req).await.unwrap().into_message()).unwrap();
 
     assert_eq!(resp.confirmations, 0);
-    assert_eq!(resp.block_hash, None);
+    assert_eq!(resp.best_block_hash, None);
     assert_eq!(resp.location, TxLocation::InMempool);
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined as Tx1's kernel is present
@@ -245,7 +246,7 @@ async fn test_base_node_wallet_rpc() {
     let resp = TxQueryResponse::try_from(service.transaction_query(req).await.unwrap().into_message()).unwrap();
 
     assert_eq!(resp.confirmations, 1);
-    assert_eq!(resp.block_hash, Some(block1.hash()));
+    assert_eq!(resp.best_block_hash, Some(block1.hash()));
     assert_eq!(resp.location, TxLocation::Mined);
     // try a batch query
     let msg = SignaturesProto {

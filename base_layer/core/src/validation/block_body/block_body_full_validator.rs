@@ -105,15 +105,15 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
 }
 
 fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<(), ValidationError> {
-    if block.header.prev_hash != *metadata.best_block() {
+    if block.header.prev_hash != *metadata.best_block_hash() {
         return Err(ValidationError::IncorrectPreviousHash {
-            expected: metadata.best_block().to_hex(),
+            expected: metadata.best_block_hash().to_hex(),
             block_hash: block.hash().to_hex(),
         });
     }
-    if block.header.height != metadata.height_of_longest_chain() + 1 {
+    if block.header.height != metadata.best_block_height() + 1 {
         return Err(ValidationError::IncorrectHeight {
-            expected: metadata.height_of_longest_chain() + 1,
+            expected: metadata.best_block_height() + 1,
             block_height: block.header.height,
         });
     }

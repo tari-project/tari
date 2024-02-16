@@ -8,3 +8,7 @@ base_layer/core/src/consensus/**/* @tari-project/lead-maintainers
 base_layer/core/src/**/* @tari-project/tari-core-developers
 base_layer/key_manager/src/**/* @tari-project/tari-core-developers
 base_layer/wallet/src/**/* @tari-project/tari-core-developers
+
+# meta management requires approvals by lead maintainers
+meta/crates.io/* @tari-project/lead-maintainers
+meta/gpg_keys/* @tari-project/lead-maintainers

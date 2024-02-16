@@ -110,6 +110,7 @@ impl TransactionServiceMock {
                         e
                     });
             },
+            TransactionServiceRequest::ValidateTransactions => {},
             _ => panic!("Transaction Service Mock does not support this call"),
         }
     }

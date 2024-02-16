@@ -1545,7 +1545,7 @@ async fn wallet_with_tari_connected_to_base_node(
 
     let mut base_node_client = world.get_node_client(&base_node).await.unwrap();
     let tip_info_res = base_node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
-    let mut current_height = tip_info_res.metadata.unwrap().height_of_longest_chain;
+    let mut current_height = tip_info_res.metadata.unwrap().best_block_height;
 
     let mut num_blocks = 0;
     let mut reward = 0;

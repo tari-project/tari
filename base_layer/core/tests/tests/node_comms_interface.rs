@@ -100,8 +100,8 @@ async fn inbound_get_metadata() {
     if let Ok(NodeCommsResponse::ChainMetadata(received_metadata)) =
         inbound_nch.handle_request(NodeCommsRequest::GetChainMetadata).await
     {
-        assert_eq!(received_metadata.height_of_longest_chain(), 0);
-        assert_eq!(received_metadata.best_block(), &block.hash());
+        assert_eq!(received_metadata.best_block_height(), 0);
+        assert_eq!(received_metadata.best_block_hash(), &block.hash());
         assert_eq!(received_metadata.pruning_horizon(), 0);
     } else {
         panic!();
@@ -464,7 +464,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         randomx_factory,
     );
 
-    let block1 = append_block(
+    let (block1, _) = append_block(
         &store,
         &block0,
         vec![],
@@ -474,7 +474,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     )
     .await
     .unwrap();
-    let block2 = append_block(
+    let (block2, _) = append_block(
         &store,
         &block1,
         vec![],
@@ -484,7 +484,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     )
     .await
     .unwrap();
-    let block3 = append_block(
+    let (block3, _) = append_block(
         &store,
         &block2,
         vec![],
@@ -494,7 +494,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     )
     .await
     .unwrap();
-    let block4 = append_block(
+    let (block4, _) = append_block(
         &store,
         &block3,
         vec![],
@@ -504,7 +504,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     )
     .await
     .unwrap();
-    let _block5 = append_block(
+    let (_block5, _) = append_block(
         &store,
         &block4,
         vec![],

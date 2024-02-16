@@ -165,7 +165,7 @@ impl WalletGrpcServer {
             .wallet
             .db
             .get_chain_metadata()?
-            .map(|m| m.height_of_longest_chain())
+            .map(|m| m.best_block_height())
             .unwrap_or_default();
         Ok(self.rules.consensus_constants(height))
     }

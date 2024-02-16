@@ -345,6 +345,7 @@ struct TariUtxo {
   uint64_t value;
   uint64_t mined_height;
   uint64_t mined_timestamp;
+  uint64_t lock_height;
   uint8_t status;
 };
 
@@ -767,6 +768,24 @@ TariWalletAddress *tari_address_from_hex(const char *address,
  */
 char *tari_address_to_emoji_id(TariWalletAddress *address,
                                int *error_out);
+
+/**
+ * Creates a char array from a TariWalletAddress's network
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariWalletAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+ * if there was an error from TariWalletAddress
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_address_network(TariWalletAddress *address,
+                           int *error_out);
 
 /**
  * Creates a TariWalletAddress from a char array in emoji format
@@ -4058,7 +4077,7 @@ unsigned long long basenode_state_get_pruning_horizon(struct TariBaseNodeState *
  *
  * ## Returns
  * `c_ulonglong` - The height of the pruning horizon. This indicates from what height a full block can be provided
- * (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+ * (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
  * provided. Archival nodes wil always have an `pruned_height` of zero.
  *
  * # Safety

@@ -475,6 +475,7 @@ async fn run_grpc(
 
 #[cfg(test)]
 mod test {
+    use std::path::Path;
 
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
 
@@ -499,6 +500,10 @@ mod test {
                       --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
                       5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d615e
 
+            export-tx 123456789 --output-file pie.txt
+
+            import-tx --input-file pie_this_message.txt
+
             # End of script file
             "
         .to_string();
@@ -511,6 +516,8 @@ mod test {
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
+        let mut export_tx = false;
+        let mut import_tx = false;
         let mut whois = false;
         for command in commands {
             match command {
@@ -524,6 +531,16 @@ mod test {
                 CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
+                CliCommands::ExportTx(args) => {
+                    if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
+                        export_tx = true
+                    }
+                },
+                CliCommands::ImportTx(args) => {
+                    if args.input_file == Path::new("pie_this_message.txt") {
+                        import_tx = true
+                    }
+                },
                 CliCommands::ExportSpentUtxos(_) => {},
                 CliCommands::CountUtxos => {},
                 CliCommands::SetBaseNode(_) => {},
@@ -537,6 +554,16 @@ mod test {
                 CliCommands::CreateTlsCerts => {},
             }
         }
-        assert!(get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois);
+        assert!(
+            get_balance &&
+                send_tari &&
+                burn_tari &&
+                make_it_rain &&
+                coin_split &&
+                discover_peer &&
+                whois &&
+                export_tx &&
+                import_tx
+        );
     }
 }

@@ -175,7 +175,7 @@ where
             self.db.set_chain_metadata(chain_metadata.clone())?;
 
             let is_synced = tip_info.is_synced;
-            let height_of_longest_chain = chain_metadata.height_of_longest_chain();
+            let best_block_height = chain_metadata.best_block_height();
 
             let new_block = self
                 .update_state(BaseNodeState {
@@ -191,7 +191,7 @@ where
                 target: LOG_TARGET,
                 "Base node {} Tip: {} ({}) Latency: {} ms",
                 base_node_id,
-                height_of_longest_chain,
+                best_block_height,
                 if is_synced { "Synced" } else { "Syncing..." },
                 latency.as_millis()
             );
@@ -221,11 +221,11 @@ where
         let mut lock = self.state.write().await;
         let (new_block_detected, height, hash) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
             (Some(new_metadata), Some(old_metadata)) => (
-                new_metadata.best_block() != old_metadata.best_block(),
-                new_metadata.height_of_longest_chain(),
-                *new_metadata.best_block(),
+                new_metadata.best_block_hash() != old_metadata.best_block_hash(),
+                new_metadata.best_block_height(),
+                *new_metadata.best_block_hash(),
             ),
-            (Some(new_metadata), _) => (true, new_metadata.height_of_longest_chain(), *new_metadata.best_block()),
+            (Some(new_metadata), _) => (true, new_metadata.best_block_height(), *new_metadata.best_block_hash()),
             (None, _) => (false, 0, BlockHashType::default()),
         };
 

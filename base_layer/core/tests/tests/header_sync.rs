@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::base_node::{state_machine_service::states::StateEvent, sync::HeaderSyncStatus};
+use tari_core::{
+    base_node::{state_machine_service::states::StateEvent, sync::HeaderSyncStatus},
+    chain_storage::BlockchainDatabaseConfig,
+};
 
 use crate::helpers::{sync, sync::WhatToDelete};
 
@@ -30,12 +33,28 @@ async fn test_header_sync_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
-        sync::create_network_with_local_and_peer_nodes().await;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
 
     // Add 1 block to Bob's chain
-    let bob_blocks =
-        sync::create_and_add_some_blocks(&bob_node, &initial_block, 1, &consensus_manager, &key_manager, &[3]).await;
+    let (bob_blocks, bob_coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        1,
+        &consensus_manager,
+        &key_manager,
+        &[3],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 1);
 
     // Alice attempts header sync, still on the genesys block, headers will be lagging
@@ -74,8 +93,17 @@ async fn test_header_sync_happy_path() {
     }
 
     // Bob adds another block
-    let _bob_blocks =
-        sync::create_and_add_some_blocks(&bob_node, &bob_blocks[1], 1, &consensus_manager, &key_manager, &[3]).await;
+    let (_blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &bob_blocks[1],
+        &bob_coinbases[1],
+        1,
+        &consensus_manager,
+        &key_manager,
+        &[3],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 2);
 
     // Alice attempts header sync, still on the genesys block, headers will be lagging
@@ -102,25 +130,56 @@ async fn test_header_sync_with_fork_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
-        sync::create_network_with_local_and_peer_nodes().await;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
 
     // Add 1 block to Bob's chain
-    let bob_blocks =
-        sync::create_and_add_some_blocks(&bob_node, &initial_block, 1, &consensus_manager, &key_manager, &[3]).await;
+    let (bob_blocks, bob_coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        1,
+        &consensus_manager,
+        &key_manager,
+        &[3],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 1);
 
     // Bob adds another block
-    let bob_blocks =
-        sync::create_and_add_some_blocks(&bob_node, &bob_blocks[1], 1, &consensus_manager, &key_manager, &[3]).await;
+    let (bob_blocks, bob_coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &bob_blocks[1],
+        &bob_coinbases[1],
+        1,
+        &consensus_manager,
+        &key_manager,
+        &[3],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 2);
 
     // Alice adds 3 (different) blocks, with POW on par with Bob's chain, but with greater height
-    let _alice_blocks =
-        sync::create_and_add_some_blocks(&alice_node, &initial_block, 3, &consensus_manager, &key_manager, &[
-            3, 2, 1,
-        ])
-        .await;
+    let _alice_blocks = sync::create_and_add_some_blocks(
+        &alice_node,
+        &initial_block,
+        &initial_coinbase,
+        3,
+        &consensus_manager,
+        &key_manager,
+        &[3, 2, 1],
+        &None,
+    )
+    .await;
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 3);
     assert_eq!(
         alice_node
@@ -148,8 +207,17 @@ async fn test_header_sync_with_fork_happy_path() {
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 
     // Bob adds more blocks and draws ahead of Alice
-    let _bob_blocks =
-        sync::create_and_add_some_blocks(&bob_node, &bob_blocks[1], 2, &consensus_manager, &key_manager, &[3; 2]).await;
+    let _blocks = sync::create_and_add_some_blocks(
+        &bob_node,
+        &bob_blocks[1],
+        &bob_coinbases[1],
+        2,
+        &consensus_manager,
+        &key_manager,
+        &[3; 2],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 4);
 
     // Alice attempts header sync to Bob's chain with higher POW, headers will be lagging with reorg steps
@@ -176,17 +244,26 @@ async fn test_header_sync_uneven_headers_and_blocks_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
-        sync::create_network_with_local_and_peer_nodes().await;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
 
     // Add blocks and headers to Bob's chain, with more headers than blocks
-    let blocks = sync::create_and_add_some_blocks(
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
         &bob_node,
         &initial_block,
+        &initial_coinbase,
         10,
         &consensus_manager,
         &key_manager,
         &[3; 10],
+        &None,
     )
     .await;
     sync::delete_some_blocks_and_headers(&blocks[5..=10], WhatToDelete::Blocks, &bob_node);
@@ -224,17 +301,26 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
-        sync::create_network_with_local_and_peer_nodes().await;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
 
     // Add blocks and headers to Bob's chain, with more headers than blocks
-    let blocks = sync::create_and_add_some_blocks(
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
         &bob_node,
         &initial_block,
+        &initial_coinbase,
         10,
         &consensus_manager,
         &key_manager,
         &[3; 10],
+        &None,
     )
     .await;
     sync::delete_some_blocks_and_headers(&blocks[5..=10], WhatToDelete::Blocks, &bob_node);
@@ -287,12 +373,28 @@ async fn test_header_sync_even_headers_and_blocks_peer_lies_about_pow_with_ban()
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
-        sync::create_network_with_local_and_peer_nodes().await;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
 
     // Add blocks and headers to Bob's chain
-    let blocks =
-        sync::create_and_add_some_blocks(&bob_node, &initial_block, 6, &consensus_manager, &key_manager, &[3; 6]).await;
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        6,
+        &consensus_manager,
+        &key_manager,
+        &[3; 6],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 6);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 6);
 
@@ -333,12 +435,28 @@ async fn test_header_sync_even_headers_and_blocks_peer_metadata_improve_with_reo
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
-        sync::create_network_with_local_and_peer_nodes().await;
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
 
     // Add blocks and headers to Bob's chain
-    let blocks =
-        sync::create_and_add_some_blocks(&bob_node, &initial_block, 6, &consensus_manager, &key_manager, &[3; 6]).await;
+    let (blocks, coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        6,
+        &consensus_manager,
+        &key_manager,
+        &[3; 6],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 6);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 6);
 
@@ -351,8 +469,17 @@ async fn test_header_sync_even_headers_and_blocks_peer_metadata_improve_with_reo
     let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
     // Bob's chain will reorg with improved metadata
     sync::delete_some_blocks_and_headers(&blocks[4..=6], WhatToDelete::Blocks, &bob_node);
-    let _blocks =
-        sync::create_and_add_some_blocks(&bob_node, &blocks[4], 3, &consensus_manager, &key_manager, &[3; 3]).await;
+    let _blocks = sync::create_and_add_some_blocks(
+        &bob_node,
+        &blocks[4],
+        &coinbases[4],
+        3,
+        &consensus_manager,
+        &key_manager,
+        &[3; 3],
+        &None,
+    )
+    .await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 7);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 7);
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;

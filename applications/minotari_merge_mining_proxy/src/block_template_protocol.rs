@@ -179,7 +179,7 @@ impl BlockTemplateProtocol<'_> {
             .get_tip_info(grpc::Empty {})
             .await?
             .into_inner();
-        let tip_height = tip.metadata.as_ref().map(|m| m.height_of_longest_chain).unwrap_or(0);
+        let tip_height = tip.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0);
 
         if height <= tip_height {
             warn!(

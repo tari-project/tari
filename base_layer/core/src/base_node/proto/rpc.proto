@@ -57,16 +57,20 @@ message SyncKernelsRequest {
 }
 
 message SyncUtxosRequest {
+  // Start header hash to sync UTXOs from
   bytes start_header_hash = 1;
+  // End header hash to sync UTXOs to
   bytes end_header_hash = 2;
 }
-message SyncUtxosResponse {
-  tari.types.TransactionOutput output = 1;
-  bytes mined_header = 2;
-}
 
-message PrunedOutput {
-  bytes hash = 1;
+message SyncUtxosResponse {
+  oneof txo {
+    // The unspent transaction output
+    tari.types.TransactionOutput output = 1;
+    // If the TXO is spent, the commitment bytes are returned
+    bytes commitment = 2;
+  }
+  bytes mined_header = 3;
 }
 
 message SyncUtxosByBlockRequest {

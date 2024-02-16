@@ -107,7 +107,8 @@ where
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)?;
+                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
+                            .await?;
                         return Ok(());
                     },
                     Err(e) => {
@@ -146,13 +147,18 @@ where
         }
     }
 
-    fn finalize(
-        &self,
+    async fn finalize(
+        &mut self,
         num_outputs_recovered: u64,
         final_height: u64,
         total_value: MicroMinotari,
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
+        if num_outputs_recovered > 0 {
+            // this is a best effort, if this fails, its very likely that it's already busy with a validation.
+            let _result = self.resources.output_manager_service.validate_txos().await;
+            let _result = self.resources.transaction_service.validate_transactions().await;
+        }
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
             tip_height: final_height,
@@ -327,7 +333,7 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = client.get_tip_info().await?;
-        let chain_height = tip_info.metadata.map(|m| m.height_of_longest_chain()).unwrap_or(0);
+        let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         let end_header = client.get_header_by_height(chain_height).await?;
         let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
 

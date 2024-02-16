@@ -379,7 +379,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal(err.to_string()),
                 ));
             },
-            Ok(data) => data.height_of_longest_chain(),
+            Ok(data) => data.best_block_height(),
         };
 
         let sorting: Sorting = request.sorting();
@@ -635,6 +635,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 ))
             },
         };
+        let gen_hash = handler
+            .get_header(0)
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Tari genesis block not found".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari genesis block not found".to_string()),
+                )
+            })?
+            .hash()
+            .to_vec();
         // construct response
         let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
@@ -651,6 +668,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             block_hash,
             block,
             merge_mining_hash: mining_hash,
+            tari_unique_id: gen_hash,
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
@@ -704,6 +722,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
         };
+        let gen_hash = handler
+            .get_header(0)
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Tari genesis block not found".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari genesis block not found".to_string()),
+                )
+            })?
+            .hash()
+            .to_vec();
 
         let (header, block_body) = new_block.into_header_body();
         let mut header_bytes = Vec::new();
@@ -718,6 +753,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             block_body: block_body_bytes,
             merge_mining_hash: mining_hash,
             utxo_mr: header.output_mr.to_vec(),
+            tari_unique_id: gen_hash,
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
         Ok(Response::new(response))

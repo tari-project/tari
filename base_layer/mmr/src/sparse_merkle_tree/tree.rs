@@ -229,7 +229,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(result)
     }
 
-    /// Update and existing node at location `key` in the tree, or, if the key does not exist, insert a new node at
+    /// Update an existing node at location `key` in the tree, or, if the key does not exist, insert a new node at
     /// location `key` instead. Returns `Ok(UpdateResult::Updated)` if the node was updated, or
     /// `Ok(UpdateResult::Inserted)` if the node was inserted.
     ///

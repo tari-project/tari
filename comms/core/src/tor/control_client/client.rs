@@ -125,9 +125,6 @@ impl TorControlPortClient {
     pub async fn get_info(&mut self, key_name: &'static str) -> Result<Vec<Cow<'_, str>>, TorClientError> {
         let command = commands::get_info(key_name);
         let response = self.request_response(command).await?;
-        if response.is_empty() {
-            return Err(TorClientError::ServerNoResponse);
-        }
         Ok(response)
     }
 
@@ -202,7 +199,6 @@ impl TorControlPortClient {
         let cmd_str = command.to_command_string().map_err(Into::into)?;
         self.send_line(cmd_str).await?;
         let responses = self.recv_next_responses().await?;
-        trace!(target: LOG_TARGET, "Response from tor: {:?}", responses);
         if responses.is_empty() {
             return Err(TorClientError::ServerNoResponse);
         }

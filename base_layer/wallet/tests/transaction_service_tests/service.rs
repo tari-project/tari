@@ -2588,10 +2588,10 @@ async fn test_power_mode_updates() {
         .base_node_rpc_mock_state
         .set_transaction_query_response(TxQueryResponse {
             location: TxLocation::NotStored,
-            block_hash: None,
+            best_block_hash: None,
             confirmations: 0,
             is_synced: true,
-            height_of_longest_chain: 10,
+            best_block_height: 10,
             mined_timestamp: None,
         });
 
@@ -4995,10 +4995,10 @@ async fn transaction_service_tx_broadcast() {
         .base_node_rpc_mock_state
         .set_transaction_query_response(TxQueryResponse {
             location: TxLocation::Mined,
-            block_hash: None,
+            best_block_hash: None,
             confirmations: TransactionServiceConfig::default().num_confirmations_required,
             is_synced: true,
-            height_of_longest_chain: 0,
+            best_block_height: 0,
             mined_timestamp: None,
         });
 
@@ -5064,10 +5064,10 @@ async fn transaction_service_tx_broadcast() {
         .base_node_rpc_mock_state
         .set_transaction_query_response(TxQueryResponse {
             location: TxLocation::NotStored,
-            block_hash: None,
+            best_block_hash: None,
             confirmations: TransactionServiceConfig::default().num_confirmations_required,
             is_synced: true,
-            height_of_longest_chain: 0,
+            best_block_height: 0,
             mined_timestamp: None,
         });
 
@@ -5208,10 +5208,10 @@ async fn broadcast_all_completed_transactions_on_startup() {
         .base_node_rpc_mock_state
         .set_transaction_query_response(TxQueryResponse {
             location: TxLocation::Mined,
-            block_hash: None,
+            best_block_hash: None,
             confirmations: TransactionServiceConfig::default().num_confirmations_required,
             is_synced: true,
-            height_of_longest_chain: 0,
+            best_block_height: 0,
             mined_timestamp: None,
         });
 

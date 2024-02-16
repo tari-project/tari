@@ -30,10 +30,12 @@ pub mod borsh;
 pub mod byte_counter;
 pub mod limited_reader;
 pub mod one_sided;
+
 #[cfg(feature = "base_node")]
 pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;
+pub(crate) mod waiting_requests;
 
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;

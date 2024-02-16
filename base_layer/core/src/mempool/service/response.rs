@@ -22,9 +22,10 @@
 
 use std::{fmt, fmt::Formatter};
 
-use tari_common_types::waiting_requests::RequestKey;
-
-use crate::mempool::{FeePerGramStat, StateResponse, StatsResponse, TxStorageResponse};
+use crate::{
+    common::waiting_requests::RequestKey,
+    mempool::{FeePerGramStat, StateResponse, StatsResponse, TxStorageResponse},
+};
 
 /// API Response enum for Mempool responses.
 #[derive(Clone, Debug)]

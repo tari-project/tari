@@ -3,7 +3,7 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 
 use super::TemplateRegistrationEntry;
@@ -91,7 +91,7 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_status_at_header: Option<FixedHash>,
+        spend_status_at_header: Option<HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
     /// Fetch a specific output. Returns the output
