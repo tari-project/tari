@@ -6309,7 +6309,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_add_base_node_peer(
+pub unsafe extern "C" fn wallet_set_base_node_peer(
     wallet: *mut TariWallet,
     public_key: *mut TariPublicKey,
     address: *const c_char,
