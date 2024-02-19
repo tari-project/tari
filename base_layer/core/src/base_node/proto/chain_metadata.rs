@@ -32,15 +32,15 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        if metadata.accumulated_difficulty.len() != ACCUMULATED_DIFFICULTY_BYTE_SIZE {
+        if metadata.accumulated_target_difficulty.len() != ACCUMULATED_DIFFICULTY_BYTE_SIZE {
             return Err(format!(
                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
                 ACCUMULATED_DIFFICULTY_BYTE_SIZE,
-                metadata.accumulated_difficulty.len()
+                metadata.accumulated_target_difficulty.len()
             ));
         }
 
-        let accumulated_difficulty = U256::from_big_endian(&metadata.accumulated_difficulty);
+        let accumulated_target_difficulty = U256::from_big_endian(&metadata.accumulated_target_difficulty);
         let best_block_height = metadata.best_block_height;
 
         let pruning_horizon = if metadata.pruned_height == 0 {
@@ -61,7 +61,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             hash,
             pruning_horizon,
             metadata.pruned_height,
-            accumulated_difficulty,
+            accumulated_target_difficulty,
             metadata.timestamp,
         )
         .map_err(|e| e.to_string())
@@ -70,15 +70,15 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let mut accumulated_difficulty = [0u8; ACCUMULATED_DIFFICULTY_BYTE_SIZE];
+        let mut accumulated_target_difficulty = [0u8; ACCUMULATED_DIFFICULTY_BYTE_SIZE];
         metadata
-            .accumulated_difficulty()
-            .to_big_endian(&mut accumulated_difficulty);
+            .accumulated_target_difficulty()
+            .to_big_endian(&mut accumulated_target_difficulty);
         Self {
             best_block_height: metadata.best_block_height(),
             best_block_hash: metadata.best_block_hash().to_vec(),
             pruned_height: metadata.pruned_height(),
-            accumulated_difficulty: accumulated_difficulty.to_vec(),
+            accumulated_target_difficulty: accumulated_target_difficulty.to_vec(),
             timestamp: metadata.timestamp(),
         }
     }

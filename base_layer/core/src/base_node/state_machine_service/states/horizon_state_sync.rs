@@ -61,8 +61,8 @@ impl HorizonStateSync {
         // Order sync peers according to accumulated difficulty
         sync_peers.sort_by(|a, b| {
             b.claimed_chain_metadata()
-                .accumulated_difficulty()
-                .cmp(&a.claimed_chain_metadata().accumulated_difficulty())
+                .accumulated_target_difficulty()
+                .cmp(&a.claimed_chain_metadata().accumulated_target_difficulty())
         });
 
         // Target horizon sync height based on the last header we have synced

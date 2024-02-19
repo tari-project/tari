@@ -316,7 +316,7 @@ message MetaData {
     // This is the min height this node can provide complete blocks for. A 0 here means this node is archival and can provide complete blocks for every height.
     uint64 pruned_height = 6;
     // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-    bytes accumulated_difficulty = 5;
+    bytes accumulated_target_difficulty = 5;
 }
 
 message SyncInfoResponse {

@@ -226,7 +226,7 @@ fn delete_block(txn: &mut DbTransaction, node: &NodeInterfaces, blocks: &[ChainB
     txn.set_best_block(
         blocks[index + 1].height(),
         blocks[index + 1].accumulated_data().hash,
-        blocks[index + 1].accumulated_data().total_accumulated_difficulty,
+        blocks[index + 1].accumulated_data().total_accumulated_target_difficulty,
         *node.blockchain_db.get_chain_metadata().unwrap().best_block_hash(),
         blocks[index + 1].to_chain_header().timestamp(),
     );
@@ -294,7 +294,7 @@ pub fn set_best_block(block: &ChainBlock, previous_block_hash: &HashOutput, node
     txn.set_best_block(
         block.height(),
         block.accumulated_data().hash,
-        block.accumulated_data().total_accumulated_difficulty,
+        block.accumulated_data().total_accumulated_target_difficulty,
         *previous_block_hash,
         block.to_chain_header().timestamp(),
     );

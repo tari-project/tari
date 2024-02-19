@@ -186,12 +186,12 @@ async fn test_header_sync_with_fork_happy_path() {
             .blockchain_db
             .get_chain_metadata()
             .unwrap()
-            .accumulated_difficulty(),
+            .accumulated_target_difficulty(),
         bob_node
             .blockchain_db
             .get_chain_metadata()
             .unwrap()
-            .accumulated_difficulty()
+            .accumulated_target_difficulty()
     );
 
     // Alice attempts header sync, but POW is on par
@@ -344,12 +344,12 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
     assert!(
         header_sync.clone().into_sync_peers()[0]
             .claimed_chain_metadata()
-            .accumulated_difficulty() >
+            .accumulated_target_difficulty() >
             bob_node
                 .blockchain_db
                 .get_chain_metadata()
                 .unwrap()
-                .accumulated_difficulty()
+                .accumulated_target_difficulty()
     );
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     match event {
@@ -412,12 +412,12 @@ async fn test_header_sync_even_headers_and_blocks_peer_lies_about_pow_with_ban()
     assert!(
         header_sync.clone().into_sync_peers()[0]
             .claimed_chain_metadata()
-            .accumulated_difficulty() >
+            .accumulated_target_difficulty() >
             bob_node
                 .blockchain_db
                 .get_chain_metadata()
                 .unwrap()
-                .accumulated_difficulty()
+                .accumulated_target_difficulty()
     );
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     match event {

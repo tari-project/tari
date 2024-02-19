@@ -477,13 +477,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     "Peer `{}` did not provide any headers although they have a better chain and more headers: their \
                     difficulty: {}, our difficulty: {}. Peer will be banned.",
                     sync_peer.node_id(),
-                    sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    best_block_header.accumulated_data().total_accumulated_difficulty,
+                    sync_peer.claimed_chain_metadata().accumulated_target_difficulty(),
+                    best_block_header.accumulated_data().total_accumulated_target_difficulty,
                 );
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                    claimed: sync_peer.claimed_chain_metadata().accumulated_target_difficulty(),
                     actual: None,
-                    local: best_block_header.accumulated_data().total_accumulated_difficulty,
+                    local: best_block_header.accumulated_data().total_accumulated_target_difficulty,
                 });
             }
             debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
@@ -573,7 +573,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let (start_header_height, start_header_hash, total_accumulated_difficulty) = self
             .header_validator
             .current_valid_chain_tip_header()
-            .map(|h| (h.height(), *h.hash(), h.accumulated_data().total_accumulated_difficulty))
+            .map(|h| (h.height(), *h.hash(), h.accumulated_data().total_accumulated_target_difficulty))
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
         // If we already have a stronger chain at this point, switch over to it.
@@ -597,12 +597,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // Because the pow is less or equal than the current chain the peer had to have lied about their pow
                 debug!(target: LOG_TARGET, "No further headers to download");
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                    claimed: sync_peer.claimed_chain_metadata().accumulated_target_difficulty(),
                     actual: Some(total_accumulated_difficulty),
                     local: split_info
                         .best_block_header
                         .accumulated_data()
-                        .total_accumulated_difficulty,
+                        .total_accumulated_target_difficulty,
                 });
             }
             // The pow is higher, we swapped to the higher chain, we have all the better chain headers, we can move on
@@ -718,34 +718,34 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         if !has_switched_to_new_chain {
-            if sync_peer.claimed_chain_metadata().accumulated_difficulty() <
+            if sync_peer.claimed_chain_metadata().accumulated_target_difficulty() <
                 self.header_validator
                     .current_valid_chain_tip_header()
-                    .map(|h| h.accumulated_data().total_accumulated_difficulty)
+                    .map(|h| h.accumulated_data().total_accumulated_target_difficulty)
                     .unwrap_or_default()
             {
                 // We should only return this error if the peer sent a PoW less than they advertised.
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                    claimed: sync_peer.claimed_chain_metadata().accumulated_target_difficulty(),
                     actual: self
                         .header_validator
                         .current_valid_chain_tip_header()
-                        .map(|h| h.accumulated_data().total_accumulated_difficulty),
+                        .map(|h| h.accumulated_data().total_accumulated_target_difficulty),
                     local: split_info
                         .best_block_header
                         .accumulated_data()
-                        .total_accumulated_difficulty,
+                        .total_accumulated_target_difficulty,
                 });
             } else {
                 warn!(
                     target: LOG_TARGET,
                     "Received pow from peer matches claimed, difficulty #{} but local is higher: ({}) and we have not \
                      swapped. Ignoring",
-                    sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                    sync_peer.claimed_chain_metadata().accumulated_target_difficulty(),
                     split_info
                         .best_block_header
                         .accumulated_data()
-                        .total_accumulated_difficulty
+                        .total_accumulated_target_difficulty
                 );
                 return Ok(());
             }
@@ -756,7 +756,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             self.commit_pending_headers().await?;
         }
 
-        let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
+        let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_target_difficulty();
         // This rule is strict: if the peer advertised a higher PoW than they were able to provide (without
         // some other external factor like a disconnect etc), we detect the and ban the peer.
         if last_total_accumulated_difficulty < claimed_total_accumulated_diff {
@@ -766,7 +766,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 local: split_info
                     .best_block_header
                     .accumulated_data()
-                    .total_accumulated_difficulty,
+                    .total_accumulated_target_difficulty,
             });
         }
 

@@ -127,7 +127,7 @@ impl Display for SyncStatus {
                 "Lagging behind {} peers (#{}, Difficulty: {})",
                 sync_peers.len(),
                 network.best_block_height(),
-                network.accumulated_difficulty(),
+                network.accumulated_target_difficulty(),
             ),
             UpToDate => f.write_str("UpToDate"),
             SyncStatus::BehindButNotYetLagging { .. } => f.write_str("Behind but not yet lagging"),

@@ -27,6 +27,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use tari_utilities::hex::Hex;
 
 use tari_common::configuration::Network;
 use tari_common_types::{

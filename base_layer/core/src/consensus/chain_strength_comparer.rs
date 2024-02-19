@@ -14,8 +14,8 @@ pub struct AccumulatedDifficultySquaredComparer {}
 
 impl ChainStrengthComparer for AccumulatedDifficultySquaredComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        let a_val = a.accumulated_data().total_accumulated_difficulty;
-        let b_val = b.accumulated_data().total_accumulated_difficulty;
+        let a_val = a.accumulated_data().total_accumulated_target_difficulty;
+        let b_val = b.accumulated_data().total_accumulated_target_difficulty;
         a_val.cmp(&b_val)
     }
 }
@@ -51,8 +51,8 @@ pub struct RandomxDifficultyComparer {}
 impl ChainStrengthComparer for RandomxDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_randomx_difficulty
-            .cmp(&b.accumulated_data().accumulated_randomx_difficulty)
+            .accumulated_randomx_target_difficulty
+            .cmp(&b.accumulated_data().accumulated_randomx_target_difficulty)
     }
 }
 
@@ -62,8 +62,8 @@ pub struct Sha3xDifficultyComparer {}
 impl ChainStrengthComparer for Sha3xDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_sha3x_difficulty
-            .cmp(&b.accumulated_data().accumulated_sha3x_difficulty)
+            .accumulated_sha3x_target_difficulty
+            .cmp(&b.accumulated_data().accumulated_sha3x_target_difficulty)
     }
 }
 

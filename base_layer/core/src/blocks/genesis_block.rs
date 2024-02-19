@@ -130,9 +130,9 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        total_accumulated_target_difficulty: 1.into(),
+        accumulated_randomx_target_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_target_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -182,9 +182,9 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        total_accumulated_target_difficulty: 1.into(),
+        accumulated_randomx_target_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_target_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -240,9 +240,9 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        total_accumulated_target_difficulty: 1.into(),
+        accumulated_randomx_target_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_target_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -294,9 +294,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        total_accumulated_target_difficulty: 1.into(),
+        accumulated_randomx_target_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_target_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()

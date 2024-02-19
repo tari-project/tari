@@ -379,7 +379,7 @@ where B: BlockchainBackend
     /// The proof of work is returned as the product of total difficulties of all PoW algorithms
     pub fn get_accumulated_difficulty(&self) -> Result<U256, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_chain_metadata()?.accumulated_difficulty())
+        Ok(db.fetch_chain_metadata()?.accumulated_target_difficulty())
     }
 
     /// Returns a copy of the current blockchain database metadata
@@ -1515,7 +1515,7 @@ fn insert_best_block(
 
     let height = block.height();
     let timestamp = block.header().timestamp().as_u64();
-    let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
+    let accumulated_difficulty = block.accumulated_data().total_accumulated_target_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash;
     txn.insert_chain_header(block.to_chain_header())
         .insert_tip_block_body(block)
@@ -1785,21 +1785,21 @@ fn rewind_to_height<T: BlockchainBackend>(
         txn.set_best_block(
             chain_header.height(),
             chain_header.accumulated_data().hash,
-            chain_header.accumulated_data().total_accumulated_difficulty,
+            chain_header.accumulated_data().total_accumulated_target_difficulty,
             expected_block_hash,
             chain_header.timestamp(),
         );
         if h == 0 {
             // insert the new orphan chain tip
             debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", block_hash,);
-            txn.insert_orphan_chain_tip(block_hash, chain_header.accumulated_data().total_accumulated_difficulty);
+            txn.insert_orphan_chain_tip(block_hash, chain_header.accumulated_data().total_accumulated_target_difficulty);
         }
         // Update metadata
         debug!(
             target: LOG_TARGET,
             "Updating best block to height (#{}), total accumulated difficulty: {}",
             chain_header.height(),
-            chain_header.accumulated_data().total_accumulated_difficulty
+            chain_header.accumulated_data().total_accumulated_target_difficulty
         );
         // This write operation is inside the loop to reduce the size of the write operation; this previously caused
         // issues.
@@ -1971,7 +1971,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
             debug!(
                 target: LOG_TARGET,
                 "Fork chain (accum_diff:{}, hash:{}) is stronger than the current tip (#{} ({})).",
-                best_fork_header.accumulated_data().total_accumulated_difficulty,
+                best_fork_header.accumulated_data().total_accumulated_target_difficulty,
                 best_fork_header.accumulated_data().hash,
                 tip_header.height(),
                 tip_header.hash(),
@@ -1981,7 +1981,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
             debug!(
                 target: LOG_TARGET,
                 "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker difficulty.",
-                best_fork_header.accumulated_data().total_accumulated_difficulty,
+                best_fork_header.accumulated_data().total_accumulated_target_difficulty,
                 best_fork_header.accumulated_data().hash,
                 tip_header.header().height,
                 tip_header.hash(),
@@ -2023,9 +2023,9 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
              blocks to remove: {}, to add: {}.",
             tip_header.header().height,
             best_fork_header.header().height,
-            tip_header.accumulated_data().total_accumulated_difficulty,
+            tip_header.accumulated_data().total_accumulated_target_difficulty,
             tip_header.accumulated_data().hash,
-            best_fork_header.accumulated_data().total_accumulated_difficulty,
+            best_fork_header.accumulated_data().total_accumulated_target_difficulty,
             best_fork_header.accumulated_data().hash,
             num_removed_blocks,
             num_added_blocks,
@@ -2137,7 +2137,6 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     // validate the block header
     let mut prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
     let result = validator.validate(db, &candidate_block.header, parent.header(), &prev_timestamps, None);
-
     let achieved_target_diff = match result {
         Ok(achieved_target_diff) => achieved_target_diff,
         // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
@@ -2168,7 +2167,6 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
         .build()?;
-
     let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).ok_or(
         ChainStorageError::UnexpectedResult("Somehow hash is missing from Chain block".to_string()),
     )?;
@@ -2186,7 +2184,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     for new_tip in &tips {
         txn.insert_orphan_chain_tip(
             *new_tip.hash(),
-            chain_block.accumulated_data().total_accumulated_difficulty,
+            chain_block.accumulated_data().total_accumulated_target_difficulty,
         );
     }
 
@@ -2676,7 +2674,7 @@ mod test {
                 .unwrap();
             let fork_tip = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
             assert_eq!(fork_tip, block.to_chain_header());
-            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3.into());
+            assert_eq!(fork_tip.accumulated_data().total_accumulated_target_difficulty, 3.into());
             let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap().len();
             assert_eq!(strongest_tips, 1);
 
@@ -2734,7 +2732,7 @@ mod test {
             let fork_tip_1 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_1, block.to_chain_header());
-            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_difficulty, 5.into());
+            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_target_difficulty, 5.into());
 
             // Fork 2 (add 1 block)
             let block = orphan_chain_2.get("B3").unwrap().clone();
@@ -2743,7 +2741,7 @@ mod test {
             let fork_tip_2 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_2, block.to_chain_header());
-            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_difficulty, 2.into());
+            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_target_difficulty, 2.into());
 
             // Fork 3 (add 1 block)
             let block = orphan_chain_3.get("B4").unwrap().clone();
@@ -2752,7 +2750,7 @@ mod test {
             let fork_tip_3 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_3, block.to_chain_header());
-            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_difficulty, 5.into());
+            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_target_difficulty, 5.into());
 
             assert_ne!(fork_tip_1, fork_tip_2);
             assert_ne!(fork_tip_1, fork_tip_3);
@@ -3395,7 +3393,7 @@ mod test {
         let accum_difficulty: Vec<U256> = result
             .added_blocks()
             .iter()
-            .map(|cb| cb.accumulated_data().total_accumulated_difficulty)
+            .map(|cb| cb.accumulated_data().total_accumulated_target_difficulty)
             .collect();
         assert_eq!(accum_difficulty, values);
     }
@@ -3459,7 +3457,6 @@ mod test {
         blocks: T,
     ) -> Result<(Vec<BlockAddResult>, HashMap<String, Arc<ChainBlock>>), ChainStorageError> {
         let test = TestHarness::setup();
-        // let db = create_new_blockchain();
         let genesis_block = test
             .db
             .fetch_block(0, true)

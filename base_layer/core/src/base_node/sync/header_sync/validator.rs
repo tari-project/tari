@@ -179,7 +179,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .with_total_kernel_offset(header.total_kernel_offset.clone())
             .build()?;
 
-        let total_accumulated_difficulty = accumulated_data.total_accumulated_difficulty;
+        let total_accumulated_difficulty = accumulated_data.total_accumulated_target_difficulty;
         // NOTE: accumulated_data constructed from header so they are guaranteed to correspond
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
