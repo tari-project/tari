@@ -127,7 +127,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             PowAlgorithm::RandomX => (
                 previous_accum
                     .accumulated_randomx_difficulty
-                    .checked_add_difficulty(achieved_target.achieved())
+                    .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha3x_difficulty,
             ),
@@ -135,7 +135,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                 previous_accum.accumulated_randomx_difficulty,
                 previous_accum
                     .accumulated_sha3x_difficulty
-                    .checked_add_difficulty(achieved_target.achieved())
+                    .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
         };

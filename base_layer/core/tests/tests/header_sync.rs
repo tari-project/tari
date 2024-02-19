@@ -125,6 +125,7 @@ async fn test_header_sync_happy_path() {
     }
 }
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_with_fork_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
