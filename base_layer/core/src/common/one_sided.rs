@@ -31,7 +31,7 @@ use tari_crypto::{
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::{PublicKey as PKtrait, SecretKey as SKtrait},
 };
-use tari_hash_domains::WalletOutputEncryptionKeysDomain;
+use tari_hashing::WalletOutputEncryptionKeysDomain;
 use tari_utilities::byte_array::ByteArrayError;
 
 hash_domain!(

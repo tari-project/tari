@@ -1,3 +1,6 @@
+// Copyright 2024 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -20,37 +23,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{io, io::Write, marker::PhantomData};
+
 use borsh::BorshSerialize;
 use digest::Digest;
-use tari_common::configuration::Network;
 use tari_crypto::hashing::DomainSeparation;
-use tari_hashing::DomainSeparatedBorshHasher;
 
-/// Domain separated consensus encoding hasher.
-/// This is a thin wrapper around the domain-separated Borsh hasher but adds the network byte in its constructor
-/// functions
-pub struct DomainSeparatedConsensusHasher<M, D> {
-    hasher: DomainSeparatedBorshHasher<M, D>,
+/// Domain separated borsh-encoding hasher.
+pub struct DomainSeparatedBorshHasher<M, D> {
+    writer: WriteHashWrapper<D>,
+    _m: PhantomData<M>,
 }
 
-impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
-where D: Default
-{
-    pub fn new(label: &'static str) -> Self {
-        Self::new_with_network(label, Network::get_current_or_default())
-    }
-
-    pub fn new_with_network(label: &'static str, network: Network) -> Self {
-        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network.as_byte()));
-        Self { hasher }
+impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new_with_label(label: &str) -> Self {
+        let mut digest = D::default();
+        M::add_domain_separation_tag(&mut digest, label);
+        Self {
+            writer: WriteHashWrapper(digest),
+            _m: PhantomData,
+        }
     }
 
     pub fn finalize(self) -> digest::Output<D> {
-        self.hasher.finalize()
+        self.writer.0.finalize()
     }
 
     pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
-        self.hasher.update_consensus_encode(data);
+        BorshSerialize::serialize(data, &mut self.writer)
+            .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
     }
 
     pub fn chain<T: BorshSerialize>(mut self, data: &T) -> Self {
@@ -59,11 +61,19 @@ where D: Default
     }
 }
 
-impl<M: DomainSeparation, D: Digest + Default> Default for DomainSeparatedConsensusHasher<M, D> {
-    /// This `default` implementation is provided for convenience, but should not be used as the de-facto consensus
-    /// hasher, rather specify a specific label
-    fn default() -> Self {
-        DomainSeparatedConsensusHasher::<M, D>::new("default")
+/// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait.
+/// Do not use the DomainSeparatedHasher with this.
+#[derive(Clone)]
+struct WriteHashWrapper<D>(D);
+
+impl<D: Digest> Write for WriteHashWrapper<D> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.update(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -71,45 +81,42 @@ impl<M: DomainSeparation, D: Digest + Default> Default for DomainSeparatedConsen
 mod tests {
     use blake2::Blake2b;
     use digest::consts::U32;
-    use tari_common::configuration::Network;
     use tari_crypto::hash_domain;
-    use tari_script::script;
 
     use super::*;
+
+    #[derive(Debug, BorshSerialize)]
+    pub struct TestStruct {
+        pub a: u64,
+        pub b: u64,
+    }
 
     hash_domain!(TestHashDomain, "com.tari.test.test_hash", 0);
 
     #[test]
-    fn network_yields_distinct_hash() {
-        let label = "test";
+    fn label_yields_distinct_hash() {
         let input = [1u8; 32];
 
-        // Generate a mainnet hash
-        let hash_mainnet =
-            DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, Network::MainNet)
-                .chain(&input)
-                .finalize();
+        let hash_label1 = DomainSeparatedBorshHasher::<TestHashDomain, Blake2b<U32>>::new_with_label("label1")
+            .chain(&input)
+            .finalize();
 
-        // Generate a stagenet hash
-        let hash_stagenet =
-            DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, Network::StageNet)
-                .chain(&input)
-                .finalize();
+        let hash_label2 = DomainSeparatedBorshHasher::<TestHashDomain, Blake2b<U32>>::new_with_label("label2")
+            .chain(&input)
+            .finalize();
 
         // They should be distinct
-        assert_ne!(hash_mainnet, hash_stagenet);
+        assert_ne!(hash_label1, hash_label2);
     }
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
-        let network = Network::get_current_or_default();
-
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
+        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
         let expected_hash = hasher.chain_update(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
-        let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
+        let hash = DomainSeparatedBorshHasher::<TestHashDomain, Blake2b<U32>>::new_with_label("foo")
             .chain(&255u64)
             .finalize();
 
@@ -118,16 +125,23 @@ mod tests {
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
-        let network = Network::get_current_or_default();
-
-        // Script is chosen because the consensus encoding impl for TariScript has 2 writes
-        let test_subject = script!(Nop);
+        // The borsh implementation contains 2 writes, 1 per field. See the macro expansion for details.
+        let test_subject1 = TestStruct { a: 1, b: 2 };
+        let test_subject2 = TestStruct { a: 3, b: 4 };
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
+        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
-        let expected_hash = hasher.chain_update(b"\x01\x73").finalize();
-        let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
-            .chain(&test_subject)
+        let mut buf = Vec::new();
+        BorshSerialize::serialize(&test_subject1, &mut buf).unwrap();
+        BorshSerialize::serialize(&test_subject2, &mut buf).unwrap();
+
+        // Write to the test hasher as one chunk
+        let expected_hash = hasher.chain_update(&buf).finalize();
+
+        // The domain-separated one must do the same
+        let hash = DomainSeparatedBorshHasher::<TestHashDomain, Blake2b<U32>>::new_with_label("foo")
+            .chain(&test_subject1)
+            .chain(&test_subject2)
             .finalize();
 
         assert_eq!(hash, expected_hash);
@@ -138,7 +152,7 @@ mod tests {
         let blake_hasher = Blake2b::<U32>::default();
         let blake_hash = blake_hasher.chain_update(b"").finalize();
 
-        let default_consensus_hasher = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::default();
+        let default_consensus_hasher = DomainSeparatedBorshHasher::<TestHashDomain, Blake2b<U32>>::new_with_label("");
         let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();
 
         assert_ne!(blake_hash.as_slice(), default_consensus_hash.as_slice());

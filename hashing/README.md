@@ -1,5 +1,5 @@
-# tari_hash_domains
+# tari_hashing
 
-Implementation of `tari hash domain` macros for Tari.
+Common hash domains and hashers for Tari.
 
 This crate is part of the [Tari Cryptocurrency](https://tari.com) project.

@@ -6,7 +6,6 @@ pub mod aggregated_body;
 mod crypto_factories;
 
 pub use crypto_factories::CryptoFactories;
-use tari_crypto::hash_domain;
 
 mod coinbase_builder;
 pub use coinbase_builder::{
@@ -33,7 +32,3 @@ pub mod key_manager;
 #[macro_use]
 #[cfg(feature = "base_node")]
 pub mod test_helpers;
-
-// Hash domain for all transaction-related hashes, including the script signature challenge, transaction hash and kernel
-// signature challenge
-hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);

@@ -1,5 +1,5 @@
 [package]
-name = "tari_hash_domains"
+name = "tari_hashing"
 version = "1.0.0-pre.9"
 edition = "2021"
 description = "Tari hash domains"
@@ -13,3 +13,8 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_crypto = "0.20.0"
+digest = "0.10"
+borsh = "1.2"
+
+[dev-dependencies]
+blake2 = "0.10"

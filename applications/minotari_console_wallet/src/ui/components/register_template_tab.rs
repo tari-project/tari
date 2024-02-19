@@ -11,7 +11,7 @@ use regex::Regex;
 use reqwest::StatusCode;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
 use tari_crypto::hashing::DomainSeparation;
-use tari_hash_domains::TariEngineHashDomain;
+use tari_hashing::TariEngineHashDomain;
 use tari_utilities::hex::Hex;
 use tokio::{
     runtime::{Handle, Runtime},

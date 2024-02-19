@@ -44,8 +44,8 @@ tari_utilities = { version = "0.7", features = ["borsh"] }
 tari_key_manager = { path = "../key_manager", features = [
   "key_manager_service",
 ], version = "1.0.0-pre.9" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-pre.9" }
-tari_hash_domains = { path = "../../hash_domains", version = "1.0.0-pre.9" }
+tari_common_sqlite = { path = "../../common_sqlite" }
+tari_hashing = { path = "../../hashing" }
 
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
