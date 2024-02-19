@@ -6309,7 +6309,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_add_base_node_peer(
+pub unsafe extern "C" fn wallet_set_base_node_peer(
     wallet: *mut TariWallet,
     public_key: *mut TariPublicKey,
     address: *const c_char,
@@ -11032,7 +11032,7 @@ mod test {
             let base_node_peer_address_ptr =
                 CString::into_raw(CString::new(node_identity.first_public_address().unwrap().to_string()).unwrap())
                     as *const c_char;
-            wallet_add_base_node_peer(
+            wallet_set_base_node_peer(
                 wallet_ptr,
                 base_node_peer_public_key_ptr,
                 base_node_peer_address_ptr,
@@ -11340,7 +11340,7 @@ mod test {
             let bob_peer_address_ptr =
                 CString::into_raw(CString::new(bob_node_identity.first_public_address().unwrap().to_string()).unwrap())
                     as *const c_char;
-            wallet_add_base_node_peer(
+            wallet_set_base_node_peer(
                 alice_wallet_ptr,
                 bob_peer_public_key_ptr,
                 bob_peer_address_ptr,
@@ -11355,7 +11355,7 @@ mod test {
             let alice_peer_address_ptr = CString::into_raw(
                 CString::new(alice_node_identity.first_public_address().unwrap().to_string()).unwrap(),
             ) as *const c_char;
-            wallet_add_base_node_peer(
+            wallet_set_base_node_peer(
                 bob_wallet_ptr,
                 alice_peer_public_key_ptr,
                 alice_peer_address_ptr,

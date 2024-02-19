@@ -2994,7 +2994,7 @@ bool wallet_verify_message_signature(struct TariWallet *wallet,
  * # Safety
  * None
  */
-bool wallet_add_base_node_peer(struct TariWallet *wallet,
+bool wallet_set_base_node_peer(struct TariWallet *wallet,
                                TariPublicKey *public_key,
                                const char *address,
                                int *error_out);
