@@ -126,15 +126,15 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         let (randomx_diff, sha3x_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::RandomX => (
                 previous_accum
-                    .accumulated_randomx_target_difficulty
+                    .accumulated_randomx_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
-                previous_accum.accumulated_sha3x_target_difficulty,
+                previous_accum.accumulated_sha3x_difficulty,
             ),
             PowAlgorithm::Sha3x => (
-                previous_accum.accumulated_randomx_target_difficulty,
+                previous_accum.accumulated_randomx_difficulty,
                 previous_accum
-                    .accumulated_sha3x_target_difficulty
+                    .accumulated_sha3x_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
@@ -152,16 +152,16 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
             total_accumulated_difficulty: U256::from(randomx_diff.as_u128()) * U256::from(sha3x_diff.as_u128()),
-            accumulated_randomx_target_difficulty: randomx_diff,
-            accumulated_sha3x_target_difficulty: sha3x_diff,
+            accumulated_randomx_difficulty: randomx_diff,
+            accumulated_sha3x_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
             target: LOG_TARGET,
             "Calculated: Tot_acc_diff {}, RandomX {}, SHA3 {}",
             result.total_accumulated_difficulty,
-            result.accumulated_randomx_target_difficulty,
-            result.accumulated_sha3x_target_difficulty,
+            result.accumulated_randomx_difficulty,
+            result.accumulated_sha3x_difficulty,
         );
         Ok(result)
     }
@@ -181,10 +181,10 @@ pub struct BlockHeaderAccumulatedData {
     pub total_accumulated_difficulty: U256,
     /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_randomx_target_difficulty: AccumulatedDifficulty,
+    pub accumulated_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_sha3x_target_difficulty: AccumulatedDifficulty,
+    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
@@ -203,13 +203,9 @@ impl Display for BlockHeaderAccumulatedData {
         writeln!(
             f,
             "Accumulated RandomX difficulty: {}",
-            self.accumulated_randomx_target_difficulty
+            self.accumulated_randomx_difficulty
         )?;
-        writeln!(
-            f,
-            "Accumulated sha3 difficulty: {}",
-            self.accumulated_sha3x_target_difficulty
-        )?;
+        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }

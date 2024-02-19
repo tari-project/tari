@@ -396,8 +396,8 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 block
                     .accumulated_data()
                     .total_accumulated_difficulty,
-                block.accumulated_data().accumulated_randomx_target_difficulty,
-                block.accumulated_data().accumulated_sha3x_target_difficulty,
+                block.accumulated_data().accumulated_randomx_difficulty,
+                block.accumulated_data().accumulated_sha3x_difficulty,
                 latency
             );
             if let Some(avg_latency) = last_avg_latency {

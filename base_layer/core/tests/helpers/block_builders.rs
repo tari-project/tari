@@ -213,8 +213,8 @@ pub async fn create_genesis_block_with_coinbase_value(
             total_kernel_offset: Default::default(),
             achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_target_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_target_difficulty: AccumulatedDifficulty::min(),
+            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
         .unwrap(),
@@ -254,8 +254,8 @@ pub async fn create_genesis_block_with_utxos(
             total_kernel_offset: Default::default(),
             achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_target_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_target_difficulty: AccumulatedDifficulty::min(),
+            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
         .unwrap(),
