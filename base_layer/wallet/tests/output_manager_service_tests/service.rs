@@ -1157,14 +1157,14 @@ async fn sending_transaction_persisted_while_offline() {
     assert_eq!(balance.pending_outgoing_balance, available_balance / 2);
 
     // This simulates an offline wallet with a  queued transaction that has not been sent to the receiving wallet
-    // yet
+    // This should be cleared as the transaction will be dropped.
     drop(oms.output_manager_handle);
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    assert_eq!(balance.available_balance, available_balance / 2);
+    assert_eq!(balance.available_balance, available_balance);
     assert_eq!(balance.time_locked_balance.unwrap(), MicroMinotari::from(0));
-    assert_eq!(balance.pending_outgoing_balance, available_balance / 2);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(0));
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
     let stp = oms
@@ -1193,9 +1193,9 @@ async fn sending_transaction_persisted_while_offline() {
     let mut oms = setup_output_manager_service(backend, true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    assert_eq!(balance.available_balance, MicroMinotari::from(0));
+    assert_eq!(balance.available_balance, MicroMinotari::from(10000));
     assert_eq!(balance.time_locked_balance.unwrap(), MicroMinotari::from(0));
-    assert_eq!(balance.pending_outgoing_balance, available_balance);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(10000));
 }
 
 #[tokio::test]
