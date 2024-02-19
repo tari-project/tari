@@ -371,7 +371,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .set_best_block(
                     block.height(),
                     header_hash,
-                    block.accumulated_data().total_accumulated_target_difficulty,
+                    block.accumulated_data().total_accumulated_difficulty,
                     block.header().prev_hash,
                     timestamp,
                 )
@@ -395,7 +395,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 timer.elapsed(),
                 block
                     .accumulated_data()
-                    .total_accumulated_target_difficulty,
+                    .total_accumulated_difficulty,
                 block.accumulated_data().accumulated_randomx_target_difficulty,
                 block.accumulated_data().accumulated_sha3x_target_difficulty,
                 latency
@@ -414,12 +414,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             last_sync_timer = Instant::now();
         }
 
-        let accumulated_target_difficulty = self.db.get_chain_metadata().await?.accumulated_target_difficulty();
-        if accumulated_target_difficulty < sync_peer.claimed_chain_metadata().accumulated_target_difficulty() {
+        let accumulated_difficulty = self.db.get_chain_metadata().await?.accumulated_difficulty();
+        if accumulated_difficulty < sync_peer.claimed_chain_metadata().accumulated_difficulty() {
             return Err(BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(format!(
                 "Their claimed difficulty: {}, our local difficulty after block sync: {}",
-                sync_peer.claimed_chain_metadata().accumulated_target_difficulty(),
-                accumulated_target_difficulty
+                sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                accumulated_difficulty
             )));
         }
 

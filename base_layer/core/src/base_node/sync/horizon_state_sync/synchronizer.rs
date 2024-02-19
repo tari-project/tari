@@ -810,7 +810,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .set_best_block(
                 header.height(),
                 *header.hash(),
-                header.accumulated_data().total_accumulated_target_difficulty,
+                header.accumulated_data().total_accumulated_difficulty,
                 *metadata.best_block_hash(),
                 header.timestamp(),
             )

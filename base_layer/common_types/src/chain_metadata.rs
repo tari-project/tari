@@ -43,7 +43,7 @@ pub struct ChainMetadata {
     /// provided. Archival nodes wil always have a `pruned_height` of zero.
     pruned_height: u64,
     /// The total accumulated proof of work of the longest chain
-    accumulated_target_difficulty: U256,
+    accumulated_difficulty: U256,
     /// Timestamp of the tip block in the longest valid chain
     timestamp: u64,
 }
@@ -61,7 +61,7 @@ impl ChainMetadata {
         best_block_hash: BlockHash,
         pruning_horizon: u64,
         pruned_height: u64,
-        accumulated_target_difficulty: U256,
+        accumulated_difficulty: U256,
         timestamp: u64,
     ) -> Result<ChainMetadata, ChainMetaDataError> {
         let chain_meta_data = ChainMetadata {
@@ -69,10 +69,10 @@ impl ChainMetadata {
             best_block_hash,
             pruning_horizon,
             pruned_height,
-            accumulated_target_difficulty,
+            accumulated_difficulty,
             timestamp,
         };
-        if chain_meta_data.accumulated_target_difficulty == 0.into() {
+        if chain_meta_data.accumulated_difficulty == 0.into() {
             return Err(ChainMetaDataError::AccumulatedDifficultyZero);
         };
         if chain_meta_data.pruned_height > chain_meta_data.best_block_height {
@@ -121,8 +121,8 @@ impl ChainMetadata {
         self.pruned_height
     }
 
-    pub fn accumulated_target_difficulty(&self) -> U256 {
-        self.accumulated_target_difficulty
+    pub fn accumulated_difficulty(&self) -> U256 {
+        self.accumulated_difficulty
     }
 
     pub fn best_block_hash(&self) -> &BlockHash {
@@ -137,7 +137,7 @@ impl ChainMetadata {
 impl Display for ChainMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(f, "Best block height: {}", self.best_block_height)?;
-        writeln!(f, "Total accumulated difficulty: {}", self.accumulated_target_difficulty)?;
+        writeln!(f, "Total accumulated difficulty: {}", self.accumulated_difficulty)?;
         writeln!(f, "Best block hash: {}", self.best_block_hash)?;
         writeln!(f, "Pruning horizon: {}", self.pruning_horizon)?;
         writeln!(f, "Pruned height: {}", self.pruned_height)?;
@@ -156,7 +156,7 @@ mod test {
             best_block_hash: Default::default(),
             pruning_horizon: 0,
             pruned_height: 0,
-            accumulated_target_difficulty: Default::default(),
+            accumulated_difficulty: Default::default(),
             timestamp: 0,
         };
         assert_eq!(metadata.pruned_height_at_given_chain_tip(0), 0);
@@ -169,7 +169,7 @@ mod test {
             best_block_hash: Default::default(),
             pruning_horizon: 0,
             pruned_height: 0,
-            accumulated_target_difficulty: Default::default(),
+            accumulated_difficulty: Default::default(),
             timestamp: 0,
         };
         assert!(!metadata.is_pruned_node());
@@ -190,7 +190,7 @@ mod test {
             best_block_hash: Default::default(),
             pruning_horizon: 0,
             pruned_height: 0,
-            accumulated_target_difficulty: Default::default(),
+            accumulated_difficulty: Default::default(),
             timestamp: 0,
         };
         // Chain is still empty

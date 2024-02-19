@@ -203,7 +203,7 @@ impl ChainMetadataService {
             "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
             event.node_id,
             chain_metadata.best_block_height(),
-            chain_metadata.accumulated_target_difficulty(),
+            chain_metadata.accumulated_difficulty(),
         );
 
         let peer_chain_metadata = PeerChainMetadata::new(event.node_id.clone(), chain_metadata, event.latency);
@@ -263,7 +263,7 @@ mod test {
                 28, 29, 30, 31,
             ],
             pruned_height: 0,
-            accumulated_target_difficulty: bytes.to_vec(),
+            accumulated_difficulty: bytes.to_vec(),
             timestamp: EpochTime::now().as_u64(),
         }
     }

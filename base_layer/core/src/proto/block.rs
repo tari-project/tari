@@ -109,7 +109,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
         let accumulated_sha3x_target_difficulty = source.accumulated_sha3x_target_difficulty.to_be_bytes();
         let mut total_accumulated_difficulty = [0u8; 32];
         source
-            .total_accumulated_target_difficulty
+            .total_accumulated_difficulty
             .to_big_endian(&mut total_accumulated_difficulty);
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
@@ -166,9 +166,11 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         Ok(Self {
             hash,
             achieved_difficulty: Difficulty::from_u64(source.achieved_difficulty).map_err(|e| e.to_string())?,
-            total_accumulated_target_difficulty: accumulated_difficulty,
-            accumulated_randomx_target_difficulty: AccumulatedDifficulty::from_u128(accumulated_randomx_target_difficulty)
-                .map_err(|e| e.to_string())?,
+            total_accumulated_difficulty: accumulated_difficulty,
+            accumulated_randomx_target_difficulty: AccumulatedDifficulty::from_u128(
+                accumulated_randomx_target_difficulty,
+            )
+            .map_err(|e| e.to_string())?,
             accumulated_sha3x_target_difficulty: AccumulatedDifficulty::from_u128(accumulated_sha3x_target_difficulty)
                 .map_err(|e| e.to_string())?,
             target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,

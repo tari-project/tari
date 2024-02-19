@@ -361,14 +361,14 @@ impl LMDBDatabase {
                         "orphan_chain_tips_db",
                     )?;
                 },
-                InsertOrphanChainTip(hash, total_accumulated_target_difficulty) => {
+                InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                     lmdb_insert(
                         &write_txn,
                         &self.orphan_chain_tips_db,
                         hash.deref(),
                         &ChainTipData {
                             hash: *hash,
-                            total_accumulated_target_difficulty: *total_accumulated_target_difficulty,
+                            total_accumulated_difficulty: *total_accumulated_difficulty,
                         },
                         "orphan_chain_tips_db",
                     )?;
@@ -1078,7 +1078,7 @@ impl LMDBDatabase {
                                 parent_hash.as_slice(),
                                 &ChainTipData {
                                     hash: parent_hash,
-                                    total_accumulated_target_difficulty: val.total_accumulated_target_difficulty,
+                                    total_accumulated_difficulty: val.total_accumulated_difficulty,
                                 },
                                 "orphan_chain_tips_db",
                             )?;
@@ -2168,10 +2168,10 @@ impl BlockchainBackend for LMDBDatabase {
         if tips.is_empty() {
             return Ok(Vec::new());
         }
-        let max_value = tips.iter().map(|tip| tip.total_accumulated_target_difficulty).max();
+        let max_value = tips.iter().map(|tip| tip.total_accumulated_difficulty).max();
         let strongest_tips = if let Some(val) = max_value {
             tips.iter()
-                .filter(|tip| tip.total_accumulated_target_difficulty == val)
+                .filter(|tip| tip.total_accumulated_difficulty == val)
                 .collect::<Vec<_>>()
         } else {
             // This branch should not be possible

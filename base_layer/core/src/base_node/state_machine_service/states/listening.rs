@@ -327,8 +327,8 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: &PeerChainMetadata,
 ) -> SyncStatus {
-    let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_target_difficulty();
-    let local_tip_accum_difficulty = local.accumulated_target_difficulty();
+    let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
+    let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {
         let local_tip_height = local.best_block_height();
         let network_tip_height = network.claimed_chain_metadata().best_block_height();
@@ -452,11 +452,11 @@ mod test {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
             29, 30, 31,
         ]);
-        let accumulated_target_difficulty = U256::from(10000);
+        let accumulated_difficulty = U256::from(10000);
 
         let archival_node = PeerChainMetadata::new(
             random_node_id(),
-            ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_target_difficulty, 0).unwrap(),
+            ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_difficulty, 0).unwrap(),
             None,
         );
 
@@ -467,7 +467,7 @@ mod test {
                 block_hash,
                 0,
                 0,
-                accumulated_target_difficulty - U256::from(1000),
+                accumulated_difficulty - U256::from(1000),
                 0,
             )
             .unwrap(),

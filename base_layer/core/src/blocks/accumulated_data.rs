@@ -151,7 +151,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             hash,
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
-            total_accumulated_target_difficulty: U256::from(randomx_diff.as_u128()) * U256::from(sha3x_diff.as_u128()),
+            total_accumulated_difficulty: U256::from(randomx_diff.as_u128()) * U256::from(sha3x_diff.as_u128()),
             accumulated_randomx_target_difficulty: randomx_diff,
             accumulated_sha3x_target_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
@@ -159,7 +159,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         trace!(
             target: LOG_TARGET,
             "Calculated: Tot_acc_diff {}, RandomX {}, SHA3 {}",
-            result.total_accumulated_target_difficulty,
+            result.total_accumulated_difficulty,
             result.accumulated_randomx_target_difficulty,
             result.accumulated_sha3x_target_difficulty,
         );
@@ -178,7 +178,7 @@ pub struct BlockHeaderAccumulatedData {
     pub achieved_difficulty: Difficulty,
     /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
     /// separately.
-    pub total_accumulated_target_difficulty: U256,
+    pub total_accumulated_difficulty: U256,
     /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
     pub accumulated_randomx_target_difficulty: AccumulatedDifficulty,
@@ -199,13 +199,17 @@ impl Display for BlockHeaderAccumulatedData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Hash: {}", self.hash)?;
         writeln!(f, "Achieved difficulty: {}", self.achieved_difficulty)?;
-        writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_target_difficulty)?;
+        writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_difficulty)?;
         writeln!(
             f,
             "Accumulated RandomX difficulty: {}",
             self.accumulated_randomx_target_difficulty
         )?;
-        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_target_difficulty)?;
+        writeln!(
+            f,
+            "Accumulated sha3 difficulty: {}",
+            self.accumulated_sha3x_target_difficulty
+        )?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }

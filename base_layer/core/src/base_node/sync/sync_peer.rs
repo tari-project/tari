@@ -104,8 +104,8 @@ impl Ord for SyncPeer {
         let mut result = self
             .peer_metadata
             .claimed_chain_metadata()
-            .accumulated_target_difficulty()
-            .cmp(&other.peer_metadata.claimed_chain_metadata().accumulated_target_difficulty());
+            .accumulated_difficulty()
+            .cmp(&other.peer_metadata.claimed_chain_metadata().accumulated_difficulty());
         if result == Ordering::Equal {
             match (self.latency(), other.latency()) {
                 (None, None) => result = Ordering::Equal,

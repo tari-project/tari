@@ -91,5 +91,5 @@ pub use template_registation::TemplateRegistrationEntry;
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
     pub hash: HashOutput,
-    pub total_accumulated_target_difficulty: U256,
+    pub total_accumulated_difficulty: U256,
 }

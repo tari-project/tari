@@ -90,8 +90,8 @@ impl HeaderSyncState {
             Ok(best_block_metadata) => {
                 let mut remove = Vec::new();
                 for sync_peer in &self.sync_peers {
-                    if sync_peer.claimed_chain_metadata().accumulated_target_difficulty() <=
-                        best_block_metadata.accumulated_target_difficulty()
+                    if sync_peer.claimed_chain_metadata().accumulated_difficulty() <=
+                        best_block_metadata.accumulated_difficulty()
                     {
                         remove.push(sync_peer.node_id().clone());
                     }

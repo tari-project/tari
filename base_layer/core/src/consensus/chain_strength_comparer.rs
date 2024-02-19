@@ -14,8 +14,8 @@ pub struct AccumulatedDifficultySquaredComparer {}
 
 impl ChainStrengthComparer for AccumulatedDifficultySquaredComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
-        let a_val = a.accumulated_data().total_accumulated_target_difficulty;
-        let b_val = b.accumulated_data().total_accumulated_target_difficulty;
+        let a_val = a.accumulated_data().total_accumulated_difficulty;
+        let b_val = b.accumulated_data().total_accumulated_difficulty;
         a_val.cmp(&b_val)
     }
 }
