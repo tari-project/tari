@@ -451,7 +451,7 @@ extern "C" {
         msg: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
-    pub fn wallet_add_base_node_peer(
+    pub fn wallet_set_base_node_peer(
         wallet: *mut TariWallet,
         public_key: *mut TariPublicKey,
         address: *const c_char,

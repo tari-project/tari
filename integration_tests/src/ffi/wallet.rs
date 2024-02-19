@@ -235,14 +235,14 @@ impl Wallet {
         let mut error = 0;
         let success;
         unsafe {
-            success = ffi_import::wallet_add_base_node_peer(
+            success = ffi_import::wallet_set_base_node_peer(
                 self.ptr,
                 base_node.get_ptr(),
                 CString::new(address).unwrap().into_raw(),
                 &mut error,
             );
             if error > 0 {
-                println!("wallet_add_base_node_peer error {}", error);
+                println!("wallet_set_base_node_peer error {}", error);
             }
         }
         success
