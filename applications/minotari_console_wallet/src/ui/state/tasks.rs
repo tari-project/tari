@@ -40,10 +40,10 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{BuildInfo, OutputFeatures, TemplateType},
-        TransactionHashDomain,
     },
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
+use tari_hashing::TransactionHashDomain;
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};

@@ -35,6 +35,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_hashing::TransactionHashDomain;
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
@@ -50,7 +51,6 @@ use crate::{
             OutputFeatures,
             TransactionError,
         },
-        TransactionHashDomain,
     },
 };
 
@@ -209,6 +209,7 @@ impl TransactionInput {
                     .chain(commitment)
                     .chain(&message)
                     .finalize()
+                    .into()
             },
         }
     }
@@ -227,6 +228,7 @@ impl TransactionInput {
                     .chain(script)
                     .chain(input_data)
                     .finalize()
+                    .into()
             },
         }
     }

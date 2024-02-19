@@ -51,6 +51,7 @@ use tari_crypto::{
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray},
 };
+use tari_hashing::TransactionHashDomain;
 use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
@@ -70,7 +71,6 @@ use crate::{
             TransactionInput,
             WalletOutput,
         },
-        TransactionHashDomain,
     },
 };
 
@@ -429,7 +429,7 @@ impl TransactionOutput {
             .chain(commitment)
             .chain(&message);
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize().into(),
         }
     }
 
@@ -464,7 +464,7 @@ impl TransactionOutput {
             .chain(encrypted_data)
             .chain(minimum_value_promise);
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize().into(),
         }
     }
 

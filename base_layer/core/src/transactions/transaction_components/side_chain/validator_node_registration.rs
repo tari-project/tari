@@ -29,12 +29,10 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{FixedHash, PublicKey, Signature},
 };
+use tari_hashing::TransactionHashDomain;
 use tari_utilities::ByteArray;
 
-use crate::{
-    consensus::DomainSeparatedConsensusHasher,
-    transactions::{transaction_components::ValidatorNodeSignature, TransactionHashDomain},
-};
+use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction_components::ValidatorNodeSignature};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
@@ -98,6 +96,7 @@ fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
         .chain(public_key)
         .chain(entropy)
         .finalize()
+        .into()
 }
 
 #[cfg(test)]

@@ -23,7 +23,7 @@ tari_utilities = { version = "0.7" }
 minotari_wallet = { path = "../../base_layer/wallet", features = [
   "bundled_sqlite",
 ] }
-tari_hash_domains = { path = "../../hash_domains" }
+tari_hashing = { path = "../../hashing" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
 console-subscriber = "0.1.8"
