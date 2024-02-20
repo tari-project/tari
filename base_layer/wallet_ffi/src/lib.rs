@@ -123,7 +123,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::NodeIdentity,
+    peer_manager::{NodeIdentity, PeerQuery},
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
@@ -6378,6 +6378,34 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
         return false;
     }
     true
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKeys {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let peer_manager = (*wallet).wallet.comms.peer_manager();
+    let query = PeerQuery::new().select_where(|p| p.is_seed());
+    match (*wallet).runtime.block_on(async move {
+        let peers = peer_manager.perform_query(query).await?;
+        let mut public_keys = Vec::with_capacity(peers.len());
+        for peer in peers {
+            public_keys.push(peer.public_key);
+        }
+        Result::<_, WalletError>::Ok(public_keys)
+    }) {
+        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
 }
 
 /// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
