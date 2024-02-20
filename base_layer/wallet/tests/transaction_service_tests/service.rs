@@ -51,7 +51,7 @@ use minotari_wallet::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
-            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
             sqlite_db::OutputManagerSqliteDatabase,
         },
@@ -845,10 +845,11 @@ async fn large_interactive_transaction() {
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_spend_dust_in_oversized_transactions() {
-    //` cargo test --release --test  wallet_integration_tests transaction_service_tests::service::spend_dust_to_self >
-    //` .\target\output.txt 2>&1
-    env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+async fn test_spend_dust_to_self_in_oversized_transaction() {
+    //` cargo test --release --test  wallet_integration_tests
+    //` transaction_service_tests::service::test_spend_dust_to_self_in_oversized_transaction > .\target\output.txt
+    //` 2>&1
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
@@ -892,17 +893,15 @@ async fn test_spend_dust_in_oversized_transactions() {
 
     // Alice create dust
 
-    let amount_per_split = 10_000 * uT;
-    let split_count = 499usize;
-    let initial_utxo_value = amount_per_split * (split_count as u64 + 1) + 28_518 * uT;
+    let amount_per_output = 10_000 * uT;
+    // This value was determined by running the test and evaluating the error message,
+    // e.g. `TransactionTooLarge { got: 3379097, expected: 3135488 }`
     let max_number_of_outputs_in_frame = (rpc::RPC_MAX_FRAME_SIZE as f64 / 700.0f64).ceil() as usize;
-    let number_of_splits = (max_number_of_outputs_in_frame as f64 / (split_count + 1) as f64).ceil() as usize;
-    let mut fees = MicroMinotari::zero();
-    let fee_per_gram = MicroMinotari::from(1);
-    for _ in 0..number_of_splits {
+    let number_of_outputs = max_number_of_outputs_in_frame + 100;
+    for _ in 0..number_of_outputs {
         let uo = make_input(
             &mut OsRng,
-            initial_utxo_value,
+            amount_per_output,
             &OutputFeatures::default(),
             &alice_key_manager_handle,
         )
@@ -912,67 +911,16 @@ async fn test_spend_dust_in_oversized_transactions() {
         alice_db
             .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap())
             .unwrap();
-
-        let (tx_id, coin_split_tx, amount) = alice_oms
-            .create_coin_split(vec![], amount_per_split, split_count, fee_per_gram)
-            .await
-            .unwrap();
-        assert_eq!(coin_split_tx.body.inputs().len(), 1);
-        assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
-
-        alice_ts
-            .submit_transaction(tx_id, coin_split_tx, amount, "large coin-split".to_string())
-            .await
-            .expect("Alice sending coin-split tx");
-
-        let completed_tx = alice_ts
-            .get_completed_transaction(tx_id)
-            .await
-            .expect("Could not find tx");
-        fees += completed_tx.fee;
-    }
-
-    assert_eq!(
-        alice_oms.get_balance().await.unwrap().pending_incoming_balance,
-        initial_utxo_value * number_of_splits as u64 - fees
-    );
-
-    let all_outputs = alice_db
-        .fetch_outputs_by_query(OutputBackendQuery {
-            tip_height: i64::MAX,
-            status: vec![],
-            commitments: vec![],
-            pagination: None,
-            value_min: None,
-            value_max: None,
-            sorting: vec![],
-        })
-        .unwrap();
-    for output in all_outputs {
-        if output.wallet_output.value <= amount_per_split {
-            alice_db
-                .mark_output_as_unspent(output.wallet_output.hash(&alice_key_manager_handle).await.unwrap())
-                .unwrap();
-        } else {
-            alice_db
-                .mark_output_as_spent(
-                    output.wallet_output.hash(&alice_key_manager_handle).await.unwrap(),
-                    1,
-                    FixedHash::default(),
-                    true,
-                )
-                .unwrap();
-        }
     }
 
     let balance = alice_oms.get_balance().await.unwrap();
-    let initial_available_balance = amount_per_split * number_of_splits as u64 * (split_count as u64 + 1);
-    assert_eq!(balance.available_balance, initial_available_balance);
+    let initial_available_balance = balance.available_balance;
 
     // Alice try to spend too much dust to self
 
+    let fee_per_gram = MicroMinotari::from(1);
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
-    let value = balance.available_balance - 100_000 * uT;
+    let value = balance.available_balance - amount_per_output * 10;
     let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), network);
     assert!(alice_ts
         .send_transaction(
@@ -988,10 +936,87 @@ async fn test_spend_dust_in_oversized_transactions() {
     let balance = alice_oms.get_balance().await.unwrap();
     // Encumbered outputs are re-instated
     assert_eq!(balance.available_balance, initial_available_balance);
+}
+
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_spend_dust_to_other_in_oversized_transaction() {
+    //` cargo test --release --test  wallet_integration_tests
+    //` transaction_service_tests::service::test_spend_dust_to_other_in_oversized_transaction > .\target\output.txt
+    //` 2>&1
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let factories = CryptoFactories::default();
+    let shutdown = Shutdown::new();
+
+    // Alice's wallet parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+    );
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            vec![],
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            database_path.clone(),
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+
+    // Alice create dust
+
+    let amount_per_output = 10_000 * uT;
+    // This value was determined by running the test and evaluating the error message,
+    // e.g. `TransactionTooLarge { got: 3205068, expected: 3135488 }`
+    let max_number_of_outputs_in_frame = (rpc::RPC_MAX_FRAME_SIZE as f64 / 1175.0f64).ceil() as usize;
+    let number_of_outputs = max_number_of_outputs_in_frame + 100;
+    for _ in 0..number_of_outputs {
+        let uo = make_input(
+            &mut OsRng,
+            amount_per_output,
+            &OutputFeatures::default(),
+            &alice_key_manager_handle,
+        )
+        .await;
+
+        alice_oms.add_output(uo.clone(), None).await.unwrap();
+        alice_db
+            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap())
+            .unwrap();
+    }
+
+    let balance = alice_oms.get_balance().await.unwrap();
+    let initial_available_balance = balance.available_balance;
 
     // Alice try to spend too much dust to Bob
 
+    let fee_per_gram = MicroMinotari::from(1);
     let message = "GIVE MAH _OWN_ MONEYS AWAY!".to_string();
+    let value = balance.available_balance - amount_per_output * 10;
     let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
@@ -1028,12 +1053,84 @@ async fn test_spend_dust_in_oversized_transactions() {
     }
     // Encumbered outputs are re-instated
     assert_eq!(balance.available_balance, initial_available_balance);
+}
 
-    // Alice try to spend a smaller amount of dust to self [should succeed] (we just need to verify that the
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_spend_dust_happy_path() {
+    //` cargo test --release --test  wallet_integration_tests
+    //` transaction_service_tests::service::test_spend_dust_happy_path > .\target\output.txt 2>&1
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let factories = CryptoFactories::default();
+    let shutdown = Shutdown::new();
+
+    // Alice's wallet parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+    );
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            vec![],
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            database_path.clone(),
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+
+    // Alice create dust
+
+    let amount_per_output = 10_000 * uT;
+    let number_of_outputs = 1000;
+    let fee_per_gram = MicroMinotari::from(1);
+    for _ in 0..number_of_outputs {
+        let uo = make_input(
+            &mut OsRng,
+            amount_per_output,
+            &OutputFeatures::default(),
+            &alice_key_manager_handle,
+        )
+        .await;
+
+        alice_oms.add_output(uo.clone(), None).await.unwrap();
+        alice_db
+            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap())
+            .unwrap();
+    }
+
+    let balance = alice_oms.get_balance().await.unwrap();
+    let initial_available_balance = balance.available_balance;
+
+    // Alice try to spend a fair amount of dust to self [should succeed] (we just need to verify that the
     // transaction is created and that the available balance is correct)
 
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
-    let value_self = initial_available_balance / 20 - 100_000 * uT;
+    let value_self = (number_of_outputs / 3) * amount_per_output;
     let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
@@ -1046,6 +1143,7 @@ async fn test_spend_dust_in_oversized_transactions() {
         )
         .await
         .unwrap();
+    let mut count = 0;
     let mut fees_self = loop {
         match alice_ts.get_any_transaction(tx_id).await {
             Ok(None) => tokio::time::sleep(Duration::from_millis(100)).await,
@@ -1065,18 +1163,18 @@ async fn test_spend_dust_in_oversized_transactions() {
             panic!("waited {}ms but could not detect the transaction!", count * 100);
         }
     };
-    fees_self = (fees_self.0 as f64 / amount_per_split.0 as f64).ceil() as u64 * amount_per_split;
+    fees_self = (fees_self.0 as f64 / amount_per_output.0 as f64).ceil() as u64 * amount_per_output;
     let balance = alice_oms.get_balance().await.unwrap();
     assert_eq!(
         balance.available_balance,
         initial_available_balance - value_self - fees_self
     );
 
-    // Alice try to spend a smaller amount of dust to Bob [should succeed] (We do not need Bob to be present,
+    // Alice try to spend a fair amount of dust to Bob [should succeed] (We do not need Bob to be present,
     // we just need to verify that the transaction is created and that the available balance is correct)
 
     let message = "GIVE MAH _OWN_ MONEYS AWAY!".to_string();
-    let value_bob = initial_available_balance / 20 - 100_000 * uT;
+    let value_bob = (number_of_outputs / 3) * amount_per_output;
     let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
@@ -1111,7 +1209,7 @@ async fn test_spend_dust_in_oversized_transactions() {
             panic!("waited {}ms but could not detect the transaction!", count * 100);
         }
     };
-    fees_bob = (fees_bob.0 as f64 / amount_per_split.0 as f64).ceil() as u64 * amount_per_split;
+    fees_bob = (fees_bob.0 as f64 / amount_per_output.0 as f64).ceil() as u64 * amount_per_output;
     let balance = alice_oms.get_balance().await.unwrap();
     assert_eq!(
         balance.available_balance,
