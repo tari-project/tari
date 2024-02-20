@@ -565,9 +565,7 @@ impl AppState {
     }
 
     pub fn get_completed_txs(&self) -> Vec<&CompletedTransactionInfo> {
-        if self
-            .completed_tx_filter == TransactionFilter::AbandonedCoinbases
-        {
+        if self.completed_tx_filter == TransactionFilter::AbandonedCoinbases {
             self.cached_data
                 .completed_txs
                 .iter()
@@ -1391,7 +1389,7 @@ impl Default for AppStateConfig {
 }
 
 #[derive(Clone, PartialEq)]
-    pub enum TransactionFilter{
-        None,
-        AbandonedCoinbases,
-    }
+pub enum TransactionFilter {
+    None,
+    AbandonedCoinbases,
+}
