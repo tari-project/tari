@@ -163,7 +163,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     let balance = db.get_balance(Some(3)).unwrap();
     assert_eq!(balance, Balance {
-        available_balance,
+        available_balance: available_balance - time_locked_balance,
         time_locked_balance: Some(time_locked_balance),
         pending_incoming_balance,
         pending_outgoing_balance

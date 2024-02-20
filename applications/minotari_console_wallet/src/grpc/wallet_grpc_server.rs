@@ -265,9 +265,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
         Ok(Response::new(GetBalanceResponse {
             available_balance: balance
-                .available_balance
-                .saturating_sub(balance.time_locked_balance.unwrap_or_default())
-                .0,
+                .available_balance.0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
             pending_outgoing_balance: balance.pending_outgoing_balance.0,
             timelocked_balance: balance.time_locked_balance.unwrap_or_default().0,
