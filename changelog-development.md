@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.9](https://github.com/tari-project/tari/compare/v1.0.0-pre.8...v1.0.0-pre.9) (2024-02-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* change proof of work to be dependant on target difficulty (#6156)
+
+### Features
+
+* add import tx method ([#6132](https://github.com/tari-project/tari/issues/6132)) ([f3d9121](https://github.com/tari-project/tari/commit/f3d91212e1e3a1e450b5f8e71ceacf2673cfc8c2))
+* allow ffi to see lock height ([#6140](https://github.com/tari-project/tari/issues/6140)) ([48af0b8](https://github.com/tari-project/tari/commit/48af0b8615c80019ab1cf38f995a422cb999459e))
+* change CLI  get_block to search orphans ([#6153](https://github.com/tari-project/tari/issues/6153)) ([ae1e379](https://github.com/tari-project/tari/commit/ae1e3796d98e55ceb3642128d659c4e181108b85))
+* change proof of work to be dependant on target difficulty ([#6156](https://github.com/tari-project/tari/issues/6156)) ([feb634c](https://github.com/tari-project/tari/commit/feb634cd260a910228e0e9de45c9024b1990683f))
+* check chain metadata ([#6146](https://github.com/tari-project/tari/issues/6146)) ([8a16f7b](https://github.com/tari-project/tari/commit/8a16f7ba83fd200618814b2eaf66c88c5b1dfb79))
+* turn off node metrics by default ([#6073](https://github.com/tari-project/tari/issues/6073)) ([5ed661c](https://github.com/tari-project/tari/commit/5ed661c840795c3419369e865c8969ef7d49aacb))
+
+
+### Bug Fixes
+
+* balanced binary merkle tree merged proof ([#6144](https://github.com/tari-project/tari/issues/6144)) ([4d01653](https://github.com/tari-project/tari/commit/4d01653e6780241edfe732761d63d4218a2f742d))
+* wallet clear short term output ([#6151](https://github.com/tari-project/tari/issues/6151)) ([ac6997a](https://github.com/tari-project/tari/commit/ac6997af1a1d9828a93064e849df3dcc4ba019ee))
+
 ## [1.0.0-pre.8](https://github.com/tari-project/tari/compare/v1.0.0-pre.7...v1.0.0-pre.8) (2024-02-06)
 
 
