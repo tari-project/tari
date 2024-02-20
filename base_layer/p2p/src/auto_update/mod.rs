@@ -202,9 +202,7 @@ async fn http_download<T: IntoUrl>(url: T) -> Result<reqwest::Response, AutoUpda
     Ok(resp)
 }
 
-const MAINTAINERS: &[&str] = &[
-    include_str!("gpg_keys/swvheerden.asc"),
-];
+const MAINTAINERS: &[&str] = &[include_str!("gpg_keys/swvheerden.asc")];
 
 fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
     MAINTAINERS.iter().map(|s| {
