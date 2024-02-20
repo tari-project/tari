@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core" }
-tari_comms_dht = {  path = "../../comms/dht" }
-tari_common = {  path = "../../common" }
+tari_comms = {  path = "../../comms/core", version = "1.0.0-pre.8" }
+tari_comms_dht = {  path = "../../comms/dht", version = "1.0.0-pre.8" }
+tari_common = {  path = "../../common", version = "1.0.0-pre.8" }
 tari_crypto = { version = "0.20" }
-tari_service_framework = {  path = "../service_framework" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
+tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.8" }
+tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.8" }
+tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-pre.8" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -46,7 +46,7 @@ clap = "3.2"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-pre.8" }
 
 [features]
 test-mocks = []

@@ -9,8 +9,8 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = { path = "../shutdown" }
-tari_comms = { path = "../../comms/core" }
+tari_shutdown = { path = "../shutdown", version = "1.0.0-pre.8" }
+tari_comms = { path = "../../comms/core", version = "1.0.0-pre.8" }
 
 futures = { version = "^0.3.1" }
 rand = "0.8"
