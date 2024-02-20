@@ -96,6 +96,7 @@ pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
     cache_update_cooldown: Option<Instant>,
+    completed_tx_filter: TransactionFilter,
     config: AppStateConfig,
     wallet_config: WalletConfig,
     wallet_connectivity: WalletConnectivityHandle,
@@ -121,6 +122,7 @@ impl AppState {
             cached_data,
             cache_update_cooldown: None,
             config: AppStateConfig::default(),
+            completed_tx_filter: TransactionFilter::AbandonedCoinbases,
             wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
@@ -183,6 +185,13 @@ impl AppState {
         drop(inner);
         self.update_cache().await;
         Ok(())
+    }
+
+    pub fn toggle_abandoned_coinbase_filter(&mut self) {
+        self.completed_tx_filter = match self.completed_tx_filter {
+            TransactionFilter::AbandonedCoinbases => TransactionFilter::None,
+            TransactionFilter::None => TransactionFilter::AbandonedCoinbases,
+        };
     }
 
     pub async fn update_cache(&mut self) {
@@ -556,7 +565,17 @@ impl AppState {
     }
 
     pub fn get_completed_txs(&self) -> Vec<&CompletedTransactionInfo> {
-        self.cached_data.completed_txs.iter().collect()
+        if self
+            .completed_tx_filter == TransactionFilter::AbandonedCoinbases
+        {
+            self.cached_data
+                .completed_txs
+                .iter()
+                .filter(|tx| !matches!(tx.status, TransactionStatus::CoinbaseNotInBlockChain))
+                .collect()
+        } else {
+            self.cached_data.completed_txs.iter().collect()
+        }
     }
 
     pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
@@ -1370,3 +1389,9 @@ impl Default for AppStateConfig {
         }
     }
 }
+
+#[derive(Clone, PartialEq)]
+    pub enum TransactionFilter{
+        None,
+        AbandonedCoinbases,
+    }
