@@ -46,6 +46,7 @@ use crate::{
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbWalletOutput,
+            OutputStatus,
         },
     },
 };
@@ -317,6 +318,13 @@ where
                     mined_info.mined_timestamp,
                 )
                 .await?;
+            }
+            for unmined_output in unmined {
+                if unmined_output.status == OutputStatus::UnspentMinedUnconfirmed {
+                    self.db
+                        .set_output_to_unmined_and_invalid(unmined_output.hash)
+                        .for_protocol(self.operation_id)?;
+                }
             }
         }
 
