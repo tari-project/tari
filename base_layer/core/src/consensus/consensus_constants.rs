@@ -885,6 +885,8 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
     use crate::{
         consensus::{
             emission::{Emission, EmissionSchedule},
@@ -977,7 +979,9 @@ mod test {
             7_935_818_494_624_306 * uT + esmeralda[0].faucet_value()
         );
         // 21 billion
-        let mut rewards = schedule.iter().skip(3255552 + coinbase_offset as usize);
+        let mut rewards = schedule
+            .iter()
+            .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3255553 + coinbase_offset);
         assert_eq!(reward, 800_000_415 * uT);

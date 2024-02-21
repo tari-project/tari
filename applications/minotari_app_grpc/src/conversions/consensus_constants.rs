@@ -100,6 +100,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
 
         let proof_of_work = HashMap::from_iter([(0u32, randomx_pow), (1u32, sha3x_pow)]);
 
+        #[allow(deprecated)]
         Self {
             coinbase_min_maturity: cc.coinbase_min_maturity(),
             blockchain_version: cc.blockchain_version().into(),
