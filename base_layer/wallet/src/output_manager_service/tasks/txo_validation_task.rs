@@ -324,8 +324,8 @@ where
                     info!(
                         target: LOG_TARGET,
                             "Updating output comm:{}: hash {} as unmined(Operation ID: {})",
-                        unmined_output.output.commitment.to_hex(),
-                        unmined_output.output.hash.to_hex(),
+                        unmined_output.commitment.to_hex(),
+                        unmined_output.hash.to_hex(),
                         self.operation_id
                     );
                     self.db
