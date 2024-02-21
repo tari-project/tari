@@ -384,6 +384,15 @@ mod test {
     };
 
     #[test]
+    #[cfg(tari_target_network_testnet)]
+    fn esme_genesis_sanity_check() {
+        // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
+        // if consensus values change, e.g. new faucet or other
+        let block = get_esmeralda_genesis_block();
+        check_block(Network::Esmeralda, &block, 100, 1);
+    }
+
+    #[test]
     #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
@@ -396,7 +405,7 @@ mod test {
     #[cfg(tari_target_network_mainnet)]
     fn stagenet_genesis_sanity_check() {
         Network::set_current(Network::StageNet).unwrap();
-        // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
+        // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
         check_block(Network::StageNet, &block, 100, 1);
@@ -404,8 +413,7 @@ mod test {
 
     #[test]
     fn igor_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
         check_block(Network::Igor, &block, 0, 0);
     }
