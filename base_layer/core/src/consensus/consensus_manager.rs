@@ -82,9 +82,7 @@ impl ConsensusManager {
         }
     }
 
-    /// Get a pointer to the emission schedule
-    /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
-    /// 1_000_000_000
+    /// Get a reference to the emission parameters
     pub fn emission_schedule(&self) -> &EmissionSchedule {
         &self.inner.emission
     }
@@ -241,8 +239,11 @@ impl ConsensusManagerBuilder {
         let emission = EmissionSchedule::new(
             self.consensus_constants[0].emission_initial,
             self.consensus_constants[0].emission_decay,
-            self.consensus_constants[0].emission_tail,
+            self.consensus_constants[0].inflation_bips,
+            self.consensus_constants[0].tail_epoch_length,
+            self.consensus_constants[0].faucet_value(),
         );
+
         let inner = ConsensusManagerInner {
             consensus_constants: self.consensus_constants,
             network: self.network,
