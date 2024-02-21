@@ -92,8 +92,9 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {
-        let total_supply =
-            self.rules.get_total_emission_at(height) + self.rules.consensus_constants(height).faucet_value();
+        // With inflating tail emission, we **must** know the value of the premine as part of the supply calc in order
+        // to determine the correct inflation curve. Therefore, the premine is already included in the supply
+        let total_supply = self.rules.get_total_emission_at(height);
         debug!(
             target: LOG_TARGET,
             "Expected emission at height {} is {}", height, total_supply

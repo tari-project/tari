@@ -1036,16 +1036,14 @@ async fn test_reorg() {
     mempool.process_reorg(vec![], vec![reorg_block4.into()]).await.unwrap();
 }
 
-static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let key_manager = create_memory_db_key_manager();
     let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
@@ -1171,10 +1169,8 @@ async fn receive_and_propagate_transaction() {
 #[allow(clippy::too_many_lines)]
 async fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
-    // We dont want to compute the 19500 limit of local net, so we create smaller blocks
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .with_coinbase_lockheight(1)
+    // We don't want to compute the 19500 limit of local net, so we create smaller blocks
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network)
         .with_max_block_transaction_weight(500)
         .build();
     let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) =
@@ -1357,9 +1353,7 @@ async fn consensus_validation_large_tx() {
 async fn validation_reject_min_fee() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .with_coinbase_lockheight(1)
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network)
         .with_max_block_transaction_weight(500)
         .build();
     let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) =

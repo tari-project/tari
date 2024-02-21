@@ -148,6 +148,11 @@ impl MicroMinotari {
         self.0
     }
 
+    #[inline]
+    pub fn as_u128(&self) -> u128 {
+        u128::from(self.0)
+    }
+
     pub fn to_currency_string(&self, sep: char) -> String {
         format!("{} µT", format_currency(&self.as_u64().to_string(), sep))
     }
