@@ -111,7 +111,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json");
+        let file_contents = include_str!("faucets/stagenet_faucet.json");
         add_faucet_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
@@ -119,9 +119,9 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("3f4011ec1e8ddfbd66fb7331c5623b38f529a66e81233d924df85f2070b2aacb").unwrap();
+            FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
+            FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -163,7 +163,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json");
+        let file_contents = include_str!("faucets/nextnet_faucet.json");
         add_faucet_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
@@ -171,9 +171,9 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("3f4011ec1e8ddfbd66fb7331c5623b38f529a66e81233d924df85f2070b2aacb").unwrap();
+            FixedHash::from_hex("36881d87e25183f5189d2dca5f7da450c399e7006dafd9bd9240f73a5fb3f0ad").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
+            FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -368,6 +368,7 @@ mod test {
 
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
     use tari_utilities::ByteArray;
+    use Network;
 
     use super::*;
     use crate::{
@@ -383,14 +384,7 @@ mod test {
     };
 
     #[test]
-    fn stagenet_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
-        let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 100, 1);
-    }
-
-    #[test]
+    #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
@@ -399,11 +393,13 @@ mod test {
     }
 
     #[test]
-    fn esmeralda_genesis_sanity_check() {
+    #[cfg(tari_target_network_mainnet)]
+    fn stagenet_genesis_sanity_check() {
+        Network::set_current(Network::StageNet).unwrap();
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
-        let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 100, 1);
+        let block = get_stagenet_genesis_block();
+        check_block(Network::StageNet, &block, 100, 1);
     }
 
     #[test]

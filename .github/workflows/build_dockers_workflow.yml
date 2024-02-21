@@ -119,6 +119,8 @@ jobs:
           source tari/buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+          echo ${TARI_TARGET_NETWORK}
+          echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_ENV
 
       - name: environment setup
         shell: bash
@@ -225,6 +227,7 @@ jobs:
             APP_NAME=${{ matrix.builds.app_name }}
             APP_EXEC=${{ matrix.builds.app_exec }}
             TARI_NETWORK=${{ env.TARI_NETWORK }}
+            TARI_TARGET_NETWORK=${{ env.TARI_TARGET_NETWORK }}
             ${{ env.DOCKER_SUBTAG }}
           tags: |
             ${{ steps.meta.outputs.tags }}

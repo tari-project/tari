@@ -105,6 +105,7 @@ quickcheck = "1.0"
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build"], version = "1.0.0-pre.9" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.9" }
 
 [[bench]]
 name = "mempool"

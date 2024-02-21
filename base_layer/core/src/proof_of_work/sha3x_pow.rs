@@ -96,6 +96,7 @@ pub mod test {
     }
 
     #[test]
+    #[cfg(tari_target_network_testnet)]
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 631;
