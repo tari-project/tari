@@ -132,7 +132,6 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             validator_node_registration_min_deposit_amount: cc
                 .validator_node_registration_min_deposit_amount()
                 .as_u64(),
-            validator_node_registration_min_lock_height: cc.validator_node_registration_min_lock_height(),
             validator_node_registration_shuffle_interval_epoch: cc
                 .validator_node_registration_shuffle_interval()
                 .as_u64(),

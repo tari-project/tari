@@ -150,12 +150,14 @@ impl OutputFeatures {
         public_key: PublicKey,
         signature: Signature,
         claim_public_key: PublicKey,
+        maturity: u64,
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
             sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
                 ValidatorNodeRegistration::new(ValidatorNodeSignature::new(public_key, signature), claim_public_key),
             )),
+            maturity,
             ..Default::default()
         }
     }
