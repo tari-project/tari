@@ -63,7 +63,12 @@ use minotari_wallet::{
         sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
-    test_utils::{create_consensus_constants, make_wallet_database_connection, random_string},
+    test_utils::{
+        create_consensus_constants,
+        make_wallet_database_connection,
+        make_wallet_database_memory_connection,
+        random_string,
+    },
     transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
@@ -164,7 +169,7 @@ use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{create_wallet_output_from_sender_data, make_input},
+    utils::{create_wallet_output_from_sender_data, make_fake_input_from_copy, make_input},
 };
 
 async fn setup_transaction_service<P: AsRef<Path>>(
@@ -533,8 +538,8 @@ async fn manage_single_transaction() {
     );
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
-    let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
+    let bob_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
@@ -696,8 +701,8 @@ async fn large_interactive_transaction() {
     );
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
-    let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
+    let bob_connection = make_wallet_database_memory_connection();
 
     // Alice sets up her Transaction Service
     let shutdown = Shutdown::new();
@@ -876,7 +881,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
     );
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -898,14 +903,15 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
     // e.g. `TransactionTooLarge { got: 3379097, expected: 3135488 }`
     let max_number_of_outputs_in_frame = (rpc::RPC_MAX_FRAME_SIZE as f64 / 700.0f64).ceil() as usize;
     let number_of_outputs = max_number_of_outputs_in_frame + 100;
+    let mut uo_reference = make_input(
+        &mut OsRng,
+        amount_per_output,
+        &OutputFeatures::default(),
+        &alice_key_manager_handle,
+    )
+    .await;
     for _ in 0..number_of_outputs {
-        let uo = make_input(
-            &mut OsRng,
-            amount_per_output,
-            &OutputFeatures::default(),
-            &alice_key_manager_handle,
-        )
-        .await;
+        let uo = make_fake_input_from_copy(&mut uo_reference, &alice_key_manager_handle).await;
 
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         alice_db
@@ -972,7 +978,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
     );
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -994,14 +1000,15 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
     // e.g. `TransactionTooLarge { got: 3205068, expected: 3135488 }`
     let max_number_of_outputs_in_frame = (rpc::RPC_MAX_FRAME_SIZE as f64 / 1175.0f64).ceil() as usize;
     let number_of_outputs = max_number_of_outputs_in_frame + 100;
+    let mut uo_reference = make_input(
+        &mut OsRng,
+        amount_per_output,
+        &OutputFeatures::default(),
+        &alice_key_manager_handle,
+    )
+    .await;
     for _ in 0..number_of_outputs {
-        let uo = make_input(
-            &mut OsRng,
-            amount_per_output,
-            &OutputFeatures::default(),
-            &alice_key_manager_handle,
-        )
-        .await;
+        let uo = make_fake_input_from_copy(&mut uo_reference, &alice_key_manager_handle).await;
 
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         alice_db
@@ -1088,7 +1095,7 @@ async fn test_spend_dust_happy_path() {
     );
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -1108,14 +1115,15 @@ async fn test_spend_dust_happy_path() {
     let amount_per_output = 10_000 * uT;
     let number_of_outputs = 1000;
     let fee_per_gram = MicroMinotari::from(1);
+    let mut uo_reference = make_input(
+        &mut OsRng,
+        amount_per_output,
+        &OutputFeatures::default(),
+        &alice_key_manager_handle,
+    )
+    .await;
     for _ in 0..number_of_outputs {
-        let uo = make_input(
-            &mut OsRng,
-            amount_per_output,
-            &OutputFeatures::default(),
-            &alice_key_manager_handle,
-        )
-        .await;
+        let uo = make_fake_input_from_copy(&mut uo_reference, &alice_key_manager_handle).await;
 
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         alice_db
@@ -1244,7 +1252,7 @@ async fn single_transaction_to_self() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
@@ -1328,7 +1336,7 @@ async fn large_coin_split_transaction() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
@@ -1413,7 +1421,7 @@ async fn single_transaction_burn_tari() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
@@ -1561,7 +1569,7 @@ async fn send_one_sided_transaction_to_other() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
@@ -1679,8 +1687,8 @@ async fn recover_one_sided_transaction() {
     let database_path = temp_dir.path().to_str().unwrap().to_string();
     let database_path2 = temp_dir2.path().to_str().unwrap().to_string();
 
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
-    let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path2.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
+    let bob_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (mut alice_ts, alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
@@ -1802,7 +1810,7 @@ async fn test_htlc_send_and_claim() {
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
 
-    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let db_connection = make_wallet_database_memory_connection();
     let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let shutdown = Shutdown::new();
@@ -1935,7 +1943,7 @@ async fn send_one_sided_transaction_to_self() {
     let temp_dir = tempdir().unwrap();
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
     let (alice_ts, alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
@@ -2026,6 +2034,7 @@ async fn manage_multiple_transactions() {
 
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
+    // TODO: When using a memory type db connection this test fails at `assert_eq!(tx_reply, 3, "Need 3 replies");`
     let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (carol_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
@@ -2696,7 +2705,7 @@ async fn discovery_async_return_test() {
     );
     let mut shutdown = Shutdown::new();
 
-    let (carol_connection, _temp_dir1) = make_wallet_database_connection(None);
+    let carol_connection = make_wallet_database_memory_connection();
 
     let (_carol_ts, _carol_oms, carol_comms, _carol_connectivity, key_manager_handle, _carol_db) =
         setup_transaction_service(
@@ -2711,7 +2720,7 @@ async fn discovery_async_return_test() {
         )
         .await;
 
-    let (alice_connection, _temp_dir2) = make_wallet_database_connection(None);
+    let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -2866,7 +2875,7 @@ async fn discovery_async_return_test() {
 #[tokio::test]
 async fn test_power_mode_updates() {
     let factories = CryptoFactories::default();
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let tx_backend = alice_ts_interface.ts_db;
@@ -3016,7 +3025,7 @@ async fn test_power_mode_updates() {
 async fn test_set_num_confirmations() {
     let factories = CryptoFactories::default();
 
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut ts_interface = setup_transaction_service_no_comms(
         factories,
@@ -3062,7 +3071,7 @@ async fn test_transaction_cancellation() {
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -3412,7 +3421,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
 
@@ -3472,7 +3481,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         },
     };
     assert_eq!(tx_id, msg_tx_id);
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     // Test sending the Reply to a receiver with Direct and then with SAF and never both
     let mut bob_ts_interface = setup_transaction_service_no_comms(
@@ -3524,7 +3533,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         0,
         "Should be no more calls"
     );
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut bob2_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -3725,7 +3734,7 @@ async fn test_tx_direct_send_behaviour() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
@@ -3994,13 +4003,13 @@ async fn test_tx_direct_send_behaviour() {
 async fn test_restarting_transaction_protocols() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
-    let (alice_connection, _temp_dir) = make_wallet_database_connection(None);
+    let alice_connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), alice_connection, None).await;
 
     let alice_backend = alice_ts_interface.ts_db;
 
-    let (bob_connection, _temp_dir2) = make_wallet_database_connection(None);
+    let bob_connection = make_wallet_database_memory_connection();
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), bob_connection, None).await;
 
     let bob_backend = bob_ts_interface.ts_db;
@@ -4223,7 +4232,7 @@ async fn test_transaction_resending() {
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Setup Alice wallet with no comms stack
-    let (connection, _tempdir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -4290,7 +4299,7 @@ async fn test_transaction_resending() {
     }
 
     // Setup Bob's wallet with no comms stack
-    let (connection, _tempdir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut bob_ts_interface = setup_transaction_service_no_comms(
         factories,
@@ -4498,7 +4507,7 @@ async fn test_resend_on_startup() {
         send_count: 1,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -4547,7 +4556,7 @@ async fn test_resend_on_startup() {
     outbound_tx.send_count = 1;
     outbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
 
-    let (connection2, _temp_dir2) = make_wallet_database_connection(None);
+    let connection2 = make_wallet_database_memory_connection();
 
     let mut alice2_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -4630,7 +4639,7 @@ async fn test_resend_on_startup() {
         send_count: 0,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-    let (bob_connection, _temp_dir) = make_wallet_database_connection(None);
+    let bob_connection = make_wallet_database_memory_connection();
 
     let mut bob_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -4678,7 +4687,7 @@ async fn test_resend_on_startup() {
     // Now we do it again with the timestamp prior to the cooldown and see that a message is sent
     inbound_tx.send_count = 1;
     inbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
-    let (bob_connection2, _temp_dir2) = make_wallet_database_connection(None);
+    let bob_connection2 = make_wallet_database_memory_connection();
 
     let mut bob2_ts_interface = setup_transaction_service_no_comms(
         factories,
@@ -4737,7 +4746,7 @@ async fn test_replying_to_cancelled_tx() {
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Testing if a Tx Reply is received for a Cancelled Outbound Tx that a Cancelled message is sent back:
-    let (alice_connection, _tempdir) = make_wallet_database_connection(None);
+    let alice_connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -4804,7 +4813,7 @@ async fn test_replying_to_cancelled_tx() {
         .unwrap();
 
     // Setup Bob's wallet with no comms stack
-    let (bob_connection, _tempdir) = make_wallet_database_connection(None);
+    let bob_connection = make_wallet_database_memory_connection();
 
     let mut bob_ts_interface = setup_transaction_service_no_comms(
         factories,
@@ -4869,7 +4878,7 @@ async fn test_transaction_timeout_cancellation() {
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     // Testing if a Tx Reply is received for a Cancelled Outbound Tx that a Cancelled message is sent back:
-    let (alice_connection, _tempdir) = make_wallet_database_connection(None);
+    let alice_connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -5015,7 +5024,7 @@ async fn test_transaction_timeout_cancellation() {
         send_count: 1,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-    let (bob_connection, _temp_dir) = make_wallet_database_connection(None);
+    let bob_connection = make_wallet_database_memory_connection();
 
     let mut bob_ts_interface = setup_transaction_service_no_comms(
         factories.clone(),
@@ -5065,7 +5074,7 @@ async fn test_transaction_timeout_cancellation() {
     let call = bob_ts_interface.outbound_service_mock_state.pop_call().await.unwrap();
     let bob_cancelled_message = try_decode_transaction_cancelled_message(call.1.to_vec()).unwrap();
     assert_eq!(bob_cancelled_message.tx_id, tx_id.as_u64());
-    let (carol_connection, _temp) = make_wallet_database_connection(None);
+    let carol_connection = make_wallet_database_memory_connection();
 
     // Now to do this for the Receiver
     let mut carol_ts_interface = setup_transaction_service_no_comms(
@@ -5139,7 +5148,7 @@ async fn transaction_service_tx_broadcast() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
@@ -5148,7 +5157,7 @@ async fn transaction_service_tx_broadcast() {
         .wallet_connectivity_service_mock
         .set_base_node(alice_ts_interface.base_node_identity.to_peer());
 
-    let (connection2, _temp_dir2) = make_wallet_database_connection(None);
+    let connection2 = make_wallet_database_memory_connection();
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection2, None).await;
 
     let alice_output_value = MicroMinotari(250000);
@@ -5505,7 +5514,7 @@ async fn transaction_service_tx_broadcast() {
 #[tokio::test]
 async fn broadcast_all_completed_transactions_on_startup() {
     let factories = CryptoFactories::default();
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let db = alice_ts_interface.ts_db.clone();
@@ -5645,7 +5654,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
 async fn test_update_faux_tx_on_oms_validation() {
     let factories = CryptoFactories::default();
 
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let alice_address = TariAddress::new(
@@ -5819,7 +5828,7 @@ async fn test_update_faux_tx_on_oms_validation() {
 async fn test_update_coinbase_tx_on_oms_validation() {
     let factories = CryptoFactories::default();
 
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let alice_address = TariAddress::new(
@@ -5991,7 +6000,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
 #[tokio::test]
 async fn test_get_fee_per_gram_per_block_basic() {
     let factories = CryptoFactories::default();
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let connection = make_wallet_database_memory_connection();
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
     let stats = vec![base_node_proto::MempoolFeePerGramStat {
         order: 0,
