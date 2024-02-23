@@ -409,10 +409,19 @@ pub async fn make_it_rain(
 
                 // Manage transaction submission rate
                 let actual_ms = (Utc::now() - started_at).num_milliseconds();
-                let target_ms = (i as f64 / f64::from(transactions_per_second) / 1000.0) as i64;
+                let target_ms = (i as f64 * (1000.0 / f64::from(transactions_per_second))) as i64;
+                trace!(
+                    target: LOG_TARGET,
+                    "make-it-rain {}: target {:?} ms vs. actual {:?} ms", i, target_ms, actual_ms
+                );
                 if target_ms - actual_ms > 0 {
                     // Maximum delay between Txs set to 120 s
-                    sleep(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
+                    let delay_ms = Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64);
+                    trace!(
+                        target: LOG_TARGET,
+                        "make-it-rain {}: delaying for {:?} ms", i, delay_ms
+                    );
+                    sleep(delay_ms).await;
                 }
                 let delayed_for = Instant::now();
                 let sender_clone = sender.clone();
