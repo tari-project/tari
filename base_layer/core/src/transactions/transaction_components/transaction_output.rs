@@ -49,7 +49,7 @@ use tari_crypto::{
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::SecretKey,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::hex::Hex,
 };
 use tari_script::TariScript;
 
@@ -545,9 +545,9 @@ pub fn batch_verify_range_proofs(
                     minimum_value_promise: output.minimum_value_promise.into(),
                 }],
             });
-            proofs.push(output.proof_result()?.to_vec().clone());
+            proofs.push(output.proof_result()?.as_vec());
         }
-        if let Err(err_1) = prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
+        if let Err(err_1) = prover.verify_batch(proofs, statements.iter().collect()) {
             for output in &bulletproof_plus_proofs {
                 if let Err(err_2) = output.verify_range_proof(prover) {
                     return Err(RangeProofError::InvalidRangeProof {

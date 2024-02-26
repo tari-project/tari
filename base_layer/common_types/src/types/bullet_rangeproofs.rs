@@ -48,6 +48,11 @@ impl BulletRangeProof {
             .expect("This should be 32 bytes for a Blake 256 hash")
             .into()
     }
+
+    /// Get the range proof as a vector reference, which is useful to satisfy the verification API without cloning
+    pub fn as_vec(&self) -> &Vec<u8> {
+        &self.0
+    }
 }
 
 impl ByteArray for BulletRangeProof {
