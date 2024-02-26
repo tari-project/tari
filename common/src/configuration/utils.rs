@@ -65,7 +65,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         .build()
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
-    let network = match cfg.get_string("network") {
+    let mut network = match cfg.get_string("network") {
         Ok(network) => {
             Network::from_str(&network).map_err(|e| ConfigError::new("Invalid network", Some(e.to_string())))?
         },
@@ -82,7 +82,11 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     };
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
-    let overrides = overrides.get_config_property_overrides(network);
+    let overrides = overrides.get_config_property_overrides(&mut network);
+    // Set the network environment variable according to the chosen network (this is to ensure that
+    // `get_current_or_user_setting_or_default()` uses the environment variable if the static network is not set)
+    std::env::set_var("TARI_NETWORK", network.as_key_str());
+
     if overrides.is_empty() {
         return Ok(cfg);
     }

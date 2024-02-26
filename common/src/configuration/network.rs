@@ -49,10 +49,16 @@ pub enum Network {
 }
 
 impl Network {
-    pub fn get_current_or_default() -> Self {
+    pub fn get_current_or_user_setting_or_default() -> Self {
         match CURRENT_NETWORK.get() {
             Some(&network) => network,
-            None => Network::default(),
+            None => {
+                // Check to see if the network has been set by the environment, otherwise use the default
+                match std::env::var("TARI_NETWORK") {
+                    Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::default()),
+                    Err(_) => Network::default(),
+                }
+            },
         }
     }
 

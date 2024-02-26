@@ -173,6 +173,7 @@ message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;
     bool initial_sync_achieved = 3;
     MinerData miner_data = 4;
+    bytes best_previous_block_hash = 5;
 }
 
 /// return type of NewBlockTemplateRequest

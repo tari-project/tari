@@ -351,7 +351,7 @@ impl AggregateBody {
     /// Lists the number of inputs, outputs, and kernels in the block
     pub fn to_counts_string(&self) -> String {
         format!(
-            "{} input(s), {} output(s), {} kernel(s)",
+            "input(s): {}, output(s): {}, kernel(s): {}",
             self.inputs.len(),
             self.outputs.len(),
             self.kernels.len()

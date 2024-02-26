@@ -57,10 +57,10 @@ pub const LOG_TARGET: &str = "c::pow::monero_rx";
 pub fn randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
-    gen_hash: &FixedHash,
+    genesis_block_hash: &FixedHash,
     consensus: &ConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
-    let monero_pow_data = verify_header(header, gen_hash, consensus)?;
+    let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
     debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
@@ -100,7 +100,7 @@ fn parse_extra_field_truncate_on_error(raw_extra_field: &RawExtraField) -> Extra
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
 pub fn verify_header(
     header: &BlockHeader,
-    gen_hash: &FixedHash,
+    genesis_block_hash: &FixedHash,
     consensus: &ConsensusManager,
 ) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header, consensus)?;
@@ -110,6 +110,7 @@ pub fn verify_header(
         warn!(target: LOG_TARGET, "Error deserializing, Monero extra field");
         ex_field
     });
+    debug!(target: LOG_TARGET, "Extra field: {:?}", extra_field);
     // Check that the Tari MM hash is found in the Monero coinbase transaction
     // and that only 1 Tari header is found
 
@@ -128,7 +129,7 @@ pub fn verify_header(
                 depth,
                 &merge_mining_hash,
                 &expected_merge_mining_hash,
-                gen_hash,
+                genesis_block_hash,
             )
         }
     }
@@ -303,21 +304,21 @@ pub fn create_ordered_transaction_hashes_from_block(block: &monero::Block) -> Ve
         .collect()
 }
 
-/// Inserts merge mining hash into a Monero block
-pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8]>>(
+/// Inserts aux chain merkle root and info into a Monero block
+pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
     block: &mut monero::Block,
-    hash: T,
+    aux_chain_mr: T,
     aux_chain_count: u8,
     aux_nonce: u32,
 ) -> Result<(), MergeMineError> {
     if aux_chain_count == 0 {
         return Err(MergeMineError::ZeroAuxChains);
     }
-    if hash.as_ref().len() != monero::Hash::len_bytes() {
+    if aux_chain_mr.as_ref().len() != monero::Hash::len_bytes() {
         return Err(MergeMineError::HashingError(format!(
             "Expected source to be {} bytes, but it was {} bytes",
             monero::Hash::len_bytes(),
-            hash.as_ref().len()
+            aux_chain_mr.as_ref().len()
         )));
     }
     // When we insert the merge mining tag, we need to make sure that the extra field is valid.
@@ -337,17 +338,18 @@ pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8
     // will always fail deserialization (`ExtraField::try_parse`) - the new field cannot be parsed in that sequence.
     // To circumvent this, we create a new extra field by appending the original extra field to the merge mining field
     // instead.
-    let hash = monero::Hash::from_slice(hash.as_ref());
-    let mt_params = MerkleTreeParameters {
-        number_of_chains: aux_chain_count,
-        aux_nonce,
-    };
+    let hash = monero::Hash::from_slice(aux_chain_mr.as_ref());
     let encoded = if aux_chain_count == 1 {
         VarInt(0)
     } else {
+        let mt_params = MerkleTreeParameters {
+            number_of_chains: aux_chain_count,
+            aux_nonce,
+        };
         mt_params.to_varint()
     };
     extra_field.0.insert(0, SubField::MergeMining(Some(encoded), hash));
+    debug!(target: LOG_TARGET, "Inserted extra field: {:?}", extra_field);
 
     block.miner_tx.prefix.extra = extra_field.into();
 
@@ -494,7 +496,7 @@ mod test {
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
         let block_header = BlockHeader::new(0);
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
 
         let coinbase = block.miner_tx.clone();
         let extra = coinbase.prefix.extra;
@@ -561,7 +563,7 @@ mod test {
             validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         let hashes = create_ordered_transaction_hashes_from_block(&block);
         assert_eq!(hashes.len(), block.tx_hashes.len() + 1);
         let root = tree_hash(&hashes).unwrap();
@@ -663,7 +665,7 @@ mod test {
             validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
@@ -809,7 +811,7 @@ mod test {
             validator_node_size: 0,
         };
         let hash = Hash::null();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -885,7 +887,7 @@ mod test {
             validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         #[allow(clippy::redundant_clone)]
         let mut block_header2 = block_header.clone();
         block_header2.version = 1;
@@ -893,7 +895,7 @@ mod test {
         assert!(extract_aux_merkle_root_from_block(&block).is_ok());
 
         // Try via the API - this will fail because more than one merge mining tag is not allowed
-        assert!(insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash2, 1, 0).is_err());
+        assert!(insert_aux_chain_mr_and_info_into_block(&mut block, hash2, 1, 0).is_err());
 
         // Now bypass the API - this will effectively allow us to insert more than one merge mining tag,
         // like trying to sneek it in. Later on, when we call `verify_header(&block_header)`, it should fail.
@@ -1000,7 +1002,7 @@ mod test {
 
         // Now insert the merge mining tag - this would also clean up the extra field and remove the invalid sub-fields
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         assert!(ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).is_ok());
 
         // Verify that the merge mining tag is there
@@ -1041,7 +1043,7 @@ mod test {
             validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -1174,7 +1176,7 @@ mod test {
             validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
-        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+        insert_aux_chain_mr_and_info_into_block(&mut block, hash, 1, 0).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);

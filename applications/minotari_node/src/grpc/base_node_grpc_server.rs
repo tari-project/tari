@@ -570,6 +570,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 );
                 obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
             })?;
+        let metadata = handler.get_metadata().await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get metadata for new block template: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
 
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let pow = algo as i32;
@@ -585,8 +593,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .try_into()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
             ),
-
             initial_sync_achieved: status_watch.borrow().bootstrapped,
+            best_previous_block_hash: metadata.best_block_hash().to_vec(),
         };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");

@@ -29,7 +29,7 @@ pub use helpers::{
     create_ordered_transaction_hashes_from_block,
     deserialize_monero_block_from_hex,
     extract_aux_merkle_root_from_block,
-    insert_merge_mining_tag_and_aux_chain_merkle_root_into_block,
+    insert_aux_chain_mr_and_info_into_block,
     randomx_difficulty,
     serialize_monero_block_to_hex,
     verify_header,

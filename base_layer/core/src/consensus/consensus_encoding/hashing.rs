@@ -42,7 +42,7 @@ where D: Default
 {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(label: &'static str) -> ConsensusHasher<D> {
-        Self::new_with_network(label, Network::get_current_or_default())
+        Self::new_with_network(label, Network::get_current_or_user_setting_or_default())
     }
 
     pub fn new_with_network(label: &'static str, network: Network) -> ConsensusHasher<D> {
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
-        let network = Network::get_current_or_default();
+        let network = Network::get_current_or_user_setting_or_default();
 
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
-        let network = Network::get_current_or_default();
+        let network = Network::get_current_or_user_setting_or_default();
 
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop);
@@ -214,5 +214,36 @@ mod tests {
         let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();
 
         assert_ne!(blake_hash.as_slice(), default_consensus_hash.as_slice());
+    }
+
+    #[test]
+    fn it_uses_the_network_environment_variable_if_set() {
+        let label = "test";
+        let input = [1u8; 32];
+
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            // Generate a specific network hash
+            let hash_specify_network =
+                DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, network)
+                    .chain(&input)
+                    .finalize();
+
+            // Generate an inferred network hash
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+            let inferred_network_hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
+                .chain(&input)
+                .finalize();
+            std::env::remove_var("TARI_NETWORK");
+
+            // They should be equal
+            assert_eq!(hash_specify_network, inferred_network_hash);
+        }
     }
 }

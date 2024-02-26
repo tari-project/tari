@@ -292,33 +292,38 @@ where B: BlockchainBackend + 'static
                 let prev_hash = header.prev_hash;
                 let height = header.height;
 
+                let block = header.into_builder().with_transactions(transactions).build();
+                let block_hash = block.hash();
                 let block_template = NewBlockTemplate::from_block(
-                    header.into_builder().with_transactions(transactions).build(),
+                    block,
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
                 )?;
 
-                debug!(target: LOG_TARGET, "New template block: {}", block_template);
-                debug!(
-                    target: LOG_TARGET,
-                    "New block template requested at height {}, weight: {}",
+                debug!(target: LOG_TARGET,
+                    "New block template requested and prepared at height: #{}, target difficulty: {}, block hash: `{}`, weight: {}, {}",
                     block_template.header.height,
+                    block_template.target_difficulty,
+                    block_hash.to_hex(),
                     block_template
                         .body
                         .calculate_weight(constants.transaction_weight_params())
-                        .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?
+                        .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?,
+                    block_template.body.to_counts_string()
                 );
-                trace!(target: LOG_TARGET, "{}", block_template);
+
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
-                debug!(target: LOG_TARGET, "Prepared block: {}", block_template);
+                let height = block_template.header.height;
+                let target_difficulty = block_template.target_difficulty;
                 let block = self.blockchain_db.prepare_new_block(block_template).await?;
                 let constants = self.consensus_manager.consensus_constants(block.header.height);
-                debug!(
-                    target: LOG_TARGET,
-                    "Prepared new block from template (hash: {}, weight: {}, {})",
+                debug!(target: LOG_TARGET,
+                    "Prepared block: #{}, target difficulty: {}, block hash: `{}`, weight: {}, {}",
+                    height,
+                    target_difficulty,
                     block.hash().to_hex(),
                     block
                         .body
