@@ -9,7 +9,7 @@ license = "BSD-3-Clause"
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
-tari_features = { path = "../../common/tari_features" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.9" }
 tari_utilities = { version = "0.7" }
 minotari_app_grpc = { path = "../minotari_app_grpc", optional = true }
 
@@ -27,7 +27,7 @@ tonic = "0.8.3"
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-tari_features = { path = "../../common/tari_features" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.9" }
 
 [features]
 miner_input = ["minotari_app_grpc"]

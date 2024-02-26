@@ -3046,6 +3046,7 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_script",
  "tari_utilities",
  "thiserror",
@@ -3243,6 +3244,7 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_utilities",
  "thiserror",
 ]
@@ -5841,6 +5843,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_comms_rpc_macros",
  "tari_crypto",
+ "tari_features",
  "tari_hash_domains",
  "tari_key_manager",
  "tari_metrics",

@@ -24,14 +24,4 @@ use tari_features::resolver::build_features;
 
 fn main() {
     build_features();
-    tari_common::build::ProtobufCompiler::new()
-        .include_paths(&["src/proto"])
-        .proto_paths(&[
-            "src/mempool/proto",
-            "src/base_node/proto",
-            "src/transactions/transaction_protocol/proto",
-        ])
-        .emit_rerun_if_changed_directives()
-        .compile()
-        .unwrap();
 }

@@ -48,13 +48,13 @@ impl From<NetworkCheckError> for ExitError {
     }
 }
 
-#[cfg(tari_network_mainnet)]
+#[cfg(tari_target_network_mainnet)]
 pub const TARGET_NETWORK: Target = Target::MainNet;
 
-#[cfg(tari_network_nextnet)]
+#[cfg(tari_target_network_nextnet)]
 pub const TARGET_NETWORK: Target = Target::NextNet;
 
-#[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
+#[cfg(all(not(tari_target_network_mainnet), not(tari_target_network_nextnet)))]
 pub const TARGET_NETWORK: Target = Target::TestNet;
 
 pub fn is_network_choice_valid(network: Network) -> Result<Network, NetworkCheckError> {
