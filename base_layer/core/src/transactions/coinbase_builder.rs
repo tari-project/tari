@@ -662,7 +662,7 @@ mod test {
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
         let builder = CoinbaseBuilder::new(key_manager.clone());
         let builder = builder
-            .with_block_height(4200000)
+            .with_block_height(4_200_000)
             .with_fees(1 * uT)
             .with_spend_key_id(p.spend_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
