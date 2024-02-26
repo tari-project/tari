@@ -148,7 +148,6 @@ where
                     );
                     self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
                         .await?;
-                    self.publish_event(TransactionEvent::NewBlockMined(unmined_tx.tx_id));
                 }
             }
         }
