@@ -1348,8 +1348,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     for input in body.inputs().iter() {
         input_mmr.push(input.canonical_hash().to_vec())?;
 
-        // Search the DB for the output leaf index so that it can be marked as spent/deleted.
-        // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
         let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
         match output_smt.delete(&smt_key)? {
             DeleteResult::Deleted(_value_hash) => {},

@@ -941,7 +941,10 @@ impl LMDBDatabase {
                 continue;
             }
             let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
-            output_smt.delete(&smt_key)?;
+            match output_smt.delete(&smt_key)? {
+                DeleteResult::Deleted(_value_hash) => {},
+                DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
+            };
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
@@ -993,7 +996,14 @@ impl LMDBDatabase {
             );
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
             let smt_node = ValueHash::try_from(input.smt_hash(row.spent_height).as_slice())?;
-            output_smt.insert(smt_key, smt_node)?;
+            if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                error!(
+                    target: LOG_TARGET,
+                    "Output commitment({}) already in SMT",
+                    input.commitment()?.to_hex(),
+                );
+                return Err(e.into());
+            }
 
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
@@ -1210,7 +1220,14 @@ impl LMDBDatabase {
             if !output.is_burned() {
                 let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
                 let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-                output_smt.insert(smt_key, smt_node)?;
+                if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                    error!(
+                        target: LOG_TARGET,
+                        "Output commitment({}) already in SMT",
+                        output.commitment.to_hex(),
+                    );
+                    return Err(e.into());
+                }
             }
 
             let output_hash = output.hash();
