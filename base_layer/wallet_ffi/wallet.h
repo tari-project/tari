@@ -3000,7 +3000,22 @@ bool wallet_set_base_node_peer(struct TariWallet *wallet,
                                const char *address,
                                int *error_out);
 
-struct TariPublicKeys *wallet_get_seed_peers(struct TariWallet *wallet, int *error_out);
+/**
+ * Gets all seed peers known by the wallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `TariPublicKeys` - Returns a list of all known public keys
+ *
+ * # Safety
+ * None
+ */
+struct TariPublicKeys *wallet_get_seed_peers(struct TariWallet *wallet,
+                                             int *error_out);
 
 /**
  * Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the

@@ -6379,7 +6379,18 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
     }
     true
 }
-
+/// Gets all seed peers known by the wallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariPublicKeys` - Returns a list of all known public keys
+///
+/// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKeys {
     let mut error = 0;
@@ -9550,6 +9561,7 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Hello from Alasca").unwrap()) as *const c_char;
 
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -9559,6 +9571,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 alice_network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9603,6 +9616,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 alice_network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9706,7 +9720,7 @@ mod test {
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -9716,6 +9730,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9930,7 +9945,7 @@ mod test {
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let wallet = wallet_create(
                 config,
                 ptr::null(),
@@ -9940,6 +9955,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9994,6 +10010,7 @@ mod test {
             let log_path: *const c_char =
                 CString::into_raw(CString::new(temp_dir.path().join("asdf").to_str().unwrap()).unwrap())
                     as *const c_char;
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let recovered_wallet = wallet_create(
                 config,
                 log_path,
@@ -10003,6 +10020,7 @@ mod test {
                 passphrase,
                 seed_words,
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10070,7 +10088,7 @@ mod test {
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -10080,6 +10098,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10219,7 +10238,7 @@ mod test {
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -10229,6 +10248,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10352,7 +10372,7 @@ mod test {
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -10362,6 +10382,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10565,7 +10586,7 @@ mod test {
             );
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -10575,6 +10596,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10786,7 +10808,7 @@ mod test {
             );
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
-
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -10796,6 +10818,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11038,6 +11061,7 @@ mod test {
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let wallet_ptr = wallet_create(
                 config,
                 ptr::null(),
@@ -11047,6 +11071,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11276,6 +11301,7 @@ mod test {
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let alice_wallet_ptr = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -11285,6 +11311,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 alice_network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11336,6 +11363,7 @@ mod test {
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let bob_wallet_ptr = wallet_create(
                 bob_config,
                 ptr::null(),
@@ -11345,6 +11373,7 @@ mod test {
                 passphrase,
                 ptr::null(),
                 bob_network_str,
+                dns_string,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
