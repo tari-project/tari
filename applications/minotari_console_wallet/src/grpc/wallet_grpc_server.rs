@@ -115,7 +115,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     grpc::{convert_to_transaction_event, TransactionWrapper},
-    notifier::{CANCELLED, CONFIRMATION, MINED, NEW_BLOCK_MINED, QUEUED, RECEIVED, SENT},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -684,19 +684,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 Ok(msg) => {
                                     use minotari_wallet::transaction_service::handle::TransactionEvent::*;
                                     match (*msg).clone() {
-                                        NewBlockMined(tx_id) => {
-                                            match transaction_service.get_any_transaction(tx_id).await {
-                                                Ok(found_transaction) => {
-                                                    if let Some(WalletTransaction::PendingOutbound(tx)) = found_transaction {
-                                                        let transaction_event = convert_to_transaction_event(NEW_BLOCK_MINED.to_string(),
-                                                            TransactionWrapper::Outbound(Box::new(tx)));
-                                                        send_transaction_event(transaction_event, &mut sender).await;
-                                                    }
-
-                                                },
-                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
-                                            }
-                                        },
                                         ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
                                         TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
                                         TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
