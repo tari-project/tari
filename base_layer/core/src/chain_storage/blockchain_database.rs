@@ -1334,7 +1334,14 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         if !output.is_burned() {
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-            output_smt.insert(smt_key, smt_node)?;
+            if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                error!(
+                    target: LOG_TARGET,
+                    "Output commitment({}) already in SMT",
+                    output.commitment.to_hex(),
+                );
+                return Err(e.into());
+            }
         }
     }
 
