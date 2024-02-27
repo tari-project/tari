@@ -394,7 +394,7 @@ impl OutputSql {
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
             let balance_query = sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
                  FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
@@ -407,6 +407,8 @@ impl OutputSql {
             )
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
