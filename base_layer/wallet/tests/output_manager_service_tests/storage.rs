@@ -60,7 +60,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
-        db.mark_output_as_unspent(kmo.hash).unwrap();
+        db.mark_output_as_unspent(kmo.hash, true).unwrap();
         unspent_outputs.push(kmo);
     }
 
@@ -111,7 +111,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 .await
                 .unwrap();
             db.add_unspent_output(kmo.clone()).unwrap();
-            db.mark_output_as_unspent(kmo.hash).unwrap();
+            db.mark_output_as_unspent(kmo.hash, true).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
         for _ in 0..2 {
@@ -356,7 +356,7 @@ pub async fn test_short_term_encumberance() {
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
-        db.mark_output_as_unspent(kmo.hash).unwrap();
+        db.mark_output_as_unspent(kmo.hash, true).unwrap();
         unspent_outputs.push(kmo);
     }
 

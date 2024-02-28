@@ -423,9 +423,9 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn mark_output_as_unspent(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+    pub fn mark_output_as_unspent(&self, hash: HashOutput, confirmed: bool) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.mark_output_as_unspent(hash)?;
+        db.mark_output_as_unspent(hash, confirmed)?;
         Ok(())
     }
 

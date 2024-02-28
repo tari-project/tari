@@ -10232,6 +10232,7 @@ mod test {
                             .runtime
                             .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
                             .unwrap(),
+                        true,
                     )
                     .unwrap();
             }
@@ -10365,6 +10366,7 @@ mod test {
                             .runtime
                             .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
                             .unwrap(),
+                        true,
                     )
                     .unwrap();
             }
@@ -10577,6 +10579,7 @@ mod test {
                             .runtime
                             .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
                             .unwrap(),
+                        true,
                     )
                     .unwrap();
             }
