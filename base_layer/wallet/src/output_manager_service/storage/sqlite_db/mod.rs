@@ -586,17 +586,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn mark_output_as_unspent(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
+    fn mark_output_as_unspent(&self, hash: FixedHash, confirmed: bool) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let hash = hash.to_vec();
+        let status = if confirmed {
+            OutputStatus::Unspent
+        } else {
+            OutputStatus::UnspentMinedUnconfirmed
+        };
         debug!(target: LOG_TARGET, "mark_output_as_unspent({})", hash.to_hex());
         diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
             .set((
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
                 outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::status.eq(OutputStatus::Unspent as i32),
+                outputs::status.eq(status as i32),
             ))
             .execute(&mut conn)
             .num_rows_affected_or_not_found(1)?;

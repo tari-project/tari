@@ -59,7 +59,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         confirmed: bool,
     ) -> Result<(), OutputManagerStorageError>;
 
-    fn mark_output_as_unspent(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
+    fn mark_output_as_unspent(&self, hash: FixedHash, confirmed: bool) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.

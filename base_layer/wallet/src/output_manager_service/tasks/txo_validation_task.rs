@@ -236,7 +236,7 @@ where
                 if data.height_deleted_at == 0 && output.marked_deleted_at_height.is_some() {
                     // this is mined but not yet spent
                     self.db
-                        .mark_output_as_unspent(output.hash)
+                        .mark_output_as_unspent(output.hash, true)
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
@@ -395,8 +395,10 @@ where
                     last_spent_output.commitment.to_hex(),
                     self.operation_id
                 );
+                // we mark the output as UnspentMinedUnconfirmed so it wont get picked it by the OMS to be spendable
+                // immediately as we first need to find out if this output is unspent, in a mempool, or spent.
                 self.db
-                    .mark_output_as_unspent(last_spent_output.hash)
+                    .mark_output_as_unspent(last_spent_output.hash, false)
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
