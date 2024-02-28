@@ -888,6 +888,7 @@ impl LMDBDatabase {
             .fetch_height_from_hash(write_txn, block_hash)
             .or_not_found("Block", "hash", hash_hex)?;
         let next_height = height.saturating_add(1);
+        let prev_height = height.saturating_sub(1);
         if self.fetch_block_accumulated_data(write_txn, next_height)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to delete block at height {} while next block still exists",
@@ -904,6 +905,21 @@ impl LMDBDatabase {
         let mut smt = self.fetch_tip_smt()?;
 
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut smt)?;
+
+        let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
+        let root = FixedHash::try_from(smt.hash().as_slice())?;
+        if root != new_tip_header.header().output_mr {
+            error!(
+                target: LOG_TARGET,
+                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
+                    root.to_hex(),
+                    new_tip_header.header().output_mr.to_hex(),
+            );
+            return Err(ChainStorageError::InvalidOperation(
+                "Deleting block, new smt root did not match expected smt root".to_string(),
+            ));
+        }
+
         self.insert_tip_smt(write_txn, &smt)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
