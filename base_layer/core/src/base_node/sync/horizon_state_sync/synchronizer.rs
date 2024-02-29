@@ -701,9 +701,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             match output_smt.delete(&smt_key)? {
                                 DeleteResult::Deleted(_value_hash) => {},
                                 DeleteResult::KeyNotFound => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "Could not find input({}) in SMT",
+                                        commitment.to_hex(),
+                                    );
                                     return Err(HorizonSyncError::ChainStorageError(
                                         ChainStorageError::UnspendableInput,
-                                    ))
+                                    ));
                                 },
                             };
                             // This will only be committed once the SMT has been verified due to rewind difficulties if

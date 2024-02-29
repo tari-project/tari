@@ -959,7 +959,14 @@ impl LMDBDatabase {
             let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
             match output_smt.delete(&smt_key)? {
                 DeleteResult::Deleted(_value_hash) => {},
-                DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
+                DeleteResult::KeyNotFound => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not find input({}) in SMT",
+                        utxo.output.commitment.to_hex(),
+                    );
+                    return Err(ChainStorageError::UnspendableInput);
+                },
             };
             lmdb_delete(
                 txn,
@@ -1279,7 +1286,14 @@ impl LMDBDatabase {
             let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
             match output_smt.delete(&smt_key)? {
                 DeleteResult::Deleted(_value_hash) => {},
-                DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
+                DeleteResult::KeyNotFound => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not find input({}) in SMT",
+                        input_with_output_data.commitment()?.to_hex(),
+                    );
+                    return Err(ChainStorageError::UnspendableInput);
+                },
             };
 
             let features = input_with_output_data.features()?;
