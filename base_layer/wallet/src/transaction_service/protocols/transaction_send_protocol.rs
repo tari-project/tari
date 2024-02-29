@@ -297,40 +297,30 @@ where
         );
 
         // Attempt to send the initial transaction
-        let SendResult {
-            direct_send_result,
-            store_and_forward_send_result,
-            transaction_status,
-        } = match check_transaction_size(&outbound_tx_check, self.id) {
-            Ok(_) => match self.send_transaction(msg).await {
-                Ok(val) => val,
+        let mut initial_send = SendResult {
+            direct_send_result: false,
+            store_and_forward_send_result: false,
+            transaction_status: TransactionStatus::Queued,
+        };
+        if let Err(e) = check_transaction_size(&outbound_tx_check, self.id) {
+            info!(
+                target: LOG_TARGET,
+                "Initial Transaction TxId: {:?} will not be sent due to it being oversize ({:?})", self.id, e
+            );
+        } else {
+            match self.send_transaction(msg).await {
+                Ok(val) => initial_send = val,
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
                         "Problem sending Outbound Transaction TxId: {:?}: {:?}", self.id, e
                     );
-                    SendResult {
-                        direct_send_result: false,
-                        store_and_forward_send_result: false,
-                        transaction_status: TransactionStatus::Queued,
-                    }
                 },
-            },
-            Err(e) => {
-                info!(
-                    target: LOG_TARGET,
-                    "Initial Transaction TxId: {:?} will not be sent due to it being oversize ({:?})", self.id, e
-                );
-                SendResult {
-                    direct_send_result: false,
-                    store_and_forward_send_result: false,
-                    transaction_status: TransactionStatus::Queued,
-                }
-            },
+            }
         };
 
         // Confirm pending transaction (confirm encumbered outputs)
-        if transaction_status == TransactionStatus::Pending {
+        if initial_send.transaction_status == TransactionStatus::Pending {
             self.resources
                 .output_manager_service
                 .confirm_pending_transaction(self.id)
@@ -354,10 +344,10 @@ where
                 self.amount,
                 fee,
                 sender_protocol.clone(),
-                transaction_status.clone(),
+                initial_send.transaction_status.clone(),
                 self.message.clone(),
                 Utc::now().naive_utc(),
-                direct_send_result,
+                initial_send.direct_send_result,
             );
             self.resources
                 .db
@@ -368,7 +358,7 @@ where
                 return Err(e);
             }
         }
-        if transaction_status == TransactionStatus::Pending {
+        if initial_send.transaction_status == TransactionStatus::Pending {
             self.resources
                 .db
                 .increment_send_count(self.id)
@@ -382,13 +372,13 @@ where
             .send(Arc::new(TransactionEvent::TransactionSendResult(
                 self.id,
                 TransactionSendStatus {
-                    direct_send_result,
-                    store_and_forward_send_result,
-                    queued_for_retry: transaction_status == TransactionStatus::Queued,
+                    direct_send_result: initial_send.direct_send_result,
+                    store_and_forward_send_result: initial_send.store_and_forward_send_result,
+                    queued_for_retry: initial_send.transaction_status == TransactionStatus::Queued,
                 },
             )));
 
-        if transaction_status == TransactionStatus::Pending {
+        if initial_send.transaction_status == TransactionStatus::Pending {
             info!(
                 target: LOG_TARGET,
                 "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
@@ -399,7 +389,7 @@ where
                 "Pending Outbound Transaction TxId: {:?} queued. Waiting for wallet to come online", self.id,
             );
         }
-        Ok(transaction_status)
+        Ok(initial_send.transaction_status)
     }
 
     #[allow(clippy::too_many_lines)]

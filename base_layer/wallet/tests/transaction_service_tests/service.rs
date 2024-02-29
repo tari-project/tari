@@ -915,7 +915,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
 
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         alice_db
-            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap())
+            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap(), true)
             .unwrap();
     }
 
@@ -1012,7 +1012,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
 
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         alice_db
-            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap())
+            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap(), true)
             .unwrap();
     }
 
@@ -1127,7 +1127,7 @@ async fn test_spend_dust_happy_path() {
 
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         alice_db
-            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap())
+            .mark_output_as_unspent(uo.hash(&alice_key_manager_handle).await.unwrap(), true)
             .unwrap();
     }
 
