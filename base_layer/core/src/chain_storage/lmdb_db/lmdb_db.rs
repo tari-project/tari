@@ -1018,7 +1018,7 @@ impl LMDBDatabase {
                 utxo_mined_info.output.minimum_value_promise,
             );
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-            let smt_node = ValueHash::try_from(input.smt_hash(row.spent_height).as_slice())?;
+            let smt_node = ValueHash::try_from(input.smt_hash(utxo_mined_info.mined_height).as_slice())?;
             if let Err(e) = output_smt.insert(smt_key, smt_node) {
                 error!(
                     target: LOG_TARGET,
