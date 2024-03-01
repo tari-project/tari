@@ -888,6 +888,7 @@ impl LMDBDatabase {
             .fetch_height_from_hash(write_txn, block_hash)
             .or_not_found("Block", "hash", hash_hex)?;
         let next_height = height.saturating_add(1);
+        let prev_height = height.saturating_sub(1);
         if self.fetch_block_accumulated_data(write_txn, next_height)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to delete block at height {} while next block still exists",
@@ -904,6 +905,21 @@ impl LMDBDatabase {
         let mut smt = self.fetch_tip_smt()?;
 
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut smt)?;
+
+        let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
+        let root = FixedHash::try_from(smt.hash().as_slice())?;
+        if root != new_tip_header.header().output_mr {
+            error!(
+                target: LOG_TARGET,
+                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
+                    root.to_hex(),
+                    new_tip_header.header().output_mr.to_hex(),
+            );
+            return Err(ChainStorageError::InvalidOperation(
+                "Deleting block, new smt root did not match expected smt root".to_string(),
+            ));
+        }
+
         self.insert_tip_smt(write_txn, &smt)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
@@ -941,7 +957,17 @@ impl LMDBDatabase {
                 continue;
             }
             let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
-            output_smt.delete(&smt_key)?;
+            match output_smt.delete(&smt_key)? {
+                DeleteResult::Deleted(_value_hash) => {},
+                DeleteResult::KeyNotFound => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not find input({}) in SMT",
+                        utxo.output.commitment.to_hex(),
+                    );
+                    return Err(ChainStorageError::UnspendableInput);
+                },
+            };
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
@@ -992,8 +1018,15 @@ impl LMDBDatabase {
                 utxo_mined_info.output.minimum_value_promise,
             );
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-            let smt_node = ValueHash::try_from(input.smt_hash(row.spent_height).as_slice())?;
-            output_smt.insert(smt_key, smt_node)?;
+            let smt_node = ValueHash::try_from(input.smt_hash(utxo_mined_info.mined_height).as_slice())?;
+            if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                error!(
+                    target: LOG_TARGET,
+                    "Output commitment({}) already in SMT",
+                    input.commitment()?.to_hex(),
+                );
+                return Err(e.into());
+            }
 
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
@@ -1210,7 +1243,14 @@ impl LMDBDatabase {
             if !output.is_burned() {
                 let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
                 let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-                output_smt.insert(smt_key, smt_node)?;
+                if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                    error!(
+                        target: LOG_TARGET,
+                        "Output commitment({}) already in SMT",
+                        output.commitment.to_hex(),
+                    );
+                    return Err(e.into());
+                }
             }
 
             let output_hash = output.hash();
@@ -1246,7 +1286,14 @@ impl LMDBDatabase {
             let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
             match output_smt.delete(&smt_key)? {
                 DeleteResult::Deleted(_value_hash) => {},
-                DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
+                DeleteResult::KeyNotFound => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not find input({}) in SMT",
+                        input_with_output_data.commitment()?.to_hex(),
+                    );
+                    return Err(ChainStorageError::UnspendableInput);
+                },
             };
 
             let features = input_with_output_data.features()?;

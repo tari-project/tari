@@ -32,7 +32,7 @@ use log::*;
 use tari_common_types::types::{Commitment, FixedHash, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
-use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
+use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::task;
 
@@ -663,7 +663,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     batch_verify_range_proofs(&self.prover, &[&output])?;
                     let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
                     let smt_node = ValueHash::try_from(output.smt_hash(current_header.height).as_slice())?;
-                    output_smt.insert(smt_key, smt_node)?;
+                    if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                        error!(
+                            target: LOG_TARGET,
+                            "Output commitment({}) already in SMT",
+                            output.commitment.to_hex(),
+                        );
+                        return Err(e.into());
+                    }
                     txn.insert_output_via_horizon_sync(
                         output,
                         current_header.hash(),
@@ -691,7 +698,19 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                 stxo_counter,
                             );
                             let smt_key = NodeKey::try_from(commitment_bytes.as_slice())?;
-                            output_smt.delete(&smt_key)?;
+                            match output_smt.delete(&smt_key)? {
+                                DeleteResult::Deleted(_value_hash) => {},
+                                DeleteResult::KeyNotFound => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "Could not find input({}) in SMT",
+                                        commitment.to_hex(),
+                                    );
+                                    return Err(HorizonSyncError::ChainStorageError(
+                                        ChainStorageError::UnspendableInput,
+                                    ));
+                                },
+                            };
                             // This will only be committed once the SMT has been verified due to rewind difficulties if
                             // we need to abort the sync
                             inputs_to_delete.push((output_hash, commitment));
