@@ -595,6 +595,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
                 }
             },
+            'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {
