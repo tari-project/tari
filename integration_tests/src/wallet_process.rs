@@ -27,7 +27,10 @@ use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_console_wallet::{run_wallet_with_cli, Cli};
 use minotari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use tari_common::configuration::{CommonConfig, MultiaddrList};
+use tari_common::{
+    configuration::{CommonConfig, MultiaddrList},
+    network_check::set_network_if_choice_valid,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
@@ -62,6 +65,9 @@ pub async fn spawn_wallet(
     routing_mechanism: Option<TransactionRoutingMechanism>,
     cli: Option<Cli>,
 ) {
+    std::env::set_var("TARI_NETWORK", "localnet");
+    set_network_if_choice_valid(Network::LocalNet).unwrap();
+
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
