@@ -394,7 +394,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for localnet
+            faucet_value: 0.into(),
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
             input_version_range,

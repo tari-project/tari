@@ -395,7 +395,7 @@ mod tests {
         #[cfg(tari_target_network_nextnet)]
         let (nonce, difficulty) = (8721374869059089110, Difficulty::from_u64(3037).unwrap());
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        let (nonce, difficulty) = (9860518124890236943, Difficulty::from_u64(2724).unwrap());
+        let (nonce, difficulty) = (8520885611996410570, Difficulty::from_u64(3143).unwrap());
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
