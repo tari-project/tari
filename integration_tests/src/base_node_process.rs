@@ -33,7 +33,10 @@ use minotari_app_utilities::identity_management::save_as_json;
 use minotari_node::{run_base_node, BaseNodeConfig, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
-use tari_common::configuration::{CommonConfig, MultiaddrList};
+use tari_common::{
+    configuration::{CommonConfig, MultiaddrList},
+    network_check::set_network_if_choice_valid,
+};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
@@ -88,6 +91,9 @@ pub async fn spawn_base_node_with_config(
     peers: Vec<String>,
     mut base_node_config: BaseNodeConfig,
 ) {
+    std::env::set_var("TARI_NETWORK", "localnet");
+    set_network_if_choice_valid(Network::LocalNet).unwrap();
+
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
