@@ -4,7 +4,7 @@
 @block-template
 Feature: BlockTemplate
 
-@critical @pie
+@critical
 Scenario: Verify UTXO and kernel MMR size in header
     Given I have a seed node SEED_A
     When I have 1 base nodes connected to all seed nodes
