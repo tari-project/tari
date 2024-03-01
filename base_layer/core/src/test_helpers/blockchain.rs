@@ -34,7 +34,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
+use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 use tari_utilities::ByteArray;
@@ -491,21 +491,6 @@ pub async fn create_main_chain<T: Into<BlockSpecs>>(
     });
 
     (names, chain)
-}
-
-pub fn rewind_smt(block: Arc<ChainBlock>, smt: &mut OutputSmt) {
-    for input in block.block().body.inputs() {
-        let smt_key = NodeKey::try_from(input.commitment().unwrap().as_bytes()).unwrap();
-        let smt_node = ValueHash::try_from(input.smt_hash(block.header().height).as_slice()).unwrap();
-        smt.insert(smt_key, smt_node).unwrap();
-    }
-    for output in block.block().body.outputs() {
-        let smt_key = NodeKey::try_from(output.commitment.as_bytes()).unwrap();
-        match smt.delete(&smt_key).unwrap() {
-            DeleteResult::Deleted(_value_hash) => {},
-            DeleteResult::KeyNotFound => panic!("key should be found"),
-        };
-    }
 }
 
 pub async fn create_orphan_chain<T: Into<BlockSpecs>>(

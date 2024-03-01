@@ -2522,7 +2522,6 @@ mod test {
                 create_new_blockchain,
                 create_orphan_chain,
                 create_test_blockchain_db,
-                rewind_smt,
                 update_block_and_smt,
                 TempDatabase,
             },
@@ -2602,11 +2601,9 @@ mod test {
             ])
             .await;
             // Create reorg chain
+            // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
+            // they will pass all mr tests
             let mut smt = db.fetch_tip_smt().unwrap();
-            let d_block = mainchain.get("D").unwrap().clone();
-            rewind_smt(d_block, &mut smt);
-            let c_block = mainchain.get("C").unwrap().clone();
-            rewind_smt(c_block, &mut smt);
             let fork_root = mainchain.get("B").unwrap().clone();
             let (_, reorg_chain) = create_orphan_chain(
                 &db,
@@ -2722,7 +2719,6 @@ mod test {
         #[tokio::test]
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
-            let mut gen_smt = db.fetch_tip_smt().unwrap();
             let validator = MockValidator::new(true);
             let (_, main_chain) = create_main_chain(&db, &[
                 ("A->GB", 1, 120),
@@ -2737,20 +2733,9 @@ mod test {
 
             // Fork 1 (with 3 blocks)
             let fork_root_1 = main_chain.get("A").unwrap().clone();
+            // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
+            // they will pass all mr tests
             let mut smt = db.fetch_tip_smt().unwrap();
-            let g_block = main_chain.get("G").unwrap().clone();
-            rewind_smt(g_block, &mut smt);
-            let f_block = main_chain.get("F").unwrap().clone();
-            rewind_smt(f_block, &mut smt);
-            let e_block = main_chain.get("E").unwrap().clone();
-            rewind_smt(e_block, &mut smt);
-            let d_block = main_chain.get("D").unwrap().clone();
-            rewind_smt(d_block, &mut smt);
-            let c_block = main_chain.get("C").unwrap().clone();
-            rewind_smt(c_block, &mut smt);
-            let mut c_smt = smt.clone();
-            let b_block = main_chain.get("B").unwrap().clone();
-            rewind_smt(b_block, &mut smt);
 
             let (_, orphan_chain_1) = create_chained_blocks(
                 &[("B2->GB", 1, 120), ("C2->B2", 1, 120), ("D2->C2", 1, 120)],
@@ -2761,11 +2746,11 @@ mod test {
 
             // Fork 2 (with 1 block)
             let fork_root_2 = main_chain.get("GB").unwrap().clone();
-            let (_, orphan_chain_2) = create_chained_blocks(&[("B3->GB", 1, 120)], fork_root_2, &mut gen_smt).await;
+            let (_, orphan_chain_2) = create_chained_blocks(&[("B3->GB", 1, 120)], fork_root_2, &mut smt).await;
 
             // Fork 3 (with 1 block)
             let fork_root_3 = main_chain.get("B").unwrap().clone();
-            let (_, orphan_chain_3) = create_chained_blocks(&[("B4->GB", 1, 120)], fork_root_3, &mut c_smt).await;
+            let (_, orphan_chain_3) = create_chained_blocks(&[("B4->GB", 1, 120)], fork_root_3, &mut smt).await;
 
             // Add blocks to db
             let mut access = db.db_write_access().unwrap();
@@ -2852,13 +2837,6 @@ mod test {
             )
             .await;
 
-            let b6_block = main_chain.get("6b").unwrap().clone();
-            rewind_smt(b6_block, &mut smt);
-            let b5_block = main_chain.get("5b").unwrap().clone();
-            rewind_smt(b5_block, &mut smt);
-            let b4_block = main_chain.get("4b").unwrap().clone();
-            rewind_smt(b4_block, &mut smt);
-
             // Add orphans out of height order
             for name in ["5b", "3b", "4b", "6b"] {
                 let block = orphan_chain_b.get(name).unwrap();
@@ -2875,8 +2853,6 @@ mod test {
             )
             .await;
 
-            let c7_block = main_chain.get("7c").unwrap().clone();
-            rewind_smt(c7_block, &mut smt);
             for name in ["7c", "5c", "6c", "4c"] {
                 let block = orphan_chain_c.get(name).unwrap();
                 let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
@@ -3270,9 +3246,9 @@ mod test {
 
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
+        // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
+        // they will pass all mr tests
         let mut smt = db.fetch_tip_smt().unwrap();
-        let d_block = mainchain.get("D").unwrap().clone();
-        rewind_smt(d_block, &mut smt);
         let fork_block = mainchain.get("C").unwrap().clone();
         let (_, reorg_chain) =
             create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block, &mut smt).await;
