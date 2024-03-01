@@ -44,6 +44,7 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
+        protocols::check_transaction_size,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
@@ -159,6 +160,12 @@ where
                 Utc::now().naive_utc(),
             );
 
+            // Verify that the negotiated transaction is not too large to be broadcast
+            if let Err(e) = check_transaction_size(&inbound_transaction, self.id) {
+                self.cancel_oversized_transaction().await?;
+                return Err(e);
+            }
+
             self.resources
                 .db
                 .add_pending_inbound_transaction(inbound_transaction.tx_id, inbound_transaction.clone())
@@ -241,6 +248,12 @@ where
                 return Ok(());
             },
         };
+
+        // Verify that the negotiated transaction is not too large to be broadcast
+        if let Err(e) = check_transaction_size(&inbound_tx, self.id) {
+            self.cancel_oversized_transaction().await?;
+            return Err(e);
+        }
 
         // Determine the time remaining before this transaction times out
         let elapsed_time = utc_duration_since(&inbound_tx.timestamp)
@@ -469,6 +482,32 @@ where
             "Cancelling Transaction Receive Protocol (TxId: {}) due to timeout after no counterparty response", self.id
         );
 
+        self.cancel_transaction(TxCancellationReason::Timeout).await?;
+
+        info!(
+            target: LOG_TARGET,
+            "Pending Transaction (TxId: {}) timed out after no response from counterparty", self.id
+        );
+
+        Err(TransactionServiceProtocolError::new(
+            self.id,
+            TransactionServiceError::Timeout,
+        ))
+    }
+
+    async fn cancel_oversized_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
+        info!(
+            target: LOG_TARGET,
+            "Cancelling Transaction Receive Protocol (TxId: {}) due to transaction being oversized", self.id
+        );
+
+        self.cancel_transaction(TxCancellationReason::Oversized).await
+    }
+
+    async fn cancel_transaction(
+        &mut self,
+        cancel_reason: TxCancellationReason,
+    ) -> Result<(), TransactionServiceProtocolError<TxId>> {
         self.resources.db.cancel_pending_transaction(self.id).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
@@ -486,10 +525,7 @@ where
         let _size = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(
-                self.id,
-                TxCancellationReason::Timeout,
-            )))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id, cancel_reason)))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
@@ -502,14 +538,6 @@ where
                 )
             });
 
-        info!(
-            target: LOG_TARGET,
-            "Pending Transaction (TxId: {}) timed out after no response from counterparty", self.id
-        );
-
-        Err(TransactionServiceProtocolError::new(
-            self.id,
-            TransactionServiceError::Timeout,
-        ))
+        Ok(())
     }
 }

@@ -330,6 +330,7 @@ pub enum TxCancellationReason {
     Orphan,             // 4
     TimeLocked,         // 5
     InvalidTransaction, // 6
+    Oversized,          // 7
 }
 
 impl TryFrom<u32> for TxCancellationReason {
@@ -344,6 +345,7 @@ impl TryFrom<u32> for TxCancellationReason {
             4 => Ok(TxCancellationReason::Orphan),
             5 => Ok(TxCancellationReason::TimeLocked),
             6 => Ok(TxCancellationReason::InvalidTransaction),
+            7 => Ok(TxCancellationReason::Oversized),
             code => Err(TransactionConversionError { code: code as i32 }),
         }
     }
@@ -361,6 +363,7 @@ impl Display for TxCancellationReason {
             Orphan => "Orphan",
             TimeLocked => "TimeLocked",
             InvalidTransaction => "Invalid Transaction",
+            Oversized => "Oversized",
         };
         fmt.write_str(response)
     }

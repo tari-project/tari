@@ -120,7 +120,7 @@ impl OutputSql {
 
     /// Retrieves UTXOs by a set of given rules
     #[allow(clippy::cast_sign_loss)]
-    pub fn fetch_outputs_by(
+    pub fn fetch_outputs_by_query(
         q: OutputBackendQuery,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {

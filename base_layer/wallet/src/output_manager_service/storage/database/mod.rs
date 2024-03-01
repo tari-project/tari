@@ -434,8 +434,11 @@ where T: OutputManagerBackend + 'static
         Ok(outputs)
     }
 
-    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
-        self.db.fetch_outputs_by(q)
+    pub fn fetch_outputs_by_query(
+        &self,
+        q: OutputBackendQuery,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+        self.db.fetch_outputs_by_query(q)
     }
 }
 

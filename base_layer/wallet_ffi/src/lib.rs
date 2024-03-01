@@ -5739,7 +5739,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
         }],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by(q) {
+    match (*wallet).wallet.output_db.fetch_outputs_by_query(q) {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
             Box::into_raw(Box::new(TariVector::from(outputs)))
@@ -5809,7 +5809,7 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
         sorting: vec![],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by(q) {
+    match (*wallet).wallet.output_db.fetch_outputs_by_query(q) {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
             Box::into_raw(Box::new(TariVector::from(outputs)))
@@ -10425,7 +10425,7 @@ mod test {
             let unspent_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by(OutputBackendQuery {
+                .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::Unspent],
                     ..Default::default()
                 })
@@ -10437,7 +10437,7 @@ mod test {
             let new_pending_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by(OutputBackendQuery {
+                .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::EncumberedToBeReceived],
                     ..Default::default()
                 })
@@ -10641,7 +10641,7 @@ mod test {
             let unspent_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by(OutputBackendQuery {
+                .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::Unspent],
                     ..Default::default()
                 })
@@ -10653,7 +10653,7 @@ mod test {
             let new_pending_outputs = (*alice_wallet)
                 .wallet
                 .output_db
-                .fetch_outputs_by(OutputBackendQuery {
+                .fetch_outputs_by_query(OutputBackendQuery {
                     status: vec![OutputStatus::EncumberedToBeReceived],
                     ..Default::default()
                 })
