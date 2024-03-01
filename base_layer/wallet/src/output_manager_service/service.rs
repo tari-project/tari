@@ -306,10 +306,6 @@ where
                 let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
-            OutputManagerRequest::GetOutputsBy(q) => {
-                let outputs = self.fetch_outputs_by(q)?.into_iter().map(|v| v.into()).collect();
-                Ok(OutputManagerResponse::Outputs(outputs))
-            },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
@@ -1381,8 +1377,8 @@ where
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
-    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_outputs_by(q)?)
+    pub fn fetch_outputs_by_query(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_outputs_by_query(q)?)
     }
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {

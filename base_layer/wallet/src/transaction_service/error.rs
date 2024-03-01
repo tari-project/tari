@@ -185,6 +185,12 @@ pub enum TransactionServiceError {
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+    #[error("Serialization error: `{0}`")]
+    SerializationError(String),
+    #[error("Transaction exceed maximum byte size. Expected < {expected} but got {got}.")]
+    TransactionTooLarge { got: usize, expected: usize },
+    #[error("Pending Transaction was oversized")]
+    Oversized,
 }
 
 impl From<RangeProofError> for TransactionServiceError {

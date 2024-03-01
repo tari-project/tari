@@ -1037,9 +1037,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
+    fn fetch_outputs_by_query(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
-        Ok(OutputSql::fetch_outputs_by(q, &mut conn)?
+        Ok(OutputSql::fetch_outputs_by_query(q, &mut conn)?
             .into_iter()
             .filter_map(|x| {
                 x.to_db_wallet_output()

@@ -45,10 +45,7 @@ use tower::Service;
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::{Balance, OutputInfoByTxId},
-    storage::{
-        database::OutputBackendQuery,
-        models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-    },
+    storage::models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     UtxoSelectionCriteria,
 };
 
@@ -90,7 +87,6 @@ pub enum OutputManagerRequest {
     CancelTransaction(TxId),
     GetSpentOutputs,
     GetUnspentOutputs,
-    GetOutputsBy(OutputBackendQuery),
     GetInvalidOutputs,
     ValidateUtxos,
     RevalidateTxos,
@@ -152,7 +148,6 @@ impl fmt::Display for OutputManagerRequest {
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
-            GetOutputsBy(q) => write!(f, "GetOutputs({:#?})", q),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
