@@ -14,6 +14,7 @@ use serde::{
 
 use crate::{
     configuration::{bootstrap::prompt, ConfigOverrideProvider, Network},
+    network_check::set_network_if_choice_valid,
     ConfigError,
     LOG_TARGET,
 };
@@ -65,7 +66,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         .build()
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
-    let network = match cfg.get_string("network") {
+    let mut network = match cfg.get_string("network") {
         Ok(network) => {
             Network::from_str(&network).map_err(|e| ConfigError::new("Invalid network", Some(e.to_string())))?
         },
@@ -82,7 +83,11 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     };
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
-    let overrides = overrides.get_config_property_overrides(network);
+    let overrides = overrides.get_config_property_overrides(&mut network);
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    set_network_if_choice_valid(network)?;
+
     if overrides.is_empty() {
         return Ok(cfg);
     }

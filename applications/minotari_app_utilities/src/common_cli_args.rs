@@ -105,7 +105,7 @@ impl CommonCliArgs {
 }
 
 impl ConfigOverrideProvider for CommonCliArgs {
-    fn get_config_property_overrides(&self, _default_network: Network) -> Vec<(String, String)> {
+    fn get_config_property_overrides(&self, _network: &mut Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
         overrides.push((
             "common.base_path".to_string(),

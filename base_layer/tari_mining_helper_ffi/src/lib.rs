@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn detect_change_in_consensus_encoding() {
         #[cfg(tari_target_network_mainnet)]
-        let (nonce, difficulty) = match Network::get_current_or_default() {
+        let (nonce, difficulty) = match Network::get_current_or_user_setting_or_default() {
             Network::MainNet => (9205754023158580549, Difficulty::from_u64(1015).unwrap()),
             Network::StageNet => (12022341430563186162, Difficulty::from_u64(1011).unwrap()),
             _ => panic!("Invalid network for mainnet target"),
@@ -411,7 +411,7 @@ mod tests {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
                 let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                let network = Network::get_current_or_default();
+                let network = Network::get_current_or_user_setting_or_default();
                 eprintln!("network = {network:?}");
                 eprintln!("nonce = {:?}", nonce);
                 eprintln!("difficulty = {:?}", difficulty);
