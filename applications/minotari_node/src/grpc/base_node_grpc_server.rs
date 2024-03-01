@@ -121,6 +121,7 @@ impl BaseNodeGrpcServer {
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
         let mining_method = vec![
+            GrpcMethod::GetVersion,
             GrpcMethod::GetNewBlockTemplate,
             GrpcMethod::GetNewBlock,
             GrpcMethod::GetNewBlockBlob,
@@ -128,10 +129,26 @@ impl BaseNodeGrpcServer {
             GrpcMethod::SubmitBlockBlob,
             GrpcMethod::GetTipInfo,
         ];
+
+        let second_layer_methods = vec![
+            GrpcMethod::GetVersion,
+            GrpcMethod::GetConstants,
+            GrpcMethod::GetMempoolTransactions,
+            GrpcMethod::GetTipInfo,
+            GrpcMethod::GetActiveValidatorNodes,
+            GrpcMethod::GetShardKey,
+            GrpcMethod::GetTemplateRegistrations,
+            GrpcMethod::GetHeaderByHash,
+            GrpcMethod::GetSideChainUtxos,
+        ];
         if self.config.mining_enabled && mining_method.contains(&grpc_method) {
             return true;
         }
-        !self.config.grpc_server_deny_methods.contains(&grpc_method)
+        if self.config.second_layer_grpc_enabled && second_layer_methods.contains(&grpc_method) {
+            return true;
+        }
+
+        self.config.grpc_server_allow_methods.contains(&grpc_method)
     }
 }
 
