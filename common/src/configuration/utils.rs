@@ -14,6 +14,7 @@ use serde::{
 
 use crate::{
     configuration::{bootstrap::prompt, ConfigOverrideProvider, Network},
+    network_check::set_network_if_choice_valid,
     ConfigError,
     LOG_TARGET,
 };
@@ -83,9 +84,9 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
     let overrides = overrides.get_config_property_overrides(&mut network);
-    // Set the network environment variable according to the chosen network (this is to ensure that
-    // `get_current_or_user_setting_or_default()` uses the environment variable if the static network is not set)
-    std::env::set_var("TARI_NETWORK", network.as_key_str());
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    set_network_if_choice_valid(network)?;
 
     if overrides.is_empty() {
         return Ok(cfg);

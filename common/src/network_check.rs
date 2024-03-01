@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common::{
+use tari_features::resolver::Target;
+use thiserror::Error;
+
+use crate::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_features::resolver::Target;
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NetworkCheckError {

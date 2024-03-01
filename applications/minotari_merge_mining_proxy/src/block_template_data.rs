@@ -22,7 +22,7 @@
 
 //! Provides methods for for building template data and storing them with timestamps.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::TryFrom, sync::Arc};
 
 #[cfg(not(test))]
 use chrono::Duration;
@@ -100,7 +100,10 @@ impl BlockTemplateRepository {
     pub async fn contains(&self, current_best_block_hash: FixedHash) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
         b.values()
-            .find(|item| item.data.template.best_previous_block_hash == current_best_block_hash)
+            .find(|item| {
+                let header = item.data.template.new_block_template.header.clone().unwrap_or_default();
+                FixedHash::try_from(header.prev_hash).unwrap_or(FixedHash::default()) == current_best_block_hash
+            })
             .map(|val| val.data.clone())
     }
 
@@ -138,7 +141,6 @@ pub struct BlockTemplateData {
     pub tari_merge_mining_hash: FixedHash,
     pub aux_chain_hashes: Vec<monero::Hash>,
     pub new_block_template: grpc::NewBlockTemplate,
-    pub best_previous_block_hash: FixedHash,
 }
 
 impl BlockTemplateData {}
@@ -154,7 +156,6 @@ pub struct BlockTemplateDataBuilder {
     tari_merge_mining_hash: Option<FixedHash>,
     aux_chain_hashes: Vec<monero::Hash>,
     new_block_template: Option<grpc::NewBlockTemplate>,
-    best_previous_block_hash: Option<FixedHash>,
 }
 
 impl BlockTemplateDataBuilder {
@@ -202,11 +203,6 @@ impl BlockTemplateDataBuilder {
         self
     }
 
-    pub fn best_previous_block_hash(mut self, hash: FixedHash) -> Self {
-        self.best_previous_block_hash = Some(hash);
-        self
-    }
-
     /// Build a new [BlockTemplateData], all the values have to be set.
     ///
     /// # Errors
@@ -237,9 +233,6 @@ impl BlockTemplateDataBuilder {
         let new_block_template = self
             .new_block_template
             .ok_or_else(|| MmProxyError::MissingDataError("new_block_template not provided".to_string()))?;
-        let best_previous_block_hash = self
-            .best_previous_block_hash
-            .ok_or_else(|| MmProxyError::MissingDataError("best_previous_block_hash not provided".to_string()))?;
 
         Ok(BlockTemplateData {
             monero_seed,
@@ -250,7 +243,6 @@ impl BlockTemplateDataBuilder {
             tari_merge_mining_hash,
             aux_chain_hashes: self.aux_chain_hashes,
             new_block_template,
-            best_previous_block_hash,
         })
     }
 }
@@ -280,7 +272,6 @@ pub mod test {
             algo: Some(grpc::PowAlgo { pow_algo: 0 }),
         };
         let new_block_template = grpc::NewBlockTemplate::default();
-        let best_block_hash = FixedHash::zero();
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.try_into().unwrap())
@@ -289,8 +280,7 @@ pub mod test {
             .tari_difficulty(12345)
             .tari_merge_mining_hash(hash)
             .aux_hashes(vec![monero::Hash::from_slice(hash.as_slice())])
-            .new_block_template(new_block_template)
-            .best_previous_block_hash(best_block_hash);
+            .new_block_template(new_block_template);
         let block_template_data = btdb.build().unwrap();
         FinalBlockTemplateData {
             template: block_template_data,

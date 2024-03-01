@@ -22,7 +22,6 @@
 
 pub mod common_cli_args;
 pub mod identity_management;
-pub mod network_check;
 #[cfg(feature = "miner_input")]
 pub mod parse_miner_input;
 pub mod utilities;

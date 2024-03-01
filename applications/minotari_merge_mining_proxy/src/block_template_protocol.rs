@@ -81,6 +81,7 @@ impl BlockTemplateProtocol<'_> {
         monero_mining_data: MoneroMiningData,
         existing_block_template: Option<FinalBlockTemplateData>,
     ) -> Result<FinalBlockTemplateData, MmProxyError> {
+        let mut existing_block_template = existing_block_template;
         loop {
             let (final_template_data, block_height) = if let Some(data) = existing_block_template.clone() {
                 let height = data
@@ -149,6 +150,9 @@ impl BlockTemplateProtocol<'_> {
                     target: LOG_TARGET,
                     "Chain tip has progressed past template height {}. Fetching a new block template.", block_height
                 );
+                if existing_block_template.is_some() {
+                    existing_block_template = None;
+                }
                 continue;
             }
             info!(target: LOG_TARGET,
@@ -199,7 +203,6 @@ impl BlockTemplateProtocol<'_> {
             miner_data,
             new_block_template: template,
             initial_sync_achieved,
-            best_previous_block_hash,
         } = self
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
@@ -221,7 +224,6 @@ impl BlockTemplateProtocol<'_> {
             template,
             miner_data,
             initial_sync_achieved,
-            best_previous_block_hash,
         })
     }
 
@@ -312,10 +314,6 @@ fn add_monero_data(
         .tari_merge_mining_hash(merge_mining_hash)
         .aux_hashes(aux_chain_hashes.clone())
         .new_block_template(template_data.template)
-        .best_previous_block_hash(
-            FixedHash::try_from(template_data.best_previous_block_hash)
-                .map_err(|e| MmProxyError::ConversionError(e.to_string()))?,
-        )
         .build()?;
 
     // Deserialize the block template blob
@@ -357,7 +355,6 @@ struct NewBlockTemplateData {
     pub template: grpc::NewBlockTemplate,
     pub miner_data: grpc::MinerData,
     pub initial_sync_achieved: bool,
-    pub best_previous_block_hash: Vec<u8>,
 }
 
 impl NewBlockTemplateData {
