@@ -185,7 +185,7 @@ pub async fn spawn_base_node_with_config(
             base_node_config.base_node.storage.pruning_interval = 1;
         };
 
-        base_node_config.base_node.grpc_server_deny_methods = vec![];
+        base_node_config.base_node.grpc_server_allow_methods = vec![];
 
         // Heirachically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());

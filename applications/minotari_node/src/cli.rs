@@ -49,6 +49,8 @@ pub struct Cli {
     pub grpc_enabled: bool,
     #[clap(long, env = "MINOTARI_NODE_ENABLE_MINING", alias = "enable-mining")]
     pub mining_enabled: bool,
+    #[clap(long, env = "MINOTARI_NODE_SECOND_LAYER_GRPC_ENABLED", alias = "enable-second-layer")]
+    pub second_layer_grpc_enabled: bool,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -66,6 +68,10 @@ impl ConfigOverrideProvider for Cli {
         if self.mining_enabled {
             overrides.push(("base_node.grpc_enabled".to_string(), "true".to_string()));
             overrides.push(("base_node.mining_enabled".to_string(), "true".to_string()));
+        }
+        if self.second_layer_grpc_enabled {
+            overrides.push(("base_node.grpc_enabled".to_string(), "true".to_string()));
+            overrides.push(("base_node.second_layer_grpc_enabled".to_string(), "true".to_string()));
         }
         overrides
     }
