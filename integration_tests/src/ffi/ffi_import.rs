@@ -387,6 +387,7 @@ extern "C" {
         seed_words: *const TariSeedWords,
         network_str: *const c_char,
         peer_seed_str: *const c_char,
+        dns_sec: bool,
         callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),

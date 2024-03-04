@@ -250,7 +250,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         println!("{}::{}", public_key, net_address);
         let mut wallet = self.wallet.clone();
         wallet
-            .set_base_node_peer(public_key.clone(), net_address.clone())
+            .set_base_node_peer(public_key.clone(), Some(net_address.clone()))
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 

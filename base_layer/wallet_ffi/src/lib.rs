@@ -5260,6 +5260,7 @@ pub unsafe extern "C" fn wallet_create(
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
     peer_seed_str: *const c_char,
+    dns_sec: bool,
 
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -5485,7 +5486,7 @@ pub unsafe extern "C" fn wallet_create(
 
     let peer_seeds = PeerSeedsConfig {
         dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-        dns_seeds_use_dnssec: true,
+        dns_seeds_use_dnssec: dns_sec,
         dns_seeds: StringList::from(vec![peer_seed.to_string()]),
         ..Default::default()
     };
@@ -6343,23 +6344,18 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
         return false;
     }
 
-    let parsed_addr;
-    if address.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
+    let parsed_addr = if address.is_null() {
+        None
     } else {
         match CStr::from_ptr(address).to_str() {
-            Ok(v) => {
-                parsed_addr = match Multiaddr::from_str(v) {
-                    Ok(v) => v,
-                    Err(_) => {
-                        error = LibWalletError::from(InterfaceError::InvalidArgument("address is invalid".to_string()))
-                            .code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return false;
-                    },
-                }
+            Ok(v) => match Multiaddr::from_str(v) {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    error =
+                        LibWalletError::from(InterfaceError::InvalidArgument("address is invalid".to_string())).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return false;
+                },
             },
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("address".to_string())).code;
@@ -6367,7 +6363,7 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
                 return false;
             },
         }
-    }
+    };
 
     if let Err(e) = (*wallet)
         .runtime
@@ -9572,6 +9568,7 @@ mod test {
                 ptr::null(),
                 alice_network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9617,6 +9614,7 @@ mod test {
                 ptr::null(),
                 alice_network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9731,6 +9729,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -9956,6 +9955,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10021,6 +10021,7 @@ mod test {
                 seed_words,
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10099,6 +10100,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10249,6 +10251,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10383,6 +10386,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10597,6 +10601,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10819,6 +10824,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11072,6 +11078,7 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11312,6 +11319,7 @@ mod test {
                 ptr::null(),
                 alice_network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11374,6 +11382,7 @@ mod test {
                 ptr::null(),
                 bob_network_str,
                 dns_string,
+                false,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
