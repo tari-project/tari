@@ -40,7 +40,7 @@ Feature: Wallet Transfer
     When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
-    Then all wallets detect all transactions as Mined_or_Faux_Confirmed
+    Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
 
 
   Scenario: As a wallet I want to submit transfers to myself
@@ -55,7 +55,7 @@ Feature: Wallet Transfer
     When I transfer 50000 uT to self from wallet WALLET_A at fee 25
     When I mine 5 blocks on NODE
     Then all nodes are at height 15
-    Then all wallets detect all transactions as Mined_or_Faux_Confirmed
+    Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
 
   Scenario: As a wallet I want to create a HTLC transaction
     Given I have a seed node NODE

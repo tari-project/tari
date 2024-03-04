@@ -217,13 +217,13 @@ async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a:
 }
 
 #[when(
-    expr = "I make it rain from wallet {word} {int} tx per sec {int} sec {int} uT {int} increment to {word} via \
-            command line"
+    expr = "I make-it-rain from {word} rate {int} txns_per_sec duration {int} sec value {int} uT increment {int} uT \
+            to {word} via command line"
 )]
 async fn make_it_rain(
     world: &mut TariWorld,
     wallet_a: String,
-    txs_per_second: u64,
+    txs_per_second: u32,
     duration: u64,
     start_amount: u64,
     increment_amount: u64,
@@ -248,7 +248,7 @@ async fn make_it_rain(
 
     let args = MakeItRainArgs {
         start_amount: MicroMinotari(start_amount),
-        transactions_per_second: u32::try_from(txs_per_second).unwrap(),
+        transactions_per_second: f64::from(txs_per_second),
         duration: Duration::from_secs(duration),
         message: format!(
             "Make it raing amount {} from {} to {}",

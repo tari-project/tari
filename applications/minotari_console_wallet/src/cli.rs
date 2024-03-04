@@ -163,8 +163,8 @@ pub struct MakeItRainArgs {
     pub destination: TariAddress,
     #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
     pub start_amount: MicroMinotari,
-    #[clap(short, long, alias = "tps", default_value_t = 25)]
-    pub transactions_per_second: u32,
+    #[clap(short, long, alias = "tps", default_value_t = 25.0)]
+    pub transactions_per_second: f64,
     #[clap(short, long, parse(try_from_str = parse_duration), default_value="60")]
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
