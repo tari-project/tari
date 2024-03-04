@@ -315,7 +315,9 @@ async fn set_base_node_peer(
 ) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
     println!("Setting base node peer...");
     println!("{}::{}", public_key, address);
-    wallet.set_base_node_peer(public_key.clone(), address.clone()).await?;
+    wallet
+        .set_base_node_peer(public_key.clone(), Some(address.clone()))
+        .await?;
     Ok((public_key, address))
 }
 

@@ -369,10 +369,10 @@ where
     pub async fn set_base_node_peer(
         &mut self,
         public_key: CommsPublicKey,
-        address: Multiaddr,
+        address: Option<Multiaddr>,
     ) -> Result<(), WalletError> {
         info!(
-            "Wallet setting base node peer, public key: {}, net address: {}.",
+            "Wallet setting base node peer, public key: {}, net address: {:?}.",
             public_key, address
         );
 
@@ -387,16 +387,19 @@ where
         let mut connectivity = self.comms.connectivity();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
-            if current_peer.addresses.contains(&address) {
-                info!(
-                    target: LOG_TARGET,
-                    "Address for base node differs from storage. Was {}, setting to {}",
-                    current_peer.addresses,
-                    address
-                );
+            if address.is_some() {
+                let add = address.unwrap();
+                if !current_peer.addresses.contains(&add) {
+                    info!(
+                        target: LOG_TARGET,
+                        "Address for base node differs from storage. Was {}, setting to {}",
+                        current_peer.addresses,
+                        add
+                    );
 
-                current_peer.addresses.add_address(&address, &PeerAddressSource::Config);
-                peer_manager.add_peer(current_peer.clone()).await?;
+                    current_peer.addresses.add_address(&add, &PeerAddressSource::Config);
+                    peer_manager.add_peer(current_peer.clone()).await?;
+                }
             }
             connectivity
                 .add_peer_to_allow_list(current_peer.node_id.clone())
@@ -404,10 +407,21 @@ where
             self.wallet_connectivity.set_base_node(current_peer);
         } else {
             let node_id = NodeId::from_key(&public_key);
+            if address.is_none() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Trying to add new peer without an address",
+                );
+                return Err(WalletError::ArgumentError {
+                    argument: "set_base_node_peer, address".to_string(),
+                    value: "{Missing}".to_string(),
+                    message: "New peers need the address filled in".to_string(),
+                });
+            }
             let peer = Peer::new(
                 public_key,
                 node_id,
-                MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
+                MultiaddressesWithStats::from_addresses_with_source(vec![address.unwrap()], &PeerAddressSource::Config),
                 PeerFlags::empty(),
                 PeerFeatures::COMMUNICATION_NODE,
                 Default::default(),
