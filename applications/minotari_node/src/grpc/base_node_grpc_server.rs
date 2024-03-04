@@ -134,6 +134,7 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetVersion,
             GrpcMethod::GetConstants,
             GrpcMethod::GetMempoolTransactions,
+            GrpcMethod::GetMempoolStats,
             GrpcMethod::GetTipInfo,
             GrpcMethod::GetActiveValidatorNodes,
             GrpcMethod::GetShardKey,
