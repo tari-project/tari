@@ -30,7 +30,7 @@ use std::{
 };
 
 use minotari_app_utilities::identity_management::save_as_json;
-use minotari_node::{run_base_node, BaseNodeConfig, MetricsConfig};
+use minotari_node::{config::GrpcMethod, run_base_node, BaseNodeConfig, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
 use tari_common::{
@@ -190,8 +190,42 @@ pub async fn spawn_base_node_with_config(
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;
         };
-
-        base_node_config.base_node.grpc_server_deny_methods = vec![];
+        base_node_config.base_node.grpc_server_allow_methods = vec![
+            GrpcMethod::ListHeaders,
+            GrpcMethod::GetHeaderByHash,
+            GrpcMethod::GetBlocks,
+            GrpcMethod::GetBlockTiming,
+            GrpcMethod::GetConstants,
+            GrpcMethod::GetBlockSize,
+            GrpcMethod::GetBlockFees,
+            GrpcMethod::GetVersion,
+            GrpcMethod::CheckForUpdates,
+            GrpcMethod::GetTokensInCirculation,
+            GrpcMethod::GetNetworkDifficulty,
+            GrpcMethod::GetNewBlockTemplate,
+            GrpcMethod::GetNewBlock,
+            GrpcMethod::GetNewBlockBlob,
+            GrpcMethod::SubmitBlock,
+            GrpcMethod::SubmitBlockBlob,
+            GrpcMethod::SubmitTransaction,
+            GrpcMethod::GetSyncInfo,
+            GrpcMethod::GetSyncProgress,
+            GrpcMethod::GetTipInfo,
+            GrpcMethod::SearchKernels,
+            GrpcMethod::SearchUtxos,
+            GrpcMethod::FetchMatchingUtxos,
+            GrpcMethod::GetPeers,
+            GrpcMethod::GetMempoolTransactions,
+            GrpcMethod::TransactionState,
+            GrpcMethod::Identify,
+            GrpcMethod::GetNetworkStatus,
+            GrpcMethod::ListConnectedPeers,
+            GrpcMethod::GetMempoolStats,
+            GrpcMethod::GetActiveValidatorNodes,
+            GrpcMethod::GetShardKey,
+            GrpcMethod::GetTemplateRegistrations,
+            GrpcMethod::GetSideChainUtxos,
+        ];
 
         // Heirachically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
