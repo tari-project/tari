@@ -25,6 +25,7 @@ use std::{convert::TryFrom, str::FromStr};
 use chrono::{NaiveDateTime, Utc};
 use derivative::Derivative;
 use diesel::{
+    connection::SimpleConnection,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
     result::Error as DieselError,
@@ -415,64 +416,77 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn set_received_output_mined_height_and_status(
+    // Perform a batch update of the received outputs. This is more efficient than updating each output individually.
+    // Note:
+    //   `diesel` does not support batch updates, so we have to do it manually. For example, this
+    //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut conn)?;`
+    //   errors with
+    //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
+    fn set_received_outputs_mined_height_and_status_batch_mode(
         &self,
-        hash: FixedHash,
-        mined_height: u64,
-        mined_in_block: FixedHash,
-        confirmed: bool,
-        mined_timestamp: u64,
+        updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let status = if confirmed {
-            OutputStatus::Unspent as i32
-        } else {
-            OutputStatus::UnspentMinedUnconfirmed as i32
-        };
+
         debug!(
             target: LOG_TARGET,
-            "`set_received_output_mined_height` status: {}", status
+            "`set_received_outputs_mined_height_and_status_batch_mode` for {} outputs",
+            updates.len()
         );
-        let hash = hash.to_vec();
-        let mined_in_block = mined_in_block.to_vec();
-        let timestamp = NaiveDateTime::from_timestamp_opt(mined_timestamp as i64, 0).ok_or(
-            OutputManagerStorageError::ConversionError {
-                reason: format!("Could not create timestamp mined_timestamp: {}", mined_timestamp),
-            },
-        )?;
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
-            .set((
-                outputs::mined_height.eq(mined_height as i64),
-                outputs::mined_in_block.eq(mined_in_block),
-                outputs::status.eq(status),
-                outputs::mined_timestamp.eq(timestamp),
-                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
-                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::last_validation_timestamp.eq::<Option<NaiveDateTime>>(None),
-            ))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(1)?;
+        let query = updates
+            .iter()
+            .map(|update| {
+                format!(
+                    "UPDATE outputs SET mined_height = {}, mined_in_block = x'{}', status = {}, mined_timestamp = \
+                     '{}', marked_deleted_at_height = NULL, marked_deleted_in_block = NULL, last_validation_timestamp \
+                     = NULL WHERE hash = x'{}'; ",
+                    update.mined_height as i64,
+                    update.mined_in_block.to_hex(),
+                    if update.confirmed {
+                        OutputStatus::Unspent as i32
+                    } else {
+                        OutputStatus::UnspentMinedUnconfirmed as i32
+                    },
+                    if let Some(val) = NaiveDateTime::from_timestamp_opt(update.mined_timestamp as i64, 0) {
+                        val.to_string()
+                    } else {
+                        "NULL".to_string()
+                    },
+                    update.hash.to_hex()
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("");
+        let query = query.trim();
+
+        conn.batch_execute(query)?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - set_received_output_mined_height: lock {} + db_op {} = {} ms",
+                "sqlite profile - set_received_outputs_mined_height_and_status_batch_mode: lock {} + db_op {} = {} ms \
+                ({} outputs)",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
+                start.elapsed().as_millis(),
+                updates.len()
             );
         }
 
         Ok(())
     }
 
-    fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
+    fn set_output_to_unmined_and_invalid_batch_mode(
+        &self,
+        hashes: Vec<FixedHash>,
+    ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let hash = hash.to_vec();
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
+
+        diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
@@ -482,14 +496,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&mut conn)
-            .num_rows_affected_or_not_found(1)?;
+            .num_rows_affected_or_not_found(hashes.len())?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - set_output_to_unmined: lock {} + db_op {} = {} ms",
+                "sqlite profile - set_output_to_unmined_and_invalid_batch_mode: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
+                start.elapsed().as_millis(),
+                hashes.len()
             );
         }
 
@@ -525,93 +541,143 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn update_last_validation_timestamp(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-        let hash = hash.to_vec();
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
-            .set((outputs::last_validation_timestamp
-                .eq::<Option<NaiveDateTime>>(NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0)),))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(1)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_output_to_be_revalidated_in_the_future: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn mark_output_as_spent(
+    fn update_last_validation_timestamp_batch_mode(
         &self,
-        hash: FixedHash,
-        mark_deleted_at_height: u64,
-        mark_deleted_in_block: FixedHash,
-        confirmed: bool,
+        hashes: Vec<FixedHash>,
     ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let hash = hash.to_vec();
-        let mark_deleted_in_block = mark_deleted_in_block.to_vec();
-        let status = if confirmed {
-            OutputStatus::Spent as i32
-        } else {
-            OutputStatus::SpentMinedUnconfirmed as i32
-        };
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
-            .set((
-                outputs::marked_deleted_at_height.eq(mark_deleted_at_height as i64),
-                outputs::marked_deleted_in_block.eq(mark_deleted_in_block),
-                outputs::status.eq(status),
-            ))
+
+        diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
+            .set(outputs::last_validation_timestamp.eq(Some(Utc::now().naive_utc())))
             .execute(&mut conn)
-            .num_rows_affected_or_not_found(1)?;
+            .num_rows_affected_or_not_found(hashes.len())?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - mark_output_as_spent: lock {} + db_op {} = {} ms",
+                "sqlite profile - update_last_validation_timestamp_batch_mode: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
+                start.elapsed().as_millis(),
+                hashes.len()
             );
         }
 
         Ok(())
     }
 
-    fn mark_output_as_unspent(&self, hash: FixedHash, confirmed: bool) -> Result<(), OutputManagerStorageError> {
+    // Perform a batch update of the spent outputs. This is more efficient than updating each output individually.
+    // Note:
+    //   `diesel` does not support batch updates, so we have to do it manually. For example, this
+    //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut conn)?;`
+    //   errors with
+    //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
+    fn mark_output_as_spent_batch_mode(
+        &self,
+        updates: Vec<SpentOutputInfoForBatch>,
+    ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let hash = hash.to_vec();
-        let status = if confirmed {
-            OutputStatus::Unspent
-        } else {
-            OutputStatus::UnspentMinedUnconfirmed
-        };
-        debug!(target: LOG_TARGET, "mark_output_as_unspent({})", hash.to_hex());
-        diesel::update(outputs::table.filter(outputs::hash.eq(hash)))
-            .set((
-                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
-                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::status.eq(status as i32),
-            ))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(1)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "`mark_output_as_spent_batch_mode` for {} outputs",
+            updates.len()
+        );
+        let query = updates
+            .iter()
+            .map(|update| {
+                format!(
+                    "UPDATE outputs SET marked_deleted_at_height = {}, marked_deleted_in_block = x'{}', status = {} \
+                     WHERE hash = x'{}'; ",
+                    update.mark_deleted_at_height as i64,
+                    update.mark_deleted_in_block.to_hex(),
+                    if update.confirmed {
+                        OutputStatus::Spent as i32
+                    } else {
+                        OutputStatus::SpentMinedUnconfirmed as i32
+                    },
+                    update.hash.to_hex()
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("");
+        let query = query.trim();
+        trace!(target: LOG_TARGET, "mark_output_as_spent_batch_mode: `{}`", query);
+
+        conn.batch_execute(query)?;
+
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - mark_output_as_unspent: lock {} + db_op {} = {} ms",
+                "sqlite profile - mark_output_as_spent_batch_mode: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
+                start.elapsed().as_millis(),
+                updates.len()
+            );
+        }
+
+        Ok(())
+    }
+
+    fn mark_output_as_unspent_batch_mode(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+    ) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        // Split out the confirmed and unconfirmed outputs
+        let confirmed_hashes = hashes
+            .iter()
+            .filter(|(_hash, confirmed)| *confirmed)
+            .map(|(hash, _confirmed)| hash)
+            .collect::<Vec<_>>();
+        let unconfirmed_hashes = hashes
+            .iter()
+            .filter(|(_hash, confirmed)| !*confirmed)
+            .map(|(hash, _confirmed)| hash)
+            .collect::<Vec<_>>();
+
+        if !confirmed_hashes.is_empty() {
+            diesel::update(
+                outputs::table.filter(outputs::hash.eq_any(confirmed_hashes.iter().map(|hash| hash.to_vec()))),
+            )
+            .set((
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::status.eq(OutputStatus::Unspent as i32),
+            ))
+            .execute(&mut conn)
+            .num_rows_affected_or_not_found(confirmed_hashes.len())?;
+        }
+
+        if !unconfirmed_hashes.is_empty() {
+            diesel::update(
+                outputs::table.filter(outputs::hash.eq_any(unconfirmed_hashes.iter().map(|hash| hash.to_vec()))),
+            )
+            .set((
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::status.eq(OutputStatus::UnspentMinedUnconfirmed as i32),
+            ))
+            .execute(&mut conn)
+            .num_rows_affected_or_not_found(unconfirmed_hashes.len())?;
+        }
+
+        debug!(target: LOG_TARGET, "mark_output_as_unspent_batch_mode: Unspent {}, UnspentMinedUnconfirmed {}", confirmed_hashes.len(), unconfirmed_hashes.len());
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - mark_output_as_unspent_batch_mode: lock {} + db_op {} = {} ms (Unspent {}, UnspentMinedUnconfirmed {})",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis(),
+                confirmed_hashes.len(), unconfirmed_hashes.len()
             );
         }
 
@@ -1054,6 +1120,34 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             })
             .collect())
     }
+}
+
+/// These are the fields to be set for the received outputs batch mode update
+#[derive(Clone, Debug, Default)]
+pub struct ReceivedOutputInfoForBatch {
+    /// The hash of the output
+    pub hash: FixedHash,
+    /// The height at which the output was mined
+    pub mined_height: u64,
+    /// The block hash in which the output was mined
+    pub mined_in_block: FixedHash,
+    /// Whether the output is confirmed
+    pub confirmed: bool,
+    /// The timestamp at which the output was mined
+    pub mined_timestamp: u64,
+}
+
+/// These are the fields to be set for the spent outputs batch mode update
+#[derive(Clone, Debug, Default)]
+pub struct SpentOutputInfoForBatch {
+    /// The hash of the output
+    pub hash: FixedHash,
+    /// Whether the output is confirmed
+    pub confirmed: bool,
+    /// The height at which the output was marked as deleted
+    pub mark_deleted_at_height: u64,
+    /// The block hash in which the output was marked as deleted
+    pub mark_deleted_in_block: FixedHash,
 }
 
 fn update_outputs_with_tx_id_and_status_to_new_status(

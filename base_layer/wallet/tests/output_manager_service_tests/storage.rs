@@ -26,7 +26,7 @@ use minotari_wallet::output_manager_service::{
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbWalletOutput,
-        sqlite_db::OutputManagerSqliteDatabase,
+        sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         OutputSource,
     },
 };
@@ -47,6 +47,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     let key_manager = create_memory_db_key_manager();
+    let mut unspent = Vec::with_capacity(5);
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
@@ -60,9 +61,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
-        db.mark_output_as_unspent(kmo.hash, true).unwrap();
+        unspent.push((kmo.hash, true));
         unspent_outputs.push(kmo);
     }
+    db.mark_output_as_unspent_batch_mode(unspent).unwrap();
 
     let time_locked_outputs = db.get_timelocked_outputs(3).unwrap();
     assert_eq!(time_locked_outputs.len(), 1);
@@ -182,13 +184,28 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     // Set first pending tx to mined but unconfirmed
+    let mut updates = Vec::new();
     for o in &pending_txs[0].outputs_to_be_received {
-        db.set_received_output_mined_height_and_status(o.hash, 2, FixedHash::zero(), false, 0)
-            .unwrap();
+        updates.push(ReceivedOutputInfoForBatch {
+            hash: o.hash,
+            mined_height: 2,
+            mined_in_block: FixedHash::zero(),
+            confirmed: false,
+            mined_timestamp: 0,
+        });
     }
+    db.set_received_outputs_mined_height_and_status_batch_mode(updates)
+        .unwrap();
+    let mut spent = Vec::new();
     for o in &pending_txs[0].outputs_to_be_spent {
-        db.mark_output_as_spent(o.hash, 3, FixedHash::zero(), false).unwrap();
+        spent.push(SpentOutputInfoForBatch {
+            hash: o.hash,
+            confirmed: false,
+            mark_deleted_at_height: 3,
+            mark_deleted_in_block: FixedHash::zero(),
+        });
     }
+    db.mark_output_as_spent_batch_mode(spent).unwrap();
 
     // Balance shouldn't change
     let balance = db.get_balance(None).unwrap();
@@ -201,13 +218,28 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     // Set second pending tx to mined and confirmed
+    let mut updates = Vec::new();
     for o in &pending_txs[1].outputs_to_be_received {
-        db.set_received_output_mined_height_and_status(o.hash, 4, FixedHash::zero(), true, 0)
-            .unwrap();
+        updates.push(ReceivedOutputInfoForBatch {
+            hash: o.hash,
+            mined_height: 4,
+            mined_in_block: FixedHash::zero(),
+            confirmed: true,
+            mined_timestamp: 0,
+        });
     }
+    db.set_received_outputs_mined_height_and_status_batch_mode(updates)
+        .unwrap();
+    let mut spent = Vec::new();
     for o in &pending_txs[1].outputs_to_be_spent {
-        db.mark_output_as_spent(o.hash, 5, FixedHash::zero(), true).unwrap();
+        spent.push(SpentOutputInfoForBatch {
+            hash: o.hash,
+            confirmed: true,
+            mark_deleted_at_height: 5,
+            mark_deleted_in_block: FixedHash::zero(),
+        });
     }
+    db.mark_output_as_spent_batch_mode(spent).unwrap();
 
     // Balance with confirmed second pending tx
     let mut available_balance = unspent_outputs
@@ -288,12 +320,12 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(mined_unspent_outputs.len(), 4);
 
     // Spend a received and confirmed output
-    db.mark_output_as_spent(
-        pending_txs[1].outputs_to_be_received[0].hash,
-        6,
-        FixedHash::zero(),
-        true,
-    )
+    db.mark_output_as_spent_batch_mode(vec![SpentOutputInfoForBatch {
+        hash: pending_txs[1].outputs_to_be_received[0].hash,
+        confirmed: true,
+        mark_deleted_at_height: 6,
+        mark_deleted_in_block: FixedHash::zero(),
+    }])
     .unwrap();
 
     let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
@@ -330,6 +362,10 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
 #[tokio::test]
 pub async fn test_output_manager_sqlite_db() {
+    //` cargo test --color=always --test wallet_integration_tests
+    //` output_manager_service_tests::storage::test_output_manager_sqlite_db > .\target\output.txt 2>&1
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
@@ -418,7 +454,13 @@ pub async fn test_no_duplicate_outputs() {
     // add it to the database
     let result = db.add_unspent_output(kmo.clone());
     assert!(result.is_ok());
-    let result = db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), true, 0);
+    let result = db.set_received_outputs_mined_height_and_status_batch_mode(vec![ReceivedOutputInfoForBatch {
+        hash: kmo.hash,
+        mined_height: 1,
+        mined_in_block: FixedHash::zero(),
+        confirmed: true,
+        mined_timestamp: 0,
+    }]);
     assert!(result.is_ok());
     let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
@@ -459,8 +501,14 @@ pub async fn test_mark_as_unmined() {
 
     // add it to the database
     db.add_unspent_output(kmo.clone()).unwrap();
-    db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), true, 0)
-        .unwrap();
+    db.set_received_outputs_mined_height_and_status_batch_mode(vec![ReceivedOutputInfoForBatch {
+        hash: kmo.hash,
+        mined_height: 1,
+        mined_in_block: FixedHash::zero(),
+        confirmed: true,
+        mined_timestamp: 0,
+    }])
+    .unwrap();
     let o = db.get_last_mined_output().unwrap().unwrap();
     assert_eq!(o.hash, kmo.hash);
     db.set_output_to_unmined_and_invalid(kmo.hash).unwrap();
@@ -469,4 +517,55 @@ pub async fn test_mark_as_unmined() {
     assert_eq!(o.hash, kmo.hash);
     assert!(o.mined_height.is_none());
     assert!(o.mined_in_block.is_none());
+
+    // Test batch mode operations
+    // - Add 5 outputs and remember the hashes
+    let batch_count = 7usize;
+    let mut batch_hashes = Vec::with_capacity(batch_count);
+    let mut batch_outputs = Vec::with_capacity(batch_count);
+    let mut batch_info = Vec::with_capacity(batch_count);
+    for i in 0..batch_count {
+        let uo = make_input(
+            &mut OsRng,
+            MicroMinotari::from(1000),
+            &OutputFeatures::default(),
+            &key_manager,
+        )
+        .await;
+        let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
+            .await
+            .unwrap();
+        db.add_unspent_output(kmo.clone()).unwrap();
+        batch_hashes.push(kmo.hash);
+        batch_info.push(ReceivedOutputInfoForBatch {
+            hash: kmo.hash,
+            mined_height: i as u64 + 1,
+            mined_in_block: FixedHash::zero(),
+            confirmed: true,
+            mined_timestamp: i as u64,
+        });
+        batch_outputs.push(kmo);
+    }
+
+    // - Perform batch mode operations
+    db.set_received_outputs_mined_height_and_status_batch_mode(batch_info)
+        .unwrap();
+
+    let last = db.get_last_mined_output().unwrap().unwrap();
+    assert_eq!(last.hash, batch_outputs.last().unwrap().hash);
+
+    db.set_output_to_unmined_and_invalid_batch_mode(batch_hashes).unwrap();
+    assert!(db.get_last_mined_output().unwrap().is_none());
+
+    let invalid_outputs = db.get_invalid_outputs().unwrap();
+    let mut batch_invalid_count = 0;
+    for invalid in invalid_outputs {
+        if let Some(kmo) = batch_outputs.iter().find(|wo| wo.hash == invalid.hash) {
+            assert_eq!(invalid.hash, kmo.hash);
+            assert!(invalid.mined_height.is_none());
+            assert!(invalid.mined_in_block.is_none());
+            batch_invalid_count += 1;
+        }
+    }
+    assert_eq!(batch_invalid_count, batch_count);
 }
