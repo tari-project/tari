@@ -36,6 +36,12 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_core::{blocks::BlockHeader, proof_of_work::sha3x_difficulty};
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_core::blocks::NewBlockTemplate;
+use tari_core::consensus::ConsensusManager;
+use tari_core::transactions::generate_coinbase;
+use tari_core::transactions::key_manager::create_memory_db_key_manager;
+use tari_core::transactions::transaction_components::RangeProofType;
 
 use crate::error::{InterfaceError, MiningHelperError};
 
@@ -231,6 +237,105 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
     let mut buffer = Vec::new();
     BorshSerialize::serialize(&block_header, &mut buffer).unwrap();
     (*header).0 = buffer;
+}
+
+/// Injects a nonce into a blocktemplate
+///
+/// ## Arguments
+/// `hex` - The hex formatted cstring
+/// `nonce` - The nonce to be injected
+///
+/// ## Returns
+/// `c_char` - The updated hex formatted cstring or null on error
+/// `error_out` - Error code returned, 0 means no error
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn inject_coinbase(block_template_bytes: *mut ByteVector, value: c_ulonglong, stealth_payment: bool, revealed_value_proof: bool, wallet_payment_address: *const c_char,coinbase_extra: *const c_char,   error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if block_template_bytes.is_null() {
+        error = MiningHelperError::from(InterfaceError::NullError("block template".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+    if wallet_payment_address.is_null() {
+        error = MiningHelperError::from(InterfaceError::NullError("wallet_payment_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+    let native_string_address = CString::from_raw(wallet_payment_address as *mut i8).to_str().unwrap().to_owned();
+    let wallet_address = match TariAddress::from_str(native_string_address){
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidAddress(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;}
+    };
+    if coinbase_extra.is_null() {
+        error = MiningHelperError::from(InterfaceError::NullError("coinbase_extra".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+    let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8).to_str().unwrap().to_owned();
+    let mut bytes = (*block_template_bytes).0.as_slice();
+    let mut block_template: NewBlockTemplate = match BorshDeserialize::deserialize(&mut bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let key_manager = create_memory_db_key_manager();
+
+    let consensus_manager = match ConsensusManager::builder(config.network)
+        .build(){
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::NullError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;}
+    };
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ;
+        },
+    };
+    let range_proof_type = if revealed_value_proof{
+        RangeProofType::RevealedValue
+    }
+    else
+    {
+        RangeProofType::BulletProofPlus
+    };
+    let height = block_template.header.height;
+    let (coinbase_output, coinbase_kernel) = match runtime.block_on(async {generate_coinbase(
+        0.into(),
+        value.into(),
+        height,
+        coinbase_extra_string.as_bytes(),
+        &key_manager,
+        wallet_address,
+        stealth_payment,
+        consensus_manager.consensus_constants(height),
+        range_proof_type,
+    )}){
+        Ok(v) => v,
+        Err(e) => {error = MiningHelperError::from(InterfaceError::CoinbaseBuildError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ;}
+    };
+    block_template.body.add_output(coinbase_output);
+    block_template.body.add_kernel(coinbase_kernel);
+    block_template.body.sort();
+    let mut buffer = Vec::new();
+    BorshSerialize::serialize(&block_template, &mut buffer).unwrap();
+    (*block_template_bytes).0 = buffer;
 }
 
 /// Returns the difficulty of a share

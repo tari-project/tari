@@ -25,4 +25,4 @@ rand = "0.8"
 tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.9" }
 
 [lib]
-crate-type = ["staticlib","cdylib"]
+crate-type = ["cdylib"]
