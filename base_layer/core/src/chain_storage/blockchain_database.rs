@@ -40,6 +40,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
+use tari_hashing::TransactionHashDomain;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
     sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash},
@@ -89,10 +90,7 @@ use crate::{
         DomainSeparatedConsensusHasher,
     },
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::{
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-        TransactionHashDomain,
-    },
+    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
         CandidateBlockValidator,
