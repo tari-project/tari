@@ -404,9 +404,36 @@ pub unsafe extern "C" fn inject_coinbase(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn share_difficulty(
+    header: *mut ByteVector,
+    network: c_uint,
+    error_out: *mut c_int,
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+    let network_u8 = match u8::try_from(network) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    let network = match Network::try_from(network_u8) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 1;
+    };
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -456,12 +483,36 @@ pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *m
 pub unsafe extern "C" fn share_validate(
     header: *mut ByteVector,
     hash: *const c_char,
+    network: c_uint,
     share_difficulty: c_ulonglong,
     template_difficulty: c_ulonglong,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+    let network_u8 = match u8::try_from(network) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    let network = match Network::try_from(network_u8) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 1;
+    };
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -547,15 +598,15 @@ mod tests {
     #[test]
     fn detect_change_in_consensus_encoding() {
         #[cfg(tari_target_network_mainnet)]
-        let (nonce, difficulty) = match Network::get_current_or_user_setting_or_default() {
-            Network::MainNet => (3145418102407526886, Difficulty::from_u64(1505).unwrap()),
-            Network::StageNet => (135043993867732261, Difficulty::from_u64(1059).unwrap()),
+        let (nonce, difficulty, network) = match Network::get_current_or_user_setting_or_default() {
+            Network::MainNet => (3145418102407526886, Difficulty::from_u64(1505).unwrap(), 0x00),
+            Network::StageNet => (135043993867732261, Difficulty::from_u64(1059).unwrap(), 0x01),
             _ => panic!("Invalid network for mainnet target"),
         };
         #[cfg(tari_target_network_nextnet)]
-        let (nonce, difficulty) = (5154919981564263219, Difficulty::from_u64(2950).unwrap());
+        let (nonce, difficulty, network) = (5154919981564263219, Difficulty::from_u64(2950).unwrap(), 0x02);
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        let (nonce, difficulty) = (8520885611996410570, Difficulty::from_u64(3143).unwrap());
+        let (nonce, difficulty, network) = (8520885611996410570, Difficulty::from_u64(3143).unwrap(), 0x26);
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -566,7 +617,7 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, error_ptr);
+            let result = share_difficulty(byte_vec, network, error_ptr);
             if result != difficulty.as_u64() {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
@@ -596,7 +647,7 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, error_ptr);
+            let result = share_difficulty(byte_vec, 0x10, error_ptr);
             assert_eq!(result, difficulty.as_u64());
             byte_vector_destroy(byte_vec);
         }
@@ -641,6 +692,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_broken_ptr,
+                0x10,
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -655,20 +707,41 @@ mod tests {
             share_difficulty = difficulty.as_u64() + 1000;
             template_difficulty = difficulty.as_u64() + 2000;
             // let calculate for invalid share and target diff
-            let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
+            let result = share_validate(
+                byte_vec,
+                hash_hex_ptr,
+                0x10,
+                share_difficulty,
+                template_difficulty,
+                error_ptr,
+            );
             assert_eq!(result, 4);
             assert_eq!(error, 4);
             // let calculate for valid share and invalid target diff
             share_difficulty = difficulty.as_u64();
             let hash_hex = CString::new(hash.clone()).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
-            let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
+            let result = share_validate(
+                byte_vec,
+                hash_hex_ptr,
+                0x10,
+                share_difficulty,
+                template_difficulty,
+                error_ptr,
+            );
             assert_eq!(result, 1);
             // let calculate for valid target diff
             template_difficulty = difficulty.as_u64();
             let hash_hex = CString::new(hash).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
-            let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
+            let result = share_validate(
+                byte_vec,
+                hash_hex_ptr,
+                0x10,
+                share_difficulty,
+                template_difficulty,
+                error_ptr,
+            );
             assert_eq!(result, 0);
             byte_vector_destroy(byte_vec);
         }
