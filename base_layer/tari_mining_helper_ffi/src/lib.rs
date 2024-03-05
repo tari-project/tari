@@ -297,6 +297,14 @@ pub unsafe extern "C" fn inject_coinbase(
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     }
+    let network_u8 = match u8::try_from(network) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
     let network = match Network::try_from(network as u8) {
         Ok(v) => v,
         Err(e) => {
@@ -690,6 +698,7 @@ mod tests {
                 NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into()).unwrap();
 
             let block_bytes = borsh::to_vec(&block).unwrap();
+            #[allow(clippy::cast_possible_truncation)]
             let len = block_bytes.len() as u32;
             let byte_vec = byte_vector_create(block_bytes.as_ptr(), len, error_ptr);
 
