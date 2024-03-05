@@ -17,12 +17,12 @@ async-trait = "0.1.50"
 futures = { version = "^0.3.16", features = ["async-await"] }
 log = "0.4.8"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["rt", "sync"] }
+tokio = { version = "1.36", features = ["rt", "sync"] }
 tower-service = { version = "0.3" }
 
 [dev-dependencies]
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 
-tokio = { version = "1.23", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.36", features = ["rt-multi-thread", "macros", "time"] }
 futures-test = { version = "0.3.3" }
 tower = "0.4"

@@ -32,7 +32,7 @@ rustls = "0.20.2"
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["macros"] }
+tokio = { version = "1.36", features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = ["time"] }
 tower = "0.4.11"
 trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"] }

@@ -27,14 +27,14 @@ tari_hashing = { path = "../../hashing" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
 console-subscriber = "0.1.8"
-#tokio = { version = "1.20", features = ["signal", "tracing"] }
+#tokio = { version = "1.36", features = ["signal", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
-tokio = { version = "1.23", features = ["signal"] }
+tokio = { version = "1.36", features = ["signal"] }
 
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"
-crossterm = { version = "0.25.0" }
+crossterm = { version = "0.27.0" }
 digest = "0.10"
 futures = { version = "^0.3.16", default-features = false, features = [
   "alloc",

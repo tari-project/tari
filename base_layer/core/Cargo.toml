@@ -82,7 +82,7 @@ sha2 = "0.10"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["time", "sync", "macros"] }
+tokio = { version = "1.36", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
