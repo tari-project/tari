@@ -387,15 +387,15 @@ mod tests {
     #[test]
     fn detect_change_in_consensus_encoding() {
         #[cfg(tari_target_network_mainnet)]
-        let (nonce, difficulty) = match Network::get_current_or_default() {
-            Network::MainNet => (9205754023158580549, Difficulty::from_u64(1015).unwrap()),
-            Network::StageNet => (12022341430563186162, Difficulty::from_u64(1011).unwrap()),
+        let (nonce, difficulty) = match Network::get_current_or_user_setting_or_default() {
+            Network::MainNet => (3145418102407526886, Difficulty::from_u64(1505).unwrap()),
+            Network::StageNet => (135043993867732261, Difficulty::from_u64(1059).unwrap()),
             _ => panic!("Invalid network for mainnet target"),
         };
         #[cfg(tari_target_network_nextnet)]
-        let (nonce, difficulty) = (8721374869059089110, Difficulty::from_u64(3037).unwrap());
+        let (nonce, difficulty) = (5154919981564263219, Difficulty::from_u64(2950).unwrap());
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        let (nonce, difficulty) = (9860518124890236943, Difficulty::from_u64(2724).unwrap());
+        let (nonce, difficulty) = (8520885611996410570, Difficulty::from_u64(3143).unwrap());
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -411,7 +411,7 @@ mod tests {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
                 let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                let network = Network::get_current_or_default();
+                let network = Network::get_current_or_user_setting_or_default();
                 eprintln!("network = {network:?}");
                 eprintln!("nonce = {:?}", nonce);
                 eprintln!("difficulty = {:?}", difficulty);

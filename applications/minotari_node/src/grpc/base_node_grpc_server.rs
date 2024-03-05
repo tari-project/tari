@@ -585,7 +585,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .try_into()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
             ),
-
             initial_sync_achieved: status_watch.borrow().bootstrapped,
         };
 

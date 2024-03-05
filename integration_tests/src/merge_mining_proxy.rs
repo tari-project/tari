@@ -27,7 +27,7 @@ use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_merge_mining_proxy::{merge_miner, Cli};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{json, Value};
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_utilities::ByteArray;
 use tempfile::tempdir;
@@ -74,6 +74,9 @@ pub async fn register_merge_mining_proxy_process(
 
 impl MergeMiningProxyProcess {
     pub async fn start(&self, world: &mut TariWorld) {
+        std::env::set_var("TARI_NETWORK", "localnet");
+        set_network_if_choice_valid(Network::LocalNet).unwrap();
+
         let temp_dir = tempdir().unwrap();
         let data_dir = temp_dir.path().join("data/miner");
         let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();

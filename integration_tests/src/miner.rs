@@ -35,7 +35,7 @@ use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::{
     consensus::ConsensusManager,
@@ -88,6 +88,9 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
+        std::env::set_var("TARI_NETWORK", "localnet");
+        set_network_if_choice_valid(Network::LocalNet).unwrap();
+
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
             .expect("wallet grpc client");

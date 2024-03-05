@@ -91,9 +91,9 @@ pub struct Cli {
 }
 
 impl ConfigOverrideProvider for Cli {
-    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
-        let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self.common.network.unwrap_or(default_network);
+    fn get_config_property_overrides(&self, network: &mut Network) -> Vec<(String, String)> {
+        let mut overrides = self.common.get_config_property_overrides(network);
+        *network = self.common.network.unwrap_or(*network);
         overrides.push(("wallet.network".to_string(), network.to_string()));
         overrides.push(("wallet.override_from".to_string(), network.to_string()));
         overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
@@ -163,8 +163,8 @@ pub struct MakeItRainArgs {
     pub destination: TariAddress,
     #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
     pub start_amount: MicroMinotari,
-    #[clap(short, long, alias = "tps", default_value_t = 25)]
-    pub transactions_per_second: u32,
+    #[clap(short, long, alias = "tps", default_value_t = 25.0)]
+    pub transactions_per_second: f64,
     #[clap(short, long, parse(try_from_str = parse_duration), default_value="60")]
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]

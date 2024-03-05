@@ -571,7 +571,7 @@ pub async fn start_wallet(
         .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
 
     wallet
-        .set_base_node_peer(base_node.public_key.clone(), net_address.address().clone())
+        .set_base_node_peer(base_node.public_key.clone(), Some(net_address.address().clone()))
         .await
         .map_err(|e| {
             ExitError::new(

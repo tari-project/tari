@@ -48,7 +48,7 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
         NextNet => get_nextnet_genesis_block(),
         Igor => get_igor_genesis_block(),
         Esmeralda => get_esmeralda_genesis_block(),
-        LocalNet => get_esmeralda_genesis_block(),
+        LocalNet => get_localnet_genesis_block(),
     }
 }
 
@@ -321,6 +321,40 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
 }
 
+pub fn get_localnet_genesis_block() -> ChainBlock {
+    // lets get the block
+    let block = crate::blocks::genesis_block::get_localnet_genesis_block_raw();
+    let accumulated_data = BlockHeaderAccumulatedData {
+        hash: block.hash(),
+        total_kernel_offset: block.header.total_kernel_offset.clone(),
+        achieved_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        target_difficulty: Difficulty::min(),
+    };
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
+}
+
+fn get_localnet_genesis_block_raw() -> Block {
+    // Set genesis timestamp
+    let genesis_timestamp = DateTime::parse_from_rfc2822("20 Feb 2024 08:01:00 +0200").expect("parse may not fail");
+    // Let us add a "not before" proof to the genesis block
+    let not_before_proof =
+        b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
+        \
+        The New York Times , 2000/01/01 \
+        \
+        Lorem Ipsum \
+        \
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore \
+        magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo \
+        consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
+        pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
+        est laborum.";
+    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+}
+
 fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[u8]) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
@@ -416,6 +450,13 @@ mod test {
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
         check_block(Network::Igor, &block, 0, 0);
+    }
+
+    #[test]
+    fn localnet_genesis_sanity_check() {
+        // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
+        let block = get_localnet_genesis_block();
+        check_block(Network::LocalNet, &block, 0, 0);
     }
 
     fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {

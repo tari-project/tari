@@ -39,7 +39,7 @@ use grpc::{
     TransferRequest,
     ValidateRequest,
 };
-use minotari_app_grpc::tari_rpc::{self as grpc};
+use minotari_app_grpc::tari_rpc::{self as grpc, TransactionStatus};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
@@ -219,7 +219,7 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     },
                     _ => (),
                 },
-                "Mined_or_Faux_Unconfirmed" => match tx_info.status() {
+                "Mined_or_OneSidedUnconfirmed" => match tx_info.status() {
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedUnconfirmed |
@@ -230,7 +230,7 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
                     },
                     _ => (),
                 },
-                "Mined_or_Faux_Confirmed" => match tx_info.status() {
+                "Mined_or_OneSidedConfirmed" => match tx_info.status() {
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedConfirmed |
                     grpc::TransactionStatus::CoinbaseConfirmed => {
@@ -322,7 +322,7 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
                     },
                     _ => (),
                 },
-                "Mined_or_Faux_Unconfirmed" => match tx_info.status() {
+                "Mined_or_OneSidedUnconfirmed" => match tx_info.status() {
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedUnconfirmed |
@@ -523,10 +523,13 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         "TRANSACTION_STATUS_COINBASE" => 5,
         "TRANSACTION_STATUS_MINED_CONFIRMED" => 6,
         "TRANSACTION_STATUS_REJECTED" => 7,
-        "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => 8,
-        "TRANSACTION_STATUS_FAUX_CONFIRMED" => 9,
+        "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED" => 8,
+        "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED" => 9,
         "TRANSACTION_STATUS_QUEUED" => 10,
         "TRANSACTION_STATUS_NOT_FOUND" => 11,
+        "TRANSACTION_STATUS_COINBASE_UNCONFIRMED" => 12,
+        "TRANSACTION_STATUS_COINBASE_CONFIRMED" => 13,
+        "TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN" => 14,
         _ => panic!("Invalid transaction status {}", transaction_status),
     };
 
@@ -935,7 +938,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
     );
 }
 
-#[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_or_Faux_Confirmed")]
+#[then(expr = "wallet {word} detects at least {int} coinbase transactions as CoinbaseConfirmed")]
 async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let mut completed_tx_res = client
@@ -948,7 +951,7 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
     let mut total_mined_confirmed_coinbases = 0;
 
     'outer: for _ in 0..num_retries {
-        println!("Detecting mined confirmed coinbase transactions");
+        println!("Detecting coinbase confirmed transactions");
         'inner: while let Some(tx_info) = completed_tx_res.next().await {
             let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
             let request = GetTransactionInfoRequest {
@@ -957,7 +960,7 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
             let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
             match tx_info.status() {
-                grpc::TransactionStatus::MinedConfirmed => {
+                grpc::TransactionStatus::CoinbaseConfirmed => {
                     total_mined_confirmed_coinbases += 1;
                     if total_mined_confirmed_coinbases >= coinbases {
                         break 'outer;
@@ -976,19 +979,23 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
 
     if total_mined_confirmed_coinbases >= coinbases {
         println!(
-            "Wallet {} detected at least {} coinbase transactions as Mined_or_Faux_Confirmed",
+            "Wallet {} detected at least {} coinbase transactions as CoinbaseConfirmed",
             &wallet_name, coinbases
         );
     } else {
         panic!(
-            "Wallet {} failed to detect at least {} coinbase transactions as Mined_or_Faux_Confirmed",
+            "Wallet {} failed to detect at least {} coinbase transactions as CoinbaseConfirmed",
             wallet_name, coinbases
         );
     }
 }
 
-#[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_or_Faux_Unconfirmed")]
-async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+#[then(expr = "wallet {word} detects at least {int} coinbase transactions as CoinbaseUnconfirmed")]
+async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
+    world: &mut TariWorld,
+    wallet_name: String,
+    coinbases: u64,
+) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let mut completed_tx_res = client
         .get_completed_transactions(GetCompletedTransactionsRequest {})
@@ -1000,7 +1007,7 @@ async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wal
     let mut total_mined_unconfirmed_coinbases = 0;
 
     'outer: for _ in 0..num_retries {
-        println!("Detecting mined unconfirmed coinbase transactions");
+        println!("Detecting coinbase unconfirmed transactions");
         'inner: while let Some(tx_info) = completed_tx_res.next().await {
             let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
             let request = GetTransactionInfoRequest {
@@ -1009,7 +1016,7 @@ async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wal
             let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
             match tx_info.status() {
-                grpc::TransactionStatus::MinedUnconfirmed => {
+                grpc::TransactionStatus::CoinbaseUnconfirmed | grpc::TransactionStatus::CoinbaseNotInBlockChain => {
                     total_mined_unconfirmed_coinbases += 1;
                     if total_mined_unconfirmed_coinbases >= coinbases {
                         break 'outer;
@@ -1028,18 +1035,18 @@ async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wal
 
     if total_mined_unconfirmed_coinbases >= coinbases {
         println!(
-            "Wallet {} detected at least {} coinbase transactions as Mined_or_Faux_Unconfirmed",
+            "Wallet {} detected at least {} coinbase transactions as CoinbaseConfirmed",
             &wallet_name, coinbases
         );
     } else {
         panic!(
-            "Wallet {} failed to detect at least {} coinbase transactions as Mined_or_Faux_Unconfirmed",
+            "Wallet {} failed to detect at least {} coinbase transactions as CoinbaseConfirmed",
             wallet_name, coinbases
         );
     }
 }
 
-#[then(expr = "wallet {word} detects exactly {int} coinbase transactions as Mined_or_Faux_Confirmed")]
+#[then(expr = "wallet {word} detects exactly {int} coinbase transactions as CoinbaseConfirmed")]
 async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
@@ -1049,7 +1056,7 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
     let mut total_mined_confirmed_coinbases = 0;
 
     'outer: for _ in 0..num_retries {
-        println!("Detecting mined confirmed coinbase transactions");
+        println!("Detecting coinbase confirmed transactions");
         'inner: for tx_id in tx_ids {
             let request = GetTransactionInfoRequest {
                 transaction_ids: vec![*tx_id],
@@ -1057,7 +1064,7 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
             let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
             let tx_info = tx_info.transactions.first().unwrap();
             match tx_info.status() {
-                grpc::TransactionStatus::MinedConfirmed => total_mined_confirmed_coinbases += 1,
+                grpc::TransactionStatus::CoinbaseConfirmed => total_mined_confirmed_coinbases += 1,
                 _ => continue 'inner,
             }
         }
@@ -1073,12 +1080,12 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 
     if total_mined_confirmed_coinbases == coinbases {
         println!(
-            "Wallet {} detected exactly {} coinbase transactions as Mined_or_Faux_Confirmed",
+            "Wallet {} detected exactly {} coinbase transactions as CoinbaseConfirmed",
             &wallet_name, coinbases
         );
     } else {
         panic!(
-            "Wallet {} failed to detect exactly {} coinbase transactions as Mined_or_Faux_Confirmed",
+            "Wallet {} failed to detect exactly {} coinbase transactions as CoinbaseConfirmed",
             wallet_name, coinbases
         );
     }
@@ -1125,7 +1132,7 @@ async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
     }
 }
 
-#[then(expr = "all wallets detect all transactions as Mined_or_Faux_Confirmed")]
+#[then(expr = "all wallets detect all transactions as Mined_or_OneSidedConfirmed")]
 async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
     for wallet in world.wallets.keys() {
         let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -1153,10 +1160,11 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
                 let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
                 let tx_status = res.transactions.first().unwrap().status;
 
-                // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
-                if tx_status == 6 {
+                if tx_status == TransactionStatus::MinedConfirmed as i32 ||
+                    tx_status == TransactionStatus::OneSidedConfirmed as i32
+                {
                     println!(
-                        "Wallet {} has detected transaction with id {} as Mined_or_Faux_Confirmed",
+                        "Wallet {} has detected transaction with id {} as Mined_or_OneSidedConfirmed",
                         &wallet, tx_id
                     );
                     break 'inner;
@@ -1164,7 +1172,7 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
 
                 if retry == num_retries {
                     panic!(
-                        "Transaction with id {} does not have status as Mined_or_Faux_Confirmed, on wallet {}",
+                        "Transaction with id {} does not have status as Mined_or_OneSidedConfirmed, on wallet {}",
                         tx_id, &wallet
                     );
                 }
@@ -1196,7 +1204,7 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
     }
 
     let num_retries = 100;
-    let mut coinbase_count = 0;
+    let mut unspendable_coinbase_count = 0;
     let mut spendable_coinbase_count = 0;
 
     for ind in 0..wallets_clients.len() {
@@ -1211,28 +1219,35 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
                 .into_inner();
             while let Some(completed_tx) = stream.next().await {
                 let tx_info = completed_tx.unwrap().transaction.unwrap();
-
-                if tx_info.message.contains("Coinbase Transaction for Block ") && tx_info.fee == 0 {
-                    let tx_id = tx_info.tx_id;
-                    coinbase_count += 1;
-
-                    println!("Found coinbase transaction with id {} for wallet {}", tx_id, &wallet);
-
-                    // MINED_CONFIRMED status = 6
-                    if tx_info.status == 6 {
-                        println!(
-                            "Coinbase transaction with id {} for wallet {} is Mined_or_Faux_Confirmed",
-                            tx_id, &wallet
-                        );
-                        spendable_coinbase_count += 1;
-                    }
+                if tx_info.status == grpc::TransactionStatus::CoinbaseUnconfirmed as i32 {
+                    unspendable_coinbase_count += 1;
+                    println!(
+                        "Found coinbase transaction with id {} for wallet '{}' as 'CoinbaseUnconfirmed'",
+                        tx_info.tx_id, &wallet
+                    );
+                }
+                if tx_info.status == grpc::TransactionStatus::CoinbaseNotInBlockChain as i32 {
+                    unspendable_coinbase_count += 1;
+                    println!(
+                        "Found coinbase transaction with id {} for wallet '{}' as 'CoinbaseNotInBlockChain'",
+                        tx_info.tx_id, &wallet
+                    );
+                }
+                if tx_info.status == grpc::TransactionStatus::CoinbaseConfirmed as i32 {
+                    spendable_coinbase_count += 1;
+                    println!(
+                        "Found coinbase transaction with id {} for wallet '{}' as 'CoinbaseConfirmed'",
+                        tx_info.tx_id, &wallet
+                    );
                 }
             }
 
             if spendable_coinbase_count >= amount_of_coinbases {
                 println!(
-                    "Wallet {} has found at least {} within total {} coinbase transaction",
-                    &wallet, amount_of_coinbases, coinbase_count
+                    "Wallet '{}' has found at least {} spendable coinbases within a total of {} coinbase transactions",
+                    &wallet,
+                    amount_of_coinbases,
+                    spendable_coinbase_count + unspendable_coinbase_count
                 );
                 break 'inner;
             }

@@ -281,7 +281,7 @@ async fn sender_signature_verification() {
 #[test]
 fn kernel_hash() {
     #[cfg(tari_target_network_mainnet)]
-    if let Network::MainNet = Network::get_current_or_default() {
+    if let Network::MainNet = Network::get_current_or_user_setting_or_default() {
         eprintln!("This test is configured for stagenet only");
         return;
     }
@@ -327,7 +327,7 @@ fn kernel_metadata() {
         .build()
         .unwrap();
     #[cfg(tari_target_network_mainnet)]
-    match Network::get_current_or_default() {
+    match Network::get_current_or_user_setting_or_default() {
         Network::MainNet => {
             eprintln!("This test is configured for stagenet only");
         },

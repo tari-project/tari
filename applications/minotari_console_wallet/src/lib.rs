@@ -48,7 +48,7 @@ pub use cli::{
 };
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
-use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts, network_check::set_network_if_choice_valid};
+use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
 use tari_common::{
@@ -116,8 +116,6 @@ pub fn run_wallet_with_cli(
         ApplicationType::ConsoleWallet,
         consts::APP_VERSION
     );
-
-    set_network_if_choice_valid(config.wallet.network)?;
 
     let password = get_password(config, &cli);
 
