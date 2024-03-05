@@ -114,7 +114,10 @@ use minotari_wallet::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
-use tari_common::configuration::{MultiaddrList, StringList};
+use tari_common::{
+    configuration::{MultiaddrList, StringList},
+    network_check::set_network_if_choice_valid,
+};
 use tari_common_types::{
     emoji::emoji_set,
     tari_address::{TariAddress, TariAddressError},
@@ -5367,6 +5370,13 @@ pub unsafe extern "C" fn wallet_create(
                 return ptr::null_mut();
             },
         }
+    };
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = LibWalletError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 1;
     };
 
     let runtime = match Runtime::new() {
