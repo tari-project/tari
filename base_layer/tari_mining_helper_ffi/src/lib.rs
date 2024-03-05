@@ -305,7 +305,7 @@ pub unsafe extern "C" fn inject_coinbase(
             return;
         },
     };
-    let network = match Network::try_from(network as u8) {
+    let network = match Network::try_from(network_u8) {
         Ok(v) => v,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
