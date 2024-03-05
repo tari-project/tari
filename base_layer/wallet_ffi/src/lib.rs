@@ -5376,7 +5376,7 @@ pub unsafe extern "C" fn wallet_create(
     if let Err(e) = set_network_if_choice_valid(network) {
         error = LibWalletError::from(InterfaceError::InvalidArgument(e.to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return 1;
+        return ptr::null_mut();
     };
 
     let runtime = match Runtime::new() {
