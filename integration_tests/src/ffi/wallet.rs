@@ -178,6 +178,8 @@ impl Wallet {
                 CString::new("kensentme").unwrap().into_raw(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
+                CString::new("").unwrap().into_raw(),
+                false,
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
