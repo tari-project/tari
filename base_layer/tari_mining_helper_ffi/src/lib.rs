@@ -34,7 +34,7 @@ use std::{convert::TryFrom, ffi::CString, slice, str::FromStr};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
@@ -245,18 +245,24 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
     (*header).0 = buffer;
 }
 
-/// Injects a nonce into a blocktemplate
+/// Injects a coinbase into a blocktemplate
 ///
 /// ## Arguments
-/// `hex` - The hex formatted cstring
-/// `nonce` - The nonce to be injected
+/// `block_template_bytes` - The block template as bytes, serialized with borsh.io
+/// `value` - The value of the coinbase
+/// `stealth_payment` - Boolean value, is this a stealh payment or normal one-sided
+/// `revealed_value_proof` - Boolean value, should this use the reveal value proof, or BP+
+/// `wallet_payment_address` - The address to pay the coinbase to
+/// `coinbase_extra` - The value of the coinbase extra field
+/// `network` - The value of the network
 ///
 /// ## Returns
-/// `c_char` - The updated hex formatted cstring or null on error
+/// `block_template_bytes` - The updated block template
 /// `error_out` - Error code returned, 0 means no error
 ///
 /// # Safety
 /// None
+#[allow(clippy::too_many_lines)]
 #[no_mangle]
 pub unsafe extern "C" fn inject_coinbase(
     block_template_bytes: *mut ByteVector,
@@ -313,7 +319,13 @@ pub unsafe extern "C" fn inject_coinbase(
             return;
         },
     };
-
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    };
     let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8)
         .to_str()
         .unwrap()
