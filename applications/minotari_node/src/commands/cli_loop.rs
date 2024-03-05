@@ -98,6 +98,8 @@ impl CliLoop {
                 KeyEvent {
                     code: KeyCode::Char('c'),
                     modifiers: KeyModifiers::CONTROL,
+                    kind: _,
+                    state: _,
                 } => {
                     return true;
                 },

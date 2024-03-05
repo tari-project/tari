@@ -29,7 +29,7 @@ bytes = "1.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = { version = "0.13.0" }
-crossterm = { version = "0.25.0" }
+crossterm = { version = "0.27.0" }
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 hyper = "0.14.12"
@@ -40,7 +40,7 @@ reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["macros"] }
+tokio = { version = "1.36", features = ["macros"] }
 tonic = "0.8.3"
 tracing = "0.1"
 url = "2.1.1"

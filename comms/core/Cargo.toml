@@ -41,7 +41,7 @@ serde_derive = "1.0.119"
 sha3 = "0.10"
 snow = { version = "0.9.5", features = ["default-resolver"] }
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
+tokio = { version = "1.36", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-util = { version = "0.6.7", features = ["codec", "compat"] }
 tower = {version = "0.4", features = ["util"]}
