@@ -40,8 +40,10 @@ pub enum InterfaceError {
     TokioError(String),
     #[error("An error has occurred when trying to create the a coinbase: `{0}`")]
     CoinbaseBuildError(String),
-#[error("An invalid address was passed in: `{0}`")]
-InvalidAddress(String)
+    #[error("An invalid address was passed in: `{0}`")]
+    InvalidAddress(String),
+    #[error("An invalid network was passed in: `{0}`")]
+    InvalidNetwork(String),
 }
 
 /// This struct is meant to hold an error for use by Miningcore. The error has an integer code and string
@@ -89,6 +91,10 @@ impl From<InterfaceError> for MiningHelperError {
             },
             InterfaceError::InvalidAddress(_) => Self {
                 code: 9,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidNetwork(_) => Self {
+                code: 10,
                 message: format!("{:?}", v),
             },
         }

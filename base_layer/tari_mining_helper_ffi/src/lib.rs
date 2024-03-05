@@ -30,18 +30,24 @@
 
 mod error;
 use core::ptr;
-use std::{convert::TryFrom, ffi::CString, slice};
+use std::{convert::TryFrom, ffi::CString, slice, str::FromStr};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
-use tari_core::{blocks::BlockHeader, proof_of_work::sha3x_difficulty};
+use tari_common::configuration::Network;
+use tari_common_types::tari_address::TariAddress;
+use tari_core::{
+    blocks::{BlockHeader, NewBlockTemplate},
+    consensus::ConsensusManager,
+    proof_of_work::sha3x_difficulty,
+    transactions::{
+        generate_coinbase,
+        key_manager::create_memory_db_key_manager,
+        transaction_components::RangeProofType,
+    },
+};
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_core::blocks::NewBlockTemplate;
-use tari_core::consensus::ConsensusManager;
-use tari_core::transactions::generate_coinbase;
-use tari_core::transactions::key_manager::create_memory_db_key_manager;
-use tari_core::transactions::transaction_components::RangeProofType;
+use tokio::runtime::Runtime;
 
 use crate::error::{InterfaceError, MiningHelperError};
 
@@ -252,7 +258,16 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn inject_coinbase(block_template_bytes: *mut ByteVector, value: c_ulonglong, stealth_payment: bool, revealed_value_proof: bool, wallet_payment_address: *const c_char,coinbase_extra: *const c_char,   error_out: *mut c_int) {
+pub unsafe extern "C" fn inject_coinbase(
+    block_template_bytes: *mut ByteVector,
+    value: c_ulonglong,
+    stealth_payment: bool,
+    revealed_value_proof: bool,
+    wallet_payment_address: *const c_char,
+    coinbase_extra: *const c_char,
+    network: c_uint,
+    error_out: *mut c_int,
+) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if block_template_bytes.is_null() {
@@ -265,20 +280,36 @@ pub unsafe extern "C" fn inject_coinbase(block_template_bytes: *mut ByteVector, 
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     }
-    let native_string_address = CString::from_raw(wallet_payment_address as *mut i8).to_str().unwrap().to_owned();
-    let wallet_address = match TariAddress::from_str(native_string_address){
+    let native_string_address = CString::from_raw(wallet_payment_address as *mut i8)
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let wallet_address = match TariAddress::from_str(&native_string_address) {
         Ok(v) => v,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::InvalidAddress(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return;}
+            return;
+        },
     };
     if coinbase_extra.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("coinbase_extra".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     }
-    let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8).to_str().unwrap().to_owned();
+    let network = match Network::try_from(network as u8) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+
+    let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8)
+        .to_str()
+        .unwrap()
+        .to_owned();
     let mut bytes = (*block_template_bytes).0.as_slice();
     let mut block_template: NewBlockTemplate = match BorshDeserialize::deserialize(&mut bytes) {
         Ok(v) => v,
@@ -290,45 +321,48 @@ pub unsafe extern "C" fn inject_coinbase(block_template_bytes: *mut ByteVector, 
     };
     let key_manager = create_memory_db_key_manager();
 
-    let consensus_manager = match ConsensusManager::builder(config.network)
-        .build(){
+    let consensus_manager = match ConsensusManager::builder(network).build() {
         Ok(v) => v,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::NullError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return;}
+            return;
+        },
     };
     let runtime = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
             error = MiningHelperError::from(InterfaceError::TokioError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ;
+            return;
         },
     };
-    let range_proof_type = if revealed_value_proof{
+    let range_proof_type = if revealed_value_proof {
         RangeProofType::RevealedValue
-    }
-    else
-    {
+    } else {
         RangeProofType::BulletProofPlus
     };
     let height = block_template.header.height;
-    let (coinbase_output, coinbase_kernel) = match runtime.block_on(async {generate_coinbase(
-        0.into(),
-        value.into(),
-        height,
-        coinbase_extra_string.as_bytes(),
-        &key_manager,
-        wallet_address,
-        stealth_payment,
-        consensus_manager.consensus_constants(height),
-        range_proof_type,
-    )}){
+    let (coinbase_output, coinbase_kernel) = match runtime.block_on(async {
+        generate_coinbase(
+            0.into(),
+            value.into(),
+            height,
+            coinbase_extra_string.as_bytes(),
+            &key_manager,
+            &wallet_address,
+            stealth_payment,
+            consensus_manager.consensus_constants(height),
+            range_proof_type,
+        )
+        .await
+    }) {
         Ok(v) => v,
-        Err(e) => {error = MiningHelperError::from(InterfaceError::CoinbaseBuildError(e.to_string())).code;
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::CoinbaseBuildError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ;}
+            return;
+        },
     };
     block_template.body.add_output(coinbase_output);
     block_template.body.add_kernel(coinbase_kernel);
@@ -460,6 +494,7 @@ mod tests {
     use tari_core::{
         blocks::{genesis_block::get_genesis_block, Block},
         proof_of_work::Difficulty,
+        transactions::tari_amount::MicroMinotari,
     };
 
     use super::*;
@@ -642,6 +677,38 @@ mod tests {
             let success = public_key_hex_validate(test_pk_ptr, error_ptr);
             assert!(!success);
             assert_ne!(error, 0);
+        }
+    }
+
+    #[test]
+    fn check_inject_coinbase() {
+        unsafe {
+            let mut error = -1;
+            let error_ptr = &mut error as *mut c_int;
+            let header = BlockHeader::new(0);
+            let block =
+                NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into()).unwrap();
+
+            let block_bytes = borsh::to_vec(&block).unwrap();
+            let len = block_bytes.len() as u32;
+            let byte_vec = byte_vector_create(block_bytes.as_ptr(), len, error_ptr);
+
+            let address = TariAddress::default();
+            let add_string = CString::new(address.to_string()).unwrap();
+            let add_ptr: *const c_char = CString::into_raw(add_string) as *const c_char;
+
+            let extra_string = CString::new("a").unwrap();
+            let extra_ptr: *const c_char = CString::into_raw(extra_string) as *const c_char;
+
+            inject_coinbase(byte_vec, 100, false, true, add_ptr, extra_ptr, 0x10, error_ptr);
+
+            let block_temp: NewBlockTemplate = BorshDeserialize::deserialize(&mut (*byte_vec).0.as_slice()).unwrap();
+
+            assert_eq!(block_temp.body.kernels().len(), 1);
+            assert_eq!(block_temp.body.outputs().len(), 1);
+            assert!(block_temp.body.outputs()[0].features.is_coinbase());
+            assert_eq!(block_temp.body.outputs()[0].features.coinbase_extra, vec![97]);
+            assert_eq!(block_temp.body.outputs()[0].minimum_value_promise, MicroMinotari(100));
         }
     }
 }
