@@ -12,7 +12,7 @@ Feature: Wallet Querying
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     When I mine 5 blocks on NODE
-    Then all wallets detect all transactions as Mined_or_Faux_Confirmed
+    Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
 
   @critical
   Scenario: As a wallet I want to submit a transaction
@@ -23,5 +23,5 @@ Feature: Wallet Querying
     When I wait 5 seconds
     When I transfer 5T from WALLET_A to WALLET_B
     When I mine 5 blocks on NODE
-    Then all wallets detect all transactions as Mined_or_Faux_Confirmed
+    Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
 

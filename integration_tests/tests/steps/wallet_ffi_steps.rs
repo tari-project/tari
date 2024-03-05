@@ -416,8 +416,8 @@ async fn ffi_detects_transaction(
         "TRANSACTION_STATUS_BROADCAST",
         "TRANSACTION_STATUS_MINED_UNCONFIRMED",
         "TRANSACTION_STATUS_MINED",
-        "TRANSACTION_STATUS_FAUX_UNCONFIRMED",
-        "TRANSACTION_STATUS_FAUX_CONFIRMED"
+        "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED",
+        "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED"
     ]
     .contains(&status.as_str()));
     println!(
@@ -430,8 +430,8 @@ async fn ffi_detects_transaction(
             "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
             "TRANSACTION_STATUS_MINED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_mined_unconfirmed(),
             "TRANSACTION_STATUS_MINED" => ffi_wallet.get_counters().get_transaction_mined(),
-            "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_unconfirmed(),
-            "TRANSACTION_STATUS_FAUX_CONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_confirmed(),
+            "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_unconfirmed(),
+            "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_confirmed(),
             _ => unreachable!(),
         };
         if found_count >= count {

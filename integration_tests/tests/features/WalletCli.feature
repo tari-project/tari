@@ -82,9 +82,8 @@ Feature: Wallet CLI
         When I have mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 15 blocks
         Then wallets SENDER should have AT_LEAST 12 spendable coinbase outputs
-        When I wait 30 seconds
         Then I stop wallet SENDER
-        When I make it rain from wallet SENDER 1 tx per sec 10 sec 8000 uT 100 increment to RECEIVER via command line
+        When I make-it-rain from SENDER rate 10 txns_per_sec duration 1 sec value 8000 uT increment 100 uT to RECEIVER via command line
         Then wallet SENDER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         When mining node MINE mines 5 blocks
