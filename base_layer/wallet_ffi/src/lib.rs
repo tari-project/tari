@@ -8982,6 +8982,11 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
+    #[cfg(tari_target_network_mainnet)]
+    const NETWORK_STRING: &str = "stagenet";
+    #[cfg(tari_target_network_nextnet)]
+    const NETWORK_STRING: &str = "nextnet";
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     const NETWORK_STRING: &str = "localnet";
 
     #[test]
