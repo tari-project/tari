@@ -3225,12 +3225,14 @@ dependencies = [
  "libc",
  "rand",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
  "tari_features",
  "tari_utilities",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

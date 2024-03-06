@@ -22,6 +22,7 @@
 
 use std::fmt;
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use num_format::{Locale, ToFormattedString};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -34,7 +35,9 @@ use crate::proof_of_work::{error::DifficultyError, DifficultyAdjustmentError};
 pub const MIN_DIFFICULTY: u64 = 1;
 
 /// The difficulty is defined as the maximum target divided by the block hash.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize, BorshSerialize, BorshDeserialize,
+)]
 pub struct Difficulty(u64);
 
 impl Difficulty {

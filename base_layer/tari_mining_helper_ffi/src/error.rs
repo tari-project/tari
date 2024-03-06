@@ -36,6 +36,14 @@ pub enum InterfaceError {
     AllocationError,
     #[error("An error because the supplied position was out of range")]
     PositionInvalidError,
+    #[error("An error has occurred when trying to create the tokio runtime: `{0}`")]
+    TokioError(String),
+    #[error("An error has occurred when trying to create the a coinbase: `{0}`")]
+    CoinbaseBuildError(String),
+    #[error("An invalid address was passed in: `{0}`")]
+    InvalidAddress(String),
+    #[error("An invalid network was passed in: `{0}`")]
+    InvalidNetwork(String),
 }
 
 /// This struct is meant to hold an error for use by Miningcore. The error has an integer code and string
@@ -71,6 +79,22 @@ impl From<InterfaceError> for MiningHelperError {
             },
             InterfaceError::PositionInvalidError => Self {
                 code: 6,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::TokioError(_) => Self {
+                code: 7,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::CoinbaseBuildError(_) => Self {
+                code: 8,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidAddress(_) => Self {
+                code: 9,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidNetwork(_) => Self {
+                code: 10,
                 message: format!("{:?}", v),
             },
         }
