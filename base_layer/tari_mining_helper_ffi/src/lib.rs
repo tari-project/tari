@@ -266,7 +266,7 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
 #[no_mangle]
 pub unsafe extern "C" fn inject_coinbase(
     block_template_bytes: *mut ByteVector,
-    value: c_ulonglong,
+    coibase_value: c_ulonglong,
     stealth_payment: bool,
     revealed_value_proof: bool,
     wallet_payment_address: *const c_char,
@@ -364,9 +364,11 @@ pub unsafe extern "C" fn inject_coinbase(
     };
     let height = block_template.header.height;
     let (coinbase_output, coinbase_kernel) = match runtime.block_on(async {
+        // we dont count the fee or the reward here, we assume the caller has calculated the amount to be the exact
+        // value for the coinbase(s) they want.
         generate_coinbase(
             0.into(),
-            value.into(),
+            coibase_value.into(),
             height,
             coinbase_extra_string.as_bytes(),
             &key_manager,
@@ -599,15 +601,32 @@ mod tests {
     fn detect_change_in_consensus_encoding() {
         #[cfg(tari_target_network_mainnet)]
         let (nonce, difficulty, network) = match Network::get_current_or_user_setting_or_default() {
-            Network::MainNet => (3145418102407526886, Difficulty::from_u64(1505).unwrap(), 0x00),
-            Network::StageNet => (135043993867732261, Difficulty::from_u64(1059).unwrap(), 0x01),
+            Network::MainNet => (
+                3145418102407526886,
+                Difficulty::from_u64(1505).unwrap(),
+                Network::MainNet,
+            ),
+            Network::StageNet => (
+                135043993867732261,
+                Difficulty::from_u64(1059).unwrap(),
+                Network::StageNet,
+            ),
             _ => panic!("Invalid network for mainnet target"),
         };
         #[cfg(tari_target_network_nextnet)]
-        let (nonce, difficulty, network) = (5154919981564263219, Difficulty::from_u64(2950).unwrap(), 0x02);
+        let (nonce, difficulty, network) = (
+            5154919981564263219,
+            Difficulty::from_u64(2950).unwrap(),
+            Network::NextNet,
+        );
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        let (nonce, difficulty, network) = (8520885611996410570, Difficulty::from_u64(3143).unwrap(), 0x26);
+        let (nonce, difficulty, network) = (
+            8520885611996410570,
+            Difficulty::from_u64(3143).unwrap(),
+            Network::Esmeralda,
+        );
         unsafe {
+            set_network_if_choice_valid(network).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
@@ -617,12 +636,11 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, network, error_ptr);
+            let result = share_difficulty(byte_vec, network.as_byte() as u32, error_ptr);
             if result != difficulty.as_u64() {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
                 let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                let network = Network::get_current_or_user_setting_or_default();
                 eprintln!("network = {network:?}");
                 eprintln!("nonce = {:?}", nonce);
                 eprintln!("difficulty = {:?}", difficulty);
@@ -638,6 +656,7 @@ mod tests {
     #[test]
     fn check_difficulty() {
         unsafe {
+            let network = Network::get_current_or_user_setting_or_default();
             let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -647,7 +666,7 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, 0x10, error_ptr);
+            let result = share_difficulty(byte_vec, network.as_byte() as u32, error_ptr);
             assert_eq!(result, difficulty.as_u64());
             byte_vector_destroy(byte_vec);
         }
@@ -674,6 +693,7 @@ mod tests {
     #[test]
     fn check_share() {
         unsafe {
+            let network = Network::get_current_or_user_setting_or_default();
             let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -692,7 +712,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_broken_ptr,
-                0x10,
+                network.as_byte() as u32,
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -710,7 +730,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_ptr,
-                0x10,
+                network.as_byte() as u32,
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -724,7 +744,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_ptr,
-                0x10,
+                network.as_byte() as u32,
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -737,7 +757,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_ptr,
-                0x10,
+                network.as_byte() as u32,
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
