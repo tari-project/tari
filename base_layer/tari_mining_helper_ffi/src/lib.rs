@@ -796,6 +796,7 @@ mod tests {
     #[test]
     fn check_inject_coinbase() {
         unsafe {
+            let network = Network::get_current_or_user_setting_or_default();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let header = BlockHeader::new(0);
@@ -814,7 +815,18 @@ mod tests {
             let extra_string = CString::new("a").unwrap();
             let extra_ptr: *const c_char = CString::into_raw(extra_string) as *const c_char;
 
-            inject_coinbase(byte_vec, 100, false, true, add_ptr, extra_ptr, 0x10, error_ptr);
+            inject_coinbase(
+                byte_vec,
+                100,
+                false,
+                true,
+                add_ptr,
+                extra_ptr,
+                network.as_byte() as u32,
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
 
             let block_temp: NewBlockTemplate = BorshDeserialize::deserialize(&mut (*byte_vec).0.as_slice()).unwrap();
 
