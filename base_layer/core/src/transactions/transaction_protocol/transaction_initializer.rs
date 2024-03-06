@@ -691,7 +691,7 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(5000), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![]).await;
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             MicroMinotari(4),
@@ -755,6 +755,7 @@ mod test {
             2000 * uT + tx_fee + fee_for_change_output - 1 * uT,
             0,
             &key_manager,
+            vec![],
         )
         .await;
         let output = p
@@ -815,7 +816,7 @@ mod test {
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(2));
-        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager).await;
+        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![]).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).await.unwrap();
         }
@@ -836,7 +837,7 @@ mod test {
             p.get_size_for_default_features_and_scripts(1)
                 .expect("Failed to borsh serialized size"),
         );
-        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager).await;
+        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
         // Start the builder
         let constants = create_consensus_constants(0);
@@ -873,7 +874,7 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(400), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
         let script = script!(Nop);
         let output = create_wallet_output_with_data(
             script.clone(),
@@ -925,8 +926,8 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager();
         let p = TestParams::new(&key_manager).await;
-        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager).await;
-        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager).await;
+        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
+        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;
         let fee_per_gram = MicroMinotari(6);
 
         let script = script!(Nop);
