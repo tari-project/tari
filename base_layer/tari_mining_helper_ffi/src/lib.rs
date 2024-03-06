@@ -636,7 +636,7 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, network.as_byte() as u32, error_ptr);
+            let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
             if result != difficulty.as_u64() {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
@@ -666,7 +666,7 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, network.as_byte() as u32, error_ptr);
+            let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
             assert_eq!(result, difficulty.as_u64());
             byte_vector_destroy(byte_vec);
         }
@@ -712,7 +712,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_broken_ptr,
-                network.as_byte() as u32,
+                u32::from(network.as_byte()),
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -730,7 +730,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_ptr,
-                network.as_byte() as u32,
+                u32::from(network.as_byte()),
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -744,7 +744,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_ptr,
-                network.as_byte() as u32,
+                u32::from(network.as_byte()),
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -757,7 +757,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_ptr,
-                network.as_byte() as u32,
+                u32::from(network.as_byte()),
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -822,7 +822,7 @@ mod tests {
                 true,
                 add_ptr,
                 extra_ptr,
-                network.as_byte() as u32,
+                u32::from(network.as_byte()),
                 error_ptr,
             );
 
