@@ -22,6 +22,8 @@ env:
   TBN_SIG_FN: "sha256-unsigned.txt"
   ## Must be a JSon string
   TBN_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy"]'
+  TBN_FEATURES: "default, safe"
+  TBN_LIBRARIES: "minotari_mining_helper_ffi"
   TARI_NETWORK_DIR: testnet
   toolchain: nightly-2023-06-04
   matrix-json-file: ".github/workflows/base_node_binaries.json"
@@ -54,7 +56,7 @@ jobs:
           #
           # build only single target image
           # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
-          # matrix_selection=$( jq -c '.[] | select( ."name" == "macos-arm64" )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."name" | contains("linux") )' ${{ env.matrix-json-file }} )
           #
           # build select target images - build_enabled
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
@@ -125,6 +127,33 @@ jobs:
           TARI_VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
           echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_ENV
           echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_OUTPUT
+          if [[ "${{ matrix.builds.features }}" == "" ]]; then
+            echo "BUILD_FEATURES=${{ env.TBN_FEATURES }}" >> $GITHUB_ENV
+          else
+            echo "BUILD_FEATURES=${{ matrix.builds.features }}" >> $GITHUB_ENV
+          fi
+          TARGET_BINS=""
+          if [[ "${{ matrix.builds.target_bins }}" == "" ]]; then
+            ARRAY_BINS=( $(echo ${TBN_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
+          else
+            ARRAY_BINS=( $(echo "${{ matrix.builds.target_bins }}" | tr ', ' '\n') )
+          fi
+          for BIN_FILE in "${ARRAY_BINS[@]}"; do
+            echo "Adding ${BIN_FILE} to Builds"
+            TARGET_BINS+="--bin ${BIN_FILE} "
+          done
+          echo "TARGET_BINS=${TARGET_BINS}" >> $GITHUB_ENV
+          TARGET_LIBS=""
+          if [[ "${{ matrix.builds.target_libs }}" == "" ]]; then
+            ARRAY_LIBS=( $(echo ${TBN_LIBRARIES} | tr ', ' '\n') )
+          else
+            ARRAY_LIBS=( $(echo "${{ matrix.builds.target_libs }}" | tr ', ' '\n') )
+          fi
+          for LIB_FILE in "${ARRAY_LIBS[@]}"; do
+            echo "Adding ${LIB_FILE} to library Builds"
+            TARGET_LIBS+="--package ${LIB_FILE} "
+          done
+          echo "TARGET_LIBS=${TARGET_LIBS}" >> $GITHUB_ENV
 
       - name: Scheduled Destination Folder Override
         if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
@@ -258,29 +287,49 @@ jobs:
         run: |
           ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
             --target ${{ matrix.builds.target }} \
-            --features "${{ matrix.builds.features }}" \
-            ${{ matrix.builds.target_bins }} \
+            --features "${{ env.BUILD_FEATURES }}" \
+            ${{ env.TARGET_BINS }} \
+            ${{ matrix.builds.flags }} --locked
+
+      - name: Build release libraries
+        shell: bash
+        run: |
+          ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
+            --target ${{ matrix.builds.target }} \
+            --lib ${{ env.TARGET_LIBS }} \
             ${{ matrix.builds.flags }} --locked
 
       - name: Copy binaries to folder for archiving
         shell: bash
         run: |
+          set -xo pipefail
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
           BINFILE="${TBN_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
           echo "MTS_SOURCE=$(pwd)" >> $GITHUB_ENV
-          ls -alhtR "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
+          ls -alht "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
           ARRAY_FILES=( $(echo ${TBN_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
           for FILE in "${ARRAY_FILES[@]}"; do
             echo "checking for file - ${FILE}${TBN_EXT}"
-            if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" ]; then
-              cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" .
+            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" ]; then
+              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" .
             fi
           done
-          if [ -f "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
-            cp -vf "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
+          if [[ "${{ matrix.builds.target_libs }}" == "" ]]; then
+            ARRAY_LIBS=( $(echo ${TBN_LIBRARIES} | tr ', ' '\n') )
+          else
+            ARRAY_LIBS=( $(echo "${{ matrix.builds.target_libs }}" | tr ', ' '\n') )
+          fi
+          for FILE in "${ARRAY_LIBS[@]}"; do
+            echo "checking for file - ${FILE}${TBN_EXT}"
+            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/lib${FILE}${LIB_EXT}" ]; then
+              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/lib${FILE}${LIB_EXT}" .
+            fi
+          done
+          if [ -f "${GITHUB_WORKSPACE}/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
+            cp -vf "${GITHUB_WORKSPACE}/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi
           ls -alhtR ${{ env.MTS_SOURCE }}
 
@@ -290,10 +339,27 @@ jobs:
         run: |
           ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
             --target ${{ matrix.builds.target }} \
-            --features "${{ matrix.builds.features }}, metrics" \
+            --features "${{ env.BUILD_FEATURES }}, metrics" \
             --bin minotari_node \
             ${{ matrix.builds.flags }} --locked
           cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/minotari_node" "${{ env.MTS_SOURCE }}/minotari_node-metrics"
+
+      - name: Build targeted miners
+        # if: ${{ ( startsWith(github.ref, 'refs/tags/v') ) && ( matrix.builds.miner_cpu_targets != '' ) }}
+        if: ${{ matrix.builds.miner_cpu_targets != '' }}
+        shell: bash
+        run: |
+          ARRAY_TARGETS=( $(echo "${{ matrix.builds.miner_cpu_targets }}" | tr ', ' '\n') )
+          for CPU_TARGET in "${ARRAY_TARGETS[@]}"; do
+            echo "Target CPU ${CPU_TARGET} for miner"
+            export RUSTFLAGS="-C target-cpu=${CPU_TARGET}"
+            ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
+              --target ${{ matrix.builds.target }} \
+              --features "${{ env.BUILD_FEATURES }}" \
+              --bin minotari_miner \
+              ${{ matrix.builds.flags }} --locked
+            cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/minotari_miner" "${{ env.MTS_SOURCE }}/minotari_miner-${CPU_TARGET}"
+          done
 
       - name: Pre/unsigned OSX Artifact upload for Archive
         # Debug

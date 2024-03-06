@@ -7,10 +7,10 @@ version = "1.0.0-pre.9"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core" }
+tari_comms = { path = "../../comms/core" }
 tari_crypto = { version = "0.20" }
-tari_common = {  path = "../../common" }
-tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
+tari_common = { path = "../../common" }
+tari_core = { path = "../core", default-features = false, features = ["transactions", "base_node_proto", "base_node"] }
 tari_utilities = { version = "0.7" }
 libc = "0.2.65"
 thiserror = "1.0.26"
@@ -18,7 +18,7 @@ borsh = "1.2"
 hex = "0.4.2"
 
 [dev-dependencies]
-tari_core = { path = "../core", features = ["transactions", "base_node"]}
+tari_core = { path = "../core", features = ["transactions", "base_node"] }
 rand = "0.8"
 
 [build-dependencies]
