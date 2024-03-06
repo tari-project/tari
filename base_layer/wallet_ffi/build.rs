@@ -5,8 +5,10 @@ use std::{env, path::PathBuf};
 
 use cbindgen::{Config, ExportConfig, Language, LineEndingStyle, ParseConfig, Style};
 use tari_common::build::StaticApplicationInfo;
+use tari_features::resolver::build_features;
 
 fn main() {
+    build_features();
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     // generate version info
