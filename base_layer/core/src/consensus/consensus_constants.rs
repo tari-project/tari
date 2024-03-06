@@ -370,12 +370,12 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
-            target_time: 300,
+            target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
-            target_time: 200,
+            target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -411,13 +411,13 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
     pub fn igor() -> Vec<Self> {
         // `igor` is a test network, so calculating these constants are allowed rather than being hardcoded.
-        let randomx_split: u64 = 60;
+        let randomx_split: u64 = 50;
         let sha3x_split: u64 = 100 - randomx_split;
         let randomx_target_time = 20;
         let sha3x_target_time = randomx_target_time * (100 - sha3x_split) / sha3x_split;
@@ -491,12 +491,12 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 300,
+            target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 200,
+            target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -532,7 +532,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
@@ -547,12 +547,12 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 300,
+            target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 200,
+            target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -588,7 +588,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
@@ -597,12 +597,12 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 300,
+            target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 200,
+            target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -638,7 +638,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
@@ -649,12 +649,12 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 300,
+            target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 200,
+            target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -690,7 +690,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
