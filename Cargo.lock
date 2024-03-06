@@ -3364,6 +3364,7 @@ dependencies = [
  "tari_contacts",
  "tari_core",
  "tari_crypto",
+ "tari_features",
  "tari_key_manager",
  "tari_p2p",
  "tari_script",
