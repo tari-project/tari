@@ -3422,7 +3422,7 @@ dependencies = [
  "sealed",
  "serde",
  "thiserror",
- "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -5538,6 +5538,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari-tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baa5d0f04bac67c31c1e0c2ffbc7f0e3aee2707405804ec5e022b4d550be259c"
+dependencies = [
+ "borsh",
+ "crunchy",
+]
+
+[[package]]
 name = "tari_bulletproofs_plus"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5834,6 +5844,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tari-curve25519-dalek",
+ "tari-tiny-keccak",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
@@ -5854,7 +5865,6 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
- "tiny-keccak 2.0.2 (git+https://github.com/tari-project/tiny-keccak?rev=bcddc65530d8646de7282cd8d18d891dc434b643)",
  "tokio",
  "toml 0.5.11",
  "tracing",
@@ -6028,7 +6038,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "1.0.0-rc.5a"
+version = "1.0.0-rc.5a.a"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
@@ -6276,15 +6286,6 @@ version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
 dependencies = [
- "crunchy",
-]
-
-[[package]]
-name = "tiny-keccak"
-version = "2.0.2"
-source = "git+https://github.com/tari-project/tiny-keccak?rev=bcddc65530d8646de7282cd8d18d891dc434b643#bcddc65530d8646de7282cd8d18d891dc434b643"
-dependencies = [
- "borsh",
  "crunchy",
 ]
 
