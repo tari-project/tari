@@ -30,7 +30,7 @@ use tari_crypto::{
     ristretto::pedersen::PedersenCommitment,
 };
 use tari_script::ScriptContext;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
@@ -393,8 +393,25 @@ fn check_validator_node_registration_utxo(
             });
         }
 
+        // TODO: This should be the claim public key that is being signed
         if !reg.is_valid_signature_for(&[]) {
             return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+
+        if reg.network().is_some() || reg.network_knowledge_proof().is_some() {
+            // If one of these is set, both must be set
+            if reg.network().is_none() || reg.network_knowledge_proof().is_none() {
+                return Err(ValidationError::ValidatorNodeRegistrationNetworkNotSet);
+            }
+            // If set, the signature must be valid
+            let sig_pub_key = reg.network().unwrap();
+            if !reg
+                .network_knowledge_proof()
+                .unwrap()
+                .verify(&sig_pub_key, &reg.public_key().to_vec())
+            {
+                return Err(ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof);
+            }
         }
     }
     Ok(())

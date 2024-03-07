@@ -92,6 +92,16 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
         let claim_public_key = PublicKey::from_canonical_bytes(&value.claim_public_key)
             .map_err(|e| format!("Invalid claim public key: {}", e))?;
 
+        let network = if value.network.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_canonical_bytes(&value.network).map_err(|e| format!("network: {}", e))?)
+        };
+        let network_knowledge_proof = value
+            .network_knowledge_proof
+            .map(|v| Signature::try_from(v).map_err(|e| format!("network_knowledge_proof: {}", e)))
+            .transpose()?;
+
         Ok(ValidatorNodeRegistration::new(
             ValidatorNodeSignature::new(
                 public_key,
@@ -101,6 +111,8 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
                     .ok_or("signature not provided")??,
             ),
             claim_public_key,
+            network,
+            network_knowledge_proof,
         ))
     }
 }
@@ -111,6 +123,8 @@ impl From<ValidatorNodeRegistration> for grpc::ValidatorNodeRegistration {
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
             claim_public_key: value.claim_public_key().to_vec(),
+            network: value.network().map(|v| v.to_vec()).unwrap_or_default(),
+            network_knowledge_proof: value.network_knowledge_proof().map(|v| v.into()),
         }
     }
 }

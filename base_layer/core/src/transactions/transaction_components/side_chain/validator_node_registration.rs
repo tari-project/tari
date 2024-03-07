@@ -40,13 +40,22 @@ use crate::{
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
     claim_public_key: PublicKey,
+    network: Option<PublicKey>,
+    network_knowledge_proof: Option<Signature>,
 }
 
 impl ValidatorNodeRegistration {
-    pub fn new(signature: ValidatorNodeSignature, claim_public_key: PublicKey) -> Self {
+    pub fn new(
+        signature: ValidatorNodeSignature,
+        claim_public_key: PublicKey,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
+    ) -> Self {
         Self {
             signature,
             claim_public_key,
+            network,
+            network_knowledge_proof,
         }
     }
 
@@ -83,6 +92,14 @@ impl ValidatorNodeRegistration {
 
     pub fn signature(&self) -> &Signature {
         self.signature.signature()
+    }
+
+    pub fn network(&self) -> Option<&PublicKey> {
+        self.network.as_ref()
+    }
+
+    pub fn network_knowledge_proof(&self) -> Option<&Signature> {
+        self.network_knowledge_proof.as_ref()
     }
 }
 

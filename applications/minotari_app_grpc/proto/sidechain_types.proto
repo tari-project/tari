@@ -37,6 +37,8 @@ message ValidatorNodeRegistration {
     bytes public_key = 1;
     Signature signature = 2;
     bytes claim_public_key = 3;
+    bytes network = 4;
+    Signature network_knowledge_proof = 5;
 }
 
 message TemplateRegistration {

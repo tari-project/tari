@@ -1011,6 +1011,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
             .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
+        let validator_network = if request.validator_network.is_empty() {
+            None
+        } else {
+            Some(
+                PublicKey::from_canonical_bytes(&request.validator_network)
+                    .map_err(|_| Status::invalid_argument("Network is malformed"))?,
+            )
+        };
+
+        let validator_network_knowledge_proof = request
+            .validator_network_knowledge_proof
+            .map(|v| {
+                v.try_into()
+                    .map_err(|_| Status::invalid_argument("Validator network knowledge proof is malformed"))
+            })
+            .transpose()?;
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
             Status::internal("failed to fetch consensus constants")
@@ -1022,6 +1038,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
+                validator_network,
+                validator_network_knowledge_proof,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,

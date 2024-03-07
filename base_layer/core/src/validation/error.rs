@@ -118,6 +118,13 @@ pub enum ValidationError {
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
     #[error(
+        "Network not set for validator node registration. If network is set, then network_knowledge_proof must also \
+         be set"
+    )]
+    ValidatorNodeRegistrationNetworkNotSet,
+    #[error("Network knowledge proof not valid for validator node registration")]
+    ValidatorNodeInvalidNetworkKnowledgeProof,
+    #[error(
         "An unexpected number of timestamps were provided to the header validator. THIS IS A BUG. Expected \
          {expected}, got {actual}"
     )]
@@ -173,6 +180,8 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |
+            err @ ValidationError::ValidatorNodeRegistrationNetworkNotSet |
+            err @ ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
