@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 edition = "2018"
 
 [features]
@@ -40,4 +40,4 @@ tari_test_utils = {  path = "../infrastructure/test_utils"}
 toml = "0.5.8"
 
 [build-dependencies]
-tari_features = { path = "./tari_features", version = "1.0.0-rc.5"}
+tari_features = { path = "./tari_features", version = "1.0.0-rc.5a"}

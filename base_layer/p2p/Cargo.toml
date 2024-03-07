@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "1.0.0-rc.5.a"
+version = "1.0.0-rc.5a.a"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core", version = "1.0.0-rc.5" }
-tari_comms_dht = {  path = "../../comms/dht", version = "1.0.0-rc.5" }
-tari_common = {  path = "../../common", version = "1.0.0-rc.5" }
+tari_comms = {  path = "../../comms/core", version = "1.0.0-rc.5a" }
+tari_comms_dht = {  path = "../../comms/dht", version = "1.0.0-rc.5a" }
+tari_common = {  path = "../../common", version = "1.0.0-rc.5a" }
 tari_crypto = { version = "0.20" }
-tari_service_framework = {  path = "../service_framework", version = "1.0.0-rc.5" }
-tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-rc.5" }
-tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-rc.5" }
+tari_service_framework = {  path = "../service_framework", version = "1.0.0-rc.5a" }
+tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-rc.5a" }
+tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-rc.5a" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -46,7 +46,7 @@ clap = "3.2"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-rc.5" }
+tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-rc.5a" }
 
 [features]
 test-mocks = []

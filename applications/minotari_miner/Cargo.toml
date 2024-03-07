@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 edition = "2018"
 
 [dependencies]
