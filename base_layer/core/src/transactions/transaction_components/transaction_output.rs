@@ -547,27 +547,9 @@ pub fn batch_verify_range_proofs(
             });
             proofs.push(output.proof_result()?.as_vec());
         }
-        if let Err(err_1) = prover.verify_batch(proofs, statements.iter().collect()) {
-            for output in &bulletproof_plus_proofs {
-                if let Err(err_2) = output.verify_range_proof(prover) {
-                    return Err(RangeProofError::InvalidRangeProof {
-                        reason: format!(
-                            "commitment {}, minimum_value_promise {}, proof {} ({:?})",
-                            output.commitment.to_hex(),
-                            output.minimum_value_promise,
-                            output.proof_hex_display(false),
-                            err_2,
-                        ),
-                    });
-                }
-            }
-            Err(RangeProofError::InvalidRangeProof {
-                reason: format!(
-                    "Batch verification failed, but individual verification passed - {:?}",
-                    err_1
-                ),
-            })?
-        }
+
+        // Attempt to verify the range proofs in a batch
+        prover.verify_batch(proofs, statements.iter().collect())?;
     }
 
     let revealed_value_proofs = outputs
