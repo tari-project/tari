@@ -293,6 +293,7 @@ pub struct TariUtxo {
     pub mined_timestamp: u64,
     pub lock_height: u64,
     pub status: u8,
+    pub coinbase_extra: Vec<u8>,
 }
 
 impl From<DbWalletOutput> for TariUtxo {
@@ -321,6 +322,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 OutputStatus::SpentMinedUnconfirmed => 9,
                 OutputStatus::NotStored => 10,
             },
+            coinbase_extra: x.wallet_output.features.coinbase_extra,
         }
     }
 }
@@ -10073,7 +10075,6 @@ mod test {
     #[allow(clippy::too_many_lines)]
     fn test_wallet_get_utxos() {
         unsafe {
-            let key_manager = create_memory_db_key_manager();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10136,14 +10137,20 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
+            let alice_wallet_runtime = &(*alice_wallet).runtime;
+            let key_manager = &(*alice_wallet).wallet.key_manager_service;
 
             assert_eq!(error, 0);
-            for i in 0..10 {
-                let uout = (*alice_wallet)
-                    .runtime
-                    .block_on(create_test_input((1000 * i).into(), 0, &key_manager));
-                (*alice_wallet)
-                    .runtime
+            let mut test_outputs = Vec::with_capacity(10);
+            for i in 0..10u8 {
+                let uout = alice_wallet_runtime.block_on(create_test_input(
+                    (1000u64 * u64::from(i)).into(),
+                    0,
+                    key_manager,
+                    vec![i, i + 1, i + 2, i + 3, i + 4],
+                ));
+                test_outputs.push(uout.clone());
+                alice_wallet_runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
                     .unwrap();
             }
@@ -10158,7 +10165,7 @@ mod test {
                 3000,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TariUtxo] = slice::from_raw_parts((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 6);
             assert_eq!(utxos.len(), 6);
@@ -10169,6 +10176,22 @@ mod test {
                     .fold((true, utxos[0].value), |acc, x| { (acc.0 && x.value > acc.1, x.value) })
                     .0
             );
+            for utxo in utxos {
+                let output = test_outputs
+                    .iter()
+                    .find(|val| {
+                        alice_wallet_runtime
+                            .block_on(val.commitment(key_manager))
+                            .unwrap()
+                            .to_hex() ==
+                            CStr::from_ptr(utxo.commitment).to_str().unwrap()
+                    })
+                    .unwrap();
+                assert_eq!(output.value.as_u64(), utxo.value);
+                assert_eq!(output.features.maturity, utxo.lock_height);
+                assert_eq!(output.features.coinbase_extra, utxo.coinbase_extra);
+            }
+            println!();
             destroy_tari_vector(outputs);
 
             // descending order
@@ -10181,7 +10204,7 @@ mod test {
                 3000,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TariUtxo] = slice::from_raw_parts((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 6);
             assert_eq!(utxos.len(), 6);
@@ -10294,6 +10317,7 @@ mod test {
                     (1000 * i).into(),
                     0,
                     &(*alice_wallet).wallet.key_manager_service,
+                    vec![],
                 ));
                 (*alice_wallet)
                     .runtime
@@ -10430,6 +10454,7 @@ mod test {
                     (15000 * i).into(),
                     0,
                     &(*alice_wallet).wallet.key_manager_service,
+                    vec![],
                 ));
                 (*alice_wallet)
                     .runtime
@@ -10645,6 +10670,7 @@ mod test {
                     (15000 * i).into(),
                     0,
                     &(*alice_wallet).wallet.key_manager_service,
+                    vec![],
                 ));
                 (*alice_wallet)
                     .runtime
@@ -10865,15 +10891,18 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = &(*alice_wallet).wallet.key_manager_service;
             for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
                     .block_on(
                         (*alice_wallet).wallet.output_manager_service.add_output(
-                            (*alice_wallet)
-                                .runtime
-                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            (*alice_wallet).runtime.block_on(create_test_input(
+                                (15000 * i).into(),
+                                0,
+                                key_manager,
+                                vec![],
+                            )),
                             None,
                         ),
                     )
@@ -11118,6 +11147,8 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
+            let key_manager = &(*wallet_ptr).wallet.key_manager_service;
+
             let node_identity =
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
@@ -11132,14 +11163,13 @@ mod test {
             );
 
             // Test the consistent features case
-            let key_manager = create_memory_db_key_manager();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),
                     OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(&key_manager)),
+                    &runtime.block_on(TestParams::new(key_manager)),
                     MicroMinotari(1234u64),
-                    &key_manager,
+                    key_manager,
                 ))
                 .unwrap();
             let amount = utxo_1.value.as_u64();

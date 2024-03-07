@@ -59,7 +59,7 @@ pub struct OutputFeatures {
     /// transaction. This is enforced in [AggregatedBody::check_output_features].
     ///
     /// For coinbase outputs, the maximum length of this field is determined by the consensus constant,
-    /// `coinbase_output_features_metadata_max_length`.
+    /// `coinbase_output_features_extra_max_length`.
     pub coinbase_extra: Vec<u8>,
     /// Features that are specific to a side chain
     pub sidechain_feature: Option<SideChainFeature>,

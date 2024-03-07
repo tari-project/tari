@@ -196,6 +196,8 @@ struct TransportConfig;
  */
 struct UnblindedOutput;
 
+struct Vec_u8;
+
 /**
  * -------------------------------- Vector ------------------------------------------------ ///
  */
@@ -347,6 +349,7 @@ struct TariUtxo {
   uint64_t mined_timestamp;
   uint64_t lock_height;
   uint8_t status;
+  struct Vec_u8 coinbase_extra;
 };
 
 #ifdef __cplusplus
