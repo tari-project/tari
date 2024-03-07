@@ -2882,31 +2882,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a94d21414c1f4a51209ad204c1776a3d0765002c76c6abcb602a6f09f1e881c7"
 
 [[package]]
-name = "log4rs"
-version = "1.2.0"
-source = "git+https://github.com/tari-project/log4rs.git#e1051fd3a1bec9c55d055f60176a96cf11e58505"
-dependencies = [
- "anyhow",
- "arc-swap",
- "chrono",
- "derivative",
- "fnv",
- "humantime 2.1.0",
- "libc",
- "log",
- "log-mdc",
- "parking_lot 0.12.1",
- "serde",
- "serde-value",
- "serde_json",
- "serde_yaml 0.8.26",
- "thiserror",
- "thread-id",
- "typemap-ors",
- "winapi",
-]
-
-[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3027,7 +3002,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "argon2",
  "base64 0.13.1",
@@ -3054,7 +3029,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "clap 3.2.25",
  "dialoguer",
@@ -3076,17 +3051,17 @@ dependencies = [
 
 [[package]]
 name = "minotari_chat_ffi"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "cbindgen",
  "chrono",
  "libc",
  "libsqlite3-sys",
  "log",
- "log4rs",
  "minotari_app_utilities",
  "openssl",
  "rand",
+ "tari-log4rs",
  "tari_chat_client",
  "tari_common",
  "tari_common_types",
@@ -3101,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "blake2",
  "chrono",
@@ -3112,7 +3087,6 @@ dependencies = [
  "digest 0.10.7",
  "futures 0.3.29",
  "log",
- "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
  "minotari_wallet",
@@ -3127,6 +3101,7 @@ dependencies = [
  "sha2 0.10.8",
  "strum",
  "strum_macros",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3155,7 +3130,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3194,7 +3169,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -3208,7 +3183,6 @@ dependencies = [
  "futures 0.3.29",
  "hex",
  "log",
- "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
  "native-tls",
@@ -3217,6 +3191,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3230,7 +3205,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mining_helper_ffi"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "borsh",
  "hex",
@@ -3246,7 +3221,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3262,7 +3237,6 @@ dependencies = [
  "futures 0.3.29",
  "log",
  "log-mdc",
- "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
  "nom",
@@ -3271,6 +3245,7 @@ dependencies = [
  "rustyline-derive",
  "serde",
  "strum",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3301,7 +3276,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "argon2",
  "async-trait",
@@ -3351,7 +3326,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -3361,13 +3336,13 @@ dependencies = [
  "itertools 0.10.5",
  "libc",
  "log",
- "log4rs",
  "minotari_wallet",
  "num-traits",
  "once_cell",
  "openssl",
  "rand",
  "serde_json",
+ "tari-log4rs",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -3447,7 +3422,7 @@ dependencies = [
  "sealed",
  "serde",
  "thiserror",
- "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -5537,6 +5512,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari-log4rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18f387ee6565d938a07b5d217637adfb6d359f79e04b54e5e6a508513271d45f"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "chrono",
+ "derivative",
+ "fnv",
+ "humantime 2.1.0",
+ "libc",
+ "log",
+ "log-mdc",
+ "parking_lot 0.12.1",
+ "serde",
+ "serde-value",
+ "serde_json",
+ "serde_yaml 0.8.26",
+ "thiserror",
+ "thread-id",
+ "typemap-ors",
+ "winapi",
+]
+
+[[package]]
+name = "tari-tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baa5d0f04bac67c31c1e0c2ffbc7f0e3aee2707405804ec5e022b4d550be259c"
+dependencies = [
+ "borsh",
+ "crunchy",
+]
+
+[[package]]
 name = "tari_bulletproofs_plus"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5561,7 +5572,7 @@ dependencies = [
 
 [[package]]
 name = "tari_chat_client"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5587,7 +5598,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "blake2",
@@ -5595,7 +5606,6 @@ dependencies = [
  "dirs-next 1.0.2",
  "git2",
  "log",
- "log4rs",
  "multiaddr",
  "path-clean",
  "prost-build",
@@ -5604,6 +5614,7 @@ dependencies = [
  "serde_yaml 0.9.27",
  "sha2 0.10.8",
  "structopt",
+ "tari-log4rs",
  "tari_crypto",
  "tari_features",
  "tari_test_utils",
@@ -5614,7 +5625,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -5628,7 +5639,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "base64 0.21.5",
  "blake2",
@@ -5649,7 +5660,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5698,7 +5709,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
@@ -5742,7 +5753,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "futures 0.3.29",
  "proc-macro2",
@@ -5757,7 +5768,7 @@ dependencies = [
 
 [[package]]
 name = "tari_contacts"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "chrono",
  "diesel",
@@ -5790,7 +5801,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5833,6 +5844,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tari-curve25519-dalek",
+ "tari-tiny-keccak",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
@@ -5853,7 +5865,6 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
- "tiny-keccak 2.0.2 (git+https://github.com/tari-project/tiny-keccak?rev=bcddc65530d8646de7282cd8d18d891dc434b643)",
  "tokio",
  "toml 0.5.11",
  "tracing",
@@ -5884,11 +5895,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 
 [[package]]
 name = "tari_hash_domains"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "tari_crypto",
 ]
@@ -5943,7 +5954,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "argon2",
  "async-trait",
@@ -5978,7 +5989,7 @@ dependencies = [
 
 [[package]]
 name = "tari_libtor"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "derivative",
  "libtor",
@@ -5993,7 +6004,7 @@ dependencies = [
 
 [[package]]
 name = "tari_metrics"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "futures 0.3.29",
@@ -6008,7 +6019,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "bincode",
  "blake2",
@@ -6027,7 +6038,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a.a"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
@@ -6063,7 +6074,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "blake2",
  "borsh",
@@ -6080,7 +6091,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6097,7 +6108,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "futures 0.3.29",
  "tokio",
@@ -6105,7 +6116,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -6118,7 +6129,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 dependencies = [
  "futures 0.3.29",
  "futures-test",
@@ -6275,15 +6286,6 @@ version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
 dependencies = [
- "crunchy",
-]
-
-[[package]]
-name = "tiny-keccak"
-version = "2.0.2"
-source = "git+https://github.com/tari-project/tiny-keccak?rev=bcddc65530d8646de7282cd8d18d891dc434b643#bcddc65530d8646de7282cd8d18d891dc434b643"
-dependencies = [
- "borsh",
  "crunchy",
 ]
 

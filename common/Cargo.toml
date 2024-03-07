@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 edition = "2018"
 
 [features]
@@ -22,7 +22,7 @@ config = { version = "0.13.0", default_features = false, features = ["toml"] }
 dirs-next = "1.0.2"
 git2 = { version = "0.18", default_features = false, optional = true }
 log = "0.4.8"
-log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
+log4rs = { package = "tari-log4rs", version = "1.2", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
 multiaddr = { version = "0.14.0" }
 path-clean = "0.1.0"
 prost-build = { version = "0.11.9", optional = true }
@@ -40,4 +40,4 @@ tari_test_utils = {  path = "../infrastructure/test_utils"}
 toml = "0.5.8"
 
 [build-dependencies]
-tari_features = { path = "./tari_features"}
+tari_features = { path = "./tari_features", version = "1.0.0-rc.5a"}

@@ -3,7 +3,7 @@ name = "minotari_chat_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
-version = "1.0.0-rc.5"
+version = "1.0.0-rc.5a"
 edition = "2018"
 
 [dependencies]
@@ -19,7 +19,7 @@ tari_utilities = { version = "0.7" }
 libc = "0.2.65"
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
 log = "0.4.6"
-log4rs = { git = "https://github.com/tari-project/log4rs.git", features = ["console_appender", "file_appender", "yaml_format"] }
+log4rs = {  package = "tari-log4rs", version = "1.2.0", features = ["console_appender", "file_appender", "yaml_format"] }
 thiserror = "1.0.26"
 tokio = "1.23"
 
