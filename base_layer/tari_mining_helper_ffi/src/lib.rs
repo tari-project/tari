@@ -50,6 +50,10 @@ use tari_crypto::tari_utilities::hex::Hex;
 use tokio::runtime::Runtime;
 
 use crate::error::{InterfaceError, MiningHelperError};
+mod consts {
+    // Import the auto-generated const values from the Manifest and Git
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}
 
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 #[derive(Debug, PartialEq, Clone)]
