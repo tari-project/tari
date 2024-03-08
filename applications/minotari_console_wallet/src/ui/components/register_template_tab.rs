@@ -168,6 +168,7 @@ impl RegisterTemplateTab {
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
+                    Constraint::Length(3),
                 ]
                 .as_ref(),
             )
@@ -734,7 +735,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(18),
+                    Constraint::Length(21),
                     Constraint::Min(42),
                     Constraint::Length(1),
                     Constraint::Length(1),
