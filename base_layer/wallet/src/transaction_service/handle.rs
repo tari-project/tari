@@ -97,6 +97,8 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
@@ -119,6 +121,8 @@ pub enum TransactionServiceRequest {
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -524,6 +528,8 @@ impl TransactionServiceHandle {
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -537,6 +543,8 @@ impl TransactionServiceHandle {
                 binary_sha,
                 binary_url,
                 fee_per_gram,
+                network,
+                network_knowledge_proof,
             })
             .await??
         {
@@ -579,6 +587,8 @@ impl TransactionServiceHandle {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
@@ -588,6 +598,8 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 message,
                 claim_public_key,
+                network,
+                network_knowledge_proof,
             })
             .await??
         {

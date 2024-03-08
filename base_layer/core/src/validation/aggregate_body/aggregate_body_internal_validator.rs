@@ -408,7 +408,7 @@ fn check_validator_node_registration_utxo(
             if !reg
                 .network_knowledge_proof()
                 .unwrap()
-                .verify(&sig_pub_key, &reg.public_key().to_vec())
+                .verify(sig_pub_key, reg.public_key().to_vec())
             {
                 return Err(ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof);
             }

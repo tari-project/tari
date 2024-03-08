@@ -604,6 +604,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
+                if message.validator_network.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PublicKey::from_canonical_bytes(&message.validator_network)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
+                if message.validator_network_knowledge_proof.is_none() {
+                    None
+                } else {
+                    Some(
+                        message
+                            .validator_network_knowledge_proof
+                            .unwrap()
+                            .try_into()
+                            .map_err(|e: String| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
             )
             .await
         {

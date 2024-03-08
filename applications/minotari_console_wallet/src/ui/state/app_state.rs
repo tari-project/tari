@@ -46,13 +46,14 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
+    types::{PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    tor::PrivateKey,
 };
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
@@ -60,8 +61,12 @@ use tari_core::transactions::{
     transaction_components::{OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArray,
+};
 use tokio::{
     sync::{broadcast, watch, RwLock},
     task,
@@ -396,6 +401,8 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
+        network: Option<String>,
+        network_knowledge_proof: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -423,6 +430,30 @@ impl AppState {
             },
         };
 
+        let network = match network {
+            None => None,
+            Some(network) => match PublicKey::from_hex(network.as_str()) {
+                Ok(network) => Some(network),
+                Err(_) => return Err(UiError::PublicKeyParseError),
+            },
+        };
+        let network_knowledge_proof = match network_knowledge_proof {
+            None => None,
+            Some(network_knowledge_proof) => match Vec::<u8>::from_hex(network_knowledge_proof.as_str()) {
+                Ok(bytes) => {
+                    if bytes.len() < 64 {
+                        return Err(UiError::SignatureParseError);
+                    }
+                    Some(Signature::new(
+                        PublicKey::from_canonical_bytes(&bytes[0..32]).map_err(|_| UiError::SignatureParseError)?,
+                        RistrettoSecretKey::from_canonical_bytes(&bytes[32..])
+                            .map_err(|_| UiError::SignatureParseError)?,
+                    ))
+                },
+                Err(_) => return Err(UiError::SignatureParseError),
+            },
+        };
+
         send_burn_transaction_task(
             burn_proof_filepath,
             claim_public_key,
@@ -430,6 +461,8 @@ impl AppState {
             selection_criteria,
             message,
             fee_per_gram,
+            network,
+            network_knowledge_proof,
             tx_service_handle,
             inner.wallet.db.clone(),
             result_tx,
@@ -449,6 +482,8 @@ impl AppState {
         repository_url: String,
         repository_commit_hash: String,
         fee_per_gram: MicroMinotari,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -464,6 +499,8 @@ impl AppState {
             binary_url,
             binary_sha,
             fee_per_gram,
+            network,
+            network_knowledge_proof,
             selection_criteria,
             tx_service_handle,
             inner.wallet.db.clone(),

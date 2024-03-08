@@ -32,10 +32,14 @@ message TemplateRegistration {
     BuildInfo build_info = 6;
     bytes binary_sha = 7;
     string binary_url = 8;
+    bytes network = 9;
+    Signature network_knowledge_proof = 10;
 }
 
 message ConfidentialOutputData {
     bytes claim_public_key = 1;
+    bytes network = 2;
+    Signature network_knowledge_proof = 3;
 }
 
 message TemplateType {

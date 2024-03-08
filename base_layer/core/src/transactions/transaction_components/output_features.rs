@@ -127,11 +127,17 @@ impl OutputFeatures {
     }
 
     /// creates output features for a burned output with confidential output data
-    pub fn create_burn_confidential_output(claim_public_key: PublicKey) -> OutputFeatures {
+    pub fn create_burn_confidential_output(
+        claim_public_key: PublicKey,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
+    ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Burn,
             sidechain_feature: Some(SideChainFeature::ConfidentialOutput(ConfidentialOutputData {
                 claim_public_key,
+                network,
+                network_knowledge_proof,
             })),
             ..Default::default()
         }
@@ -176,6 +182,8 @@ impl OutputFeatures {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
@@ -188,6 +196,8 @@ impl OutputFeatures {
                 build_info,
                 binary_sha,
                 binary_url,
+                network,
+                network_knowledge_proof,
             })),
             ..Default::default()
         }

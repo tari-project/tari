@@ -658,6 +658,8 @@ where
                 fee_per_gram,
                 message,
                 claim_public_key,
+                network,
+                network_knowledge_proof,
             } => self
                 .burn_tari(
                     amount,
@@ -665,6 +667,8 @@ where
                     fee_per_gram,
                     message,
                     claim_public_key,
+                    network,
+                    network_knowledge_proof,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -711,6 +715,8 @@ where
                 binary_sha,
                 binary_url,
                 fee_per_gram,
+                network,
+                network_knowledge_proof,
             } => {
                 self.register_code_template(
                     fee_per_gram,
@@ -723,6 +729,8 @@ where
                         build_info,
                         binary_sha,
                         binary_url,
+                        network,
+                        network_knowledge_proof,
                     },
                     UtxoSelectionCriteria::default(),
                     format!("Template Registration: {}", template_name),
@@ -1530,6 +1538,8 @@ where
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+        network: Option<PublicKey>,
+        network_knowledge_proof: Option<Signature>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1539,7 +1549,7 @@ where
         let output_features = claim_public_key
             .as_ref()
             .cloned()
-            .map(OutputFeatures::create_burn_confidential_output)
+            .map(|c| OutputFeatures::create_burn_confidential_output(c, network, network_knowledge_proof))
             .unwrap_or_else(OutputFeatures::create_burn_output);
 
         // Prepare sender part of the transaction

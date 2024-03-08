@@ -22,9 +22,11 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PublicKey, Signature};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ConfidentialOutputData {
     pub claim_public_key: PublicKey,
+    pub network: Option<PublicKey>,
+    pub network_knowledge_proof: Option<Signature>,
 }

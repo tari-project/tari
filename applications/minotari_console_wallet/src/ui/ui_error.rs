@@ -48,6 +48,8 @@ pub enum UiError {
     WalletStorageError(#[from] WalletStorageError),
     #[error("Could not convert string into Public Key")]
     PublicKeyParseError,
+    #[error("Could not convert string into Signature")]
+    SignatureParseError,
     #[error("Could not convert string into Net Address")]
     AddressParseError,
     #[error("Peer did not include an address")]

@@ -246,6 +246,8 @@ pub async fn send_burn_transaction_task(
     selection_criteria: UtxoSelectionCriteria,
     message: String,
     fee_per_gram: MicroMinotari,
+    network: Option<PublicKey>,
+    network_knowledge_proof: Option<Signature>,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -258,7 +260,15 @@ pub async fn send_burn_transaction_task(
     // ----------------------------------------------------------------------------
 
     let (burn_tx_id, original_proof) = transaction_service_handle
-        .burn_tari(amount, selection_criteria, fee_per_gram, message, claim_public_key)
+        .burn_tari(
+            amount,
+            selection_criteria,
+            fee_per_gram,
+            message,
+            claim_public_key,
+            network,
+            network_knowledge_proof,
+        )
         .await
         .map_err(|err| {
             log::error!("failed to burn minotari: {:?}", err);
@@ -348,6 +358,8 @@ pub async fn send_register_template_transaction_task(
     binary_url: String,
     binary_sha: String,
     fee_per_gram: MicroMinotari,
+    network: Option<PublicKey>,
+    network_knowledge_proof: Option<Signature>,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,
@@ -462,6 +474,8 @@ pub async fn send_register_template_transaction_task(
             binary_sha,
             binary_url,
             fee_per_gram,
+            network,
+            network_knowledge_proof,
         )
         .await;
 

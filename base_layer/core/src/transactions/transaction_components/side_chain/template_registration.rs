@@ -36,6 +36,8 @@ pub struct CodeTemplateRegistration {
     pub build_info: BuildInfo,
     pub binary_sha: MaxSizeBytes<32>,
     pub binary_url: MaxSizeString<255>,
+    pub network: Option<PublicKey>,
+    pub network_knowledge_proof: Option<Signature>,
 }
 
 // -------------------------------- TemplateType -------------------------------- //

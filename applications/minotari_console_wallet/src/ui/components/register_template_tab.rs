@@ -9,10 +9,14 @@ use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use regex::Regex;
 use reqwest::StatusCode;
+use tari_common_types::types::Signature;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
-use tari_crypto::hashing::DomainSeparation;
+use tari_crypto::{
+    hashing::DomainSeparation,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_hash_domains::TariEngineHashDomain;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     runtime::{Handle, Runtime},
     sync::watch,
@@ -29,7 +33,7 @@ use unicode_width::UnicodeWidthStr;
 use url::Url;
 
 use crate::ui::{
-    components::{balance::Balance, Component, KeyHandled},
+    components::{balance::Balance, network_tab::BaseNodeInputMode::PublicKey, Component, KeyHandled},
     state::{AppState, UiTransactionSendStatus},
     widgets::draw_dialog,
 };
@@ -113,6 +117,8 @@ pub struct RegisterTemplateTab {
     template_version: String,
     fee_per_gram: String,
     template_type: String,
+    validator_network_field: String,
+    validator_network_knowledge_proof_field: String,
     error_message: Option<String>,
     success_message: Option<String>,
     offline_message: Option<String>,
@@ -131,6 +137,8 @@ impl RegisterTemplateTab {
             binary_checksum: String::new(),
             template_version: String::new(),
             template_name: String::new(),
+            validator_network_field: String::new(),
+            validator_network_knowledge_proof_field: String::new(),
             error_message: None,
             success_message: None,
             offline_message: None,
@@ -254,6 +262,11 @@ impl RegisterTemplateTab {
             )
             .split(form_layout[4]);
 
+        let fifth_row_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(form_layout[5]);
+
         // ----------------------------------------------------------------------------
         // First row - Binary URL
         // ----------------------------------------------------------------------------
@@ -335,6 +348,26 @@ impl RegisterTemplateTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram:"));
         f.render_widget(fee_per_gram, fourth_row_layout[2]);
 
+        let validator_network_field = Paragraph::new(self.validator_network_field.as_ref())
+            .style(match self.input_mode {
+                InputMode::ValidatorNetwork => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("Validator Network:"));
+        f.render_widget(validator_network_field, fifth_row_layout[0]);
+
+        let validator_network_knowledge_proof_field =
+            Paragraph::new(self.validator_network_knowledge_proof_field.as_ref())
+                .style(match self.input_mode {
+                    InputMode::ValidatorNetworkKnowledgeProof => Style::default().fg(Color::Magenta),
+                    _ => Style::default(),
+                })
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Validator Network Knowledge Proof:"),
+                );
+        f.render_widget(validator_network_knowledge_proof_field, fifth_row_layout[1]);
         // ----------------------------------------------------------------------------
         // field cursor placement
         // ----------------------------------------------------------------------------
@@ -368,6 +401,10 @@ impl RegisterTemplateTab {
             InputMode::RepositoryCommitHash => f.set_cursor(
                 fourth_row_layout[1].x + self.repository_commit_hash.width() as u16 + 1,
                 fourth_row_layout[1].y + 1,
+            ),
+            InputMode::ValidatorNetwork | InputMode::ValidatorNetworkKnowledgeProof => f.set_cursor(
+                fifth_row_layout[0].x + self.validator_network_field.width() as u16 + 1,
+                fifth_row_layout[0].y + 1,
             ),
         }
     }
@@ -477,6 +514,72 @@ impl RegisterTemplateTab {
                             Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
                         return KeyHandled::Handled;
                     };
+                    let mut validator_network = None;
+                    if !self.validator_network_field.is_empty() {
+                        validator_network = if let Ok(network) =
+                            RistrettoPublicKey::from_hex(self.validator_network_field.as_str())
+                        {
+                            Some(network)
+                        } else {
+                            self.confirmation_dialog = None;
+                            self.error_message = Some(
+                                "Validator Network should be a valid public key or blank \nPress Enter to continue."
+                                    .to_string(),
+                            );
+                            return KeyHandled::Handled;
+                        };
+                    }
+
+                    let mut validator_network_knowledge_proof = None;
+                    if !self.validator_network_knowledge_proof_field.is_empty() {
+                        if let Ok(proof_bytes) =
+                            Vec::<u8>::from_hex(self.validator_network_knowledge_proof_field.as_str())
+                        {
+                            if proof_bytes.len() != 64 {
+                                self.confirmation_dialog = None;
+                                self.error_message = Some(
+                                    "Validator Network Knowledge Proof should be a valid 64 byte hex string or blank \
+                                     \nPress Enter to continue."
+                                        .to_string(),
+                                );
+                                return KeyHandled::Handled;
+                            }
+                            let nonce = if let Ok(nonce) = RistrettoPublicKey::from_canonical_bytes(&proof_bytes[0..32])
+                            {
+                                nonce
+                            } else {
+                                self.confirmation_dialog = None;
+                                self.error_message = Some(
+                                    "Validator Network Knowledge Proof should be a valid 64 byte hex string or blank \
+                                     \nPress Enter to continue."
+                                        .to_string(),
+                                );
+                                return KeyHandled::Handled;
+                            };
+                            let signature =
+                                if let Ok(signature) = RistrettoSecretKey::from_canonical_bytes(&proof_bytes[32..64]) {
+                                    signature
+                                } else {
+                                    self.confirmation_dialog = None;
+                                    self.error_message = Some(
+                                        "Validator Network Knowledge Proof should be a valid 64 byte hex string or \
+                                         blank \nPress Enter to continue."
+                                            .to_string(),
+                                    );
+                                    return KeyHandled::Handled;
+                                };
+
+                            validator_network_knowledge_proof = Some(Signature::new(nonce, signature));
+                        } else {
+                            self.confirmation_dialog = None;
+                            self.error_message = Some(
+                                "Validator Network Knowledge Proof should be a valid private key or blank \nPress \
+                                 Enter to continue."
+                                    .to_string(),
+                            );
+                            return KeyHandled::Handled;
+                        };
+                    }
 
                     let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
 
@@ -491,6 +594,8 @@ impl RegisterTemplateTab {
                         self.repository_url.clone(),
                         self.repository_commit_hash.clone(),
                         fee_per_gram,
+                        validator_network,
+                        validator_network_knowledge_proof,
                         UtxoSelectionCriteria::default(),
                         tx,
                     )) {
@@ -524,7 +629,7 @@ impl RegisterTemplateTab {
     fn on_key_send_input(&mut self, c: char) -> KeyHandled {
         if self.input_mode != InputMode::None {
             match self.input_mode {
-                InputMode::None => (),
+                InputMode::None | InputMode::ValidatorNetwork | InputMode::ValidatorNetworkKnowledgeProof => (),
                 InputMode::BinaryUrl => match c {
                     '\n' => {
                         let rt = Runtime::new().expect("Failed to start tokio runtime");
@@ -849,6 +954,8 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                 let _ = self.fee_per_gram.pop();
             },
             InputMode::None => {},
+            InputMode::ValidatorNetwork => {},
+            InputMode::ValidatorNetworkKnowledgeProof => {},
         }
     }
 }
@@ -863,6 +970,8 @@ enum InputMode {
     RepositoryUrl,
     RepositoryCommitHash,
     FeePerGram,
+    ValidatorNetwork,
+    ValidatorNetworkKnowledgeProof,
 }
 
 #[derive(PartialEq, Debug)]

@@ -106,6 +106,8 @@ message CreateBurnTransactionRequest{
     uint64 fee_per_gram = 2;
     string message = 3;
     bytes claim_public_key = 4;
+    bytes validator_network = 5;
+    Signature validator_network_knowledge_proof = 6;
 }
 
 

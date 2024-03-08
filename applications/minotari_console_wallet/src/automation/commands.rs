@@ -146,6 +146,8 @@ pub async fn burn_tari(
             fee_per_gram * uT,
             message,
             None,
+            None,
+            None,
         )
         .await
         .map_err(CommandError::TransactionServiceError)

@@ -136,6 +136,15 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
     type Error = String;
 
     fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
+        let network = if value.network.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_canonical_bytes(&value.network).map_err(|e| format!("network: {}", e))?)
+        };
+        let network_knowledge_proof = value
+            .network_knowledge_proof
+            .map(|v| Signature::try_from(v).map_err(|e| format!("network_knowledge_proof: {}", e)))
+            .transpose()?;
         Ok(Self {
             author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
@@ -157,6 +166,8 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
                 .ok_or("Build info not provided")??,
             binary_sha: value.binary_sha.try_into().map_err(|_| "Invalid commit sha")?,
             binary_url: MaxSizeString::try_from(value.binary_url).map_err(|e| e.to_string())?,
+            network,
+            network_knowledge_proof,
         })
     }
 }
@@ -172,6 +183,8 @@ impl From<CodeTemplateRegistration> for proto::types::TemplateRegistration {
             build_info: Some(value.build_info.into()),
             binary_sha: value.binary_sha.to_vec(),
             binary_url: value.binary_url.to_string(),
+            network: value.network.map(|v| v.to_vec()).unwrap_or_default(),
+            network_knowledge_proof: value.network_knowledge_proof.map(|v| v.into()),
         }
     }
 }
@@ -181,8 +194,19 @@ impl TryFrom<proto::types::ConfidentialOutputData> for ConfidentialOutputData {
     type Error = String;
 
     fn try_from(value: proto::types::ConfidentialOutputData) -> Result<Self, Self::Error> {
+        let network = if value.network.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_canonical_bytes(&value.network).map_err(|e| format!("network: {}", e))?)
+        };
+        let network_knowledge_proof = value
+            .network_knowledge_proof
+            .map(|v| Signature::try_from(v).map_err(|e| format!("network_knowledge_proof: {}", e)))
+            .transpose()?;
         Ok(ConfidentialOutputData {
             claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            network,
+            network_knowledge_proof,
         })
     }
 }
@@ -191,6 +215,8 @@ impl From<ConfidentialOutputData> for proto::types::ConfidentialOutputData {
     fn from(value: ConfidentialOutputData) -> Self {
         Self {
             claim_public_key: value.claim_public_key.to_vec(),
+            network: value.network.map(|v| v.to_vec()).unwrap_or_default(),
+            network_knowledge_proof: value.network_knowledge_proof.map(|v| v.into()),
         }
     }
 }
