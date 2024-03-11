@@ -248,6 +248,7 @@ async fn test_listening_initial_fallen_behind() {
         shutdown.to_signal(),
     );
 
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 0);
     let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
 
     let next_event = time::timeout(Duration::from_secs(10), await_event_task)
