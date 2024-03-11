@@ -381,42 +381,18 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn set_received_output_mined_height_and_status(
-        &self,
-        hash: HashOutput,
-        mined_height: u64,
-        mined_in_block: HashOutput,
-        confirmed: bool,
-        mined_timestamp: u64,
-    ) -> Result<(), OutputManagerStorageError> {
-        self.set_received_outputs_mined_height_and_status_batch_mode(vec![ReceivedOutputInfoForBatch {
-            hash,
-            mined_height,
-            mined_in_block,
-            confirmed,
-            mined_timestamp,
-        }])
-    }
-
-    pub fn set_received_outputs_mined_height_and_status_batch_mode(
+    pub fn set_received_outputs_mined_height_and_statuses(
         &self,
         updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_received_outputs_mined_height_and_status_batch_mode(updates)?;
+        db.set_received_outputs_mined_height_and_statuses(updates)?;
         Ok(())
     }
 
-    pub fn set_output_to_unmined_and_invalid(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
-        self.set_output_to_unmined_and_invalid_batch_mode(vec![hash])
-    }
-
-    pub fn set_output_to_unmined_and_invalid_batch_mode(
-        &self,
-        hashes: Vec<FixedHash>,
-    ) -> Result<(), OutputManagerStorageError> {
+    pub fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_output_to_unmined_and_invalid_batch_mode(hashes)?;
+        db.set_outputs_to_unmined_and_invalid(hashes)?;
         Ok(())
     }
 
@@ -426,53 +402,24 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn update_last_validation_timestamp(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
-        self.update_last_validation_timestamp_batch_mode(vec![hash])
-    }
-
-    pub fn update_last_validation_timestamp_batch_mode(
-        &self,
-        hashes: Vec<FixedHash>,
-    ) -> Result<(), OutputManagerStorageError> {
+    pub fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.update_last_validation_timestamp_batch_mode(hashes)?;
+        db.update_last_validation_timestamps(hashes)?;
         Ok(())
     }
 
-    pub fn mark_output_as_spent(
-        &self,
-        hash: HashOutput,
-        deleted_height: u64,
-        deleted_in_block: HashOutput,
-        confirmed: bool,
-    ) -> Result<(), OutputManagerStorageError> {
-        self.mark_output_as_spent_batch_mode(vec![SpentOutputInfoForBatch {
-            hash,
-            confirmed,
-            mark_deleted_at_height: deleted_height,
-            mark_deleted_in_block: deleted_in_block,
-        }])
-    }
-
-    pub fn mark_output_as_spent_batch_mode(
+    pub fn mark_outputs_as_spent(
         &self,
         updates: Vec<SpentOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.mark_output_as_spent_batch_mode(updates)?;
+        db.mark_outputs_as_spent(updates)?;
         Ok(())
     }
 
-    pub fn mark_output_as_unspent(&self, hash: HashOutput, confirmed: bool) -> Result<(), OutputManagerStorageError> {
-        self.mark_output_as_unspent_batch_mode(vec![(hash, confirmed)])
-    }
-
-    pub fn mark_output_as_unspent_batch_mode(
-        &self,
-        hashes: Vec<(FixedHash, bool)>,
-    ) -> Result<(), OutputManagerStorageError> {
+    pub fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.mark_output_as_unspent_batch_mode(hashes)?;
+        db.mark_outputs_as_unspent(hashes)?;
         Ok(())
     }
 

@@ -603,7 +603,7 @@ async fn manage_single_transaction() {
 
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let message = "TAKE MAH MONEYS!".to_string();
@@ -759,7 +759,7 @@ async fn large_interactive_transaction() {
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&alice_key_manager_handle).await.unwrap(), true));
     }
-    alice_db.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    alice_db.mark_outputs_as_unspent(unspent).unwrap();
     let transaction_value = output_value * (outputs_count as u64 - 1);
     let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
 
@@ -914,7 +914,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&alice_key_manager_handle).await.unwrap(), true));
     }
-    alice_db.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    alice_db.mark_outputs_as_unspent(unspent).unwrap();
 
     let balance = alice_oms.get_balance().await.unwrap();
     let initial_available_balance = balance.available_balance;
@@ -1011,7 +1011,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&alice_key_manager_handle).await.unwrap(), true));
     }
-    alice_db.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    alice_db.mark_outputs_as_unspent(unspent).unwrap();
 
     let balance = alice_oms.get_balance().await.unwrap();
     let initial_available_balance = balance.available_balance;
@@ -1126,7 +1126,7 @@ async fn test_spend_dust_happy_path() {
         alice_oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&alice_key_manager_handle).await.unwrap(), true));
     }
-    alice_db.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    alice_db.mark_outputs_as_unspent(unspent).unwrap();
 
     let balance = alice_oms.get_balance().await.unwrap();
     let initial_available_balance = balance.available_balance;
@@ -1276,7 +1276,7 @@ async fn single_transaction_to_self() {
 
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value = 10000.into();
@@ -1360,7 +1360,7 @@ async fn large_coin_split_transaction() {
 
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
@@ -1447,7 +1447,7 @@ async fn single_transaction_burn_tari() {
 
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let message = "BURN MAH _OWN_ MONEYS!".to_string();
     let burn_value = 10000.into();
@@ -1595,7 +1595,7 @@ async fn send_one_sided_transaction_to_other() {
     let mut alice_oms_clone = alice_oms.clone();
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
@@ -1738,7 +1738,7 @@ async fn recover_one_sided_transaction() {
     let mut alice_oms_clone = alice_oms;
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let message = "".to_string();
@@ -1843,7 +1843,7 @@ async fn test_htlc_send_and_claim() {
     .await;
     alice_oms.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let message = "".to_string();
@@ -1967,7 +1967,7 @@ async fn send_one_sided_transaction_to_self() {
     let mut alice_oms_clone = alice_oms;
     alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
@@ -2111,7 +2111,7 @@ async fn manage_multiple_transactions() {
     .await;
     bob_oms.add_output(uo2.clone(), None).await.unwrap();
     bob_db
-        .mark_output_as_unspent_batch_mode(vec![(uo2.hash(&bob_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo2.hash(&bob_key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let uo3 = make_input(
         &mut OsRng,
@@ -2122,7 +2122,7 @@ async fn manage_multiple_transactions() {
     .await;
     carol_oms.add_output(uo3.clone(), None).await.unwrap();
     carol_db
-        .mark_output_as_unspent_batch_mode(vec![(uo3.hash(&key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo3.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     // Add some funds to Alices wallet
@@ -2135,7 +2135,7 @@ async fn manage_multiple_transactions() {
     .await;
     alice_oms.add_output(uo1a.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1a.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1a.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let uo1b = make_input(
         &mut OsRng,
@@ -2146,7 +2146,7 @@ async fn manage_multiple_transactions() {
     .await;
     alice_oms.add_output(uo1b.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1b.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1b.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let uo1c = make_input(
         &mut OsRng,
@@ -2157,7 +2157,7 @@ async fn manage_multiple_transactions() {
     .await;
     alice_oms.add_output(uo1c.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1c.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1c.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
@@ -2342,7 +2342,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -2444,7 +2444,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .unwrap();
     bob_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&bob_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -2572,7 +2572,7 @@ async fn finalize_tx_with_missing_output() {
         .unwrap();
     bob_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&bob_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -2751,7 +2751,7 @@ async fn discovery_async_return_test() {
     .await;
     alice_oms.add_output(uo1a.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1a.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1a.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let uo1b = make_input(
         &mut OsRng,
@@ -2762,7 +2762,7 @@ async fn discovery_async_return_test() {
     .await;
     alice_oms.add_output(uo1b.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1b.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1b.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let uo1c = make_input(
         &mut OsRng,
@@ -2773,7 +2773,7 @@ async fn discovery_async_return_test() {
     .await;
     alice_oms.add_output(uo1c.clone(), None).await.unwrap();
     alice_db
-        .mark_output_as_unspent_batch_mode(vec![(uo1c.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1c.hash(&alice_key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let initial_balance = alice_oms.get_balance().await.unwrap();
@@ -3106,7 +3106,7 @@ async fn test_transaction_cancellation() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -3449,7 +3449,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -3647,7 +3647,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -3768,7 +3768,7 @@ async fn test_tx_direct_send_behaviour() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -3787,7 +3787,7 @@ async fn test_tx_direct_send_behaviour() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -3806,7 +3806,7 @@ async fn test_tx_direct_send_behaviour() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -3825,7 +3825,7 @@ async fn test_tx_direct_send_behaviour() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -4288,7 +4288,7 @@ async fn test_transaction_resending() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -4806,7 +4806,7 @@ async fn test_replying_to_cancelled_tx() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -4941,7 +4941,7 @@ async fn test_transaction_timeout_cancellation() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -5212,7 +5212,7 @@ async fn transaction_service_tx_broadcast() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -5232,7 +5232,7 @@ async fn transaction_service_tx_broadcast() {
         .unwrap();
     alice_ts_interface
         .oms_db
-        .mark_output_as_unspent_batch_mode(vec![(
+        .mark_outputs_as_unspent(vec![(
             uo2.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )])
@@ -5781,14 +5781,14 @@ async fn test_update_faux_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
-        let _result = alice_ts_interface.oms_db.mark_output_as_unspent_batch_mode(vec![(
+        let _result = alice_ts_interface.oms_db.mark_outputs_as_unspent(vec![(
             uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
             true,
         )]);
         alice_ts_interface
             .oms_db
-            .set_received_outputs_mined_height_and_status_batch_mode(vec![ReceivedOutputInfoForBatch {
-                hash: uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
+            .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
+                commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
                 mined_height: 5,
                 mined_in_block: FixedHash::zero(),
                 confirmed: false,
@@ -5959,8 +5959,8 @@ async fn test_update_coinbase_tx_on_oms_validation() {
         if uo.value != MicroMinotari::from(30000) {
             alice_ts_interface
                 .oms_db
-                .set_received_outputs_mined_height_and_status_batch_mode(vec![ReceivedOutputInfoForBatch {
-                    hash: uo.hash(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
+                    commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
                     mined_height: 5,
                     mined_in_block: FixedHash::zero(),
                     confirmed: false,

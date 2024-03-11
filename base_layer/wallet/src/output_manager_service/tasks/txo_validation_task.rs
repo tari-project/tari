@@ -113,13 +113,12 @@ where
 
         let last_mined_header = self.check_for_reorgs(&mut base_node_client).await?;
 
-        self.update_unconfirmed_outputs_batch_mode(&mut base_node_client)
+        self.update_unconfirmed_outputs(&mut base_node_client).await?;
+
+        self.update_spent_outputs(&mut base_node_client, last_mined_header)
             .await?;
 
-        self.update_spent_outputs_batch_mode(&mut base_node_client, last_mined_header)
-            .await?;
-
-        self.update_invalid_outputs_batch_mode(&mut base_node_client).await?;
+        self.update_invalid_outputs(&mut base_node_client).await?;
 
         self.publish_event(OutputManagerEvent::TxoValidationSuccess(self.operation_id));
         debug!(
@@ -129,7 +128,7 @@ where
         Ok(self.operation_id)
     }
 
-    async fn update_invalid_outputs_batch_mode(
+    async fn update_invalid_outputs(
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<(), OutputManagerProtocolError> {
@@ -174,7 +173,7 @@ where
                     self.operation_id
                 );
                 mined_updates.push(ReceivedOutputInfoForBatch {
-                    hash: mined_info.output.hash,
+                    commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
                     confirmed: (tip_height - mined_info.mined_at_height) >= self.config.num_confirmations_required,
@@ -183,14 +182,14 @@ where
             }
             if !mined_updates.is_empty() {
                 self.db
-                    .set_received_outputs_mined_height_and_status_batch_mode(mined_updates)
+                    .set_received_outputs_mined_height_and_statuses(mined_updates)
                     .for_protocol(self.operation_id)?;
             }
 
             let unmined_hashes: Vec<_> = unmined.iter().map(|o| o.hash).collect();
             if !unmined_hashes.is_empty() {
                 self.db
-                    .update_last_validation_timestamp_batch_mode(unmined_hashes)
+                    .update_last_validation_timestamps(unmined_hashes)
                     .for_protocol(self.operation_id)?;
             }
         }
@@ -198,7 +197,7 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn update_spent_outputs_batch_mode(
+    async fn update_spent_outputs(
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
         last_mined_header_hash: Option<BlockHash>,
@@ -267,7 +266,7 @@ where
                         )
                     })?;
                     spent.push(SpentOutputInfoForBatch {
-                        hash: output.hash,
+                        commitment: output.commitment.clone(),
                         confirmed,
                         mark_deleted_at_height: data.height_deleted_at,
                         mark_deleted_in_block: block_hash,
@@ -284,24 +283,22 @@ where
             }
             if !unmined_and_invalid.is_empty() {
                 self.db
-                    .set_output_to_unmined_and_invalid_batch_mode(unmined_and_invalid)
+                    .set_outputs_to_unmined_and_invalid(unmined_and_invalid)
                     .for_protocol(self.operation_id)?;
             }
             if !unspent.is_empty() {
                 self.db
-                    .mark_output_as_unspent_batch_mode(unspent)
+                    .mark_outputs_as_unspent(unspent)
                     .for_protocol(self.operation_id)?;
             }
             if !spent.is_empty() {
-                self.db
-                    .mark_output_as_spent_batch_mode(spent)
-                    .for_protocol(self.operation_id)?;
+                self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
             }
         }
         Ok(())
     }
 
-    async fn update_unconfirmed_outputs_batch_mode(
+    async fn update_unconfirmed_outputs(
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<(), OutputManagerProtocolError> {
@@ -339,7 +336,7 @@ where
                     self.operation_id
                 );
                 mined_updates.push(ReceivedOutputInfoForBatch {
-                    hash: mined_info.output.hash,
+                    commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
                     confirmed: (tip_height - mined_info.mined_at_height) >= self.config.num_confirmations_required,
@@ -348,7 +345,7 @@ where
             }
             if !mined_updates.is_empty() {
                 self.db
-                    .set_received_outputs_mined_height_and_status_batch_mode(mined_updates)
+                    .set_received_outputs_mined_height_and_statuses(mined_updates)
                     .for_protocol(self.operation_id)?;
             }
 
@@ -368,7 +365,7 @@ where
                 .collect();
             if !unmined_and_invalid.is_empty() {
                 self.db
-                    .set_output_to_unmined_and_invalid_batch_mode(unmined_and_invalid)
+                    .set_outputs_to_unmined_and_invalid(unmined_and_invalid)
                     .for_protocol(self.operation_id)?;
             }
         }
@@ -400,7 +397,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined_and_invalid(last_spent_output.hash)
+                    .set_outputs_to_unmined_and_invalid(vec![last_spent_output.hash])
                     .for_protocol(self.operation_id)?;
                 continue;
             };
@@ -415,7 +412,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined_and_invalid(last_spent_output.hash)
+                    .set_outputs_to_unmined_and_invalid(vec![last_spent_output.hash])
                     .for_protocol(self.operation_id)?;
                 continue;
             };
@@ -436,7 +433,7 @@ where
                 // we mark the output as UnspentMinedUnconfirmed so it wont get picked it by the OMS to be spendable
                 // immediately as we first need to find out if this output is unspent, in a mempool, or spent.
                 self.db
-                    .mark_output_as_unspent(last_spent_output.hash, false)
+                    .mark_outputs_as_unspent(vec![(last_spent_output.hash, false)])
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
@@ -458,7 +455,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined_and_invalid(last_mined_output.hash)
+                    .set_outputs_to_unmined_and_invalid(vec![last_mined_output.hash])
                     .for_protocol(self.operation_id)?;
                 continue;
             }
@@ -478,7 +475,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined_and_invalid(last_mined_output.hash)
+                    .set_outputs_to_unmined_and_invalid(vec![last_mined_output.hash])
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(

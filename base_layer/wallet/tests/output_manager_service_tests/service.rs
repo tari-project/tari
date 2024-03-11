@@ -311,7 +311,7 @@ async fn fee_estimate() {
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
@@ -432,7 +432,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&key_manager).await.unwrap(), true));
     }
-    backend.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    backend.mark_outputs_as_unspent(unspent).unwrap();
 
     // but we have no chain state so the lowest maturity should be used
     let stp = oms
@@ -564,7 +564,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         oms.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&key_manager).await.unwrap(), true));
     }
-    backend.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    backend.mark_outputs_as_unspent(unspent).unwrap();
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 10);
@@ -710,7 +710,7 @@ async fn test_utxo_selection_with_tx_priority() {
         .await
         .unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo_high.hash(&key_manager).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_high.hash(&key_manager).await.unwrap(), true)])
         .unwrap();
     // Low priority
     let uo_low_2 = make_input_with_features(
@@ -725,7 +725,7 @@ async fn test_utxo_selection_with_tx_priority() {
     .await;
     oms.add_output(uo_low_2.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo_low_2.hash(&key_manager).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_low_2.hash(&key_manager).await.unwrap(), true)])
         .unwrap();
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -782,7 +782,7 @@ async fn send_not_enough_funds() {
         oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&oms.key_manager_handle).await.unwrap(), true));
     }
-    backend.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    backend.mark_outputs_as_unspent(unspent).unwrap();
 
     match oms
         .output_manager_handle
@@ -834,7 +834,7 @@ async fn send_no_change() {
     oms.output_manager_handle.add_output(uo_1.clone(), None).await.unwrap();
 
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo_1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_1.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let value2 = 8000;
     let uo_2 = create_wallet_output_with_data(
@@ -848,7 +848,7 @@ async fn send_no_change() {
     .unwrap();
     oms.output_manager_handle.add_output(uo_2.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let stp = oms
@@ -900,7 +900,7 @@ async fn send_not_enough_for_change() {
     .unwrap();
     oms.output_manager_handle.add_output(uo_1.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo_1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_1.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let value2 = MicroMinotari(800);
     let uo_2 = create_wallet_output_with_data(
@@ -914,7 +914,7 @@ async fn send_not_enough_for_change() {
     .unwrap();
     oms.output_manager_handle.add_output(uo_2.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     match oms
@@ -957,7 +957,7 @@ async fn cancel_transaction() {
         oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
         unspent.push((uo.hash(&oms.key_manager_handle).await.unwrap(), true));
     }
-    backend.mark_output_as_unspent_batch_mode(unspent).unwrap();
+    backend.mark_outputs_as_unspent(unspent).unwrap();
     let stp = oms
         .output_manager_handle
         .prepare_transaction_to_send(
@@ -1046,7 +1046,7 @@ async fn test_get_balance() {
     total += uo.value;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let uo = make_input(
@@ -1059,7 +1059,7 @@ async fn test_get_balance() {
     total += uo.value;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let send_value = MicroMinotari::from(1000);
@@ -1114,7 +1114,7 @@ async fn sending_transaction_persisted_while_offline() {
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let uo = make_input(
         &mut OsRng.clone(),
@@ -1125,7 +1125,7 @@ async fn sending_transaction_persisted_while_offline() {
     .await;
     oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
@@ -1215,13 +1215,13 @@ async fn coin_split_with_change() {
     assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
     // lets mark them as unspent so we can use them
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo2.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo3.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo3.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let fee_per_gram = MicroMinotari::from(5);
@@ -1279,13 +1279,13 @@ async fn coin_split_no_change() {
     assert!(oms.output_manager_handle.add_output(uo3.clone(), None).await.is_ok());
     // lets mark then as unspent so we can use them
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo1.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo2.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo3.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo3.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let (_tx_id, coin_split_tx, amount) = oms
         .output_manager_handle
@@ -1309,7 +1309,7 @@ async fn it_handles_large_coin_splits() {
     assert!(oms.output_manager_handle.add_output(uo.clone(), None).await.is_ok());
     // lets mark them as unspent so we can use them
     backend
-        .mark_output_as_unspent_batch_mode(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let fee_per_gram = MicroMinotari::from(1);
@@ -1355,7 +1355,7 @@ async fn test_txo_validation() {
         .await
         .unwrap();
     oms_db
-        .mark_output_as_unspent_batch_mode(vec![(output1.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(output1.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let output2_value = 2_000_000;
@@ -1373,7 +1373,7 @@ async fn test_txo_validation() {
         .await
         .unwrap();
     oms_db
-        .mark_output_as_unspent_batch_mode(vec![(output2.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(output2.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let output3_value = 4_000_000;
@@ -1391,7 +1391,7 @@ async fn test_txo_validation() {
         .unwrap();
 
     oms_db
-        .mark_output_as_unspent_batch_mode(vec![(output3.hash(&oms.key_manager_handle).await.unwrap(), true)])
+        .mark_outputs_as_unspent(vec![(output3.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
     let mut block1_header = BlockHeader::new(1);

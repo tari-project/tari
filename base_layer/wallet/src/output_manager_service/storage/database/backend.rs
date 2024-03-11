@@ -39,31 +39,19 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Perform a batch update of the received outputs' mined height and status
-    fn set_received_outputs_mined_height_and_status_batch_mode(
+    fn set_received_outputs_mined_height_and_statuses(
         &self,
         updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unmined and invalid state
-    fn set_output_to_unmined_and_invalid_batch_mode(
-        &self,
-        hashes: Vec<FixedHash>,
-    ) -> Result<(), OutputManagerStorageError>;
+    fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' last validation timestamp
-    fn update_last_validation_timestamp_batch_mode(
-        &self,
-        hashes: Vec<FixedHash>,
-    ) -> Result<(), OutputManagerStorageError>;
+    fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' spent status
-    fn mark_output_as_spent_batch_mode(
-        &self,
-        updates: Vec<SpentOutputInfoForBatch>,
-    ) -> Result<(), OutputManagerStorageError>;
+    fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unspent status
-    fn mark_output_as_unspent_batch_mode(
-        &self,
-        hashes: Vec<(FixedHash, bool)>,
-    ) -> Result<(), OutputManagerStorageError>;
+    fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.

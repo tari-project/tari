@@ -10331,13 +10331,13 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_output_as_unspent(
+                    .mark_outputs_as_unspent(vec![(
                         (*alice_wallet)
                             .runtime
                             .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
                             .unwrap(),
                         true,
-                    )
+                    )])
                     .unwrap();
             }
 
@@ -10468,13 +10468,13 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_output_as_unspent(
+                    .mark_outputs_as_unspent(vec![(
                         (*alice_wallet)
                             .runtime
                             .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
                             .unwrap(),
                         true,
-                    )
+                    )])
                     .unwrap();
             }
 
@@ -10684,13 +10684,13 @@ mod test {
                 (*alice_wallet)
                     .wallet
                     .output_db
-                    .mark_output_as_unspent(
+                    .mark_outputs_as_unspent(vec![(
                         (*alice_wallet)
                             .runtime
                             .block_on(uo.hash(&(*alice_wallet).wallet.key_manager_service))
                             .unwrap(),
                         true,
-                    )
+                    )])
                     .unwrap();
             }
 
