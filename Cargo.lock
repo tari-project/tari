@@ -3221,6 +3221,7 @@ name = "minotari_mining_helper_ffi"
 version = "1.0.0-pre.9"
 dependencies = [
  "borsh",
+ "cbindgen",
  "hex",
  "libc",
  "rand",
