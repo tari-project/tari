@@ -138,26 +138,26 @@ mod test {
 
     // Checks that the moving average hash rate at every block is correct
     // We use larger sample data than the SHA window size (12 periods) to check bounds
-    // We assumed a constant target block time of 300 secs (the SHA3 target time for Esmeralda)
+    // We assumed a constant target block time of 240 secs (the SHA3 target time for Esmeralda)
     // These expected hash rate values where calculated in a spreadsheet
     #[test]
     fn correct_moving_average_calculation() {
         let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
 
-        assert_hash_rate(&mut hash_rate_ma, 0, 100_000, 333);
-        assert_hash_rate(&mut hash_rate_ma, 1, 120_100, 366);
-        assert_hash_rate(&mut hash_rate_ma, 2, 110_090, 366);
-        assert_hash_rate(&mut hash_rate_ma, 3, 121_090, 375);
-        assert_hash_rate(&mut hash_rate_ma, 4, 150_000, 400);
-        assert_hash_rate(&mut hash_rate_ma, 5, 155_000, 419);
-        assert_hash_rate(&mut hash_rate_ma, 6, 159_999, 435);
-        assert_hash_rate(&mut hash_rate_ma, 7, 160_010, 448);
-        assert_hash_rate(&mut hash_rate_ma, 8, 159_990, 457);
-        assert_hash_rate(&mut hash_rate_ma, 9, 140_000, 458);
-        assert_hash_rate(&mut hash_rate_ma, 10, 137_230, 458);
-        assert_hash_rate(&mut hash_rate_ma, 11, 130_000, 456);
-        assert_hash_rate(&mut hash_rate_ma, 12, 120_000, 461);
-        assert_hash_rate(&mut hash_rate_ma, 13, 140_000, 467);
+        assert_hash_rate(&mut hash_rate_ma, 0, 100_000, 416);
+        assert_hash_rate(&mut hash_rate_ma, 1, 120_100, 458);
+        assert_hash_rate(&mut hash_rate_ma, 2, 110_090, 458);
+        assert_hash_rate(&mut hash_rate_ma, 3, 121_090, 469);
+        assert_hash_rate(&mut hash_rate_ma, 4, 150_000, 500);
+        assert_hash_rate(&mut hash_rate_ma, 5, 155_000, 524);
+        assert_hash_rate(&mut hash_rate_ma, 6, 159_999, 544);
+        assert_hash_rate(&mut hash_rate_ma, 7, 160_010, 560);
+        assert_hash_rate(&mut hash_rate_ma, 8, 159_990, 571);
+        assert_hash_rate(&mut hash_rate_ma, 9, 140_000, 572);
+        assert_hash_rate(&mut hash_rate_ma, 10, 137_230, 572);
+        assert_hash_rate(&mut hash_rate_ma, 11, 130_000, 570);
+        assert_hash_rate(&mut hash_rate_ma, 12, 120_000, 577);
+        assert_hash_rate(&mut hash_rate_ma, 13, 140_000, 584);
     }
 
     // Our moving average windows are very small (12 and 15 depending on PoW algorithm)
