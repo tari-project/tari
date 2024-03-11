@@ -78,7 +78,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # This job runs on self-hosted, so use local-cache instead.
-        uses: maxnowack/local-cache@v1
+        uses: maxnowack/local-cache@v2
         with:
           path: |
             ~/.cargo/registry/index
@@ -159,7 +159,7 @@ jobs:
         if: ${{ env.CI_FFI == 'true' }}
         # Don't use rust-cache.
         # This job runs on self-hosted, so use local-cache instead.
-        uses: maxnowack/local-cache@v1
+        uses: maxnowack/local-cache@v2
         with:
           path: |
             ~/.cargo/registry/index
