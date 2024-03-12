@@ -3,13 +3,13 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.11a"
+version = "1.0.0-rc.6a"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.20" }
 tari_utilities = { version = "0.7" }
-tari_common = {  path = "../../common", version = "1.0.0-pre.11a" }
+tari_common = {  path = "../../common", version = "1.0.0-rc.6a" }
 
 
 chacha20poly1305 = "0.10.1"
