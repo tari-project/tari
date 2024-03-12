@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.11"
+version = "1.0.0-pre.11a"
 edition = "2018"
 
 [dependencies]
@@ -58,7 +58,7 @@ safe = []
 libtor = ["tari_libtor"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11"}
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11a"}
 
 [package.metadata.cargo-machete]
 ignored = [
