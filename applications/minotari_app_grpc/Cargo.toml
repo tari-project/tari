@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.0.0-rc.6a"
+version = "1.0.0-alpha.0a"
 edition = "2018"
 
 [dependencies]
@@ -31,7 +31,7 @@ tonic = { version = "0.8.3", features = ["tls"]}
 zeroize = "1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.0.0-rc.6a" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-alpha.0a" }
 tonic-build = "0.8.4"
 
 [package.metadata.cargo-machete]
