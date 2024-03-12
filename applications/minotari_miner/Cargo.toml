@@ -23,7 +23,7 @@ bufstream = "0.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam = "0.8"
-crossterm = { version = "0.27.0" }
+crossterm = { version = "0.25.0" }
 derivative = "2.2.0"
 futures = "0.3"
 hex = "0.4.2"
