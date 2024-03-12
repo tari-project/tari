@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+## [1.0.0-alpha.0a](https://github.com/tari-project/tari/compare/v1.0.0-alpha.0...v1.0.0-alpha.0a) (2024-03-12)
+
+### Bug Fixes
+
+* downgrade crossterm for windows compatibility ([#6204](https://github.com/tari-project/tari/issues/6204)) ([243243d](https://github.com/tari-project/tari/commit/243243dd7d7030010662f0d514097230d905a4cc))
 
 ## [1.0.0-alpha.0](https://github.com/tari-project/tari/compare/v0.49.0-rc.0...v1.0.0-alpha.0) (2024-03-11)
 
