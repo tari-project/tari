@@ -126,10 +126,10 @@ pub fn run_wallet_with_cli(
     // check for recovery based on existence of wallet file
     let (mut boot_mode, password) = boot_with_password(&cli, &config.wallet)?;
 
-    let recovery_seed = get_recovery_seed(&boot_mode, &cli)?;
+    let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
     // This is deactivated at the moment as full support is not yet complete
-    let wallet_type = prompt_wallet_type(&boot_mode, &config.wallet, &cli.non_interactive_mode);
+    let wallet_type = prompt_wallet_type(boot_mode, &config.wallet, cli.non_interactive_mode);
 
     // get command line password if provided
     let seed_words_file_name = cli.seed_words_file_name.clone();
@@ -256,7 +256,7 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
         .map(|s| s.to_owned())
 }
 
-fn get_recovery_seed(boot_mode: &WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
+fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words)?

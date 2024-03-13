@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.11a
+version = "1.0.0-pre.11a"
 edition = "2018"
 
 [lib]
@@ -15,4 +15,4 @@ proc-macro = true
 [dependencies]
 quote = "0.6.11"
 syn = "0.15.29"
-proc-macro2 =   "0.4.27"
+proc-macro2 = "0.4.27"

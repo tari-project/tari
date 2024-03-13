@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use strum::EnumString;
+use strum_macros::EnumString;
 
 #[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
 pub enum WalletType {

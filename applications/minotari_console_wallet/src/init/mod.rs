@@ -811,11 +811,11 @@ pub(crate) fn boot_with_password(
 }
 
 pub fn prompt_wallet_type(
-    boot_mode: &WalletBoot,
+    boot_mode: WalletBoot,
     wallet_config: &WalletConfig,
-    non_interactive: &bool,
+    non_interactive: bool,
 ) -> Option<WalletType> {
-    if *non_interactive {
+    if non_interactive {
         return Some(WalletType::Software);
     }
 

@@ -5696,6 +5696,7 @@ dependencies = [
  "rand",
  "serde",
  "strum",
+ "strum_macros",
  "tari_common",
  "tari_crypto",
  "tari_utilities",
