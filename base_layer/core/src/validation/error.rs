@@ -115,6 +115,16 @@ pub enum ValidationError {
     ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
+    #[error(
+        "Network not set for template registration. If network is set, then network_knowledge_proof must also be set"
+    )]
+    TemplateRegistrationNetworkNotSet,
+    #[error("Network knowledge proof not valid for template registration")]
+    TemplateInvalidNetworkKnowledgeProof,
+    #[error(
+        "Network not set for confidential output. If network is set, then network_knowledge_proof must also be set"
+    )]
+    ConfidentialOutputNetworkNotSet,
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
     #[error(
@@ -182,6 +192,9 @@ impl ValidationError {
             err @ ValidationError::InvalidValidatorNodeSignature |
             err @ ValidationError::ValidatorNodeRegistrationNetworkNotSet |
             err @ ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof |
+            err @ ValidationError::TemplateRegistrationNetworkNotSet |
+            err @ ValidationError::TemplateInvalidNetworkKnowledgeProof |
+            err @ ValidationError::ConfidentialOutputNetworkNotSet |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {

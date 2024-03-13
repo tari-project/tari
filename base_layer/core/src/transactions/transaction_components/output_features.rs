@@ -215,6 +215,12 @@ impl OutputFeatures {
             .and_then(|s| s.code_template_registration())
     }
 
+    pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.confidential_output_data())
+    }
+
     pub fn is_coinbase(&self) -> bool {
         matches!(self.output_type, OutputType::Coinbase)
     }

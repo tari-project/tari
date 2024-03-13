@@ -1339,6 +1339,7 @@ impl LMDBDatabase {
             end_epoch: next_epoch + constants.validator_node_validity_period_epochs(),
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
+            validator_network: vn_reg.network().cloned(),
         };
 
         store.insert(header.height, &validator_node)?;
@@ -2390,7 +2391,10 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
         let constants = self.consensus_manager.consensus_constants(height);

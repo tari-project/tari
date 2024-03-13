@@ -24,7 +24,7 @@ use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::{epoch::VnEpoch, types::PublicKey};
-use tari_utilities::hex::to_hex;
+use tari_utilities::hex::{to_hex, Hex};
 
 use super::{CommandContext, HandleCommand};
 use crate::table::Table;
@@ -43,12 +43,19 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    async fn print_validator_nodes_list(&mut self, vns: &[(PublicKey, [u8; 32])]) {
+    async fn print_validator_nodes_list(&mut self, vns: &[(PublicKey, Option<PublicKey>, [u8; 32])]) {
         let num_vns = vns.len();
         let mut table = Table::new();
-        table.set_titles(vec!["Public Key", "Shard ID"]);
-        for (public_key, shard_key) in vns {
-            table.add_row(row![public_key, to_hex(shard_key),]);
+        table.set_titles(vec!["Public Key", "VN Network", "Shard ID"]);
+        for (public_key, validator_network, shard_key) in vns {
+            table.add_row(row![
+                public_key,
+                validator_network
+                    .as_ref()
+                    .map(|v| v.to_hex())
+                    .unwrap_or_else(|| "<default>".to_string()),
+                to_hex(shard_key),
+            ]);
         }
 
         table.print_stdout();

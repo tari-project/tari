@@ -33,4 +33,5 @@ pub struct ValidatorNodeEntry {
     pub end_epoch: VnEpoch,
     pub public_key: PublicKey,
     pub commitment: Commitment,
+    pub validator_network: Option<PublicKey>,
 }

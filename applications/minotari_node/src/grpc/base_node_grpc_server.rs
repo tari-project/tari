@@ -1822,10 +1822,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
 
-            for (public_key, shard_key) in active_validator_nodes {
+            for (public_key, validator_network, shard_key) in active_validator_nodes {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
                     shard_key: shard_key.to_vec(),
+                    validator_network: validator_network.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]),
                 };
 
                 if tx.send(Ok(active_validator_node)).await.is_err() {

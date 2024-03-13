@@ -33,7 +33,7 @@ use unicode_width::UnicodeWidthStr;
 use url::Url;
 
 use crate::ui::{
-    components::{balance::Balance, network_tab::BaseNodeInputMode::PublicKey, Component, KeyHandled},
+    components::{balance::Balance, Component, KeyHandled},
     state::{AppState, UiTransactionSendStatus},
     widgets::draw_dialog,
 };

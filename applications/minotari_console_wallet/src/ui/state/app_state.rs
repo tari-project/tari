@@ -53,7 +53,6 @@ use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    tor::PrivateKey,
 };
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
@@ -472,6 +471,7 @@ impl AppState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn register_code_template(
         &mut self,
         template_name: String,

@@ -58,7 +58,7 @@ pub enum NodeCommsResponse {
     TargetDifficulty(Difficulty),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
-    FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
+    FetchValidatorNodesKeysResponse(Vec<(PublicKey, Option<PublicKey>, [u8; 32])>),
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }

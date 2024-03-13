@@ -136,7 +136,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         &self,
         start_height: u64,
         end_height: u64,
-    ) -> Result<Vec<(PublicKey, ShardKey)>, ChainStorageError> {
+    ) -> Result<Vec<(PublicKey, Option<PublicKey>, ShardKey)>, ChainStorageError> {
         let mut cursor = self.db_read_cursor()?;
 
         let mut nodes = Vec::new();
@@ -150,7 +150,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     return Ok(Vec::new());
                 }
                 dedup_map.insert(vn.public_key.clone(), 0);
-                nodes.push(Some((vn.public_key, vn.shard_key)));
+                nodes.push(Some((vn.public_key, vn.validator_network, vn.shard_key)));
             },
             None => return Ok(Vec::new()),
         }
@@ -169,12 +169,12 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     .expect("get_vn_set: internal dedeup map is not in sync with nodes");
                 *node_mut = None;
             }
-            nodes.push(Some((vn.public_key, vn.shard_key)));
+            nodes.push(Some((vn.public_key, vn.validator_network, vn.shard_key)));
             i += 1;
         }
 
         let mut vn_set = nodes.into_iter().flatten().collect::<Vec<_>>();
-        vn_set.sort_by(|(_, a), (_, b)| a.cmp(b));
+        vn_set.sort_by(|(_, a, c), (_, b, d)| a.cmp(b).then(c.cmp(d)));
         Ok(vn_set)
     }
 

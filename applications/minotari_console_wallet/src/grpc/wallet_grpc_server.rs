@@ -620,7 +620,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .validator_network_knowledge_proof
                             .unwrap()
                             .try_into()
-                            .map_err(|e: String| Status::invalid_argument(e.to_string()))?,
+                            .map_err(Status::invalid_argument)?,
                     )
                 },
             )

@@ -450,6 +450,7 @@ message GetActiveValidatorNodesRequest {
 message GetActiveValidatorNodesResponse {
     bytes shard_key = 1;
     bytes public_key = 2;
+    bytes validator_network = 3;
 }
 
 message GetShardKeyRequest {

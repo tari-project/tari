@@ -172,7 +172,10 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches the validator node set for the given height ordered according to height of registration and canonical
     /// block body ordering.
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError>;
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError>;
     /// Returns the shard key for the validator node if valid at the given height.
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError>;
     /// Returns all template registrations within (inclusive) the given height range.
