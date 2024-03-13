@@ -50,8 +50,11 @@ env:
   toolchain_default: nightly-2023-06-04
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
+permissions: {}
 
 jobs:
   builds_envs_setup:
@@ -107,6 +110,8 @@ jobs:
 
   builds_run:
     needs: builds_envs_setup
+    permissions:
+      packages: write
     uses: ./.github/workflows/build_dockers_workflow.yml
     secrets: inherit
     with:
