@@ -446,7 +446,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
         match self.wallet_type {
             WalletType::Software => self.get_private_key(script_key_id).await.map_err(|e| e.into()),
-            WalletType::Ledger(account) => {
+            WalletType::Ledger(_account) => {
                 let data = script_key_id.managed_index().expect("and index").to_le_bytes().to_vec();
                 let command = APDUCommand {
                     cla: 0x80,
