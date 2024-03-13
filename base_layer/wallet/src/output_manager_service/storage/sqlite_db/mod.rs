@@ -456,28 +456,30 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
              VALUES ",
         );
 
-        for update in &updates {
-            query.push_str(&format!(
-                "(x'{}', {}, x'{}', {}, '{}', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), ",
-                update.commitment.to_hex(),
-                update.mined_height as i64,
-                update.mined_in_block.to_hex(),
-                if update.confirmed {
-                    OutputStatus::Unspent as i32
-                } else {
-                    OutputStatus::UnspentMinedUnconfirmed as i32
-                },
-                if let Some(val) = NaiveDateTime::from_timestamp_opt(update.mined_timestamp as i64, 0) {
-                    val.to_string()
-                } else {
-                    "NULL".to_string()
-                },
-            ));
-        }
-
-        // Remove the trailing comma
-        query.pop();
-        query.pop();
+        query.push_str(
+            &updates
+                .iter()
+                .map(|update| {
+                    format!(
+                        "(x'{}', {}, x'{}', {}, '{}', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+                        update.commitment.to_hex(),
+                        update.mined_height as i64,
+                        update.mined_in_block.to_hex(),
+                        if update.confirmed {
+                            OutputStatus::Unspent as i32
+                        } else {
+                            OutputStatus::UnspentMinedUnconfirmed as i32
+                        },
+                        if let Some(val) = NaiveDateTime::from_timestamp_opt(update.mined_timestamp as i64, 0) {
+                            val.to_string()
+                        } else {
+                            "NULL".to_string()
+                        },
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join(", "),
+        );
 
         query.push_str(
             " ON CONFLICT (commitment) DO UPDATE SET mined_height = excluded.mined_height, mined_in_block = \
@@ -501,6 +503,86 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         Ok(())
     }
+
+    // TODO: This alternative approach is being evaluated, but the values are not bound successfully.
+    //
+    // fn set_received_outputs_mined_height_and_statuses(
+    //     &self,
+    //     updates: Vec<ReceivedOutputInfoForBatch>,
+    // ) -> Result<(), OutputManagerStorageError> {
+    //     let start = Instant::now();
+    //     let mut conn = self.database_connection.get_pooled_connection()?;
+    //     let acquire_lock = start.elapsed();
+    //
+    //     debug!(
+    //         target: LOG_TARGET,
+    //         "`set_received_outputs_mined_height_and_statuses` for {} outputs",
+    //         updates.len()
+    //     );
+    //
+    //     let mut query = String::from(
+    //         "INSERT INTO outputs ( commitment, mined_height, mined_in_block, status, mined_timestamp, spending_key, \
+    //          value, output_type, maturity, hash, script, input_data, script_private_key, sender_offset_public_key, \
+    //          metadata_signature_ephemeral_commitment, metadata_signature_ephemeral_pubkey, metadata_signature_u_a, \
+    //          metadata_signature_u_x, metadata_signature_u_y, spending_priority, covenant, encrypted_data, \
+    //          minimum_value_promise
+    //         )
+    //          VALUES ",
+    //     );
+    //
+    //     query.push_str(
+    //         &updates
+    //             .iter()
+    //             .map(|_update| "(x'?', ?, x'?', ?, '?', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    // 0)".to_string())             .collect::<Vec<String>>()
+    //             .join(", "),
+    //     );
+    //
+    //     query.push_str(
+    //         " ON CONFLICT (commitment) DO UPDATE SET mined_height = excluded.mined_height, mined_in_block = \
+    //          excluded.mined_in_block, status = excluded.status, mined_timestamp = excluded.mined_timestamp, \
+    //          marked_deleted_at_height = NULL, marked_deleted_in_block = NULL, last_validation_timestamp = NULL",
+    //     );
+    //
+    //     let sql_bounded = sql_query(&query);
+    //
+    //     let _unused = updates.iter().map(|update| {
+    //         sql_bounded.clone()
+    //             .bind::<diesel::sql_types::Text, _>(update.commitment.to_hex())
+    //             .bind::<diesel::sql_types::BigInt, _>(update.mined_height as i64)
+    //             .bind::<diesel::sql_types::Text, _>(update.mined_in_block.to_hex())
+    //             .bind::<diesel::sql_types::Integer, _>(if update.confirmed {
+    //                 OutputStatus::Unspent as i32
+    //             } else {
+    //                 OutputStatus::UnspentMinedUnconfirmed as i32
+    //             })
+    //             .bind::<diesel::sql_types::Timestamp, _>(
+    //                 if let Some(val) = NaiveDateTime::from_timestamp_opt(update.mined_timestamp as i64, 0) {
+    //                     val.to_string()
+    //                 } else {
+    //                     "NULL".to_string()
+    //                 },
+    //             )
+    //     });
+    //
+    //     sql_bounded
+    //         .execute(&mut conn)
+    //         .num_rows_affected_or_not_found(updates.len())?;
+    //
+    //     if start.elapsed().as_millis() > 0 {
+    //         trace!(
+    //             target: LOG_TARGET,
+    //             "sqlite profile - set_received_outputs_mined_height_and_statuses: lock {} + db_op {} = {} ms \
+    //             ({} outputs)",
+    //             acquire_lock.as_millis(),
+    //             (start.elapsed() - acquire_lock).as_millis(),
+    //             start.elapsed().as_millis(),
+    //             updates.len()
+    //         );
+    //     }
+    //
+    //     Ok(())
+    // }
 
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
@@ -567,10 +649,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
-            .set(outputs::last_validation_timestamp.eq(Some(Utc::now().naive_utc())))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(hashes.len())?;
+        // diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
+        //     .set(outputs::last_validation_timestamp.eq(Some(Utc::now().naive_utc())))
+        //     .execute(&mut conn)
+        //     .num_rows_affected_or_not_found(hashes.len())?;
+
+        // TODO: This raw query is being evaluated, as the diesel query above is not as performant as expected.
+        let sql_query = format!(
+            r#"
+            UPDATE outputs
+            SET last_validation_timestamp = '{}'
+            WHERE hash IN ({})
+            "#,
+            Utc::now().naive_utc(),
+            hashes
+                .iter()
+                .map(|hash| format!("'{}'", hash.to_string()))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        conn.batch_execute(&sql_query)?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -621,23 +719,25 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
              metadata_signature_u_y, spending_priority, covenant, encrypted_data, minimum_value_promise ) VALUES ",
         );
 
-        for update in &updates {
-            query.push_str(&format!(
-                "(x'{}', {}, x'{}', {}, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), ",
-                update.commitment.to_hex(),
-                update.mark_deleted_at_height as i64,
-                update.mark_deleted_in_block.to_hex(),
-                if update.confirmed {
-                    OutputStatus::Spent as i32
-                } else {
-                    OutputStatus::SpentMinedUnconfirmed as i32
-                }
-            ));
-        }
-
-        // Remove the trailing comma
-        query.pop();
-        query.pop();
+        query.push_str(
+            &updates
+                .iter()
+                .map(|update| {
+                    format!(
+                        "(x'{}', {}, x'{}', {}, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+                        update.commitment.to_hex(),
+                        update.mark_deleted_at_height as i64,
+                        update.mark_deleted_in_block.to_hex(),
+                        if update.confirmed {
+                            OutputStatus::Spent as i32
+                        } else {
+                            OutputStatus::SpentMinedUnconfirmed as i32
+                        }
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join(", "),
+        );
 
         query.push_str(
             " ON CONFLICT (commitment) DO UPDATE SET marked_deleted_at_height = excluded.marked_deleted_at_height, \
@@ -664,7 +764,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        // Split out the confirmed and unconfirmed outputs
+        // Split out the confirmed and unconfirmed outputs so that we can handle each of them as a separate batch
+        // operation
         let confirmed_hashes = hashes
             .iter()
             .filter(|(_hash, confirmed)| *confirmed)
