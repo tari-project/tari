@@ -825,20 +825,22 @@ pub fn prompt_wallet_type(
 
     match boot_mode {
         WalletBoot::New => {
-            if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
-                print!("Scanning for connected Ledger hardware device... ");
-                let err = "No connected device was found. Please make sure the device is plugged in before continuing.";
-                match TransportNativeHID::new(&HidApi::new().expect(err)) {
-                    Ok(_) => {
-                        println!("Device found.");
-                        let account = prompt_ledger_account().expect("An account value");
-                        Some(WalletType::Ledger(account))
-                    },
-                    Err(_) => panic!("{}", err),
-                }
-            } else {
-                Some(WalletType::Software)
-            }
+            Some(WalletType::Software)
+            // Disabling this prompt until we decide to turn it on.
+            // if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
+            //     print!("Scanning for connected Ledger hardware device... ");
+            //     let err = "No connected device was found. Please make sure the device is plugged in before
+            // continuing.";     match TransportNativeHID::new(&HidApi::new().expect(err)) {
+            //         Ok(_) => {
+            //             println!("Device found.");
+            //             let account = prompt_ledger_account().expect("An account value");
+            //             Some(WalletType::Ledger(account))
+            //         },
+            //         Err(_) => panic!("{}", err),
+            //     }
+            // } else {
+            //   Some(WalletType::Software)
+            // }
         },
         _ => None,
     }
