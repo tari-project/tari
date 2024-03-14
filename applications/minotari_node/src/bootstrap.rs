@@ -192,7 +192,7 @@ where B: BlockchainBackend + 'static
                 if !node_id.public_addresses().contains(&address) {
                     node_id.add_public_address(address);
                 }
-                if let Err(e) = identity_management::save_as_json(&node_id_path, &*node_id){
+                if let Err(e) = identity_management::save_as_json(&node_id_path, &*node_id) {
                     error!(target: LOG_TARGET, "Failed to save node identity identity{:?}", e);
                 }
             };
