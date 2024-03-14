@@ -132,9 +132,9 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             if let MinerError::BaseNodeNotResponding(_) = e {
                 error!(target: LOG_TARGET, "{}", e.to_string());
                 println!();
-                let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods denied in \
-                           its 'config.toml'? Please ensure these methods are commented out:\n  \
-                           'grpc_server_deny_methods': \"get_new_block_template\", \"get_tip_info\", \
+                let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods allowed in \
+                           its 'config.toml'? Please ensure these methods are enabled in:\n  \
+                           'grpc_server_allow_methods': \"get_new_block_template\", \"get_tip_info\", \
                            \"get_new_block\", \"submit_block\"";
                 println!("{}", msg);
                 println!();
