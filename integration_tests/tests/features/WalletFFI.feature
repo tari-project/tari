@@ -92,7 +92,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
 
-    @critical @brokenFFI @broken
+    @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
@@ -171,7 +171,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 3000000 uT
         And I stop ffi wallet FFI_WALLET
 
-    @critical @brokenFFI @broken
+    @critical
     Scenario: As a client I want to send a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
@@ -208,7 +208,7 @@ Feature: Wallet FFI
         Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_CONFIRMED and not cancelled
         And I stop ffi wallet FFI_WALLET
 
-    @critical @brokenFFI @broken
+    @critical
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
