@@ -42,6 +42,7 @@ use tari_core::transactions::{
 use tari_crypto::tari_utilities::ByteArray;
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::hex::Hex;
 
 use crate::{
     output_manager_service::{
@@ -376,6 +377,31 @@ impl OutputSql {
                     .or(outputs::spent_in_tx_id.eq(tx_id.as_i64_wrapped())),
             )
             .load(conn)?)
+    }
+
+    /// Verify that outputs with specified commitments exist in the database
+    pub fn verify_outputs_exist(
+        commitments: &[Commitment],
+        conn: &mut SqliteConnection,
+    ) -> Result<bool, OutputManagerStorageError> {
+        #[derive(QueryableByName, Clone)]
+        struct CountQueryResult {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+        let placeholders = commitments
+            .iter()
+            .map(|v| format!("x'{}'", v.to_hex()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = sql_query(format!(
+            "SELECT COUNT(*) as count FROM outputs WHERE commitment IN ({})",
+            placeholders
+        ));
+        let query_result = query.load::<CountQueryResult>(conn)?;
+        let commitments_len = i64::try_from(commitments.len())
+            .map_err(|e| OutputManagerStorageError::ConversionError { reason: e.to_string() })?;
+        Ok(query_result[0].count == commitments_len)
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance

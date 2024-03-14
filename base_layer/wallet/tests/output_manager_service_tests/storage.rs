@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use minotari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
@@ -34,7 +36,7 @@ use minotari_wallet::output_manager_service::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{FixedHash, PrivateKey},
+    types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_core::transactions::{
     key_manager::create_memory_db_key_manager,
@@ -42,7 +44,7 @@ use tari_core::transactions::{
     transaction_components::OutputFeatures,
 };
 use tari_crypto::keys::SecretKey;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
@@ -403,6 +405,12 @@ pub async fn test_raw_custom_queries_regression() {
         unspent.push((kmo.hash, true));
         unspent_outputs.push(kmo);
     }
+
+    let unknown = HashOutput::try_from(PrivateKey::random(&mut rand::thread_rng()).as_bytes()).unwrap();
+    let mut unspent_with_unknown = unspent.clone();
+    unspent_with_unknown.push((unknown, true));
+    assert!(db.mark_outputs_as_unspent(unspent_with_unknown).is_err());
+
     db.mark_outputs_as_unspent(unspent).unwrap();
 
     // Add some sent transactions with outputs to be spent and received
@@ -476,6 +484,29 @@ pub async fn test_raw_custom_queries_regression() {
             mined_timestamp: 0,
         });
     }
+
+    let uo = make_input(
+        &mut OsRng,
+        MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+        &OutputFeatures::default(),
+        &key_manager,
+    )
+    .await;
+    let unknown = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
+        .await
+        .unwrap();
+    let mut updates_info_with_unknown = updates_info.clone();
+    updates_info_with_unknown.push(ReceivedOutputInfoForBatch {
+        commitment: unknown.commitment.clone(),
+        mined_height: 2,
+        mined_in_block: block_hashes[0],
+        confirmed: true,
+        mined_timestamp: 0,
+    });
+    assert!(db
+        .set_received_outputs_mined_height_and_statuses(updates_info_with_unknown)
+        .is_err());
+
     db.set_received_outputs_mined_height_and_statuses(updates_info).unwrap();
 
     for (i, to_be_received) in pending_txs[0].outputs_to_be_received.iter().enumerate() {
@@ -507,6 +538,16 @@ pub async fn test_raw_custom_queries_regression() {
             mark_deleted_in_block,
         });
     }
+
+    let mut updates_info_with_unknown = updates_info.clone();
+    updates_info_with_unknown.push(SpentOutputInfoForBatch {
+        commitment: unknown.commitment,
+        confirmed: true,
+        mark_deleted_at_height: 4,
+        mark_deleted_in_block: block_hashes[0],
+    });
+    assert!(db.mark_outputs_as_spent(updates_info_with_unknown).is_err());
+
     db.mark_outputs_as_spent(updates_info).unwrap();
 
     for (i, to_be_spent) in pending_txs[0].outputs_to_be_spent.iter().enumerate() {

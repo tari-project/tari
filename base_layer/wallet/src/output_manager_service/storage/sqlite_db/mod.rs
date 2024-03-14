@@ -417,21 +417,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     // Perform a batch update of the received outputs; this is more efficient than updating each output individually.
-    // This SQL query is a dummy `INSERT INTO` statement combined with an `ON CONFLICT` clause and `UPDATE` action.
-    // It specifies what action should be taken if a unique constraint violation occurs during the execution of the
-    // `INSERT INTO` statement. The `INSERT INTO` statement must list all columns that cannot be NULL should it
-    // succeed. We provide `commitment` values that will cause a unique constraint violation, triggering the
-    // `ON CONFLICT` clause. The `ON CONFLICT` clause ensures that if a row with a matching commitment already
-    // exists, the specified columns (`mined_height`, `mined_in_block`, `status`, `mined_timestamp`,
-    // `marked_deleted_at_height`, `marked_deleted_in_block`, `last_validation_timestamp`) will be updated with the
-    // provided values. The `UPDATE` action updates the existing row with the new values provided by the
-    // `INSERT INTO` statement. The `excluded` keyword refers to the new data being inserted or updated and allows
-    // accessing the values provided in the `VALUES` clause of the `INSERT INTO` statement.
-    // Note:
-    //   `diesel` does not support batch updates, so we have to do it manually. For example, this
-    //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut conn)?;`
-    //   errors with
-    //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
     fn set_received_outputs_mined_height_and_statuses(
         &self,
         updates: Vec<ReceivedOutputInfoForBatch>,
@@ -446,6 +431,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             updates.len()
         );
 
+        let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
+        if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        // This SQL query is a dummy `INSERT INTO` statement combined with an `ON CONFLICT` clause and `UPDATE` action.
+        // It specifies what action should be taken if a unique constraint violation occurs during the execution of the
+        // `INSERT INTO` statement. The `INSERT INTO` statement must list all columns that cannot be NULL should it
+        // succeed. We provide `commitment` values that will cause a unique constraint violation, triggering the
+        // `ON CONFLICT` clause. The `ON CONFLICT` clause ensures that if a row with a matching commitment already
+        // exists, the specified columns (`mined_height`, `mined_in_block`, `status`, `mined_timestamp`,
+        // `marked_deleted_at_height`, `marked_deleted_in_block`, `last_validation_timestamp`) will be updated with the
+        // provided values. The `UPDATE` action updates the existing row with the new values provided by the
+        // `INSERT INTO` statement. The `excluded` keyword refers to the new data being inserted or updated and allows
+        // accessing the values provided in the `VALUES` clause of the `INSERT INTO` statement.
+        // Note:
+        //   `diesel` does not support batch updates, so we have to do it manually. For example, this
+        //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut
+        // conn)?;`   errors with
+        //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
         let mut query = String::from(
             "INSERT INTO outputs ( commitment, mined_height, mined_in_block, status, mined_timestamp, spending_key, \
              value, output_type, maturity, hash, script, input_data, script_private_key, sender_offset_public_key, \
@@ -685,21 +690,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     // Perform a batch update of the spent outputs; this is more efficient than updating each output individually.
-    // This SQL query is a dummy `INSERT INTO` statement combined with an `ON CONFLICT` clause and `UPDATE` action.
-    // It specifies what action should be taken if a unique constraint violation occurs during the execution of the
-    // `INSERT INTO` statement. The `INSERT INTO` statement must list all columns that cannot be NULL should it
-    // succeed. We provide `commitment` values that will cause a unique constraint violation, triggering the
-    // `ON CONFLICT` clause. The `ON CONFLICT` clause ensures that if a row with a matching commitment already
-    // exists, the specified columns (`mined_height`, `mined_in_block`, `status`, `mined_timestamp`,
-    // `marked_deleted_at_height`, `marked_deleted_in_block`, `last_validation_timestamp`) will be updated with the
-    // provided values. The `UPDATE` action updates the existing row with the new values provided by the
-    // `INSERT INTO` statement. The `excluded` keyword refers to the new data being inserted or updated and allows
-    // accessing the values provided in the `VALUES` clause of the `INSERT INTO` statement.
-    // Note:
-    //   `diesel` does not support batch updates, so we have to do it manually. For example, this
-    //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut conn)?;`
-    //   errors with
-    //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
     fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -711,6 +701,26 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             updates.len()
         );
 
+        let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
+        if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        // This SQL query is a dummy `INSERT INTO` statement combined with an `ON CONFLICT` clause and `UPDATE` action.
+        // It specifies what action should be taken if a unique constraint violation occurs during the execution of the
+        // `INSERT INTO` statement. The `INSERT INTO` statement must list all columns that cannot be NULL should it
+        // succeed. We provide `commitment` values that will cause a unique constraint violation, triggering the
+        // `ON CONFLICT` clause. The `ON CONFLICT` clause ensures that if a row with a matching commitment already
+        // exists, the specified columns (`mined_height`, `mined_in_block`, `status`, `mined_timestamp`,
+        // `marked_deleted_at_height`, `marked_deleted_in_block`, `last_validation_timestamp`) will be updated with the
+        // provided values. The `UPDATE` action updates the existing row with the new values provided by the
+        // `INSERT INTO` statement. The `excluded` keyword refers to the new data being inserted or updated and allows
+        // accessing the values provided in the `VALUES` clause of the `INSERT INTO` statement.
+        // Note:
+        //   `diesel` does not support batch updates, so we have to do it manually. For example, this
+        //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut
+        // conn)?;`   errors with
+        //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
         let mut query = String::from(
             "INSERT INTO outputs ( commitment, marked_deleted_at_height, marked_deleted_in_block, status, \
              mined_height, mined_in_block, mined_timestamp, spending_key, value, output_type, maturity, hash, script, \
