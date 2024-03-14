@@ -293,7 +293,7 @@ pub struct TariUtxo {
     pub mined_timestamp: u64,
     pub lock_height: u64,
     pub status: u8,
-    pub coinbase_extra: Vec<u8>,
+    pub coinbase_extra: *const c_char,
 }
 
 impl From<DbWalletOutput> for TariUtxo {
@@ -322,7 +322,9 @@ impl From<DbWalletOutput> for TariUtxo {
                 OutputStatus::SpentMinedUnconfirmed => 9,
                 OutputStatus::NotStored => 10,
             },
-            coinbase_extra: x.wallet_output.features.coinbase_extra,
+            coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
+                .expect("failed to obtain hex from a commitment")
+                .into_raw(),
         }
     }
 }
