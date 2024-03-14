@@ -65,6 +65,9 @@ pub enum LedgerDeviceError {
     /// Conversion error to or from ledger
     #[error("Conversion failed: {0}")]
     ByteArrayError(String),
+    /// Not yet supported
+    #[error("Ledger is not fully supported")]
+    NotSupported,
 }
 
 impl From<ByteArrayError> for LedgerDeviceError {

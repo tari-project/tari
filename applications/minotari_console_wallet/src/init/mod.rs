@@ -24,6 +24,7 @@
 
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
+#[cfg(feature = "ledger")]
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
 use minotari_app_utilities::identity_management::setup_node_identity;
@@ -825,22 +826,27 @@ pub fn prompt_wallet_type(
 
     match boot_mode {
         WalletBoot::New => {
-            Some(WalletType::Software)
-            // Disabling this prompt until we decide to turn it on.
-            // if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
-            //     print!("Scanning for connected Ledger hardware device... ");
-            //     let err = "No connected device was found. Please make sure the device is plugged in before
-            // continuing.";     match TransportNativeHID::new(&HidApi::new().expect(err)) {
-            //         Ok(_) => {
-            //             println!("Device found.");
-            //             let account = prompt_ledger_account().expect("An account value");
-            //             Some(WalletType::Ledger(account))
-            //         },
-            //         Err(_) => panic!("{}", err),
-            //     }
-            // } else {
-            //   Some(WalletType::Software)
-            // }
+            #[cfg(not(feature = "ledger"))]
+            return Some(WalletType::Software);
+
+            #[cfg(feature = "ledger")]
+            {
+                if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
+                    print!("Scanning for connected Ledger hardware device... ");
+                    let err = "No connected device was found. Please make sure the device is plugged in before
+            continuing.";
+                    match TransportNativeHID::new(&HidApi::new().expect(err)) {
+                        Ok(_) => {
+                            println!("Device found.");
+                            let account = prompt_ledger_account().expect("An account value");
+                            Some(WalletType::Ledger(account))
+                        },
+                        Err(e) => panic!("{}", e),
+                    }
+                } else {
+                    Some(WalletType::Software)
+                }
+            }
         },
         _ => None,
     }
