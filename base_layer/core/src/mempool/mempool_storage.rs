@@ -32,7 +32,7 @@ use crate::{
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
-        unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolError},
+        unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
         FeePerGramStat,
         MempoolConfig,
         StateResponse,
@@ -45,7 +45,6 @@ use crate::{
     },
     validation::{TransactionValidator, ValidationError},
 };
-use crate::mempool::unconfirmed_pool::{RetrieveResults, TransactionKey};
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 
@@ -157,7 +156,6 @@ impl MempoolStorage {
             .transaction_weight_params()
     }
 
-
     /// Ensures that all transactions are safely deleted in order and from all storage and then
     /// re-inserted
     pub(crate) fn remove_and_reinsert_transactions(
@@ -165,7 +163,8 @@ impl MempoolStorage {
         transactions: Vec<(TransactionKey, Arc<Transaction>)>,
     ) -> Result<(), MempoolError> {
         for (tx_key, _) in &transactions {
-            self.unconfirmed_pool.remove_transaction(*tx_key)
+            self.unconfirmed_pool
+                .remove_transaction(*tx_key)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         }
         self.insert_txs(transactions.iter().map(|(_, tx)| tx.clone()).collect())
@@ -304,7 +303,8 @@ impl MempoolStorage {
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into the given weight
     pub fn retrieve(&self, total_weight: u64) -> Result<RetrieveResults, MempoolError> {
-        self.unconfirmed_pool.fetch_highest_priority_txs(total_weight)
+        self.unconfirmed_pool
+            .fetch_highest_priority_txs(total_weight)
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 

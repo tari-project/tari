@@ -690,7 +690,10 @@ impl UnconfirmedPool {
     }
 
     /// Ensures that all transactions are safely deleted in order and from all storage
-    pub(crate) fn remove_transaction(&mut self, tx_key: TransactionKey) -> Result<Option<Arc<Transaction>>, UnconfirmedPoolError> {
+    pub(crate) fn remove_transaction(
+        &mut self,
+        tx_key: TransactionKey,
+    ) -> Result<Option<Arc<Transaction>>, UnconfirmedPoolError> {
         let prioritized_transaction = match self.tx_by_key.remove(&tx_key) {
             Some(tx) => tx,
             None => return Ok(None),

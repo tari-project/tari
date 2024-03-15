@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::{Arc, RwLock};
-use log::debug;
 
+use log::debug;
 use tari_common_types::types::{PrivateKey, Signature};
 use tokio::task;
 
@@ -121,7 +121,8 @@ impl Mempool {
     /// Only transactions that fit into a block will be returned
     pub async fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         let start = std::time::Instant::now();
-        let retrieved = self.with_read_access(move |storage| storage.retrieve(total_weight))
+        let retrieved = self
+            .with_read_access(move |storage| storage.retrieve(total_weight))
             .await?;
         debug!(
             target: LOG_TARGET,
@@ -139,9 +140,10 @@ impl Mempool {
             );
 
             let transactions_to_remove_and_insert = retrieved.transactions_to_remove_and_insert.clone();
-            self.with_write_access(move |storage|
+            self.with_write_access(move |storage| {
                 storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)
-            ).await?;
+            })
+            .await?;
         }
 
         Ok(retrieved.retrieved_transactions)
