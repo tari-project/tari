@@ -398,11 +398,22 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 
-    fn fetch_active_validator_nodes(
+    fn fetch_all_active_validator_nodes(
         &self,
         height: u64,
     ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
+        self.db.as_ref().unwrap().fetch_all_active_validator_nodes(height)
+    }
+
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+        validator_network: Option<PublicKey>,
+    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_active_validator_nodes(height, validator_network)
     }
 
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {

@@ -92,7 +92,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
         let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
         output_smt.insert(smt_key, smt_node).unwrap();
     }
-    let vn_mmr = calculate_validator_node_mr(&[]);
+    let vn_mmr = calculate_validator_node_mr(&[]).unwrap();
 
     block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     block.header.output_mr = FixedHash::try_from(output_smt.hash().as_slice()).unwrap();

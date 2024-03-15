@@ -83,6 +83,13 @@ mod domain_hashing {
 
     pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeBmtHashDomain>;
     pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeBmtHasherBlake256>;
+
+    hash_domain!(
+        ValidatorNodeSmtHashDomain,
+        "com.tari.base_layer.core.validator_node_smt",
+        1
+    );
+    pub type ValidatorNodeSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeSmtHashDomain>;
 }
 
 #[cfg(feature = "base_node")]

@@ -1813,8 +1813,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
+        let validator_network = request
+            .validator_network
+            .as_ref()
+            .map(|n| {
+                PublicKey::from_canonical_bytes(&n)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid validator_network '{}'", e)))
+            })
+            .transpose()?;
+
         task::spawn(async move {
-            let active_validator_nodes = match handler.get_active_validator_nodes(request.height).await {
+            let active_validator_nodes = match handler
+                .get_active_validator_nodes(request.height, validator_network)
+                .await
+            {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Base node service error: {}", err,);
                     return;

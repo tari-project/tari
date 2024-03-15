@@ -83,10 +83,10 @@ impl CommandContext {
             .fetch_header(height)
             .await?
             .ok_or_else(|| anyhow!("Block at height {height} not found"))?;
-        let vns = self.blockchain_db.fetch_active_validator_nodes(height).await?;
+        let vns = self.blockchain_db.fetch_all_active_validator_nodes(height).await?;
         let next_vns = self
             .blockchain_db
-            .fetch_active_validator_nodes(next_epoch_height)
+            .fetch_all_active_validator_nodes(next_epoch_height)
             .await?;
 
         println!();

@@ -445,6 +445,7 @@ message MempoolStatsResponse {
 
 message GetActiveValidatorNodesRequest {
     uint64 height = 1;
+    optional bytes validator_network = 2;
 }
 
 message GetActiveValidatorNodesResponse {
