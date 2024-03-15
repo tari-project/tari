@@ -60,7 +60,7 @@ use tari_core::transactions::{
     transaction_components::{OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{
     hex::{from_hex, Hex},
@@ -482,8 +482,7 @@ impl AppState {
         repository_url: String,
         repository_commit_hash: String,
         fee_per_gram: MicroMinotari,
-        network: Option<PublicKey>,
-        network_knowledge_proof: Option<Signature>,
+        validator_network_key: Option<&RistrettoSecretKey>,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -499,8 +498,7 @@ impl AppState {
             binary_url,
             binary_sha,
             fee_per_gram,
-            network,
-            network_knowledge_proof,
+            validator_network_key,
             selection_criteria,
             tx_service_handle,
             inner.wallet.db.clone(),

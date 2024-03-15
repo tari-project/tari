@@ -121,6 +121,8 @@ pub enum ValidationError {
     TemplateRegistrationNetworkNotSet,
     #[error("Network knowledge proof not valid for template registration")]
     TemplateInvalidNetworkKnowledgeProof,
+    #[error("Author signature not valid for template registration")]
+    TemplateAuthorSignatureNotValid,
     #[error(
         "Network not set for confidential output. If network is set, then network_knowledge_proof must also be set"
     )]
@@ -194,6 +196,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof |
             err @ ValidationError::TemplateRegistrationNetworkNotSet |
             err @ ValidationError::TemplateInvalidNetworkKnowledgeProof |
+            err @ ValidationError::TemplateAuthorSignatureNotValid |
             err @ ValidationError::ConfidentialOutputNetworkNotSet |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |

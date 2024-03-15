@@ -169,14 +169,21 @@ fn check_confidential_output_utxo(output: &TransactionOutput) -> Result<(), Vali
 
 fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
     if let Some(temp) = output.features.code_template_registration() {
+        let challenge = temp.create_challenge(&temp.author_public_key);
+        if !temp.author_signature.verify(&temp.author_public_key, &challenge) {
+            return Err(ValidationError::TemplateAuthorSignatureNotValid);
+        }
+
         if temp.network.is_some() || temp.network_knowledge_proof.is_some() {
             // If one of these is set, both must be set
             if temp.network.is_none() || temp.network_knowledge_proof.is_none() {
                 return Err(ValidationError::TemplateRegistrationNetworkNotSet);
             }
+
             // If set, the signature must be valid
             let sig_pub_key = temp.network.as_ref().unwrap();
-            // TODO: Hash all fields in the template reg
+            // TODO: I've used the author pub key here. The author signature includes the network
+            // as part of it's challenge. Should there be other fields in here as well?
             if !temp
                 .network_knowledge_proof
                 .as_ref()
