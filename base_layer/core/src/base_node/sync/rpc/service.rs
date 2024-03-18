@@ -100,6 +100,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
         let token = Arc::new(peer);
         lock.push(Arc::downgrade(&token));
+        #[allow(clippy::cast_possible_wrap)]
         #[cfg(feature = "metrics")]
         metrics::active_sync_peers().set(lock.len() as i64);
         Ok(token)

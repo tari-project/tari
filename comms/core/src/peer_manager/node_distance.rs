@@ -205,7 +205,7 @@ mod test {
                 let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
                 let b = NodeId::from_public_key(&pk);
                 let dist = NodeDistance::from_node_ids(&a, &b);
-                let i = u32::try_from(dist.get_bucket_index()).unwrap();
+                let i = u32::from(dist.get_bucket_index());
                 let dist = dist.as_u128();
                 assert!(2u128.pow(i) <= dist, "Failed for {}, i = {}", dist, i);
                 assert!(dist < 2u128.pow(i + 1), "Failed for {}, i = {}", dist, i,);

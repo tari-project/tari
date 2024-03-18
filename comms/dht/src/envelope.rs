@@ -251,7 +251,7 @@ impl From<DhtMessageHeader> for DhtHeader {
                 .ephemeral_public_key
                 .as_ref()
                 .map(ByteArray::to_vec)
-                .unwrap_or_else(Vec::new),
+                .unwrap_or_default(),
             message_signature: header.message_signature,
             destination: Some(header.destination.into()),
             message_type: header.message_type as i32,

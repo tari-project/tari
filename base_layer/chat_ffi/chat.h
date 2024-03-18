@@ -283,12 +283,12 @@ struct ChatByteVector *read_confirmation_message_id(struct Confirmation *confirm
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_longlong` - A uint representation of time since epoch. May return -1 on error
+ * `c_longlong` - A uint representation of time since epoch
  *
  * # Safety
  * The ```confirmation``` When done with the Confirmation it should be destroyed
  */
-long long read_confirmation_timestamp(struct Confirmation *confirmation, int *error_out);
+unsigned long long read_confirmation_timestamp(struct Confirmation *confirmation, int *error_out);
 
 /**
  * Frees memory for a Confirmation

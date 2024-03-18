@@ -198,7 +198,9 @@ pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_
     }
 
     let message = &(*message);
-    message.metadata.len() as c_longlong
+    #[allow(clippy::cast_possible_wrap)]
+    let res = message.metadata.len() as i64;
+    res
 }
 
 /// Returns a pointer to a ChatByteVector representing the data of the Message
@@ -289,7 +291,7 @@ pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, erro
         return -1;
     }
 
-    c_int::try_from((*message).direction.as_byte()).unwrap_or(-1)
+    c_int::from((*message).direction.as_byte())
 }
 
 /// Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch

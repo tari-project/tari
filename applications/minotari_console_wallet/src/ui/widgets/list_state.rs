@@ -191,7 +191,7 @@ mod test {
 
     #[test]
     fn test_list_offset_update() {
-        let slist = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let slist = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let mut list_state = WindowedListState::new();
         list_state.set_num_items(slist.len());
         let height = 4;

@@ -191,7 +191,7 @@ impl PartialEq for UnblindedOutput {
 
 impl PartialOrd<UnblindedOutput> for UnblindedOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.value.partial_cmp(&other.value)
+        Some(self.cmp(other))
     }
 }
 

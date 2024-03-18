@@ -650,7 +650,7 @@ mod test {
 
     #[test]
     fn hash_type_from_slice() {
-        let arr = vec![1u8; 32];
+        let arr = [1u8; 32];
         assert!(matches!(NodeKey::try_from(&arr[..3]), Err(SMTError::ArrayTooShort(3))));
         assert!(NodeKey::try_from(&arr[..]).is_ok());
         assert!(matches!(

@@ -1324,11 +1324,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut output_smt = db.fetch_tip_smt()?;
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
 
-    for kernel in body.kernels().iter() {
+    for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
-    for output in body.outputs().iter() {
+    for output in body.outputs() {
         if !output.is_burned() {
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
@@ -1343,7 +1343,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         }
     }
 
-    for input in body.inputs().iter() {
+    for input in body.inputs() {
         input_mmr.push(input.canonical_hash().to_vec())?;
 
         let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;

@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-    time::Duration,
-};
+use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use log::*;
@@ -485,9 +481,10 @@ impl StoreAndForwardService {
 
     fn handle_fetch_message_query(&self, query: &FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         use SafResponseType::{Anonymous, Discovery, ForMe, Join};
+        #[allow(clippy::cast_possible_wrap)]
         let limit = query
             .limit
-            .and_then(|v| i64::try_from(v).ok())
+            .map(i64::from)
             .unwrap_or(self.config.max_returned_messages as i64);
         let db = &self.database;
         let messages = match query.response_type {
