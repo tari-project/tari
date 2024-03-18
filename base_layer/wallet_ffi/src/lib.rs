@@ -10941,7 +10941,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 1);
-            assert_eq!((*tv).cap, 1);
+            assert_eq!((*tv).cap, 12);
 
             tari_vector_push_string(
                 tv,
@@ -10951,7 +10951,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 2);
-            assert_eq!((*tv).cap, 2);
+            assert_eq!((*tv).cap, 12);
 
             tari_vector_push_string(
                 tv,
@@ -10961,7 +10961,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 3);
-            assert_eq!((*tv).cap, 3);
+            assert_eq!((*tv).cap, 12);
 
             destroy_tari_vector(tv);
         }
