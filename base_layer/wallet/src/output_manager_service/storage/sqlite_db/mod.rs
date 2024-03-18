@@ -574,12 +574,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        // diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
-        //     .set(outputs::last_validation_timestamp.eq(Some(Utc::now().naive_utc())))
-        //     .execute(&mut conn)
-        //     .num_rows_affected_or_not_found(hashes.len())?;
-
-        // TODO: This raw query is being evaluated, as the diesel query above is not as performant as expected.
+        // Using a raw query here, as the obvious diesel query is not as performant as expected:
+        // `diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
+        // `    .set(outputs::last_validation_timestamp.eq(Some(Utc::now().naive_utc())))
+        // `     .execute(&mut conn)
+        // `     .num_rows_affected_or_not_found(hashes.len())?;
         let sql_query = format!(
             r#"
             UPDATE outputs
