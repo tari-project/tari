@@ -29,7 +29,7 @@ mod error;
 pub use error::StorageError;
 
 mod dht_setting_entry;
-pub use dht_setting_entry::{DhtMetadataEntry, DhtMetadataKey};
+pub use dht_setting_entry::DhtMetadataKey;
 
 mod database;
 pub use database::DhtDatabase;
