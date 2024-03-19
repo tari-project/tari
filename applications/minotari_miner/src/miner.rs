@@ -222,7 +222,7 @@ pub fn mining_task(
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
             // new job
             if share_mode {
-                waker.clone().wake();
+                waker.wake_by_ref();
             } else {
                 waker.wake();
                 trace!(target: LOG_TARGET, "Mining thread {} stopped", miner);
@@ -240,7 +240,7 @@ pub fn mining_task(
                 height: hasher.height(),
                 target_difficulty,
             });
-            waker.clone().wake();
+            waker.wake_by_ref();
             trace!(target: LOG_TARGET, "Reporting from {} result {:?}", miner, res);
             if let Err(TrySendError::Disconnected(_)) = res {
                 info!(target: LOG_TARGET, "Mining thread {} disconnected", miner);

@@ -63,6 +63,7 @@ impl RandomXVMInstance {
         // light mode. These are not set by RandomX automatically even in fast mode.
 
         Ok(Self {
+            #[allow(clippy::arc_with_non_send_sync)]
             instance: Arc::new(RwLock::new(vm)),
         })
     }

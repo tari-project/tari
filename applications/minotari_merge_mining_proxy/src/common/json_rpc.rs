@@ -128,13 +128,13 @@ pub mod test {
 
     #[test]
     pub fn test_error_response() {
-        let req_id = Some(12);
+        let req_id = 12;
         let err_code = 200;
         let err_message = "error message";
-        let err_data = Some(json::json!({"test key":"test value"}));
-        let response = error_response(req_id, err_code, err_message, err_data.clone());
-        assert_eq!(response["id"], req_id.unwrap());
-        assert_eq!(response["error"]["data"], err_data.unwrap());
+        let err_data = json::json!({"test key":"test value"});
+        let response = error_response(Some(req_id), err_code, err_message, Some(err_data.clone()));
+        assert_eq!(response["id"], req_id);
+        assert_eq!(response["error"]["data"], err_data);
         assert_eq!(response["error"]["code"], err_code);
         assert_eq!(response["error"]["message"], err_message);
         let response = error_response(None, err_code, err_message, None);

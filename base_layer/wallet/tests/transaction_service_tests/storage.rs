@@ -116,7 +116,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let stp = builder.build().await.unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
-    let amounts = vec![
+    let amounts = [
         MicroMinotari::from(10_000),
         MicroMinotari::from(23_000),
         MicroMinotari::from(5_000),

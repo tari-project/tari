@@ -190,7 +190,7 @@ impl NetworkTab {
         let mut column0_items = Vec::with_capacity(peers.len());
         let mut column1_items = Vec::with_capacity(peers.len());
         let mut column2_items = Vec::with_capacity(peers.len());
-        for p in peers.iter() {
+        for p in peers {
             column0_items.push(ListItem::new(Span::raw(p.node_id.to_string())));
             column1_items.push(ListItem::new(Span::raw(p.public_key.to_string())));
             column2_items.push(ListItem::new(Span::raw(p.user_agent.clone())));
@@ -434,11 +434,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                 // set the currently selected base node as a custom base node
                 let base_node = app_state.get_selected_base_node();
                 let public_key = base_node.public_key.to_hex();
-                let address = base_node
-                    .addresses
-                    .best()
-                    .map(|a| a.to_string())
-                    .unwrap_or_else(|| "".to_string());
+                let address = base_node.addresses.best().map(|a| a.to_string()).unwrap_or_default();
 
                 match Handle::current().block_on(app_state.set_custom_base_node(public_key, address)) {
                     Ok(peer) => {

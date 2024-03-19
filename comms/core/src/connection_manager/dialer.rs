@@ -324,7 +324,7 @@ where
                 "Dial to peer '{}' already pending - adding to wait queue", peer.node_id
             );
             if let Some(reply_tx) = reply_tx {
-                let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
+                let entry = self.pending_dial_requests.entry(peer.node_id).or_default();
                 entry.push(reply_tx);
             }
             return;

@@ -1887,22 +1887,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
 
             for template_registration in template_registrations {
-                let registration = match template_registration.registration_data.try_into() {
-                    Ok(t) => t,
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending converting template registration for GRPC: {}", e
-                        );
-                        let _ignore = tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(format!("Error converting template_registration: {}", e)),
-                            )))
-                            .await;
-                        return;
-                    },
-                };
+                let registration = template_registration.registration_data.into();
 
                 let resp = tari_rpc::GetTemplateRegistrationResponse {
                     utxo_hash: template_registration.output_hash.to_vec(),

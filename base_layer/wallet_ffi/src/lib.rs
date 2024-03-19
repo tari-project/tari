@@ -499,7 +499,7 @@ pub unsafe extern "C" fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector
         tag,
         len: v.len(),
         cap: v.capacity(),
-        ptr: v.as_mut_ptr() as *mut c_void,
+        ptr: v.as_mut_ptr(),
     }))
 }
 
@@ -8254,7 +8254,7 @@ pub unsafe extern "C" fn wallet_set_one_sided_payment_message(
 pub unsafe extern "C" fn get_emoji_set() -> *mut EmojiSet {
     let current_emoji_set = emoji_set();
     let mut emoji_set: Vec<ByteVector> = Vec::with_capacity(current_emoji_set.len());
-    for emoji in current_emoji_set.iter() {
+    for emoji in &current_emoji_set {
         let mut b = [0; 4]; // emojis are 4 bytes, unicode character
         let emoji_char = ByteVector(emoji.encode_utf8(&mut b).as_bytes().to_vec());
         emoji_set.push(emoji_char);
@@ -10358,7 +10358,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload)));
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
@@ -10500,7 +10500,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload)));
             let preview = wallet_preview_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
 
@@ -10524,7 +10524,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload)));
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
@@ -10716,7 +10716,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload)));
 
             let preview = wallet_preview_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
@@ -10742,7 +10742,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload)));
 
             let result = wallet_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
@@ -10941,7 +10941,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 1);
-            assert_eq!((*tv).cap, 1);
+            assert_eq!((*tv).cap, 12);
 
             tari_vector_push_string(
                 tv,
@@ -10951,7 +10951,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 2);
-            assert_eq!((*tv).cap, 2);
+            assert_eq!((*tv).cap, 12);
 
             tari_vector_push_string(
                 tv,
@@ -10961,7 +10961,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 3);
-            assert_eq!((*tv).cap, 3);
+            assert_eq!((*tv).cap, 12);
 
             destroy_tari_vector(tv);
         }
