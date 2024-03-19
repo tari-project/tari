@@ -66,9 +66,9 @@ fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 integer-encoding = "3.0"
+ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
+ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
 lmdb-zero = "0.4.4"
-ledger-transport = { git = "https://github.com/Zondax/ledger-rs", version = "0.10", optional = true }
-ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", version = "0.10", optional = true }
 log = "0.4"
 log-mdc = "0.1.0"
 monero = { version = "0.20.0", features = ["serde-crate"], optional = true }
