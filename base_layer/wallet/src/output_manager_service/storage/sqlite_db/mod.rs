@@ -588,7 +588,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             Utc::now().naive_utc(),
             hashes
                 .iter()
-                .map(|hash| format!("'{}'", hash.to_string()))
+                .map(|hash| format!("'{}'", hash))
                 .collect::<Vec<_>>()
                 .join(",")
         );
