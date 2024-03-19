@@ -80,6 +80,7 @@ impl PeerManager {
         #[cfg(feature = "metrics")]
         {
             let count = lock.count();
+            #[allow(clippy::cast_possible_wrap)]
             metrics::peer_list_size().set(count as i64);
         }
         Ok(peer_id)
@@ -92,6 +93,7 @@ impl PeerManager {
         #[cfg(feature = "metrics")]
         {
             let count = lock.count();
+            #[allow(clippy::cast_possible_wrap)]
             metrics::peer_list_size().set(count as i64);
         }
         Ok(())
@@ -389,7 +391,7 @@ mod test {
 
         // Create 1 to 4 random addresses
         for _i in 1..=rand::thread_rng().gen_range(1..4) {
-            let n = vec![
+            let n = [
                 rand::thread_rng().gen_range(1..9),
                 rand::thread_rng().gen_range(1..9),
                 rand::thread_rng().gen_range(1..9),

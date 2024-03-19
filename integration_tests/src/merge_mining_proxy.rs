@@ -115,7 +115,7 @@ impl MergeMiningProxyProcess {
                         ),
                         (
                             "merge_mining_proxy.monerod_url".to_string(),
-                            vec![
+                            [
                                 "http://stagenet.xmr-tw.org:38081",
                                 "http://stagenet.community.xmr.to:38081",
                                 "http://monero-stagenet.exan.tech:38081",

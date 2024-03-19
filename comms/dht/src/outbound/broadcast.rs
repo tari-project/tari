@@ -431,7 +431,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Construct a DhtOutboundMessage for each recipient
         let messages = selected_peers.into_iter().map(|node_id| {
             let (reply_tx, reply_rx) = oneshot::channel();
-            let tag = tag.unwrap_or_else(MessageTag::new);
+            let tag = tag.unwrap_or_default();
             let send_state = MessageSendState::new(tag, reply_rx);
             (
                 DhtOutboundMessage {

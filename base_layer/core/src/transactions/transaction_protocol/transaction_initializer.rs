@@ -298,15 +298,15 @@ where KM: TransactionKeyManagerInterface
             .inputs
             .iter()
             .map(|i| i.output.value)
-            .fold(Ok(MicroMinotari::zero()), |acc, x| {
-                acc?.checked_add(x).ok_or("Total inputs being spent amount overflow")
+            .try_fold(MicroMinotari::zero(), |acc, x| {
+                acc.checked_add(x).ok_or("Total inputs being spent amount overflow")
             })?;
         let total_to_self = self
             .sender_custom_outputs
             .iter()
             .map(|o| o.output.value)
-            .fold(Ok(MicroMinotari::zero()), |acc, x| {
-                acc?.checked_add(x).ok_or("Total outputs to self amount overflow")
+            .try_fold(MicroMinotari::zero(), |acc, x| {
+                acc.checked_add(x).ok_or("Total outputs to self amount overflow")
             })?;
         let total_amount = match &self.recipient {
             Some(data) => data.amount,
@@ -343,8 +343,8 @@ where KM: TransactionKeyManagerInterface
         // Subtract with a check on going negative
         let total_input_value = [total_to_self, total_amount, fee_without_change]
             .iter()
-            .fold(Ok(MicroMinotari::zero()), |acc, x| {
-                acc?.checked_add(x).ok_or("Total input value overflow")
+            .try_fold(MicroMinotari::zero(), |acc, x| {
+                acc.checked_add(x).ok_or("Total input value overflow")
             })?;
         let change_amount = total_being_spent.checked_sub(total_input_value);
         match change_amount {

@@ -85,6 +85,7 @@ impl DedupCacheDatabase {
 
     /// Trims the dedup cache to the configured limit by removing the oldest entries
     pub fn trim_entries(&self) -> Result<usize, StorageError> {
+        #[allow(clippy::cast_possible_wrap)]
         let capacity = self.capacity as i64;
         let mut num_removed = 0;
         let mut conn = self.connection.get_pooled_connection()?;

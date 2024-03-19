@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, os::raw::c_longlong, ptr};
+use std::{convert::TryFrom, ptr};
 
-use libc::{c_int, c_uint};
+use libc::{c_int, c_uint, c_ulonglong};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_contacts::contacts_service::types::{Confirmation, Message};
 
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn read_confirmation_message_id(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_longlong` - A uint representation of time since epoch. May return -1 on error
+/// `c_longlong` - A uint representation of time since epoch
 ///
 /// # Safety
 /// The ```confirmation``` When done with the Confirmation it should be destroyed
@@ -120,17 +120,17 @@ pub unsafe extern "C" fn read_confirmation_message_id(
 pub unsafe extern "C" fn read_confirmation_timestamp(
     confirmation: *mut Confirmation,
     error_out: *mut c_int,
-) -> c_longlong {
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if confirmation.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
 
-    (*confirmation).timestamp as c_longlong
+    (*confirmation).timestamp as c_ulonglong
 }
 
 /// Frees memory for a Confirmation

@@ -258,7 +258,7 @@ impl Display for TransactionKernel {
 
 impl PartialOrd for TransactionKernel {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.excess_sig.partial_cmp(&other.excess_sig)
+        Some(self.cmp(other))
     }
 }
 

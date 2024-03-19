@@ -555,7 +555,7 @@ impl Eq for TransactionInput {}
 
 impl PartialOrd for TransactionInput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.output_hash().partial_cmp(&other.output_hash())
+        Some(self.cmp(other))
     }
 }
 

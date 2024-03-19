@@ -306,7 +306,6 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             let mut connectivity = node.comms.connectivity();
             let mut ims_rx = node.ims_rx.take().unwrap();
             let start = Instant::now();
-            let start_global = start_global;
             let node_name = node.name.clone();
 
             task::spawn(async move {

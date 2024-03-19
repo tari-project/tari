@@ -25,7 +25,7 @@ env:
   TBN_FEATURES: "default, safe"
   TBN_LIBRARIES: "minotari_mining_helper_ffi"
   TARI_NETWORK_DIR: testnet
-  toolchain: nightly-2023-06-04
+  toolchain: nightly-2023-12-12
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true

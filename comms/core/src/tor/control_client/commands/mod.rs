@@ -29,7 +29,7 @@ mod protocol_info;
 
 pub use add_onion::{AddOnion, AddOnionFlag, AddOnionResponse};
 pub use del_onion::DelOnion;
-pub use key_value::{get_conf, get_info, set_events, KeyValueCommand};
+pub use key_value::{get_conf, get_info, set_events};
 pub use protocol_info::{ProtocolInfo, ProtocolInfoResponse};
 
 pub trait TorCommand {

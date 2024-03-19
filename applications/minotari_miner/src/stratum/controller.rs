@@ -236,10 +236,10 @@ impl Controller {
     }
 
     fn handle_error(&mut self, error: types::rpc_error::RpcError) {
-        if vec![-1, 24].contains(&error.code) {
+        if [-1, 24].contains(&error.code) {
             // unauthorized
             let _result = self.send_login();
-        } else if vec![21, 20, 22, 23, 25].contains(&error.code) {
+        } else if [21, 20, 22, 23, 25].contains(&error.code) {
             // problem with template
             let _result = self.send_message_get_job_template();
         } else {

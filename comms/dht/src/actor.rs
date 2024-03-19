@@ -336,7 +336,7 @@ impl DhtActor {
             "DhtActor started. {}",
             offline_ts
                 .map(|dt| format!("Dht has been offline since '{}'", dt))
-                .unwrap_or_else(String::new)
+                .unwrap_or_default()
         );
 
         let mut pending_jobs = FuturesUnordered::new();
