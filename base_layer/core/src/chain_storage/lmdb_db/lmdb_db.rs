@@ -1340,7 +1340,7 @@ impl LMDBDatabase {
             end_epoch: next_epoch + constants.validator_node_validity_period_epochs(),
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
-            validator_network: vn_reg.sidechain_id().cloned(),
+            sidechain_id: vn_reg.sidechain_id().cloned(),
         };
 
         store.insert(header.height, &validator_node)?;

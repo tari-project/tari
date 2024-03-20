@@ -133,6 +133,8 @@ mod test {
         ValidatorNodeRegistration::new(
             ValidatorNodeSignature::sign(&sk, &claim_public_key, b"valid"),
             claim_public_key,
+            None,
+            None,
         )
     }
 
@@ -157,6 +159,8 @@ mod test {
             reg = ValidatorNodeRegistration::new(
                 ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
                 Default::default(),
+                None,
+                None,
             );
             assert!(!reg.is_valid_signature_for(b"valid"));
         }

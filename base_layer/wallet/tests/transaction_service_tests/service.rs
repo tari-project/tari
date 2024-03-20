@@ -1009,6 +1009,16 @@ async fn large_coin_split_transaction() {
 
 #[tokio::test]
 async fn single_transaction_burn_tari() {
+    single_transaction_burn_tari_inner(None, None).await;
+    let (sk, pk) = PublicKey::random_keypair(&mut OsRng);
+    let sig = Signature::sign(&sk, [], &mut OsRng).unwrap();
+    single_transaction_burn_tari_inner(Some(pk.clone()), Some(sig)).await;
+}
+
+async fn single_transaction_burn_tari_inner(
+    sidechain_id: Option<PublicKey>,
+    sidechain_id_knowledge_proof: Option<Signature>,
+) {
     // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
@@ -1076,6 +1086,8 @@ async fn single_transaction_burn_tari() {
             20.into(),
             message.clone(),
             Some(claim_public_key.clone()),
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         )
         .await
         .expect("Alice sending burn tx");

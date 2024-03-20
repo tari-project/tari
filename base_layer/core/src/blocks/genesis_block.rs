@@ -371,7 +371,7 @@ mod test {
 
     use super::*;
     use crate::{
-        chain_storage::calculate_validator_node_mr,
+        chain_storage::{calculate_validator_node_mr, ValidatorNodeRegistrationInfo},
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{
@@ -465,10 +465,11 @@ mod test {
                     .as_ref()
                     .and_then(|f| f.validator_node_registration())
                     .unwrap();
-                vn_nodes.push((
-                    reg.public_key().clone(),
-                    reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                ));
+                vn_nodes.push(ValidatorNodeRegistrationInfo {
+                    public_key: reg.public_key().clone(),
+                    sidechain_id: None,
+                    shard_key: reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+                });
             }
         }
 
@@ -477,7 +478,10 @@ mod test {
             FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
             block.header().output_mr,
         );
-        assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
+        assert_eq!(
+            calculate_validator_node_mr(&vn_nodes).unwrap(),
+            block.header().validator_node_mr,
+        );
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
         // is correct)

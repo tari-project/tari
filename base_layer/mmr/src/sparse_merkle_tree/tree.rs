@@ -477,7 +477,7 @@ mod test {
     #[test]
     fn zero_key() {
         let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
-        let res = tree.upsert([0u8; 32].into(), [1u8; 32].into());
+        let res = tree.upsert(NodeKey::from([0u8; 32]), [1u8; 32].into());
         assert!(res.is_ok());
     }
 

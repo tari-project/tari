@@ -94,7 +94,7 @@ pub struct ChainTipData {
     pub total_accumulated_difficulty: U256,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ValidatorNodeRegistrationInfo {
     pub public_key: PublicKey,
     pub sidechain_id: Option<PublicKey>,
