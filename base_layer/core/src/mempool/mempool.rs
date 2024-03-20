@@ -22,6 +22,7 @@
 
 use std::sync::{Arc, RwLock};
 
+use log::debug;
 use tari_common_types::types::{PrivateKey, Signature};
 use tokio::task;
 
@@ -40,6 +41,8 @@ use crate::{
     transactions::transaction_components::Transaction,
     validation::TransactionValidator,
 };
+
+pub const LOG_TARGET: &str = "c::mp::mempool";
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions that have not yet been included in a block, and
@@ -117,8 +120,33 @@ impl Mempool {
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Only transactions that fit into a block will be returned
     pub async fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        self.with_write_access(move |storage| storage.retrieve_and_revalidate(total_weight))
-            .await
+        let start = std::time::Instant::now();
+        let retrieved = self
+            .with_read_access(move |storage| storage.retrieve(total_weight))
+            .await?;
+        debug!(
+            target: LOG_TARGET,
+            "Retrieved {} highest priority transaction(s) from the mempool in {:.0?} ms",
+            retrieved.retrieved_transactions.len(),
+            start.elapsed()
+        );
+
+        if !retrieved.transactions_to_remove_and_insert.is_empty() {
+            // we need to remove all transactions that need to be rechecked.
+            debug!(
+                target: LOG_TARGET,
+                "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
+                retrieved.transactions_to_remove_and_insert.len()
+            );
+
+            let transactions_to_remove_and_insert = retrieved.transactions_to_remove_and_insert.clone();
+            self.with_write_access(move |storage| {
+                storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)
+            })
+            .await?;
+        }
+
+        Ok(retrieved.retrieved_transactions)
     }
 
     pub async fn retrieve_by_excess_sigs(
