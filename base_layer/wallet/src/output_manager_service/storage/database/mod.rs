@@ -30,7 +30,7 @@ pub use backend::OutputManagerBackend;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput},
+    types::{Commitment, FixedHash, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -44,6 +44,7 @@ use crate::output_manager_service::{
     service::Balance,
     storage::{
         models::{DbWalletOutput, KnownOneSidedPaymentScript},
+        sqlite_db::{ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         OutputStatus,
     },
 };
@@ -380,22 +381,18 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn set_received_output_mined_height_and_status(
+    pub fn set_received_outputs_mined_height_and_statuses(
         &self,
-        hash: HashOutput,
-        mined_height: u64,
-        mined_in_block: HashOutput,
-        confirmed: bool,
-        mined_timestamp: u64,
+        updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_received_output_mined_height_and_status(hash, mined_height, mined_in_block, confirmed, mined_timestamp)?;
+        db.set_received_outputs_mined_height_and_statuses(updates)?;
         Ok(())
     }
 
-    pub fn set_output_to_unmined_and_invalid(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+    pub fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_output_to_unmined_and_invalid(hash)?;
+        db.set_outputs_to_unmined_and_invalid(hashes)?;
         Ok(())
     }
 
@@ -405,27 +402,24 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn update_last_validation_timestamp(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+    pub fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.update_last_validation_timestamp(hash)?;
+        db.update_last_validation_timestamps(hashes)?;
         Ok(())
     }
 
-    pub fn mark_output_as_spent(
+    pub fn mark_outputs_as_spent(
         &self,
-        hash: HashOutput,
-        deleted_height: u64,
-        deleted_in_block: HashOutput,
-        confirmed: bool,
+        updates: Vec<SpentOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.mark_output_as_spent(hash, deleted_height, deleted_in_block, confirmed)?;
+        db.mark_outputs_as_spent(updates)?;
         Ok(())
     }
 
-    pub fn mark_output_as_unspent(&self, hash: HashOutput, confirmed: bool) -> Result<(), OutputManagerStorageError> {
+    pub fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.mark_output_as_unspent(hash, confirmed)?;
+        db.mark_outputs_as_unspent(hashes)?;
         Ok(())
     }
 

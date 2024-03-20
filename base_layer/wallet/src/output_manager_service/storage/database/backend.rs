@@ -14,6 +14,7 @@ use crate::output_manager_service::{
     storage::{
         database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
         models::DbWalletOutput,
+        sqlite_db::{ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
 };
 
@@ -37,29 +38,20 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
-
-    fn set_received_output_mined_height_and_status(
+    /// Perform a batch update of the received outputs' mined height and status
+    fn set_received_outputs_mined_height_and_statuses(
         &self,
-        hash: FixedHash,
-        mined_height: u64,
-        mined_in_block: FixedHash,
-        confirmed: bool,
-        mined_timestamp: u64,
+        updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError>;
-
-    fn set_output_to_unmined_and_invalid(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
-    fn update_last_validation_timestamp(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
+    /// Perform a batch update of the outputs' unmined and invalid state
+    fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
+    /// Perform a batch update of the outputs' last validation timestamp
+    fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
-
-    fn mark_output_as_spent(
-        &self,
-        hash: FixedHash,
-        mark_deleted_at_height: u64,
-        mark_deleted_in_block: FixedHash,
-        confirmed: bool,
-    ) -> Result<(), OutputManagerStorageError>;
-
-    fn mark_output_as_unspent(&self, hash: FixedHash, confirmed: bool) -> Result<(), OutputManagerStorageError>;
+    /// Perform a batch update of the outputs' spent status
+    fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
+    /// Perform a batch update of the outputs' unspent status
+    fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.
