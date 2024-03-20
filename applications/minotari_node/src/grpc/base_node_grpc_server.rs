@@ -61,7 +61,6 @@ use tari_core::{
             TransactionKeyManagerInterface,
             TxoStage,
         },
-        tari_amount::uT,
         transaction_components::{
             KernelBuilder,
             RangeProofType,
@@ -711,6 +710,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_new_block_with_coinbases(
         &self,
         request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
@@ -727,7 +727,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .new_template
             .ok_or(obscure_error_if_true(
                 report_error_flag,
-                Status::invalid_argument(format!("Malformed block template provided")),
+                Status::invalid_argument("Malformed block template provided".to_string()),
             ))?
             .try_into()
             .map_err(|s| {
@@ -818,7 +818,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         &spending_key_id,
                         &nonce,
                         &total_nonce,
-                        &total_excess.as_public_key(),
+                        total_excess.as_public_key(),
                         &TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
@@ -828,7 +828,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         }
         let kernel_new = KernelBuilder::new()
-            .with_fee(0 * uT)
+            .with_fee(0.into())
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
             .with_excess(&total_excess)

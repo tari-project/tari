@@ -788,7 +788,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
     assert_eq!(coinbase_kernel_count, 1);
     assert_eq!(coinbase_utxo_count, 2);
 
-    match client.submit_block(grpc::Block::try_from(new_block).unwrap()).await {
+    match client.submit_block(new_block).await {
         Ok(_) => (),
         Err(e) => panic!("The block should have been valid, {}", e),
     }

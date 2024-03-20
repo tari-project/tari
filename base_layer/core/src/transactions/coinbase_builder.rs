@@ -949,7 +949,7 @@ mod test {
                 &wo1.spending_key_id,
                 &new_nonce1,
                 &nonce,
-                &excess.as_public_key(),
+                excess.as_public_key(),
                 &TransactionKernelVersion::get_current_version(),
                 &kernel_message,
                 &kernel_1.features,
@@ -963,7 +963,7 @@ mod test {
                     &wo2.spending_key_id,
                     &new_nonce2,
                     &nonce,
-                    &excess.as_public_key(),
+                    excess.as_public_key(),
                     &TransactionKernelVersion::get_current_version(),
                     &kernel_message,
                     &kernel_1.features,
@@ -972,7 +972,7 @@ mod test {
                 .await
                 .unwrap();
         let kernel_new = KernelBuilder::new()
-            .with_fee(0 * uT)
+            .with_fee(0.into())
             .with_features(kernel_1.features)
             .with_lock_height(kernel_1.lock_height)
             .with_excess(&excess)
