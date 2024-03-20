@@ -200,7 +200,7 @@ impl BlockTemplateRepository {
         b.remove(hash.as_ref())
     }
 
-    /// Remove a particular new block template for ash and return the associated [BlockRepositoryItem] if any.
+    /// Remove a particular new block template for hash and return the associated [BlockRepositoryItem] if any.
     pub async fn remove_new_block_template<T: AsRef<[u8]>>(&self, hash: T) -> Option<TemplateRepositoryItem> {
         trace!(
             target: LOG_TARGET,
