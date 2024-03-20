@@ -35,6 +35,7 @@ use crate::chain_storage::{
     },
     ChainStorageError,
     ValidatorNodeEntry,
+    ValidatorNodeRegistrationInfo,
 };
 
 pub type ShardKey = [u8; 32];
@@ -136,7 +137,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         &self,
         start_height: u64,
         end_height: u64,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, ShardKey)>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let mut cursor = self.db_read_cursor()?;
 
         let mut nodes = Vec::new();
@@ -150,7 +151,11 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     return Ok(Vec::new());
                 }
                 dedup_map.insert(vn.public_key.clone(), 0);
-                nodes.push(Some((vn.public_key, vn.validator_network, vn.shard_key)));
+                nodes.push(Some(ValidatorNodeRegistrationInfo {
+                    public_key: vn.public_key,
+                    validator_network: vn.validator_network,
+                    shard_key: vn.shard_key,
+                }));
             },
             None => return Ok(Vec::new()),
         }
@@ -169,12 +174,20 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     .expect("get_vn_set: internal dedeup map is not in sync with nodes");
                 *node_mut = None;
             }
-            nodes.push(Some((vn.public_key, vn.validator_network, vn.shard_key)));
+            nodes.push(Some(ValidatorNodeRegistrationInfo {
+                public_key: vn.public_key,
+                validator_network: vn.validator_network,
+                shard_key: vn.shard_key,
+            }));
             i += 1;
         }
 
         let mut vn_set = nodes.into_iter().flatten().collect::<Vec<_>>();
-        vn_set.sort_by(|(_, a, c), (_, b, d)| a.cmp(b).then(c.cmp(d)));
+        vn_set.sort_by(|vn_a, vn_b| {
+            vn_a.validator_network
+                .cmp(&vn_b.validator_network)
+                .then(vn_a.shard_key.cmp(&vn_b.shard_key))
+        });
         Ok(vn_set)
     }
 

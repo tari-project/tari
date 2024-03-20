@@ -40,14 +40,13 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
     sparse_merkle_tree::{DeleteResult, NodeKey, SparseMerkleTree, ValueHash},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::TemplateRegistrationEntry;
+use super::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{
         Block,
@@ -1244,7 +1243,7 @@ where B: BlockchainBackend
     pub fn fetch_all_active_validator_nodes(
         &self,
         height: u64,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_all_active_validator_nodes(height)
     }
@@ -1253,7 +1252,7 @@ where B: BlockchainBackend
         &self,
         height: u64,
         validator_network: Option<PublicKey>,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(height, validator_network)
     }
@@ -1392,7 +1391,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 }
 
 pub fn calculate_validator_node_mr(
-    validator_nodes: &[(PublicKey, Option<PublicKey>, [u8; 32])],
+    validator_nodes: &[ValidatorNodeRegistrationInfo],
 ) -> Result<tari_mmr::Hash, ChainStorageError> {
     fn hash_node((pk, s): &(&PublicKey, &[u8; 32])) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
@@ -1403,7 +1402,12 @@ pub fn calculate_validator_node_mr(
     }
 
     let mut hash_map = HashMap::new();
-    for (pk, network, shard_key) in validator_nodes {
+    for ValidatorNodeRegistrationInfo {
+        public_key: pk,
+        validator_network: network,
+        shard_key,
+    } in validator_nodes
+    {
         hash_map
             .entry(network.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
             .or_insert_with(|| Vec::with_capacity(1))

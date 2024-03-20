@@ -38,7 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::TemplateRegistrationEntry,
+    chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::PowAlgorithm,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
@@ -285,7 +285,7 @@ impl LocalNodeCommsInterface {
         &mut self,
         height: u64,
         validator_network: Option<PublicKey>,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, CommsInterfaceError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchValidatorNodesKeys {

@@ -92,6 +92,7 @@ use crate::{
         Reorg,
         TemplateRegistrationEntry,
         ValidatorNodeEntry,
+        ValidatorNodeRegistrationInfo,
     },
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
@@ -2394,7 +2395,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_all_active_validator_nodes(
         &self,
         height: u64,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
         let constants = self.consensus_manager.consensus_constants(height);
@@ -2414,11 +2415,11 @@ impl BlockchainBackend for LMDBDatabase {
         &self,
         height: u64,
         validator_network: Option<PublicKey>,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let nodes = self
             .fetch_all_active_validator_nodes(height)?
             .into_iter()
-            .filter(|(_, network, _)| network == &validator_network)
+            .filter(|vn| vn.validator_network == validator_network)
             .collect();
         Ok(nodes)
     }

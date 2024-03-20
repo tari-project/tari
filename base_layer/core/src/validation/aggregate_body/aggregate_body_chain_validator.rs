@@ -31,7 +31,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput, TransactionOutput},
+        transaction_components::{TransactionError, TransactionInput},
     },
     validation::{
         helpers::{check_input_is_utxo, check_not_duplicate_txo, check_tari_script_byte_size},
@@ -60,18 +60,13 @@ impl AggregateBodyChainLinkedValidator {
     ) -> Result<AggregateBody, ValidationError> {
         let constants = self.consensus_manager.consensus_constants(height);
 
-        self.validate_consensus(body, db, constants)?;
+        self.validate_consensus(body, db)?;
         let body = self.validate_input_and_maturity(body, db, constants, height)?;
 
         Ok(body)
     }
 
-    fn validate_consensus<B: BlockchainBackend>(
-        &self,
-        body: &AggregateBody,
-        db: &B,
-        constants: &ConsensusConstants,
-    ) -> Result<(), ValidationError> {
+    fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
         Ok(())
     }

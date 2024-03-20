@@ -9,14 +9,10 @@ use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use regex::Regex;
 use reqwest::StatusCode;
-use tari_common_types::types::Signature;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
-use tari_crypto::{
-    hashing::DomainSeparation,
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
+use tari_crypto::{hashing::DomainSeparation, ristretto::RistrettoSecretKey};
 use tari_hash_domains::TariEngineHashDomain;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::hex::Hex;
 use tokio::{
     runtime::{Handle, Runtime},
     sync::watch,
@@ -801,6 +797,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             },
             'u' => self.input_mode = InputMode::RepositoryUrl,
             'h' => self.input_mode = InputMode::RepositoryCommitHash,
+            'x' => self.input_mode = InputMode::ValidatorNetwork,
             's' => {
                 // ----------------------------------------------------------------------------
                 // basic field value validation
@@ -889,7 +886,9 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                 let _ = self.fee_per_gram.pop();
             },
             InputMode::None => {},
-            InputMode::ValidatorNetwork => {},
+            InputMode::ValidatorNetwork => {
+                let _ = self.validator_network_key_field.pop();
+            },
         }
     }
 }

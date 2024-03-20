@@ -36,12 +36,11 @@ use tari_common_types::{
     types::{PublicKey, Signature},
 };
 use tari_core::{
-    consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
+    consensus::{MaxSizeBytes, MaxSizeString},
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components,
-        transaction_components::{BuildInfo, OutputFeatures, SideChainFeature::CodeTemplateRegistration, TemplateType},
-        TransactionHashDomain,
+        transaction_components::{BuildInfo, OutputFeatures, TemplateType},
     },
 };
 use tari_crypto::{
@@ -450,13 +449,10 @@ pub async fn send_register_template_transaction_task(
     let author_public_key = PublicKey::from_secret_key(&author_private_key);
     let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
 
-    let pub_validator_key = match validator_network_key {
-        Some(key) => Some(PublicKey::from_secret_key(&key)),
-        None => None,
-    };
+    let pub_validator_key = validator_network_key.map(PublicKey::from_secret_key);
 
     let network_knowledge_proof = match validator_network_key {
-        Some(key) => Some(match Signature::sign(&key, author_public_key.to_vec(), &mut OsRng) {
+        Some(key) => Some(match Signature::sign(key, author_public_key.to_vec(), &mut OsRng) {
             Ok(signature) => signature,
             Err(e) => {
                 error!(target: LOG_TARGET, "failed to sign network knowledge proof: {}", e);

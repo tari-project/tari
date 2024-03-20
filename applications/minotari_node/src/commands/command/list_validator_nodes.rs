@@ -23,7 +23,8 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::{epoch::VnEpoch, types::PublicKey};
+use tari_common_types::epoch::VnEpoch;
+use tari_core::chain_storage::ValidatorNodeRegistrationInfo;
 use tari_utilities::hex::{to_hex, Hex};
 
 use super::{CommandContext, HandleCommand};
@@ -43,11 +44,16 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    async fn print_validator_nodes_list(&mut self, vns: &[(PublicKey, Option<PublicKey>, [u8; 32])]) {
+    async fn print_validator_nodes_list(&mut self, vns: &[ValidatorNodeRegistrationInfo]) {
         let num_vns = vns.len();
         let mut table = Table::new();
         table.set_titles(vec!["Public Key", "VN Network", "Shard ID"]);
-        for (public_key, validator_network, shard_key) in vns {
+        for ValidatorNodeRegistrationInfo {
+            public_key,
+            validator_network,
+            shard_key,
+        } in vns
+        {
             table.add_row(row![
                 public_key,
                 validator_network

@@ -59,6 +59,7 @@ use crate::{
         OutputMinedInfo,
         Reorg,
         TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -401,7 +402,7 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_all_active_validator_nodes(
         &self,
         height: u64,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_all_active_validator_nodes(height)
     }
 
@@ -409,7 +410,7 @@ impl BlockchainBackend for TempDatabase {
         &self,
         height: u64,
         validator_network: Option<PublicKey>,
-    ) -> Result<Vec<(PublicKey, Option<PublicKey>, [u8; 32])>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()

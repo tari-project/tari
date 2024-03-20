@@ -60,7 +60,7 @@ use tari_core::transactions::{
     transaction_components::{OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
-use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{
     hex::{from_hex, Hex},
