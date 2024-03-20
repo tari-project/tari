@@ -113,7 +113,7 @@ pub struct RegisterTemplateTab {
     template_version: String,
     fee_per_gram: String,
     template_type: String,
-    validator_network_key_field: String,
+    sidechain_id_key_field: String,
     error_message: Option<String>,
     success_message: Option<String>,
     offline_message: Option<String>,
@@ -132,7 +132,7 @@ impl RegisterTemplateTab {
             binary_checksum: String::new(),
             template_version: String::new(),
             template_name: String::new(),
-            validator_network_key_field: String::new(),
+            sidechain_id_key_field: String::new(),
             error_message: None,
             success_message: None,
             offline_message: None,
@@ -343,13 +343,17 @@ impl RegisterTemplateTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram:"));
         f.render_widget(fee_per_gram, fourth_row_layout[2]);
 
-        let validator_network_key_field = Paragraph::new(self.validator_network_key_field.as_ref())
+        let sidechain_id_key_field = Paragraph::new(self.sidechain_id_key_field.as_ref())
             .style(match self.input_mode {
-                InputMode::ValidatorNetwork => Style::default().fg(Color::Magenta),
+                InputMode::SidechainIdKey => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
-            .block(Block::default().borders(Borders::ALL).title("Validator Network:"));
-        f.render_widget(validator_network_key_field, fifth_row_layout[0]);
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Sidechain Deployment Key (x):"),
+            );
+        f.render_widget(sidechain_id_key_field, fifth_row_layout[0]);
 
         // ----------------------------------------------------------------------------
         // field cursor placement
@@ -385,8 +389,8 @@ impl RegisterTemplateTab {
                 fourth_row_layout[1].x + self.repository_commit_hash.width() as u16 + 1,
                 fourth_row_layout[1].y + 1,
             ),
-            InputMode::ValidatorNetwork => f.set_cursor(
-                fifth_row_layout[0].x + self.validator_network_key_field.width() as u16 + 1,
+            InputMode::SidechainIdKey => f.set_cursor(
+                fifth_row_layout[0].x + self.sidechain_id_key_field.width() as u16 + 1,
                 fifth_row_layout[0].y + 1,
             ),
         }
@@ -497,20 +501,19 @@ impl RegisterTemplateTab {
                             Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
                         return KeyHandled::Handled;
                     };
-                    let mut validator_network = None;
-                    if !self.validator_network_key_field.is_empty() {
-                        validator_network = if let Ok(network) =
-                            RistrettoSecretKey::from_hex(self.validator_network_key_field.as_str())
-                        {
-                            Some(network)
-                        } else {
-                            self.confirmation_dialog = None;
-                            self.error_message = Some(
-                                "Validator Network should be a valid public key or blank \nPress Enter to continue."
-                                    .to_string(),
-                            );
-                            return KeyHandled::Handled;
-                        };
+                    let mut sidechain_id = None;
+                    if !self.sidechain_id_key_field.is_empty() {
+                        sidechain_id =
+                            if let Ok(network) = RistrettoSecretKey::from_hex(self.sidechain_id_key_field.as_str()) {
+                                Some(network)
+                            } else {
+                                self.confirmation_dialog = None;
+                                self.error_message = Some(
+                                    "Sidechain ID should be a valid secret key or blank \nPress Enter to continue."
+                                        .to_string(),
+                                );
+                                return KeyHandled::Handled;
+                            };
                     }
 
                     let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
@@ -526,7 +529,7 @@ impl RegisterTemplateTab {
                         self.repository_url.clone(),
                         self.repository_commit_hash.clone(),
                         fee_per_gram,
-                        validator_network.as_ref(),
+                        sidechain_id.as_ref(),
                         UtxoSelectionCriteria::default(),
                         tx,
                     )) {
@@ -560,7 +563,7 @@ impl RegisterTemplateTab {
     fn on_key_send_input(&mut self, c: char) -> KeyHandled {
         if self.input_mode != InputMode::None {
             match self.input_mode {
-                InputMode::None | InputMode::ValidatorNetwork => (),
+                InputMode::None | InputMode::SidechainIdKey => (),
                 InputMode::BinaryUrl => match c {
                     '\n' => {
                         let rt = Runtime::new().expect("Failed to start tokio runtime");
@@ -797,7 +800,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             },
             'u' => self.input_mode = InputMode::RepositoryUrl,
             'h' => self.input_mode = InputMode::RepositoryCommitHash,
-            'x' => self.input_mode = InputMode::ValidatorNetwork,
+            'x' => self.input_mode = InputMode::SidechainIdKey,
             's' => {
                 // ----------------------------------------------------------------------------
                 // basic field value validation
@@ -886,8 +889,8 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                 let _ = self.fee_per_gram.pop();
             },
             InputMode::None => {},
-            InputMode::ValidatorNetwork => {
-                let _ = self.validator_network_key_field.pop();
+            InputMode::SidechainIdKey => {
+                let _ = self.sidechain_id_key_field.pop();
             },
         }
     }
@@ -903,7 +906,7 @@ enum InputMode {
     RepositoryUrl,
     RepositoryCommitHash,
     FeePerGram,
-    ValidatorNetwork,
+    SidechainIdKey,
 }
 
 #[derive(PartialEq, Debug)]

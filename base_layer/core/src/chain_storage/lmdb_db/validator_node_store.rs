@@ -153,7 +153,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 dedup_map.insert(vn.public_key.clone(), 0);
                 nodes.push(Some(ValidatorNodeRegistrationInfo {
                     public_key: vn.public_key,
-                    validator_network: vn.validator_network,
+                    sidechain_id: vn.validator_network,
                     shard_key: vn.shard_key,
                 }));
             },
@@ -176,7 +176,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             }
             nodes.push(Some(ValidatorNodeRegistrationInfo {
                 public_key: vn.public_key,
-                validator_network: vn.validator_network,
+                sidechain_id: vn.validator_network,
                 shard_key: vn.shard_key,
             }));
             i += 1;
@@ -184,8 +184,8 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
         let mut vn_set = nodes.into_iter().flatten().collect::<Vec<_>>();
         vn_set.sort_by(|vn_a, vn_b| {
-            vn_a.validator_network
-                .cmp(&vn_b.validator_network)
+            vn_a.sidechain_id
+                .cmp(&vn_b.sidechain_id)
                 .then(vn_a.shard_key.cmp(&vn_b.shard_key))
         });
         Ok(vn_set)

@@ -604,20 +604,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
-                if message.validator_network.is_empty() {
+                if message.sidechain_id.is_empty() {
                     None
                 } else {
                     Some(
-                        PublicKey::from_canonical_bytes(&message.validator_network)
+                        PublicKey::from_canonical_bytes(&message.sidechain_id)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
-                if message.validator_network_knowledge_proof.is_none() {
+                if message.sidechain_id_knowledge_proof.is_none() {
                     None
                 } else {
                     Some(
                         message
-                            .validator_network_knowledge_proof
+                            .sidechain_id_knowledge_proof
                             .unwrap()
                             .try_into()
                             .map_err(Status::invalid_argument)?,
@@ -1030,20 +1030,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
             .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
-        let validator_network = if request.validator_network.is_empty() {
+        let sidechain_id = if request.sidechain_id.is_empty() {
             None
         } else {
             Some(
-                PublicKey::from_canonical_bytes(&request.validator_network)
-                    .map_err(|_| Status::invalid_argument("Network is malformed"))?,
+                PublicKey::from_canonical_bytes(&request.sidechain_id)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
             )
         };
 
-        let validator_network_knowledge_proof = request
-            .validator_network_knowledge_proof
+        let sidechain_id_knowledge_proof = request
+            .sidechain_id_knowledge_proof
             .map(|v| {
                 v.try_into()
-                    .map_err(|_| Status::invalid_argument("Validator network knowledge proof is malformed"))
+                    .map_err(|_| Status::invalid_argument("SidechainId knowledge proof is malformed"))
             })
             .transpose()?;
         let constants = self.get_consensus_constants().map_err(|e| {
@@ -1057,8 +1057,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                validator_network,
-                validator_network_knowledge_proof,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,

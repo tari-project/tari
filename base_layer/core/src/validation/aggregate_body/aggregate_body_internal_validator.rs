@@ -147,20 +147,20 @@ impl AggregateBodyInternalConsistencyValidator {
 
 fn check_confidential_output_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
     if let Some(conf_output) = output.features.confidential_output_data() {
-        if conf_output.network.is_some() || conf_output.network_knowledge_proof.is_some() {
+        if conf_output.sidechain_id.is_some() || conf_output.sidechain_id_knowledge_proof.is_some() {
             // If one of these is set, both must be set
-            if conf_output.network.is_none() || conf_output.network_knowledge_proof.is_none() {
-                return Err(ValidationError::ConfidentialOutputNetworkNotSet);
+            if conf_output.sidechain_id.is_none() || conf_output.sidechain_id_knowledge_proof.is_none() {
+                return Err(ValidationError::ConfidentialOutputSidechainNotSet);
             }
             // If set, the signature must be valid
-            let sig_pub_key = conf_output.network.as_ref().unwrap();
+            let sig_pub_key = conf_output.sidechain_id.as_ref().unwrap();
             if !conf_output
-                .network_knowledge_proof
+                .sidechain_id_knowledge_proof
                 .as_ref()
                 .unwrap()
                 .verify(sig_pub_key, conf_output.claim_public_key.to_vec())
             {
-                return Err(ValidationError::TemplateInvalidNetworkKnowledgeProof);
+                return Err(ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid);
             }
         }
     }
@@ -174,23 +174,23 @@ fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), Va
             return Err(ValidationError::TemplateAuthorSignatureNotValid);
         }
 
-        if temp.network.is_some() || temp.network_knowledge_proof.is_some() {
+        if temp.sidechain_id.is_some() || temp.sidechain_id_knowledge_proof.is_some() {
             // If one of these is set, both must be set
-            if temp.network.is_none() || temp.network_knowledge_proof.is_none() {
-                return Err(ValidationError::TemplateRegistrationNetworkNotSet);
+            if temp.sidechain_id.is_none() || temp.sidechain_id_knowledge_proof.is_none() {
+                return Err(ValidationError::TemplateRegistrationSidechainNotSet);
             }
 
             // If set, the signature must be valid
-            let sig_pub_key = temp.network.as_ref().unwrap();
+            let sig_pub_key = temp.sidechain_id.as_ref().unwrap();
             // TODO: I've used the author pub key here. The author signature includes the network
             // as part of it's challenge. Should there be other fields in here as well?
             if !temp
-                .network_knowledge_proof
+                .sidechain_id_knowledge_proof
                 .as_ref()
                 .unwrap()
                 .verify(sig_pub_key, temp.author_public_key.to_vec())
             {
-                return Err(ValidationError::TemplateInvalidNetworkKnowledgeProof);
+                return Err(ValidationError::TemplateInvalidSidechainIdKnowledgeProof);
             }
         }
     }
@@ -452,19 +452,19 @@ fn check_validator_node_registration_utxo(
             return Err(ValidationError::InvalidValidatorNodeSignature);
         }
 
-        if reg.network().is_some() || reg.network_knowledge_proof().is_some() {
+        if reg.sidechain_id().is_some() || reg.sidechain_id_knowledge_proof().is_some() {
             // If one of these is set, both must be set
-            if reg.network().is_none() || reg.network_knowledge_proof().is_none() {
-                return Err(ValidationError::ValidatorNodeRegistrationNetworkNotSet);
+            if reg.sidechain_id().is_none() || reg.sidechain_id_knowledge_proof().is_none() {
+                return Err(ValidationError::ValidatorNodeRegistrationSidechainNotSet);
             }
             // If set, the signature must be valid
-            let sig_pub_key = reg.network().unwrap();
+            let sig_pub_key = reg.sidechain_id().unwrap();
             if !reg
-                .network_knowledge_proof()
+                .sidechain_id_knowledge_proof()
                 .unwrap()
                 .verify(sig_pub_key, reg.public_key().to_vec())
             {
-                return Err(ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof);
+                return Err(ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
             }
         }
     }

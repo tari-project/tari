@@ -400,8 +400,8 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
-        network: Option<String>,
-        network_knowledge_proof: Option<String>,
+        sidechain_id: Option<String>,
+        sidechain_id_knowledge_proof: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -429,16 +429,16 @@ impl AppState {
             },
         };
 
-        let network = match network {
+        let sidechain_id_pub = match sidechain_id {
             None => None,
-            Some(network) => match PublicKey::from_hex(network.as_str()) {
-                Ok(network) => Some(network),
+            Some(sidechain_id) => match PublicKey::from_hex(sidechain_id.as_str()) {
+                Ok(s) => Some(s),
                 Err(_) => return Err(UiError::PublicKeyParseError),
             },
         };
-        let network_knowledge_proof = match network_knowledge_proof {
+        let sc_knowledge_proof = match sidechain_id_knowledge_proof {
             None => None,
-            Some(network_knowledge_proof) => match Vec::<u8>::from_hex(network_knowledge_proof.as_str()) {
+            Some(s) => match Vec::<u8>::from_hex(s.as_str()) {
                 Ok(bytes) => {
                     if bytes.len() < 64 {
                         return Err(UiError::SignatureParseError);
@@ -460,8 +460,8 @@ impl AppState {
             selection_criteria,
             message,
             fee_per_gram,
-            network,
-            network_knowledge_proof,
+            sidechain_id_pub,
+            sc_knowledge_proof,
             tx_service_handle,
             inner.wallet.db.clone(),
             result_tx,
@@ -482,7 +482,7 @@ impl AppState {
         repository_url: String,
         repository_commit_hash: String,
         fee_per_gram: MicroMinotari,
-        validator_network_key: Option<&RistrettoSecretKey>,
+        sidechain_id_key: Option<&RistrettoSecretKey>,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -498,7 +498,7 @@ impl AppState {
             binary_url,
             binary_sha,
             fee_per_gram,
-            validator_network_key,
+            sidechain_id_key,
             selection_criteria,
             tx_service_handle,
             inner.wallet.db.clone(),

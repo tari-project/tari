@@ -445,13 +445,13 @@ message MempoolStatsResponse {
 
 message GetActiveValidatorNodesRequest {
     uint64 height = 1;
-    optional bytes validator_network = 2;
+    optional bytes sidechain_id = 2;
 }
 
 message GetActiveValidatorNodesResponse {
     bytes shard_key = 1;
     bytes public_key = 2;
-    bytes validator_network = 3;
+    bytes sidechain_id = 3;
 }
 
 message GetShardKeyRequest {

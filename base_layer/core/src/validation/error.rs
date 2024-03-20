@@ -116,26 +116,30 @@ pub enum ValidationError {
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
     #[error(
-        "Network not set for template registration. If network is set, then network_knowledge_proof must also be set"
+        "Sidechain not set for template registration. If sidechain_id is set, then sidechain_id_knowledge_proof must \
+         also be set"
     )]
-    TemplateRegistrationNetworkNotSet,
-    #[error("Network knowledge proof not valid for template registration")]
-    TemplateInvalidNetworkKnowledgeProof,
+    TemplateRegistrationSidechainNotSet,
+    #[error("Sidechain ID knowledge proof not valid for template registration")]
+    TemplateInvalidSidechainIdKnowledgeProof,
     #[error("Author signature not valid for template registration")]
     TemplateAuthorSignatureNotValid,
     #[error(
-        "Network not set for confidential output. If network is set, then network_knowledge_proof must also be set"
+        "Sidechain not set for confidential output. If sidechain_id is set, then sidechain_id_knowledge_proof must \
+         also be set"
     )]
-    ConfidentialOutputNetworkNotSet,
+    ConfidentialOutputSidechainNotSet,
+    #[error("Sidechain ID knowledge proof not valid for confidential output")]
+    ConfidentialOutputSidechainIdKnowledgeProofNotValid,
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
     #[error(
-        "Network not set for validator node registration. If network is set, then network_knowledge_proof must also \
-         be set"
+        "Sidechain not set for validator node registration. If sidechain_id is set, then sidechain_id_knowledge_proof \
+         must also be set"
     )]
-    ValidatorNodeRegistrationNetworkNotSet,
-    #[error("Network knowledge proof not valid for validator node registration")]
-    ValidatorNodeInvalidNetworkKnowledgeProof,
+    ValidatorNodeRegistrationSidechainNotSet,
+    #[error("Sidechain ID knowledge proof not valid for validator node registration")]
+    ValidatorNodeInvalidSidechainIdKnowledgeProof,
     #[error(
         "An unexpected number of timestamps were provided to the header validator. THIS IS A BUG. Expected \
          {expected}, got {actual}"
@@ -192,12 +196,13 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |
-            err @ ValidationError::ValidatorNodeRegistrationNetworkNotSet |
-            err @ ValidationError::ValidatorNodeInvalidNetworkKnowledgeProof |
-            err @ ValidationError::TemplateRegistrationNetworkNotSet |
-            err @ ValidationError::TemplateInvalidNetworkKnowledgeProof |
+            err @ ValidationError::ValidatorNodeRegistrationSidechainNotSet |
+            err @ ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof |
+            err @ ValidationError::TemplateRegistrationSidechainNotSet |
+            err @ ValidationError::TemplateInvalidSidechainIdKnowledgeProof |
             err @ ValidationError::TemplateAuthorSignatureNotValid |
-            err @ ValidationError::ConfidentialOutputNetworkNotSet |
+            err @ ValidationError::ConfidentialOutputSidechainNotSet |
+            err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {

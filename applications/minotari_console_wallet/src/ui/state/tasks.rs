@@ -249,8 +249,8 @@ pub async fn send_burn_transaction_task(
     selection_criteria: UtxoSelectionCriteria,
     message: String,
     fee_per_gram: MicroMinotari,
-    network: Option<PublicKey>,
-    network_knowledge_proof: Option<Signature>,
+    sidechain_id: Option<PublicKey>,
+    sidechain_id_knowledge_proof: Option<Signature>,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -269,8 +269,8 @@ pub async fn send_burn_transaction_task(
             fee_per_gram,
             message,
             claim_public_key,
-            network,
-            network_knowledge_proof,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         )
         .await
         .map_err(|err| {
@@ -361,7 +361,7 @@ pub async fn send_register_template_transaction_task(
     binary_url: String,
     binary_sha: String,
     fee_per_gram: MicroMinotari,
-    validator_network_key: Option<&RistrettoSecretKey>,
+    sidechain_id_key: Option<&RistrettoSecretKey>,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,
@@ -449,9 +449,9 @@ pub async fn send_register_template_transaction_task(
     let author_public_key = PublicKey::from_secret_key(&author_private_key);
     let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
 
-    let pub_validator_key = validator_network_key.map(PublicKey::from_secret_key);
+    let pub_validator_key = sidechain_id_key.map(PublicKey::from_secret_key);
 
-    let network_knowledge_proof = match validator_network_key {
+    let sidechain_id_knowledge_proof = match sidechain_id_key {
         Some(key) => Some(match Signature::sign(key, author_public_key.to_vec(), &mut OsRng) {
             Ok(signature) => signature,
             Err(e) => {
@@ -492,7 +492,7 @@ pub async fn send_register_template_transaction_task(
             binary_url,
             fee_per_gram,
             pub_validator_key,
-            network_knowledge_proof,
+            sidechain_id_knowledge_proof,
         )
         .await;
 

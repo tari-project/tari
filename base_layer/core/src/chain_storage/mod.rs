@@ -97,6 +97,6 @@ pub struct ChainTipData {
 #[derive(Debug, Clone)]
 pub struct ValidatorNodeRegistrationInfo {
     pub public_key: PublicKey,
-    pub validator_network: Option<PublicKey>,
+    pub sidechain_id: Option<PublicKey>,
     pub shard_key: [u8; 32],
 }

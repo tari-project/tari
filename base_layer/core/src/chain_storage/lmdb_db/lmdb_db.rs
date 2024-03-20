@@ -1340,7 +1340,7 @@ impl LMDBDatabase {
             end_epoch: next_epoch + constants.validator_node_validity_period_epochs(),
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
-            validator_network: vn_reg.network().cloned(),
+            validator_network: vn_reg.sidechain_id().cloned(),
         };
 
         store.insert(header.height, &validator_node)?;
@@ -2419,7 +2419,7 @@ impl BlockchainBackend for LMDBDatabase {
         let nodes = self
             .fetch_all_active_validator_nodes(height)?
             .into_iter()
-            .filter(|vn| vn.validator_network == validator_network)
+            .filter(|vn| vn.sidechain_id == validator_network)
             .collect();
         Ok(nodes)
     }

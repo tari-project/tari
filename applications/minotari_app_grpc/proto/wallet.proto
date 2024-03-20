@@ -106,8 +106,8 @@ message CreateBurnTransactionRequest{
     uint64 fee_per_gram = 2;
     string message = 3;
     bytes claim_public_key = 4;
-    bytes validator_network = 5;
-    Signature validator_network_knowledge_proof = 6;
+    bytes sidechain_id = 5;
+    Signature sidechain_id_knowledge_proof = 6;
 }
 
 
@@ -342,8 +342,8 @@ message RegisterValidatorNodeRequest {
     bytes validator_node_claim_public_key = 3;
     uint64 fee_per_gram = 4;
     string message = 5;
-    bytes validator_network = 6;
-    Signature validator_network_knowledge_proof = 7;
+    bytes sidechain_id = 6;
+    Signature sidechain_id_knowledge_proof = 7;
 }
 
 message RegisterValidatorNodeResponse {

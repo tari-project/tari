@@ -27,6 +27,6 @@ use tari_common_types::types::{PublicKey, Signature};
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ConfidentialOutputData {
     pub claim_public_key: PublicKey,
-    pub network: Option<PublicKey>,
-    pub network_knowledge_proof: Option<Signature>,
+    pub sidechain_id: Option<PublicKey>,
+    pub sidechain_id_knowledge_proof: Option<Signature>,
 }

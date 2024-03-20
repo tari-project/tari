@@ -658,8 +658,8 @@ where
                 fee_per_gram,
                 message,
                 claim_public_key,
-                network,
-                network_knowledge_proof,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
             } => self
                 .burn_tari(
                     amount,
@@ -667,8 +667,8 @@ where
                     fee_per_gram,
                     message,
                     claim_public_key,
-                    network,
-                    network_knowledge_proof,
+                    sidechain_id,
+                    sidechain_id_knowledge_proof,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -681,8 +681,8 @@ where
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                validator_network,
-                validator_network_knowledge_proof,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -693,8 +693,8 @@ where
                     validator_node_public_key,
                     validator_node_signature,
                     validator_node_claim_public_key,
-                    validator_network,
-                    validator_network_knowledge_proof,
+                    sidechain_id,
+                    sidechain_id_knowledge_proof,
                     selection_criteria,
                     fee_per_gram,
                     message,
@@ -715,8 +715,8 @@ where
                 binary_sha,
                 binary_url,
                 fee_per_gram,
-                network,
-                network_knowledge_proof,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
             } => {
                 self.register_code_template(
                     fee_per_gram,
@@ -729,8 +729,8 @@ where
                         build_info,
                         binary_sha,
                         binary_url,
-                        network,
-                        network_knowledge_proof,
+                        sidechain_id,
+                        sidechain_id_knowledge_proof,
                     },
                     UtxoSelectionCriteria::default(),
                     format!("Template Registration: {}", template_name),
@@ -1538,8 +1538,8 @@ where
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
-        network: Option<PublicKey>,
-        network_knowledge_proof: Option<Signature>,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1549,7 +1549,7 @@ where
         let output_features = claim_public_key
             .as_ref()
             .cloned()
-            .map(|c| OutputFeatures::create_burn_confidential_output(c, network, network_knowledge_proof))
+            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_id, sidechain_id_knowledge_proof))
             .unwrap_or_else(OutputFeatures::create_burn_output);
 
         // Prepare sender part of the transaction
@@ -1760,8 +1760,8 @@ where
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: PublicKey,
-        validator_network: Option<PublicKey>,
-        validator_network_knowledge_proof: Option<Signature>,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -1777,8 +1777,8 @@ where
             validator_node_public_key,
             validator_node_signature,
             validator_node_claim_public_key,
-            validator_network,
-            validator_network_knowledge_proof,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         );
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),

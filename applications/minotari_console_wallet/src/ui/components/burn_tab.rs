@@ -32,8 +32,8 @@ pub struct BurnTab {
     burn_input_mode: BurnInputMode,
     burnt_proof_filepath_field: String,
     claim_public_key_field: String,
-    network_field: String,
-    network_knowledge_proof_field: String,
+    sidechain_id_field: String,
+    sidechain_id_knowledge_proof_field: String,
     amount_field: String,
     fee_field: String,
     message_field: String,
@@ -53,8 +53,8 @@ impl BurnTab {
             burn_input_mode: BurnInputMode::None,
             burnt_proof_filepath_field: String::new(),
             claim_public_key_field: String::new(),
-            network_field: String::new(),
-            network_knowledge_proof_field: String::new(),
+            sidechain_id_field: String::new(),
+            sidechain_id_knowledge_proof_field: String::new(),
             amount_field: String::new(),
             fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
             message_field: String::new(),
@@ -147,21 +147,25 @@ impl BurnTab {
             .block(Block::default().borders(Borders::ALL).title("To (C)laim Public Key:"));
         f.render_widget(claim_public_key_input, vert_chunks[2]);
 
-        let network_input = Paragraph::new(self.network_field.as_ref())
+        let sidechain_id_input = Paragraph::new(self.sidechain_id_field.as_ref())
             .style(match self.burn_input_mode {
                 BurnInputMode::ClaimPublicKey => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
-            .block(Block::default().borders(Borders::ALL).title("Network:"));
-        f.render_widget(network_input, vert_chunks[3]);
+            .block(Block::default().borders(Borders::ALL).title("Sidechain ID:"));
+        f.render_widget(sidechain_id_input, vert_chunks[3]);
 
-        let network_knowledge_proof_input = Paragraph::new(self.network_knowledge_proof_field.as_ref())
+        let sidechain_id_knowledge_proof_input = Paragraph::new(self.sidechain_id_knowledge_proof_field.as_ref())
             .style(match self.burn_input_mode {
                 BurnInputMode::ClaimPublicKey => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
-            .block(Block::default().borders(Borders::ALL).title("Network Knowledge Proof:"));
-        f.render_widget(network_knowledge_proof_input, vert_chunks[4]);
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Sidechain ID Knowledge Proof:"),
+            );
+        f.render_widget(sidechain_id_knowledge_proof_input, vert_chunks[4]);
 
         let amount_fee_layout = Layout::default()
             .direction(Direction::Horizontal)
@@ -322,16 +326,16 @@ impl BurnTab {
                         Some(self.claim_public_key_field.clone())
                     };
 
-                    let network = if self.network_field.is_empty() {
+                    let sidechain_id = if self.sidechain_id_field.is_empty() {
                         None
                     } else {
-                        Some(self.network_field.clone())
+                        Some(self.sidechain_id_field.clone())
                     };
 
-                    let network_knowledge_proof = if self.network_knowledge_proof_field.is_empty() {
+                    let sidechain_id_knowledge_proof = if self.sidechain_id_knowledge_proof_field.is_empty() {
                         None
                     } else {
-                        Some(self.network_knowledge_proof_field.clone())
+                        Some(self.sidechain_id_knowledge_proof_field.clone())
                     };
 
                     let (tx, rx) = watch::channel(UiTransactionBurnStatus::Initiated);
@@ -346,8 +350,8 @@ impl BurnTab {
                                 UtxoSelectionCriteria::default(),
                                 fee_per_gram,
                                 self.message_field.clone(),
-                                network,
-                                network_knowledge_proof,
+                                sidechain_id,
+                                sidechain_id_knowledge_proof,
                                 tx,
                             )) {
                                 Err(e) => {

@@ -42,8 +42,8 @@ pub struct CodeTemplateRegistration {
     pub build_info: BuildInfo,
     pub binary_sha: MaxSizeBytes<32>,
     pub binary_url: MaxSizeString<255>,
-    pub network: Option<PublicKey>,
-    pub network_knowledge_proof: Option<Signature>,
+    pub sidechain_id: Option<PublicKey>,
+    pub sidechain_id_knowledge_proof: Option<Signature>,
 }
 
 impl CodeTemplateRegistration {
@@ -52,7 +52,7 @@ impl CodeTemplateRegistration {
             .chain(&self.author_public_key)
             .chain(public_nonce)
             .chain(&self.binary_sha)
-            .chain(&self.network.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
+            .chain(&self.sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
             .finalize()
     }
 
@@ -60,13 +60,13 @@ impl CodeTemplateRegistration {
         author_public_key: &PublicKey,
         public_nonce: &PublicKey,
         binary_sha: &MaxSizeBytes<32>,
-        network: Option<&PublicKey>,
+        sidechain_id: Option<&PublicKey>,
     ) -> [u8; 64] {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
             .chain(author_public_key)
             .chain(public_nonce)
             .chain(binary_sha)
-            .chain(&network.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
+            .chain(&sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
             .finalize()
     }
 }

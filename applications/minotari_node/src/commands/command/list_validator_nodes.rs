@@ -50,7 +50,7 @@ impl CommandContext {
         table.set_titles(vec!["Public Key", "VN Network", "Shard ID"]);
         for ValidatorNodeRegistrationInfo {
             public_key,
-            validator_network,
+            sidechain_id: validator_network,
             shard_key,
         } in vns
         {
