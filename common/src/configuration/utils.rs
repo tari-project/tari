@@ -119,10 +119,10 @@ pub fn prompt_default_config() -> [&'static str; 12] {
 /// Returns the default configuration file template in parts from the embedded presets. If use_mining_config is true,
 /// the base node configuration that enables mining is returned, otherwise the non-mining configuration is returned.
 pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
-    let base_node_deny_methods = if use_mining_config {
-        include_str!("../../config/presets/c_base_node_b_mining_deny_methods.toml")
+    let base_node_allow_methods = if use_mining_config {
+        include_str!("../../config/presets/c_base_node_b_mining_allow_methods.toml")
     } else {
-        include_str!("../../config/presets/c_base_node_b_non_mining_deny_methods.toml")
+        include_str!("../../config/presets/c_base_node_b_non_mining_allow_methods.toml")
     };
 
     let common = include_str!("../../config/presets/a_common.toml");
@@ -130,7 +130,7 @@ pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
         common,
         include_str!("../../config/presets/b_peer_seeds.toml"),
         include_str!("../../config/presets/c_base_node_a.toml"),
-        base_node_deny_methods,
+        base_node_allow_methods,
         include_str!("../../config/presets/c_base_node_c.toml"),
         include_str!("../../config/presets/d_console_wallet.toml"),
         include_str!("../../config/presets/g_miner.toml"),

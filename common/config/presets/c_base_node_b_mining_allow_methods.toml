@@ -1,7 +1,8 @@
-
 [base_node]
+#mining_enabled = false
+#second_layer_grpc_enabled = false
 # Set to false to disable the base node GRPC server (default = true)
-grpc_enabled = false
+grpc_enabled = true
 
 # The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
 #grpc_address = "/ip4/127.0.0.1/tcp/18142"
@@ -12,22 +13,22 @@ grpc_enabled = false
 # Use gRPC over TLS (default = false)
 #grpc_tls_enabled = false
 
-# Uncomment all gRPC server methods that should be denied default (only active when `grpc_enabled = true`)
-grpc_server_deny_methods = [
+# Uncomment all gRPC server methods that should be allowed (only active when `grpc_enabled = true`)
+grpc_server_allow_methods = [
     "get_version",
-    "check_for_updates",
-    "get_sync_info",
-    "get_sync_progress",
+    #"check_for_updates",
+    #"get_sync_info",
+    #"get_sync_progress",
     "get_tip_info",
-    "identify",
-    "get_network_status",
+    #"identify",
+    #"get_network_status",
     "list_headers",
-    "get_header_by_hash",
-    "get_blocks",
-    "get_block_timing",
-    "get_constants",
-    "get_block_size",
-    "get_block_fees",
+    #"get_header_by_hash",
+    #"get_blocks",
+    #"get_block_timing",
+    #"get_constants",
+    #"get_block_size",
+    #"get_block_fees",
     "get_tokens_in_circulation",
     "get_network_difficulty",
     "get_new_block_template",
@@ -39,8 +40,8 @@ grpc_server_deny_methods = [
     "search_kernels",
     "search_utxos",
     "fetch_matching_utxos",
-    "get_peers",
-    "get_mempool_transactions",
+    #"get_peers",
+    #"get_mempool_transactions",
     "transaction_state",
     "list_connected_peers",
     "get_mempool_stats",

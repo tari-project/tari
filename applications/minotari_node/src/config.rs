@@ -89,13 +89,15 @@ pub struct BaseNodeConfig {
     /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
     /// GRPC server config - which methods are active and which not
-    pub grpc_server_deny_methods: Vec<GrpcMethod>,
+    pub grpc_server_allow_methods: Vec<GrpcMethod>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
     /// Enable mining on the base node, overriding other settings regarding mining
     pub mining_enabled: bool,
+    /// Enable second layer specific grpc methods.
+    pub second_layer_grpc_enabled: bool,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: PathBuf,
     /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
@@ -154,19 +156,11 @@ impl Default for BaseNodeConfig {
             network: Network::default(),
             grpc_enabled: true,
             grpc_address: None,
-            grpc_server_deny_methods: vec![
-                // These gRPC server methods share sensitive information, thus disabled by default
-                GrpcMethod::GetVersion,
-                GrpcMethod::CheckForUpdates,
-                GrpcMethod::GetSyncInfo,
-                GrpcMethod::GetSyncProgress,
-                GrpcMethod::GetTipInfo,
-                GrpcMethod::Identify,
-                GrpcMethod::GetNetworkStatus,
-            ],
+            grpc_server_allow_methods: vec![GrpcMethod::GetVersion],
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             mining_enabled: false,
+            second_layer_grpc_enabled: false,
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: true,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
@@ -280,14 +274,14 @@ mod tests {
     #[derive(Clone, Serialize, Deserialize, Debug)]
     #[allow(clippy::struct_excessive_bools)]
     struct TestInnerConfig {
-        deny_methods: Vec<GrpcMethod>,
+        allow_methods: Vec<GrpcMethod>,
     }
 
     #[test]
     fn it_deserializes_enums() {
         let config_str = r#"
             name = "blockchain champion"
-            inner_config.deny_methods = [
+            inner_config.allow_methods = [
                 "list_headers",
                 "get_constants",
             #    "get_blocks"
@@ -298,10 +292,10 @@ mod tests {
         let config = toml::from_str::<TestConfig>(config_str).unwrap();
 
         // Enums in the config
-        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::ListHeaders));
-        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::GetConstants));
-        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
-        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::Identify));
-        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
+        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::ListHeaders));
+        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::GetConstants));
+        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
+        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::Identify));
+        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
     }
 }

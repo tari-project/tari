@@ -88,6 +88,7 @@ pub async fn run_base_node(
         profile_with_tokio_console: false,
         grpc_enabled: false,
         mining_enabled: false,
+        second_layer_grpc_enabled: false,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
