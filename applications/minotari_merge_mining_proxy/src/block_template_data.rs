@@ -33,28 +33,56 @@ use tari_core::proof_of_work::monero_rx::FixedByteArray;
 use tokio::sync::RwLock;
 use tracing::trace;
 
-use crate::{block_template_protocol::FinalBlockTemplateData, error::MmProxyError};
+use crate::{
+    block_template_protocol::{FinalBlockTemplateData, NewBlockTemplateData},
+    error::MmProxyError,
+};
 
 const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
 
-/// Structure for holding hashmap of hashes -> [BlockTemplateRepositoryItem]
+/// Structure for holding hashmap of hashes -> [BlockRepositoryItem] and [TemplateRepositoryItem].
 #[derive(Debug, Clone)]
 pub struct BlockTemplateRepository {
-    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockTemplateRepositoryItem>>>,
+    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>,
+    templates: Arc<RwLock<HashMap<Vec<u8>, TemplateRepositoryItem>>>,
 }
 
-/// Structure holding [BlockTemplateData] along with a timestamp.
+/// Structure holding [NewBlockTemplate] along with a timestamp.
 #[derive(Debug, Clone)]
-pub struct BlockTemplateRepositoryItem {
+pub struct TemplateRepositoryItem {
+    pub new_block_template: NewBlockTemplateData,
+    pub template_with_coinbase: grpc::NewBlockTemplate,
+    datetime: DateTime<Utc>,
+}
+
+impl TemplateRepositoryItem {
+    /// Create new [Self] with current time in UTC.
+    pub fn new(new_block_template: NewBlockTemplateData, template_with_coinbase: grpc::NewBlockTemplate) -> Self {
+        Self {
+            new_block_template,
+            template_with_coinbase,
+            datetime: Utc::now(),
+        }
+    }
+
+    /// Get the timestamp of creation.
+    pub fn datetime(&self) -> DateTime<Utc> {
+        self.datetime
+    }
+}
+
+/// Structure holding [FinalBlockTemplateData] along with a timestamp.
+#[derive(Debug, Clone)]
+pub struct BlockRepositoryItem {
     pub data: FinalBlockTemplateData,
     datetime: DateTime<Utc>,
 }
 
-impl BlockTemplateRepositoryItem {
+impl BlockRepositoryItem {
     /// Create new [Self] with current time in UTC.
-    pub fn new(block_template: FinalBlockTemplateData) -> Self {
+    pub fn new(final_block: FinalBlockTemplateData) -> Self {
         Self {
-            data: block_template,
+            data: final_block,
             datetime: Utc::now(),
         }
     }
@@ -69,35 +97,71 @@ impl BlockTemplateRepository {
     pub fn new() -> Self {
         Self {
             blocks: Arc::new(RwLock::new(HashMap::new())),
+            templates: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
-    pub async fn get<T: AsRef<[u8]>>(&self, hash: T) -> Option<FinalBlockTemplateData> {
-        trace!(
-            target: LOG_TARGET,
-            "Retrieving blocktemplate with merge mining hash: {:?}",
-            hex::encode(hash.as_ref())
-        );
+    pub async fn get_final_template<T: AsRef<[u8]>>(&self, merge_mining_hash: T) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
-        b.get(hash.as_ref()).map(|item| item.data.clone())
-    }
-
-    /// Store [BlockTemplateData] at the hash value if the key does not exist.
-    pub async fn save_if_key_unique(&self, hash: Vec<u8>, block_template: FinalBlockTemplateData) {
-        let mut b = self.blocks.write().await;
-        b.entry(hash.clone()).or_insert_with(|| {
+        b.get(merge_mining_hash.as_ref()).map(|item| {
             trace!(
                 target: LOG_TARGET,
-                "Saving blocktemplate with merge mining hash: {:?}",
-                hex::encode(&hash)
+                "Retrieving block template at height #{} with merge mining hash: {:?}",
+                item.data.clone().template.new_block_template.header.unwrap_or_default().height,
+                hex::encode(merge_mining_hash.as_ref())
             );
-            BlockTemplateRepositoryItem::new(block_template)
+            item.data.clone()
+        })
+    }
+
+    /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
+    pub async fn get_new_template<T: AsRef<[u8]>>(
+        &self,
+        best_block_hash: T,
+    ) -> Option<(NewBlockTemplateData, grpc::NewBlockTemplate)> {
+        let b = self.templates.read().await;
+        b.get(best_block_hash.as_ref())
+            .map(|item| (item.new_block_template.clone(), item.template_with_coinbase.clone()))
+    }
+
+    /// Store [FinalBlockTemplateData] at the hash value if the key does not exist.
+    pub async fn save_final_block_template_if_key_unique(
+        &self,
+        merge_mining_hash: Vec<u8>,
+        block_template: FinalBlockTemplateData,
+    ) {
+        let mut b = self.blocks.write().await;
+        b.entry(merge_mining_hash.clone()).or_insert_with(|| {
+            trace!(
+                target: LOG_TARGET,
+                "Saving final block template with merge mining hash: {:?}",
+                hex::encode(&merge_mining_hash)
+            );
+            BlockRepositoryItem::new(block_template)
+        });
+    }
+
+    /// Store [NewBlockTemplate] at the hash value if the key does not exist.
+    pub async fn save_new_block_template_if_key_unique(
+        &self,
+        best_block_hash: Vec<u8>,
+        new_block_template: NewBlockTemplateData,
+        template_with_coinbase: grpc::NewBlockTemplate,
+    ) {
+        let mut b = self.templates.write().await;
+        b.entry(best_block_hash.clone()).or_insert_with(|| {
+            trace!(
+                target: LOG_TARGET,
+                "Saving new block template for best block hash: {:?}",
+                hex::encode(&best_block_hash)
+            );
+            TemplateRepositoryItem::new(new_block_template, template_with_coinbase)
         });
     }
 
     /// Check if the repository contains a block template with best_previous_block_hash
-    pub async fn contains(&self, current_best_block_hash: FixedHash) -> Option<FinalBlockTemplateData> {
+    pub async fn blocks_contains(&self, current_best_block_hash: FixedHash) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
         b.values()
             .find(|item| {
@@ -109,8 +173,15 @@ impl BlockTemplateRepository {
 
     /// Remove any data that is older than 20 minutes.
     pub async fn remove_outdated(&self) {
-        trace!(target: LOG_TARGET, "Removing outdated blocktemplates");
+        trace!(target: LOG_TARGET, "Removing outdated final block templates");
         let mut b = self.blocks.write().await;
+        #[cfg(test)]
+        let threshold = Utc::now();
+        #[cfg(not(test))]
+        let threshold = Utc::now() - Duration::minutes(20);
+        *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
+        trace!(target: LOG_TARGET, "Removing outdated new block templates");
+        let mut b = self.templates.write().await;
         #[cfg(test)]
         let threshold = Utc::now();
         #[cfg(not(test))]
@@ -118,14 +189,25 @@ impl BlockTemplateRepository {
         *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
 
-    /// Remove a particular hash and return the associated [BlockTemplateRepositoryItem] if any.
-    pub async fn remove<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateRepositoryItem> {
+    /// Remove a particularfinla block template for hash and return the associated [BlockRepositoryItem] if any.
+    pub async fn remove_final_block_template<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockRepositoryItem> {
         trace!(
             target: LOG_TARGET,
-            "Blocktemplate removed with merge mining hash {:?}",
+            "Final block template removed with merge mining hash {:?}",
             hex::encode(hash.as_ref())
         );
         let mut b = self.blocks.write().await;
+        b.remove(hash.as_ref())
+    }
+
+    /// Remove a particular new block template for hash and return the associated [BlockRepositoryItem] if any.
+    pub async fn remove_new_block_template<T: AsRef<[u8]>>(&self, hash: T) -> Option<TemplateRepositoryItem> {
+        trace!(
+            target: LOG_TARGET,
+            "New block template removed with best block hash {:?}",
+            hex::encode(hash.as_ref())
+        );
+        let mut b = self.templates.write().await;
         b.remove(hash.as_ref())
     }
 }
@@ -299,19 +381,21 @@ pub mod test {
         let hash2 = vec![2; 32];
         let hash3 = vec![3; 32];
         let block_template = create_block_template_data();
-        btr.save_if_key_unique(hash1.clone(), block_template.clone()).await;
-        btr.save_if_key_unique(hash2.clone(), block_template).await;
-        assert!(btr.get(hash1.clone()).await.is_some());
-        assert!(btr.get(hash2.clone()).await.is_some());
-        assert!(btr.get(hash3.clone()).await.is_none());
-        assert!(btr.remove(hash1.clone()).await.is_some());
-        assert!(btr.get(hash1.clone()).await.is_none());
-        assert!(btr.get(hash2.clone()).await.is_some());
-        assert!(btr.get(hash3.clone()).await.is_none());
+        btr.save_final_block_template_if_key_unique(hash1.clone(), block_template.clone())
+            .await;
+        btr.save_final_block_template_if_key_unique(hash2.clone(), block_template)
+            .await;
+        assert!(btr.get_final_template(hash1.clone()).await.is_some());
+        assert!(btr.get_final_template(hash2.clone()).await.is_some());
+        assert!(btr.get_final_template(hash3.clone()).await.is_none());
+        assert!(btr.remove_final_block_template(hash1.clone()).await.is_some());
+        assert!(btr.get_final_template(hash1.clone()).await.is_none());
+        assert!(btr.get_final_template(hash2.clone()).await.is_some());
+        assert!(btr.get_final_template(hash3.clone()).await.is_none());
         btr.remove_outdated().await;
-        assert!(btr.get(hash1).await.is_none());
-        assert!(btr.get(hash2).await.is_none());
-        assert!(btr.get(hash3).await.is_none());
+        assert!(btr.get_final_template(hash1).await.is_none());
+        assert!(btr.get_final_template(hash2).await.is_none());
+        assert!(btr.get_final_template(hash3).await.is_none());
     }
 
     #[test]

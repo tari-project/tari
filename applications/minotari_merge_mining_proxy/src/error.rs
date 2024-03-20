@@ -113,6 +113,8 @@ pub enum MmProxyError {
     BaseNodeNotResponding(String),
     #[error("Unexpected missing data: {0}")]
     UnexpectedMissingData(String),
+    #[error("Failed to get block template: {0}")]
+    FailedToGetBlockTemplate(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

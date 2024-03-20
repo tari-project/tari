@@ -36,10 +36,10 @@ use tari_core::{
         transaction_components::{TransactionKernel, TransactionOutput},
     },
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
-    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
+    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
     common::merge_mining,
     config::MergeMiningProxyConfig,
     error::MmProxyError,
@@ -74,16 +74,35 @@ impl<'a> BlockTemplateProtocol<'a> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 impl BlockTemplateProtocol<'_> {
     /// Create [FinalBlockTemplateData] with [MoneroMiningData].
     pub async fn get_next_block_template(
         mut self,
         monero_mining_data: MoneroMiningData,
-        existing_block_template: Option<FinalBlockTemplateData>,
+        block_templates: &BlockTemplateRepository,
     ) -> Result<FinalBlockTemplateData, MmProxyError> {
-        let mut existing_block_template = existing_block_template;
+        let best_block_hash = self.get_current_best_block_hash().await?;
+        let existing_block_template = block_templates.blocks_contains(best_block_hash).await;
+
+        let mut final_block_template = existing_block_template;
+        let mut loop_count = 0;
         loop {
-            let (final_template_data, block_height) = if let Some(data) = existing_block_template.clone() {
+            if loop_count >= 10 {
+                warn!(target: LOG_TARGET, "Failed to get block template after {} retries", loop_count);
+                return Err(MmProxyError::FailedToGetBlockTemplate(format!(
+                    "Retried {} times",
+                    loop_count
+                )));
+            }
+            if loop_count == 1 && final_block_template.is_some() {
+                final_block_template = None;
+            }
+            if loop_count > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(loop_count * 250)).await;
+            }
+            loop_count += 1;
+            let (final_template_data, block_height) = if let Some(data) = final_block_template.clone() {
                 let height = data
                     .template
                     .tari_block
@@ -93,8 +112,9 @@ impl BlockTemplateProtocol<'_> {
                     .unwrap_or_default();
                 debug!(
                     target: LOG_TARGET,
-                    "Used existing block template and block for height: #{}, block hash: `{}`",
+                    "Used existing block template and block for height: #{} (try {}), block hash: `{}`",
                     height,
+                    loop_count,
                     match data.template.tari_block.header.as_ref() {
                         Some(h) => h.hash.to_hex(),
                         None => "None".to_string(),
@@ -102,25 +122,62 @@ impl BlockTemplateProtocol<'_> {
                 );
                 (data, height)
             } else {
-                let new_template = self.get_new_block_template().await?;
-                let height = new_template
-                    .template
-                    .header
-                    .as_ref()
-                    .map(|h| h.height)
-                    .unwrap_or_default();
-                debug!(target: LOG_TARGET, "Requested new block template at height: #{}", height);
-                let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
+                let (new_template, block_template_with_coinbase, height) = match block_templates
+                    .get_new_template(best_block_hash)
+                    .await
+                {
+                    None => {
+                        let new_template = match self.get_new_block_template().await {
+                            Ok(val) => val,
+                            Err(err) => {
+                                error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
+                                return Err(err);
+                            },
+                        };
+                        let height = new_template
+                            .template
+                            .header
+                            .as_ref()
+                            .map(|h| h.height)
+                            .unwrap_or_default();
+                        debug!(target: LOG_TARGET, "Requested new block template at height: #{} (try {})", height, loop_count);
+                        let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
 
-                let block_template_with_coinbase =
-                    merge_mining::add_coinbase(&coinbase_output, &coinbase_kernel, new_template.template.clone())?;
-                debug!(target: LOG_TARGET, "Added coinbase to new block template");
+                        let template_with_coinbase = merge_mining::add_coinbase(
+                            &coinbase_output,
+                            &coinbase_kernel,
+                            new_template.template.clone(),
+                        )?;
+                        debug!(target: LOG_TARGET, "Added coinbase to new block template (try {})", loop_count);
+
+                        block_templates
+                            .save_new_block_template_if_key_unique(
+                                best_block_hash.to_vec(),
+                                new_template.clone(),
+                                template_with_coinbase.clone(),
+                            )
+                            .await;
+
+                        (new_template, template_with_coinbase, height)
+                    },
+                    Some((new_template, template_with_coinbase)) => {
+                        let height = new_template
+                            .template
+                            .header
+                            .as_ref()
+                            .map(|h| h.height)
+                            .unwrap_or_default();
+                        debug!(target: LOG_TARGET, "Used existing new block template at height: #{} (try {})", height, loop_count);
+                        (new_template, template_with_coinbase, height)
+                    },
+                };
+
                 let block = match self.get_new_block(block_template_with_coinbase).await {
                     Ok(b) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Requested new block at height: #{}, block hash: `{}`",
-                            height,
+                            "Requested new block at height: #{} (try {}), block hash: `{}`",
+                            height, loop_count,
                             {
                                 let block_header = b.block.as_ref().map(|b| b.header.as_ref()).unwrap_or_default();
                                 block_header.map(|h| h.hash.clone()).unwrap_or_default().to_hex()
@@ -131,12 +188,15 @@ impl BlockTemplateProtocol<'_> {
                     Err(MmProxyError::FailedPreconditionBlockLostRetry) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Chain tip has progressed past template height {}. Fetching a new block template.",
-                            new_template.template.header.as_ref().map(|h| h.height).unwrap_or(0)
+                            "Chain tip has progressed past template height {}. Fetching a new block template (try {}).",
+                            height, loop_count
                         );
                         continue;
                     },
-                    Err(err) => return Err(err),
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
+                        return Err(err);
+                    },
                 };
 
                 (
@@ -145,24 +205,33 @@ impl BlockTemplateProtocol<'_> {
                 )
             };
 
+            block_templates
+                .save_final_block_template_if_key_unique(
+                    // `aux_chain_mr` is used as the key because it is stored in the ExtraData field in the Monero
+                    // block
+                    final_template_data.aux_chain_mr.clone(),
+                    final_template_data.clone(),
+                )
+                .await;
+            block_templates
+                .remove_new_block_template(best_block_hash.to_vec())
+                .await;
+
             if !self.check_expected_tip(block_height).await? {
                 debug!(
                     target: LOG_TARGET,
-                    "Chain tip has progressed past template height {}. Fetching a new block template.", block_height
+                    "Chain tip has progressed past template height {}. Fetching a new block template (try {}).", block_height, loop_count
                 );
-                if existing_block_template.is_some() {
-                    existing_block_template = None;
-                }
                 continue;
             }
             info!(target: LOG_TARGET,
-                "Block template for height: #{}, block hash: `{}`, {}",
+                "Block template for height: #{} (try {}), block hash: `{}`, {}",
                 final_template_data
                     .template.new_block_template
                     .header
                     .as_ref()
                     .map(|h| h.height)
-                    .unwrap_or_default(),
+                    .unwrap_or_default(), loop_count,
                 match final_template_data.template.tari_block.header.as_ref() {
                     Some(h) => h.hash.to_hex(),
                     None => "None".to_string(),
@@ -273,6 +342,21 @@ impl BlockTemplateProtocol<'_> {
         .await?;
         Ok((coinbase_output, coinbase_kernel))
     }
+
+    async fn get_current_best_block_hash(&self) -> Result<FixedHash, MmProxyError> {
+        let tip = self
+            .base_node_client
+            .clone()
+            .get_tip_info(grpc::Empty {})
+            .await?
+            .into_inner();
+        let best_block_hash = tip
+            .metadata
+            .as_ref()
+            .map(|m| m.best_block_hash.clone())
+            .unwrap_or(Vec::default());
+        FixedHash::try_from(best_block_hash).map_err(|e| MmProxyError::ConversionError(e.to_string()))
+    }
 }
 
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
@@ -350,8 +434,8 @@ fn add_monero_data(
 }
 
 /// Private convenience container struct for new template data
-#[allow(dead_code)]
-struct NewBlockTemplateData {
+#[derive(Debug, Clone)]
+pub struct NewBlockTemplateData {
     pub template: grpc::NewBlockTemplate,
     pub miner_data: grpc::MinerData,
     pub initial_sync_achieved: bool,

@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
     future::Future,
     pin::Pin,
     sync::{
@@ -43,7 +43,7 @@ use minotari_app_utilities::parse_miner_input::BaseNodeGrpcClient;
 use minotari_node_grpc_client::grpc;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use tari_common_types::{tari_address::TariAddress, types::FixedHash};
+use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, randomx_difficulty, randomx_factory::RandomXFactory},
@@ -254,7 +254,7 @@ impl InnerService {
                 hex::encode(hash)
             );
 
-            let mut block_data = match self.block_templates.get(&hash).await {
+            let mut block_data = match self.block_templates.get_final_template(&hash).await {
                 Some(d) => d,
                 None => {
                     info!(
@@ -341,7 +341,7 @@ impl InnerService {
                                 json_resp
                             );
                         }
-                        self.block_templates.remove(&hash).await;
+                        self.block_templates.remove_final_block_template(&hash).await;
                     },
                     Err(err) => {
                         debug!(
@@ -373,21 +373,6 @@ impl InnerService {
             "Sending submit_block response (proxy_submit_to_origin({})): {}", self.config.submit_to_origin, json_resp
         );
         Ok(proxy::into_response(parts, &json_resp))
-    }
-
-    async fn get_current_best_block_hash(&self) -> Result<FixedHash, MmProxyError> {
-        let tip = self
-            .base_node_client
-            .clone()
-            .get_tip_info(grpc::Empty {})
-            .await?
-            .into_inner();
-        let best_block_hash = tip
-            .metadata
-            .as_ref()
-            .map(|m| m.best_block_hash.clone())
-            .unwrap_or(Vec::default());
-        FixedHash::try_from(best_block_hash).map_err(|e| MmProxyError::ConversionError(e.to_string()))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -483,14 +468,8 @@ impl InnerService {
             difficulty,
         };
 
-        let existing_block_template = if let Ok(best_block_hash) = self.get_current_best_block_hash().await {
-            self.block_templates.contains(best_block_hash).await
-        } else {
-            None
-        };
-
         let final_block_template_data = new_block_protocol
-            .get_next_block_template(monero_mining_data, existing_block_template)
+            .get_next_block_template(monero_mining_data, &self.block_templates)
             .await?;
 
         monerod_resp["result"]["blocktemplate_blob"] = final_block_template_data.blocktemplate_blob.clone().into();
@@ -523,14 +502,6 @@ impl InnerService {
                 "miner_reward": block_reward + total_fees,
             }),
         );
-
-        self.block_templates
-            .save_if_key_unique(
-                // `aux_chain_mr` is used as the key because it is stored in the ExtraData field in the Monero block
-                final_block_template_data.aux_chain_mr.clone(),
-                final_block_template_data,
-            )
-            .await;
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
         Ok(proxy::into_response(parts, &monerod_resp))
