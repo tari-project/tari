@@ -10191,7 +10191,10 @@ mod test {
                     .unwrap();
                 assert_eq!(output.value.as_u64(), utxo.value);
                 assert_eq!(output.features.maturity, utxo.lock_height);
-                assert_eq!(output.features.coinbase_extra, utxo.coinbase_extra);
+                assert_eq!(
+                    output.features.coinbase_extra.to_hex(),
+                    CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
+                );
             }
             println!();
             destroy_tari_vector(outputs);
