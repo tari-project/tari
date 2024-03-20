@@ -235,6 +235,7 @@ pub enum GrpcMethod {
     GetNetworkDifficulty,
     GetNewBlockTemplate,
     GetNewBlock,
+    GetNewBlockWithCoinbases,
     GetNewBlockBlob,
     SubmitBlock,
     SubmitBlockBlob,

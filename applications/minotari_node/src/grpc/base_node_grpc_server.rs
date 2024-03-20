@@ -34,7 +34,10 @@ use minotari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use minotari_app_utilities::consts;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{Commitment, FixedHash, PublicKey, Signature},
+};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -49,8 +52,26 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::Transaction,
+    transactions::{
+        generate_coinbase_with_wallet_output,
+        key_manager::{
+            create_memory_db_key_manager,
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TxoStage,
+        },
+        tari_amount::uT,
+        transaction_components::{
+            KernelBuilder,
+            RangeProofType,
+            Transaction,
+            TransactionKernel,
+            TransactionKernelVersion,
+        },
+    },
 };
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
@@ -627,6 +648,196 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let mut handler = self.node_service.clone();
+
+        let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(message),
+                ));
+            },
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(obscure_error_if_true(report_error_flag, status));
+            },
+            Err(e) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(e.to_string()),
+                ))
+            },
+        };
+        let gen_hash = handler
+            .get_header(0)
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Tari genesis block not found".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari genesis block not found".to_string()),
+                )
+            })?
+            .hash()
+            .to_vec();
+        // construct response
+        let block_hash = new_block.hash().to_vec();
+        let mining_hash = match new_block.header.pow.pow_algo {
+            PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+        };
+        let block: Option<tari_rpc::Block> = Some(
+            new_block
+                .try_into()
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
+        );
+
+        let response = tari_rpc::GetNewBlockResult {
+            block_hash,
+            block,
+            merge_mining_hash: mining_hash,
+            tari_unique_id: gen_hash,
+        };
+        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        Ok(Response::new(response))
+    }
+
+    async fn get_new_block_with_coinbases(
+        &self,
+        request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
+    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
+        if !self.is_method_enabled(GrpcMethod::GetNewBlockWithCoinbases) {
+            return Err(Status::permission_denied(
+                "`GetNewBlockWithCoinbasesRequest` method not made available",
+            ));
+        }
+        let report_error_flag = self.report_error_flag();
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
+        let mut block_template: NewBlockTemplate = request
+            .new_template
+            .ok_or(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Malformed block template provided")),
+            ))?
+            .try_into()
+            .map_err(|s| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Malformed block template provided: {}", s)),
+                )
+            })?;
+        let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+
+        let mut handler = self.node_service.clone();
+
+        // let validate the coinbase amounts;
+        let reward = self
+            .consensus_rules
+            .calculate_coinbase_and_fees(block_template.header.height, block_template.body.kernels())
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal("Could not calculate the amount of fees in the block".to_string()),
+                )
+            })?;
+        let mut amount = 0u64;
+        for coinbase in &coinbases {
+            amount += coinbase.value;
+        }
+
+        if amount != reward.as_u64() {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Malformed coinbase amounts".to_string()),
+            ));
+        }
+        let key_manager = create_memory_db_key_manager();
+        let height = block_template.header.height;
+        // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
+        let script_key_id = TariKeyId::default();
+
+        let mut total_excess = Commitment::default();
+        let mut total_nonce = PublicKey::default();
+        let mut private_keys = Vec::new();
+        let mut kernel_message = [0; 32];
+        let mut last_kernel = Default::default();
+        for coinbase in coinbases {
+            let address = TariAddress::from_hex(&coinbase.address)
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            let range_proof_type = if coinbase.revealed_value_proof {
+                RangeProofType::RevealedValue
+            } else {
+                RangeProofType::BulletProofPlus
+            };
+            let (_, coinbase_output, coinbase_kernel, wo) = generate_coinbase_with_wallet_output(
+                0.into(),
+                coinbase.value.into(),
+                height,
+                &coinbase.coinbase_extra,
+                &key_manager,
+                &script_key_id,
+                &address,
+                coinbase.stealth_payment,
+                self.consensus_rules.consensus_constants(height),
+                range_proof_type,
+            )
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            block_template.body.add_output(coinbase_output);
+            let (new_p_nonce, pub_nonce) = key_manager
+                .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+                .await
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_nonce = &total_nonce + &pub_nonce;
+            total_excess = &total_excess + &coinbase_kernel.excess;
+            private_keys.push((wo.spending_key_id, new_p_nonce));
+            kernel_message = TransactionKernel::build_kernel_signature_message(
+                &TransactionKernelVersion::get_current_version(),
+                coinbase_kernel.fee,
+                coinbase_kernel.lock_height,
+                &coinbase_kernel.features,
+                &None,
+            );
+            last_kernel = coinbase_kernel;
+        }
+        let mut kernel_signature = Signature::default();
+        for (spending_key_id, nonce) in private_keys {
+            kernel_signature = &kernel_signature +
+                &key_manager
+                    .get_partial_txo_kernel_signature(
+                        &spending_key_id,
+                        &nonce,
+                        &total_nonce,
+                        &total_excess.as_public_key(),
+                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_message,
+                        &last_kernel.features,
+                        TxoStage::Output,
+                    )
+                    .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        }
+        let kernel_new = KernelBuilder::new()
+            .with_fee(0 * uT)
+            .with_features(last_kernel.features)
+            .with_lock_height(last_kernel.lock_height)
+            .with_excess(&total_excess)
+            .with_signature(kernel_signature)
+            .build()
+            .unwrap();
+
+        block_template.body.add_kernel(kernel_new);
+        block_template.body.sort();
 
         let new_block = match handler.get_new_block(block_template).await {
             Ok(b) => b,

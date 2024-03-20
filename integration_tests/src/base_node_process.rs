@@ -204,6 +204,7 @@ pub async fn spawn_base_node_with_config(
             GrpcMethod::GetNetworkDifficulty,
             GrpcMethod::GetNewBlockTemplate,
             GrpcMethod::GetNewBlock,
+            GrpcMethod::GetNewBlockWithCoinbases,
             GrpcMethod::GetNewBlockBlob,
             GrpcMethod::SubmitBlock,
             GrpcMethod::SubmitBlockBlob,
