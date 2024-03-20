@@ -174,11 +174,12 @@ where B: BlockchainBackend + 'static
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
-            let path = base_node_config.tor_identity_file.clone();
+            let tor_id_path = base_node_config.tor_identity_file.clone();
+            let node_id_path = base_node_config.identity_file.clone();
             let node_id = comms.node_identity();
             let after_comms = move |identity: TorIdentity| {
                 let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
-                if let Err(e) = identity_management::save_as_json(&path, &identity) {
+                if let Err(e) = identity_management::save_as_json(&tor_id_path, &identity) {
                     error!(target: LOG_TARGET, "Failed to save tor identity{:?}", e);
                 }
                 trace!(target: LOG_TARGET, "resave the tor identity {:?}", identity);
@@ -190,6 +191,9 @@ where B: BlockchainBackend + 'static
                 let address = result.unwrap();
                 if !node_id.public_addresses().contains(&address) {
                     node_id.add_public_address(address);
+                }
+                if let Err(e) = identity_management::save_as_json(&node_id_path, &*node_id) {
+                    error!(target: LOG_TARGET, "Failed to save node identity identity{:?}", e);
                 }
             };
             initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await
