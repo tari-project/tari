@@ -6,6 +6,7 @@ name: Build ffi libraries
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]*'
     branches:
+      - 'build-all-*'
       - 'build-ffis-*'
   schedule:
     - cron: '05 00 * * *'
@@ -24,8 +25,11 @@ env:
   matrix-json-file: '.github/workflows/build_libffis.json'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
+permissions: {}
 
 jobs:
   matrix-prep:
@@ -97,10 +101,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Declare TestNet for tags
+        # Don't forget to comment out the below if, when force testing with GHA_NETWORK
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GHA_NETWORK: ${{ github.ref_name }}
+          # GHA_NETWORK: "v1.0.0-rc.4"
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{ github.ref_name }}
+          source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
           echo ${TARI_NETWORK}
           echo ${TARI_TARGET_NETWORK}
           echo ${TARI_NETWORK_CHANGELOG}

@@ -21,7 +21,8 @@
     "target": "riscv64gc-unknown-linux-gnu",
     "cross": true,
     "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
-    "build_enabled": false
+    "build_enabled": true,
+    "best-effort": true
   },
   {
     "name": "macos-x86_64",
