@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use core::result::Result;
-
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};

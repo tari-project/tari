@@ -29,7 +29,6 @@ use diesel::{
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
     result::Error as DieselError,
-    SqliteConnection,
 };
 use log::*;
 pub use new_output_sql::NewOutputSql;

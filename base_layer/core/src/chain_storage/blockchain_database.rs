@@ -2608,7 +2608,6 @@ mod test {
             chain_strength_comparer::strongest_chain,
             consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
-            ConsensusManager,
         },
         proof_of_work::Difficulty,
         test_helpers::{
@@ -2912,7 +2911,6 @@ mod test {
 
     mod handle_possible_reorg {
         use super::*;
-        use crate::test_helpers::blockchain::update_block_and_smt;
 
         #[ignore]
         #[tokio::test]

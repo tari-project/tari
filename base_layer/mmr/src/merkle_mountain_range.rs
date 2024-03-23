@@ -23,7 +23,6 @@
 use std::{
     cmp::{max, min},
     convert::TryInto,
-    iter::IntoIterator,
     marker::PhantomData,
 };
 

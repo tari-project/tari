@@ -49,7 +49,6 @@
 
 use core::ptr;
 use std::{
-    boxed::Box,
     convert::{TryFrom, TryInto},
     ffi::{CStr, CString},
     fmt::{Display, Formatter},
@@ -67,7 +66,7 @@ use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
 use itertools::Itertools;
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
-use log::{LevelFilter, *};
+use log::*;
 use log4rs::{
     append::{
         file::FileAppender,
@@ -8749,20 +8748,14 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
-    use std::{
-        ffi::CString,
-        path::Path,
-        str::{from_utf8, FromStr},
-        sync::Mutex,
-    };
+    use std::{path::Path, str::from_utf8, sync::Mutex};
 
-    use libc::{c_char, c_uchar, c_uint};
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::handle::TransactionSendStatus,
     };
     use once_cell::sync::Lazy;
-    use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
+    use tari_common_types::emoji;
     use tari_comms::peer_manager::PeerFeatures;
     use tari_contacts::contacts_service::types::{Direction, Message, MessageMetadata};
     use tari_core::{
@@ -8772,7 +8765,7 @@ mod test {
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
         },
     };
-    use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
+    use tari_key_manager::mnemonic_wordlists;
     use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
     use tari_script::script;
     use tari_test_utils::random;
@@ -9328,6 +9321,8 @@ mod test {
 
     #[test]
     fn test_encrypted_data_filled() {
+        use tari_common_types::types::PrivateKey;
+
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;

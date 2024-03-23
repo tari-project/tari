@@ -200,7 +200,6 @@ mod test {
     use multiaddr::multiaddr;
 
     use super::*;
-    use crate::peer_validator::error::PeerValidatorError;
 
     #[test]
     fn validate_address_strict() {

@@ -382,9 +382,8 @@ mod test {
 
     use borsh::BorshSerialize;
     use monero::{
-        blockdata::transaction::{ExtraField, TxOutTarget},
+        blockdata::transaction::TxOutTarget,
         consensus::deserialize,
-        cryptonote::hash::Hashable,
         util::ringct::{RctSig, RctSigBase, RctType},
         Hash,
         PublicKey,
@@ -394,7 +393,6 @@ mod test {
         TxOut,
     };
     use tari_common::configuration::Network;
-    use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
         epoch_time::EpochTime,
@@ -403,7 +401,7 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
+    use crate::proof_of_work::{PowAlgorithm, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]

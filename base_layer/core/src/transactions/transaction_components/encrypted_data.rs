@@ -243,9 +243,8 @@ fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedDa
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_common_types::types::{CommitmentFactory, PrivateKey};
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+    use tari_common_types::types::CommitmentFactory;
+    use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
     use super::*;
 

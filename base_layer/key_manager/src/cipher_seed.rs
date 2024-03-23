@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, mem::size_of, str::FromStr};
+use std::{mem::size_of, str::FromStr};
 
-use argon2;
 use blake2::Blake2b;
 use chacha20::{
     cipher::{NewCipher, StreamCipher},

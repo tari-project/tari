@@ -35,7 +35,7 @@ tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-p
 tari_comms = { path = "../../comms/core", version = "1.0.0-pre.13" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.13" }
 tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.13" }
-tari_crypto = { version = "0.20", features = ["borsh"] }
+tari_crypto = { version = "0.20.1", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.13" }
 tari_mmr = { path = "../../base_layer/mmr", optional = true , version = "1.0.0-pre.13"}
 tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.13" }
@@ -72,7 +72,7 @@ log-mdc = "0.1.0"
 monero = { version = "0.21.0", features = ["serde-crate"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"
-num-derive = "0.3.3"
+num-derive = "0.4.2"
 num-format = "0.4.0"
 once_cell = "1.8.0"
 prost = "0.11.9"
@@ -98,7 +98,6 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
 criterion = { version = "0.4.0" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = { path = "../../infrastructure/test_utils" }
-curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.14.0" }

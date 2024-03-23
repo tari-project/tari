@@ -538,7 +538,7 @@ mod test {
     use super::*;
     use crate::{
         net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
-        peer_manager::{peer::PeerFlags, PeerFeatures},
+        peer_manager::peer::PeerFlags,
     };
 
     #[test]

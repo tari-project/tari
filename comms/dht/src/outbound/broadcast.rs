@@ -559,16 +559,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 mod test {
     use std::time::Duration;
 
-    use rand::rngs::OsRng;
     use tari_comms::{
         multiaddr::Multiaddr,
         net_address::{MultiaddressesWithStats, PeerAddressSource},
-        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-        types::CommsPublicKey,
+        peer_manager::{PeerFeatures, PeerFlags},
     };
-    use tari_crypto::keys::PublicKey;
     use tari_test_utils::unpack_enum;
-    use tokio::{sync::oneshot, task};
+    use tokio::task;
 
     use super::*;
     use crate::{

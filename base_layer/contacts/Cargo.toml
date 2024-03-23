@@ -12,7 +12,7 @@ tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-pre.13" }
 tari_common_types = {  path = "../../base_layer/common_types", version = "1.0.0-pre.13" }
 tari_comms = {  path = "../../comms/core", version = "1.0.0-pre.13" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.13" }
-tari_crypto = { version = "0.20" }
+tari_crypto = { version = "0.20.1" }
 tari_p2p = {  path = "../p2p", features = ["auto-update"], version = "1.0.0-pre.13" }
 tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.13" }
 tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.13" }
@@ -23,7 +23,7 @@ diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-
 diesel_migrations = "2.0.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
 log = "0.4.6"
-num-derive = "0.3.3"
+num-derive = "0.4.2"
 num-traits = "0.2.15"
 prost = "0.11.9"
 rand = "0.8"

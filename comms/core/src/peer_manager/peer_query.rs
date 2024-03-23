@@ -215,11 +215,7 @@ mod test {
     use super::*;
     use crate::{
         net_address::{MultiaddressesWithStats, PeerAddressSource},
-        peer_manager::{
-            node_id::NodeId,
-            peer::{Peer, PeerFlags},
-            PeerFeatures,
-        },
+        peer_manager::{peer::PeerFlags, PeerFeatures},
     };
 
     fn create_test_peer(ban_flag: bool) -> Peer {

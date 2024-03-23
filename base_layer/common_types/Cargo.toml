@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.13" }
-tari_crypto = { version = "0.20" }
+tari_crypto = { version = "0.20.1" }
 tari_utilities = { version = "0.7" }
 tari_common = {  path = "../../common", version = "1.0.0-pre.13" }
 

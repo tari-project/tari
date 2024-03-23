@@ -174,7 +174,6 @@ where
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use digest::consts::U64;
     use tari_crypto::ristretto::RistrettoPublicKey;
 
     use crate::key_manager::*;

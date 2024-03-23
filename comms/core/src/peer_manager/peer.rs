@@ -355,7 +355,6 @@ mod test {
     };
 
     use super::*;
-    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
 
     #[test]
     fn test_is_banned_and_ban_for() {

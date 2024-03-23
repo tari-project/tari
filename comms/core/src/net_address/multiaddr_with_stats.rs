@@ -3,7 +3,7 @@
 
 use std::{
     cmp,
-    cmp::{Ord, Ordering},
+    cmp::Ordering,
     convert::{TryFrom, TryInto},
     fmt,
     fmt::{Display, Formatter},
@@ -422,8 +422,6 @@ impl PartialEq for PeerAddressSource {
 }
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
-
     use super::*;
 
     #[test]

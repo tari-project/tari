@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{self, rngs::OsRng};
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, Signature};
+use rand::rngs::OsRng;
+use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
@@ -42,10 +42,10 @@ use crate::{
             create_memory_db_key_manager_with_range_proof_size,
             TransactionKeyManagerInterface,
         },
-        tari_amount::{uT, MicroMinotari, T},
+        tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
+        transaction_components::{transaction_output::batch_verify_range_proofs, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -567,16 +567,14 @@ async fn test_output_recover_openings() {
 
 mod validate_internal_consistency {
 
-    use blake2::Blake2b;
-    use digest::{consts::U32, Digest};
-    use tari_common_types::types::FixedHash;
+    use digest::Digest;
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
     use crate::{
         covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
         transactions::{
-            key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+            key_manager::MemoryDbKeyManager,
             test_helpers::{create_transaction_with, create_wallet_outputs},
         },
     };

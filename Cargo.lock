@@ -1375,17 +1375,20 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek"
-version = "4.1.1"
+version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89b8c6a2e4b1f45971ad09761aafb85514a84744b67a95e32c3cc1352d1f65c"
+checksum = "0a677b8922c94e01bdbb12126b0bc852f00447528dee1782229af9c720c3f348"
 dependencies = [
  "cfg-if",
  "cpufeatures",
  "curve25519-dalek-derive",
  "digest 0.10.7",
- "fiat-crypto 0.2.2",
+ "fiat-crypto",
+ "group",
  "platforms",
+ "rand_core",
  "rustc_version",
+ "serde",
  "subtle",
  "zeroize",
 ]
@@ -1910,12 +1913,6 @@ dependencies = [
  "rand_core",
  "subtle",
 ]
-
-[[package]]
-name = "fiat-crypto"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
 name = "fiat-crypto"
@@ -2721,15 +2718,6 @@ dependencies = [
  "hermit-abi 0.3.3",
  "rustix",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "itertools"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3f2be4da1690a039e9ae5fd575f706a63ad5a2120f161b1d653c9da3930dd21"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -3839,9 +3827,9 @@ dependencies = [
 
 [[package]]
 name = "num-derive"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfb77679af88f8b125209d354a202862602672222e7f2313fdd6dc349bad4712"
+checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4292,7 +4280,7 @@ dependencies = [
  "md-5",
  "nom",
  "num-bigint-dig",
- "num-derive 0.4.1",
+ "num-derive 0.4.2",
  "num-traits",
  "p256",
  "p384",
@@ -5898,24 +5886,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
-name = "tari-curve25519-dalek"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b8e2644aae57a832e475ebc31199ab1114ebd7fe4d2621e67e89bdd9c8ac38"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "curve25519-dalek-derive",
- "fiat-crypto 0.1.20",
- "platforms",
- "rand_core",
- "rustc_version",
- "serde",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "tari-tiny-keccak"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5927,24 +5897,22 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs_plus"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9abc9cbebffb1149112a80d6955498ed891f9b786e89c50e07de4b4f16290fd8"
+checksum = "8eac57729e3b003c18e822c64c8c4977770102b2eaea920a7c40bca5caf12c54"
 dependencies = [
  "blake2",
  "byteorder",
- "derivative",
- "derive_more",
+ "curve25519-dalek",
  "digest 0.10.7",
- "itertools 0.6.5",
- "lazy_static",
+ "ff",
+ "itertools 0.12.1",
  "merlin",
- "rand",
+ "once_cell",
  "rand_core",
  "serde",
  "sha3",
- "tari-curve25519-dalek",
- "thiserror",
+ "thiserror-no-std",
  "zeroize",
 ]
 
@@ -6155,7 +6123,7 @@ dependencies = [
  "diesel_migrations",
  "futures 0.3.29",
  "log",
- "num-derive 0.3.3",
+ "num-derive 0.4.2",
  "num-traits",
  "prost",
  "rand",
@@ -6208,7 +6176,7 @@ dependencies = [
  "minotari_ledger_wallet_comms",
  "monero",
  "newtype-ops",
- "num-derive 0.3.3",
+ "num-derive 0.4.2",
  "num-format",
  "num-traits",
  "once_cell",
@@ -6224,7 +6192,6 @@ dependencies = [
  "sha3",
  "strum",
  "strum_macros",
- "tari-curve25519-dalek",
  "tari-tiny-keccak",
  "tari_common",
  "tari_common_sqlite",
@@ -6255,21 +6222,23 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.20.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63a3ed2c551101eb42b7f9386c207e28d53e6816f7b4c9a0883548922f317b3e"
+checksum = "40833db37f54c3b176da3d07199c76ec7a062b19fbf74bf270d614804114ee58"
 dependencies = [
  "blake2",
  "borsh",
+ "curve25519-dalek",
  "digest 0.10.7",
  "log",
+ "merlin",
  "once_cell",
  "rand_chacha",
  "rand_core",
  "serde",
  "sha3",
  "snafu",
- "tari-curve25519-dalek",
+ "subtle",
  "tari_bulletproofs_plus",
  "tari_utilities",
  "zeroize",
@@ -6625,6 +6594,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.38",
+]
+
+[[package]]
+name = "thiserror-impl-no-std"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58e6318948b519ba6dc2b442a6d0b904ebfb8d411a3ad3e07843615a72249758"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "thiserror-no-std"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3ad459d94dd517257cc96add8a43190ee620011bb6e6cdc82dafd97dfafafea"
+dependencies = [
+ "thiserror-impl-no-std",
 ]
 
 [[package]]

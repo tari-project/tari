@@ -15,7 +15,6 @@ deny = [
     # Common mistakes
     'clippy::await_holding_lock',
     'unused_variables',
-    'unused_imports',
     'dead_code',
     'unused_extern_crates',
     'unused_must_use',
@@ -70,4 +69,5 @@ allow = [
     # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
     'clippy::bool-assert-comparison',
     'clippy::blocks_in_conditions',
+    'unused_imports', # TODO: DENY THIS
 ]

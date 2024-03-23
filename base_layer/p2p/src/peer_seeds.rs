@@ -160,8 +160,6 @@ impl From<SeedPeer> for Peer {
 
 #[cfg(test)]
 mod test {
-    use tari_utilities::hex::Hex;
-
     use super::*;
 
     const TEST_NAME: &str = "test.local.";

@@ -395,7 +395,7 @@ mod test {
     use tari_comms::{
         message::MessageTag,
         net_address::MultiaddressesWithStats,
-        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+        peer_manager::{Peer, PeerFeatures, PeerFlags},
         test_utils::mocks::create_connectivity_mock,
         types::CommsDatabase,
     };

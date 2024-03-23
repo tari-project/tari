@@ -401,8 +401,6 @@ mod test {
     use std::convert::TryFrom;
 
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
-    use tari_utilities::ByteArray;
-    use Network;
 
     use super::*;
     use crate::{

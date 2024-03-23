@@ -169,20 +169,12 @@ pub unsafe extern "C" fn destroy_chat_message_metadata(ptr: *mut MessageMetadata
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
-    use libc::c_uint;
     use tari_common_types::tari_address::TariAddress;
     use tari_contacts::contacts_service::types::MessageBuilder;
 
     use super::*;
     use crate::{
-        byte_vector::{
-            chat_byte_vector_create,
-            chat_byte_vector_destroy,
-            chat_byte_vector_get_at,
-            chat_byte_vector_get_length,
-        },
+        byte_vector::{chat_byte_vector_destroy, chat_byte_vector_get_at, chat_byte_vector_get_length},
         message::{chat_metadata_get_at, destroy_chat_message},
     };
 

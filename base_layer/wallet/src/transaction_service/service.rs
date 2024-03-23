@@ -2996,7 +2996,7 @@ pub struct TransactionSendResult {
 #[cfg(test)]
 mod tests {
     use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_script::{stealth_payment_script, Opcode};
+    use tari_script::Opcode;
 
     use super::*;
 

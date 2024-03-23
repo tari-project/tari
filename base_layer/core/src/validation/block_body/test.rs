@@ -468,7 +468,6 @@ async fn it_rejects_zero_conf_double_spends() {
 
 mod body_only {
     use super::*;
-    use crate::validation::block_body::BlockBodyFullValidator;
 
     #[tokio::test]
     async fn it_rejects_invalid_input_metadata() {
@@ -507,7 +506,7 @@ mod body_only {
 mod orphan_validator {
     use super::*;
     use crate::{
-        transactions::transaction_components::{OutputType, RangeProofType},
+        transactions::transaction_components::OutputType,
         txn_schema,
         validation::block_body::BlockBodyInternalConsistencyValidator,
     };

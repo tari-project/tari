@@ -99,7 +99,6 @@ pub fn traverse_direction(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::sparse_merkle_tree::{bit_utils::count_common_prefix, NodeKey};
 
     #[test]
     fn test_common_prefix() {

@@ -147,8 +147,6 @@ pub unsafe extern "C" fn destroy_contacts_liveness_data(ptr: *mut ContactsLivene
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use chrono::NaiveDateTime;
     use tari_contacts::contacts_service::service::{ContactMessageType, ContactOnlineStatus};
     use tari_utilities::epoch_time::EpochTime;

@@ -44,8 +44,6 @@ impl<R: Read> Read for LimitedBytesReader<R> {
 
 #[cfg(test)]
 mod test {
-    use std::io::Read;
-
     use super::*;
 
     impl<R: Read> LimitedBytesReader<R> {

@@ -452,13 +452,12 @@ pub unsafe extern "C" fn read_chat_message_id(message: *mut Message, error_out: 
 
 #[cfg(test)]
 mod test {
-    use tari_contacts::contacts_service::types::{Direction, MessageBuilder};
+    use tari_contacts::contacts_service::types::Direction;
     use tari_utilities::epoch_time::EpochTime;
 
     use super::*;
     use crate::{
         byte_vector::{chat_byte_vector_destroy, chat_byte_vector_get_at, chat_byte_vector_get_length},
-        message::read_chat_message_id,
         tari_address::destroy_tari_address,
     };
 

@@ -221,23 +221,16 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
 
 #[cfg(test)]
 mod test {
-    use std::convert::{TryFrom, TryInto};
+    use std::convert::TryInto;
 
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
     use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-    use tari_common_types::{
-        tari_address::TariAddress,
-        types::{PrivateKey, PublicKey},
-    };
+    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::{paths::with_temp_dir, random::string};
 
     use super::*;
-    use crate::contacts_service::{
-        storage::types::contacts::{ContactSql, UpdateContact},
-        types::Contact,
-    };
 
     #[test]
     fn test_crud() {

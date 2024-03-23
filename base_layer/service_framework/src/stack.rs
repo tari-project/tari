@@ -97,12 +97,11 @@ mod test {
     };
 
     use async_trait::async_trait;
-    use futures::{executor::block_on, future};
+    use futures::executor::block_on;
     use tari_shutdown::Shutdown;
     use tower::service_fn;
 
     use super::*;
-    use crate::{initializer::ServiceInitializer, ServiceInitializerContext};
 
     #[tokio::test]
     async fn service_defn_simple() {
