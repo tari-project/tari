@@ -10,7 +10,7 @@ version = "1.0.0-pre.11a"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.20" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "range-proof-update" }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.11a" }
 tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-pre.11a" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" , version = "1.0.0-pre.11a"}

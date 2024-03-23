@@ -12,7 +12,7 @@ tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-pre.11a" }
 tari_common_types = {  path = "../../base_layer/common_types", version = "1.0.0-pre.11a" }
 tari_comms = {  path = "../../comms/core", version = "1.0.0-pre.11a" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.11a" }
-tari_crypto = { version = "0.20" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "range-proof-update" }
 tari_p2p = {  path = "../p2p", features = ["auto-update"], version = "1.0.0-pre.11a" }
 tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.11a" }
 tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.11a" }
