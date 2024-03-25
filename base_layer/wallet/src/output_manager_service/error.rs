@@ -148,6 +148,8 @@ pub enum OutputManagerError {
     ValidationInProgress,
     #[error("Invalid data: `{0}`")]
     RangeProofError(String),
+    #[error("Transaction is over sized: `{0}`")]
+    TooManyInputsToFulfillTransaction(String),
 }
 
 impl From<RangeProofError> for OutputManagerError {

@@ -63,7 +63,7 @@ use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -88,6 +88,7 @@ use crate::{
             OutputStatus,
         },
         tasks::TxoValidationTask,
+        TRANSACTION_INPUTS_LIMIT,
     },
     util::wallet_identity::WalletIdentity,
 };
@@ -1256,6 +1257,7 @@ where
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
     ) -> Result<UtxoSelection, OutputManagerError> {
+        let start = Instant::now();
         debug!(
             target: LOG_TARGET,
             "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_features_and_scripts_byte_size: {}, \
@@ -1283,10 +1285,20 @@ where
             "select_utxos selection criteria: {}", selection_criteria
         );
         let tip_height = chain_metadata.as_ref().map(|m| m.best_block_height());
+        let start_new = Instant::now();
         let uo = self
             .resources
             .db
             .fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height)?;
+        let uo_len = uo.len();
+        trace!(
+            target: LOG_TARGET,
+            "select_utxos profile - fetch_unspent_outputs_for_spending: {} outputs, {} ms (at {})",
+            uo_len,
+            start_new.elapsed().as_millis(),
+            start.elapsed().as_millis(),
+        );
+        let start_new = Instant::now();
 
         // For non-standard queries, we want to ensure that the intended UTXOs are selected
         if !selection_criteria.filter.is_standard() && uo.is_empty() {
@@ -1309,7 +1321,7 @@ where
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
 
-        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
+        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo_len);
 
         let mut requires_change_output = false;
         let mut utxos_total_value = MicroMinotari::from(0);
@@ -1348,8 +1360,22 @@ where
 
         let perfect_utxo_selection = utxos_total_value == amount + fee_without_change;
         let enough_spendable = utxos_total_value > amount + fee_with_change;
+        trace!(
+            target: LOG_TARGET,
+            "select_utxos profile - final_selection: {} outputs from {}, {} ms (at {})",
+            utxos.len(),
+            uo_len,
+            start_new.elapsed().as_millis(),
+            start.elapsed().as_millis(),
+        );
 
         if !perfect_utxo_selection && !enough_spendable {
+            if uo_len == TRANSACTION_INPUTS_LIMIT as usize {
+                return Err(OutputManagerError::TooManyInputsToFulfillTransaction(format!(
+                    "Input limit '{}' reached",
+                    TRANSACTION_INPUTS_LIMIT
+                )));
+            }
             let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.best_block_height());
             let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
             let pending_incoming = balance.pending_incoming_balance;
