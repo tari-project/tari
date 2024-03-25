@@ -849,13 +849,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             new_template.body.add_output(coinbase_output);
-            let (new_p_nonce, pub_nonce) = key_manager
+            let (new_private_nonce, pub_nonce) = key_manager
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce + &pub_nonce;
             total_excess = &total_excess + &coinbase_kernel.excess;
-            private_keys.push((wallet_output.spending_key_id, new_p_nonce));
+            private_keys.push((wallet_output.spending_key_id, new_private_nonce));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -1041,13 +1041,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             block_template.body.add_output(coinbase_output);
-            let (new_p_nonce, pub_nonce) = key_manager
+            let (new_private_nonce, pub_nonce) = key_manager
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce + &pub_nonce;
             total_excess = &total_excess + &coinbase_kernel.excess;
-            private_keys.push((wallet_output.spending_key_id, new_p_nonce));
+            private_keys.push((wallet_output.spending_key_id, new_private_nonce));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
