@@ -6,7 +6,8 @@ name: Build Matrix of Binaries
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]*'
     branches:
-      - build-*
+      - 'build-all-*'
+      - 'build-bins-*'
   schedule:
     - cron: "05 00 * * *"
   workflow_dispatch:
@@ -34,8 +35,11 @@ env:
   CARGO_CACHE: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
+permissions: {}
 
 jobs:
   matrix-prep:
@@ -87,6 +91,7 @@ jobs:
   builds:
     name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }}
     needs: matrix-prep
+    continue-on-error: ${{ matrix.builds.best-effort || false }}
     outputs:
       TARI_NETWORK_DIR: ${{ steps.set-tari-network.outputs.TARI_NETWORK_DIR }}
       TARI_VERSION: ${{ steps.set-tari-vars.outputs.TARI_VERSION }}
@@ -103,6 +108,7 @@ jobs:
 
       - name: Declare TestNet for tags
         id: set-tari-network
+        # Don't forget to comment out the below if, when force testing with GHA_NETWORK
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           GHA_NETWORK: ${{ github.ref_name }}
@@ -154,6 +160,12 @@ jobs:
             TARGET_LIBS+="--package ${LIB_FILE} "
           done
           echo "TARGET_LIBS=${TARGET_LIBS}" >> $GITHUB_ENV
+          TARI_BUILD_ISA_CPU=${{ matrix.builds.target }}
+          # Strip unknown part
+          TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU//-unknown-linux-gnu}
+          # Strip gc used by rust
+          TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU//gc}
+          echo "TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU}" >> $GITHUB_ENV
 
       - name: Scheduled Destination Folder Override
         if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
@@ -174,12 +186,13 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
-      - name: Install Linux dependencies - Ubuntu - cross-compile arm64 on x86-64
-        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && matrix.builds.name == 'linux-arm64' }}
+      - name: Install Linux dependencies - Ubuntu - cross-compiled ${{ env.TARI_BUILD_ISA_CPU }} on x86-64
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && matrix.builds.name != 'linux-x86_64' }}
         run: |
           sudo apt-get update
-          sudo bash scripts/install_ubuntu_dependencies-arm64.sh
+          sudo bash scripts/install_ubuntu_dependencies-cross_compile.sh ${{ env.TARI_BUILD_ISA_CPU }}
           rustup target add ${{ matrix.builds.target }}
+          echo "PKG_CONFIG_SYSROOT_DIR=/usr/${{ env.TARI_BUILD_ISA_CPU }}-linux-gnu/" >> $GITHUB_ENV
 
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
