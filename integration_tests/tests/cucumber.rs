@@ -41,14 +41,17 @@ pub mod steps;
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 
-fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
+fn try_flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
     // After each test we flush the stdout to the logs.
-    info!(
-        target: LOG_TARGET_STDOUT,
-        "{}",
-        str::from_utf8(&buffer.lock().unwrap()).unwrap()
-    );
-    buffer.lock().unwrap().clear();
+    let mut lock = buffer.try_lock();
+    if let Ok(ref mut mutex) = lock {
+        info!(
+            target: LOG_TARGET_STDOUT,
+            "{}",
+            str::from_utf8(mutex).unwrap_or("")
+        );
+        mutex.clear();
+    }
 }
 
 fn main() {
@@ -78,7 +81,7 @@ fn main() {
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
             let stdout_buffer = stdout_buffer_clone.clone();
             Box::pin(async move {
-                flush_stdout(&stdout_buffer);
+                try_flush_stdout(&stdout_buffer);
                 match ev {
                     ScenarioFinished::StepFailed(_capture_locations, _location, _error) => {
                         error!(target: LOG_TARGET, "Scenario failed");
@@ -117,17 +120,17 @@ fn main() {
     });
 
     // If by any chance we have anything in the stdout buffer just log it.
-    flush_stdout(&stdout_buffer);
+    try_flush_stdout(&stdout_buffer);
 
     // Move the logs to the temp dir
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let log_dir = crate_root.join("log");
     let test_run_dir = crate_root.join(format!("tests/temp/cucumber_{}/logs", process::id()));
-    fs::create_dir_all(&test_run_dir).unwrap();
-
-    for entry in fs::read_dir(log_dir).unwrap() {
-        let file = entry.unwrap();
-        fs::copy(file.path(), test_run_dir.join(file.file_name())).unwrap();
-        fs::remove_file(file.path()).unwrap();
-    }
+    // fs::create_dir_all(&test_run_dir).unwrap();
+    //
+    // for entry in fs::read_dir(log_dir).unwrap() {
+    //     let file = entry.unwrap();
+    //     fs::copy(file.path(), test_run_dir.join(file.file_name())).unwrap();
+    //     fs::remove_file(file.path()).unwrap();
+    // }
 }
