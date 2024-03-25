@@ -32,6 +32,7 @@ use minotari_app_grpc::tari_rpc::{
     self as grpc,
     pow_algo::PowAlgos,
     GetBlocksRequest,
+    GetNewBlockTemplateWithCoinbasesRequest,
     GetNewBlockWithCoinbasesRequest,
     ListHeadersRequest,
     NewBlockCoinbase,
@@ -787,6 +788,64 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
     }
     assert_eq!(coinbase_kernel_count, 1);
     assert_eq!(coinbase_utxo_count, 2);
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {}", e),
+    }
+}
+
+#[then(expr = "generate a block with 2 coinbases as a single request from node {word}")]
+async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases: vec![
+            NewBlockCoinbase {
+                address: TariAddress::default().to_hex(),
+                value: 1,
+                stealth_payment: false,
+                revealed_value_proof: true,
+                coinbase_extra: Vec::new(),
+            },
+            NewBlockCoinbase {
+                address: TariAddress::default().to_hex(),
+                value: 2,
+                stealth_payment: false,
+                revealed_value_proof: true,
+                coinbase_extra: Vec::new(),
+            },
+        ],
+    };
+    let new_block = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    println!("{}", body);
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 2);
+    assert_eq!(body.outputs()[0].minimum_value_promise.as_u64(), 12308533398);
+    assert_eq!(body.outputs()[1].minimum_value_promise.as_u64(), 6154266700);
 
     match client.submit_block(new_block).await {
         Ok(_) => (),

@@ -59,6 +59,8 @@ service BaseNode {
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Construct a new block from a provided template
     rpc GetNewBlockWithCoinbases(GetNewBlockWithCoinbasesRequest) returns (GetNewBlockResult);
+    // Construct a new block from a provided template
+    rpc GetNewBlockTemplateWithCoinbases(GetNewBlockTemplateWithCoinbasesRequest) returns (GetNewBlockResult);
     // Construct a new block and header blob from a provided template
     rpc GetNewBlockBlob(NewBlockTemplate) returns (GetNewBlockBlobResult);
     // Submit a new block for propagation
@@ -184,10 +186,17 @@ message NewBlockTemplateRequest{
     uint64 max_weight = 2;
 }
 
+/// return type of NewBlockTemplateRequest
+message GetNewBlockTemplateWithCoinbasesRequest{
+    PowAlgo algo = 1;
+    //This field should be moved to optional once optional keyword is standard
+    uint64 max_weight = 2;
+    repeated  NewBlockCoinbase coinbases = 3;
+}
+
 /// request  type of GetNewBlockWithCoinbasesRequest
 message GetNewBlockWithCoinbasesRequest{
     NewBlockTemplate new_template = 1;
-    //This field should be moved to optional once optional keyword is standard
     repeated  NewBlockCoinbase coinbases = 2;
 }
 
@@ -365,6 +374,7 @@ message GetNewBlockResult{
     Block block = 2;
     bytes merge_mining_hash =3;
     bytes tari_unique_id =4;
+    MinerData miner_data = 5;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.

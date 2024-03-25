@@ -236,6 +236,7 @@ pub enum GrpcMethod {
     GetNewBlockTemplate,
     GetNewBlock,
     GetNewBlockWithCoinbases,
+    GetNewBlockTemplateWithCoinbases,
     GetNewBlockBlob,
     SubmitBlock,
     SubmitBlockBlob,
