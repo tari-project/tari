@@ -809,7 +809,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let mut remainder = reward - ((reward / total_shares) * total_shares);
         for coinbase in &mut coinbases {
-            coinbase.value = (reward / total_shares) * coinbase.value;
+            coinbase.value *= reward / total_shares;
             if remainder > 0 {
                 coinbase.value += 1;
                 remainder -= 1;
@@ -834,7 +834,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             } else {
                 RangeProofType::BulletProofPlus
             };
-            let (_, coinbase_output, coinbase_kernel, wo) = generate_coinbase_with_wallet_output(
+            let (_, coinbase_output, coinbase_kernel, wallet_output) = generate_coinbase_with_wallet_output(
                 0.into(),
                 coinbase.value.into(),
                 height,
@@ -855,7 +855,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce + &pub_nonce;
             total_excess = &total_excess + &coinbase_kernel.excess;
-            private_keys.push((wo.spending_key_id, new_p_nonce));
+            private_keys.push((wallet_output.spending_key_id, new_p_nonce));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -1026,7 +1026,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             } else {
                 RangeProofType::BulletProofPlus
             };
-            let (_, coinbase_output, coinbase_kernel, wo) = generate_coinbase_with_wallet_output(
+            let (_, coinbase_output, coinbase_kernel, wallet_output) = generate_coinbase_with_wallet_output(
                 0.into(),
                 coinbase.value.into(),
                 height,
@@ -1047,7 +1047,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             total_nonce = &total_nonce + &pub_nonce;
             total_excess = &total_excess + &coinbase_kernel.excess;
-            private_keys.push((wo.spending_key_id, new_p_nonce));
+            private_keys.push((wallet_output.spending_key_id, new_p_nonce));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
