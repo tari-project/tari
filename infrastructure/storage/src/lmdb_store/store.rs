@@ -92,7 +92,7 @@ impl LMDBConfig {
 
 impl Default for LMDBConfig {
     fn default() -> Self {
-        Self::new_from_mb(16, 16, 4)
+        Self::new_from_mb(16, 16, 8)
     }
 }
 
@@ -426,21 +426,13 @@ impl LMDBStore {
         let stat = env.stat()?;
         let size_used_bytes = stat.psize as usize * env_info.last_pgno;
         let size_left_bytes = env_info.mapsize - size_used_bytes;
-        debug!(
-            target: LOG_TARGET,
-            "Resize check: Used bytes: {}, Remaining bytes: {}", size_used_bytes, size_left_bytes
-        );
 
         if size_left_bytes <= config.resize_threshold_bytes {
-            Self::resize(env, config)?;
             debug!(
                 target: LOG_TARGET,
-                "({}) LMDB size used {:?} MB, environment space left {:?} MB, increased by {:?} MB",
-                env.path()?.to_str()?,
-                size_used_bytes / BYTES_PER_MB,
-                size_left_bytes / BYTES_PER_MB,
-                config.grow_size_bytes / BYTES_PER_MB,
+                "Resize required: Used bytes: {}, Remaining bytes: {}", size_used_bytes, size_left_bytes
             );
+            Self::resize(env, config, None)?;
         }
         Ok(())
     }
@@ -452,10 +444,10 @@ impl LMDBStore {
     /// not check for this condition, the caller must ensure it explicitly.
     ///
     /// <http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5>
-    pub unsafe fn resize(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
+    pub unsafe fn resize(env: &Environment, config: &LMDBConfig, shortfall: Option<usize>) -> Result<(), LMDBError> {
         let env_info = env.info()?;
         let current_mapsize = env_info.mapsize;
-        env.set_mapsize(current_mapsize + config.grow_size_bytes)?;
+        env.set_mapsize(current_mapsize + config.grow_size_bytes + shortfall.unwrap_or_default())?;
         let env_info = env.info()?;
         let new_mapsize = env_info.mapsize;
         debug!(
@@ -464,7 +456,7 @@ impl LMDBStore {
             env.path()?.to_str()?,
             current_mapsize / BYTES_PER_MB,
             new_mapsize / BYTES_PER_MB,
-            config.grow_size_bytes / BYTES_PER_MB,
+            (config.grow_size_bytes + shortfall.unwrap_or_default()) / BYTES_PER_MB,
         );
 
         Ok(())
@@ -498,7 +490,7 @@ impl LMDBDatabase {
                         "Failed to obtain write transaction because the database needs to be resized"
                     );
                     unsafe {
-                        LMDBStore::resize(&self.env, &self.env_config)?;
+                        LMDBStore::resize(&self.env, &self.env_config, Some(value.len()))?;
                     }
                 },
                 Err(e) => return Err(e.into()),
