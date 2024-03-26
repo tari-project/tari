@@ -94,7 +94,7 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
 criterion = { version = "0.4.0" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = { path = "../../infrastructure/test_utils" }
-curve25519-dalek = { version = "=4.1.1" }
+curve25519-dalek = { version = "4" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.14.0" }
