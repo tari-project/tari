@@ -374,8 +374,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
-                .unwrap(),
+            validator_node_mr: FixedHash::zero(),
             validator_node_size: 0,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
@@ -517,6 +516,8 @@ mod test {
                 });
             }
         }
+
+        assert_eq!(&vn_nodes, &vec![]);
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(
