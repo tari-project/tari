@@ -129,14 +129,15 @@ pub unsafe extern "C" fn conversationalists_vector_get_at(
 
     let conversationalists = &(*conversationalists);
 
-    let len = conversationalists.0.len() - 1;
-    if position as usize > len {
+    let len = conversationalists.0.len();
+    let position = position as usize;
+    if conversationalists.0.is_empty() || position > len - 1 {
         error = LibChatError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new(conversationalists.0[position as usize].clone()))
+    Box::into_raw(Box::new(conversationalists.0[position].clone()))
 }
 
 /// Frees memory for ConversationalistsVector
