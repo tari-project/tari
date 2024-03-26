@@ -425,12 +425,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        debug!(
-            target: LOG_TARGET,
-            "`set_received_outputs_mined_height_and_statuses` for {} outputs",
-            updates.len()
-        );
-
         let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
         if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -574,6 +568,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
+        if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
         let last_validation_timestamp = Utc::now().naive_utc();
 
         // Three queries were evaluated to determine the most efficient way to update the last validation timestamp
@@ -637,12 +635,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-
-        debug!(
-            target: LOG_TARGET,
-            "`mark_outputs_as_spent` for {} outputs",
-            updates.len()
-        );
 
         let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
         if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
