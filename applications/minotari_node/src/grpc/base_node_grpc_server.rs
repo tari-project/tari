@@ -1813,14 +1813,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
-        let sidechain_id = request
-            .sidechain_id
-            .as_ref()
-            .map(|n| {
-                PublicKey::from_canonical_bytes(n)
-                    .map_err(|e| Status::invalid_argument(format!("Invalid validator_network '{}'", e)))
-            })
-            .transpose()?;
+        let sidechain_id = if request.sidechain_id.is_empty() {
+            Some(
+                PublicKey::from_canonical_bytes(&request.sidechain_id)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid validator_network '{}'", e)))?,
+            )
+        } else {
+            None
+        };
 
         task::spawn(async move {
             let active_validator_nodes = match handler.get_active_validator_nodes(request.height, sidechain_id).await {

@@ -445,7 +445,7 @@ message MempoolStatsResponse {
 
 message GetActiveValidatorNodesRequest {
     uint64 height = 1;
-    optional bytes sidechain_id = 2;
+    bytes sidechain_id = 2;
 }
 
 message GetActiveValidatorNodesResponse {
