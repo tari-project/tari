@@ -35,7 +35,7 @@ tari_key_manager = { path = "../base_layer/key_manager" }
 anyhow = "1.0.53"
 async-trait = "0.1.50"
 chrono = { version = "0.4.22", default-features = false }
-config = "0.13.0"
+config = "0.14.0"
 csv = "1.1"
 cucumber = { version = "0.20.0", features = ["default", "libtest", "output-junit"] }
 futures = { version = "^0.3.1" }

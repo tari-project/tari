@@ -28,7 +28,7 @@ borsh = "1.2"
 bytes = "1.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
-config = { version = "0.13.0" }
+config = { version = "0.14.0" }
 crossterm = { version = "0.25.0" }
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
