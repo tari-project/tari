@@ -242,6 +242,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
     claim_public_key: Option<PublicKey>,

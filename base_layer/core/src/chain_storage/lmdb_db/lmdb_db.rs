@@ -926,6 +926,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
