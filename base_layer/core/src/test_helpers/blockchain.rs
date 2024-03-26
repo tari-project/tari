@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;

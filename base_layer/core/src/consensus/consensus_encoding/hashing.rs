@@ -23,7 +23,6 @@
 use borsh::BorshSerialize;
 use digest::Digest;
 use tari_common::configuration::Network;
-use tari_common::configuration::Network;
 use tari_crypto::hashing::DomainSeparation;
 use tari_hashing::DomainSeparatedBorshHasher;
 

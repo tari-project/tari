@@ -70,7 +70,6 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent.push((kmo.hash, true));
-        db.mark_output_as_unspent(kmo.hash).unwrap();
         unspent_outputs.push(kmo);
     }
     db.mark_outputs_as_unspent(unspent).unwrap();

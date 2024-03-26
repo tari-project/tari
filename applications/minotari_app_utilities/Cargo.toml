@@ -26,10 +26,8 @@ tonic = "0.8.3"
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-tari_features = { path = "../../common/tari_features" , version = "1.0.0-pre.11a" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }
 
 [features]
 miner_input = ["minotari_app_grpc"]
 
-[features]
-miner_input = ["minotari_app_grpc"]

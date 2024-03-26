@@ -11,9 +11,9 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.20" }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.11a" }
-tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-pre.11a" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" , version = "1.0.0-pre.11a"}
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-dan.5" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-dan.5" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-dan.5" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -44,13 +44,13 @@ thiserror = "1.0.26"
 tokio = { version = "1.36", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-util = { version = "0.6.7", features = ["codec", "compat"] }
-tower = {version = "0.4", features = ["util"]}
+tower = { version = "0.4", features = ["util"] }
 tracing = "0.1.26"
 yamux = "=0.10.2"
 zeroize = "1"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 tari_comms_rpc_macros = { path = "../rpc_macros" }
 
 env_logger = "0.7.0"
@@ -58,7 +58,7 @@ serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-pre.11a" }
+tari_common = { path = "../../common", features = ["build"], version = "1.0.0-dan.5" }
 
 [features]
 c_integration = []

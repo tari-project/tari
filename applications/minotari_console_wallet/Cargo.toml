@@ -83,7 +83,7 @@ default-features = false
 features = ["crossterm"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features" , version = "1.0.0-pre.11a" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }
 
 [features]
 default = ["libtor"]

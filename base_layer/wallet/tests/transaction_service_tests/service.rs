@@ -90,7 +90,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
     wallet_types::WalletType,
 };
 use tari_comms::{

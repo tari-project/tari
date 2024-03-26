@@ -1277,38 +1277,6 @@ pub unsafe extern "C" fn tari_address_network(address: *mut TariWalletAddress, e
     CString::into_raw(result)
 }
 
-/// Creates a char array from a TariWalletAddress's network
-///
-/// ## Arguments
-/// `address` - The pointer to a TariWalletAddress
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
-/// if there was an error from TariWalletAddress
-///
-/// # Safety
-/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn tari_address_network(address: *mut TariWalletAddress, error_out: *mut c_int) -> *mut c_char {
-    let mut error = 0;
-    let mut result = CString::new("").expect("Blank CString will not fail.");
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if address.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return CString::into_raw(result);
-    }
-    let network_string = address
-        .as_ref()
-        .expect("Address should not be empty")
-        .network()
-        .to_string();
-    result = CString::new(network_string).expect("string will not fail.");
-    CString::into_raw(result)
-}
-
 /// Creates a TariWalletAddress from a char array in emoji format
 ///
 /// ## Arguments

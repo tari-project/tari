@@ -398,12 +398,7 @@ fn add_monero_data(
         .tari_merge_mining_hash(merge_mining_hash)
         .aux_hashes(aux_chain_hashes.clone())
         .new_block_template(template_data.template)
-        .tari_hash(
-                FixedHash::try_from(tari_block.merge_mining_hash.clone())
-                    .map_err(|e| MmProxyError::MissingDataError(e.to_string()))?,
-            )
-            .aux_hashes(vec![monero::Hash::from_slice(&tari_block.merge_mining_hash)])
-            .build()?;
+        .build()?;
 
     // Deserialize the block template blob
     debug!(target: LOG_TARGET, "Deseriale Monero block template blob into Monero block",);
@@ -459,8 +454,6 @@ pub struct FinalBlockTemplateData {
     pub target_difficulty: Difficulty,
     pub blockhashing_blob: String,
     pub blocktemplate_blob: String,
-    pub aux_chain_hashes: Vec<monero::Hash>,
-    pub aux_chain_mr: FixedHash,
     pub aux_chain_hashes: Vec<monero::Hash>,
     pub aux_chain_mr: Vec<u8>,
 }

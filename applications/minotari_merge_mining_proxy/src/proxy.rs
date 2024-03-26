@@ -241,8 +241,6 @@ impl InnerService {
             },
         };
 
-        let gen_hash = *self.consensus_manager.get_genesis_block().hash();
-
         for param in params.iter().filter_map(|p| p.as_str()) {
             let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);

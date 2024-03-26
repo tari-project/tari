@@ -10,7 +10,7 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.11a" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-dan.5" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
@@ -21,7 +21,7 @@ tokio = { version = "1.36", features = ["rt", "sync"] }
 tower-service = { version = "0.3" }
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 tokio = { version = "1.36", features = ["rt-multi-thread", "macros", "time"] }
 futures-test = { version = "0.3.3" }

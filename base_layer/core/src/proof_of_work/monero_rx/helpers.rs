@@ -314,9 +314,6 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
     if aux_chain_count == 0 {
         return Err(MergeMineError::ZeroAuxChains);
     }
-    if aux_chain_count == 0 {
-        return Err(MergeMineError::ZeroAuxChains);
-    }
     if aux_chain_mr.as_ref().len() != monero::Hash::len_bytes() {
         return Err(MergeMineError::HashingError(format!(
             "Expected source to be {} bytes, but it was {} bytes",
@@ -349,15 +346,6 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
             number_of_chains: aux_chain_count,
             aux_nonce,
         };
-        mt_params.to_varint()
-    };
-    let mt_params = MerkleTreeParameters {
-        number_of_chains: aux_chain_count,
-        aux_nonce,
-    };
-    let encoded = if aux_chain_count == 1 {
-        VarInt(0)
-    } else {
         mt_params.to_varint()
     };
     extra_field.0.insert(0, SubField::MergeMining(Some(encoded), hash));

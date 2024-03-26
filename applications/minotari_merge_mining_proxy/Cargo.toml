@@ -19,7 +19,7 @@ tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_key_manager = {  path = "../../base_layer/key_manager", features = ["key_manager_service"] }
+tari_key_manager = { path = "../../base_layer/key_manager", features = ["key_manager_service"] }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -46,4 +46,4 @@ tracing = "0.1"
 url = "2.1.1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11a"}
+tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }

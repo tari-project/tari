@@ -3,7 +3,7 @@ name = "tari_chat_client"
 authors = ["The Tari Development Community"]
 description = "Tari cucumber chat client"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.5"
+version = "1.0.0-dan.5"
 
 edition = "2018"
 
@@ -16,7 +16,7 @@ tari_comms = { path = "../../../../comms/core" }
 tari_comms_dht = { path = "../../../../comms/dht" }
 tari_contacts = { path = "../../../contacts" }
 tari_p2p = { path = "../../../p2p" }
-tari_service_framework= { path = "../../../service_framework" }
+tari_service_framework = { path = "../../../service_framework" }
 tari_shutdown = { path = "../../../../infrastructure/shutdown" }
 tari_storage = { path = "../../../../infrastructure/storage" }
 
