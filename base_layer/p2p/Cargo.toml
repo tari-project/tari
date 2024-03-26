@@ -41,7 +41,7 @@ webpki = "0.22"
 [dev-dependencies]
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 
-config = "0.13.0"
+config = "0.14.0"
 clap = "3.2"
 tempfile = "3.1.0"
 

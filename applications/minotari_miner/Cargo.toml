@@ -41,7 +41,7 @@ tonic = { version = "0.8.3", features = ["tls", "tls-roots" ] }
 [dev-dependencies]
 prost-types = "0.11.9"
 chrono = { version = "0.4.19", default-features = false }
-config = "0.13.0"
+config = "0.14.0"
 
 [package.metadata.cargo-machete]
 ignored = [
