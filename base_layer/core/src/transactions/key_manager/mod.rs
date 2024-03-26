@@ -46,4 +46,4 @@ pub use memory_db_key_manager::{
 };
 
 mod error;
-pub use error::CoreKeyManagerError;
+pub use error::{CoreKeyManagerError, LedgerDeviceError};

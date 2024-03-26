@@ -20,4 +20,5 @@ apt-get install --no-install-recommends --assume-yes \
   protobuf-compiler \
   libncurses5-dev \
   libncursesw5-dev \
+  libudev-dev \
   zip

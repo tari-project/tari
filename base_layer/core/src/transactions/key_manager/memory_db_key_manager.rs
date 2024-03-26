@@ -25,6 +25,7 @@ use std::{iter, mem::size_of};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use tari_common_types::wallet_types::WalletType;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
@@ -50,11 +51,13 @@ pub fn create_memory_db_key_manager_with_range_proof_size(size: usize) -> Memory
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(size);
+    let wallet_type = WalletType::Software;
 
     TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
         factory,
+        wallet_type,
     )
     .unwrap()
 }

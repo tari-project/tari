@@ -32,7 +32,7 @@ use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
 use thiserror::Error;
 
-use crate::transactions::transaction_components::EncryptedDataError;
+use crate::transactions::{key_manager::LedgerDeviceError, transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
@@ -73,6 +73,8 @@ pub enum TransactionError {
     KeyManagerError(String),
     #[error("EncryptedData error: {0}")]
     EncryptedDataError(String),
+    #[error("Ledger device error: {0}")]
+    LedgerDeviceError(#[from] LedgerDeviceError),
 }
 
 impl From<KeyManagerServiceError> for TransactionError {

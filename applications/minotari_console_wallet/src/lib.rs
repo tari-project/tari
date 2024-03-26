@@ -64,7 +64,7 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, wallet_mode};
+use crate::init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, prompt_wallet_type, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -128,6 +128,9 @@ pub fn run_wallet_with_cli(
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
+    // This is deactivated at the moment as full support is not yet complete
+    let wallet_type = prompt_wallet_type(boot_mode, &config.wallet, cli.non_interactive_mode);
+
     // get command line password if provided
     let seed_words_file_name = cli.seed_words_file_name.clone();
 
@@ -167,6 +170,7 @@ pub fn run_wallet_with_cli(
         recovery_seed,
         shutdown_signal,
         cli.non_interactive_mode,
+        wallet_type,
     ))?;
 
     if !cli.non_interactive_mode &&

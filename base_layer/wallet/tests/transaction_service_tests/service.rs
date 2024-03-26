@@ -91,6 +91,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
+    wallet_types::WalletType,
 };
 use tari_comms::{
     message::EnvelopeBody,
@@ -241,6 +242,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             kms_backend,
             cipher,
             factories.clone(),
+            WalletType::Software,
         ))
         .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {

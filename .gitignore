@@ -68,3 +68,7 @@ pie/
 integration_tests/cucumber-output-junit.xml
 
 integration_tests/log/
+
+# Ignore MinoTari Ledger Wallet
+app_nanosplus.json
+app_nanos.json

@@ -27,7 +27,7 @@ use std::{
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, wallet_types::WalletType};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
@@ -90,6 +90,7 @@ pub enum DbKey {
     WalletBirthday,
     LastAccessedNetwork,
     LastAccessedVersion,
+    WalletType,
 }
 
 impl DbKey {
@@ -109,6 +110,7 @@ impl DbKey {
             DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
             DbKey::LastAccessedNetwork => "LastAccessedNetwork".to_string(),
             DbKey::LastAccessedVersion => "LastAccessedVersion".to_string(),
+            DbKey::WalletType => "WalletType".to_string(),
         }
     }
 }
@@ -129,6 +131,7 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
+    WalletType(WalletType),
 }
 
 #[derive(Clone)]
@@ -141,6 +144,7 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
+    WalletType(WalletType),
 }
 
 pub enum WriteOperation {
@@ -384,6 +388,21 @@ where T: WalletBackend + 'static
     pub fn delete_burnt_proof(&self, id: u32) -> Result<(), WalletStorageError> {
         self.db.delete_burnt_proof(id)
     }
+
+    pub fn get_wallet_type(&self) -> Result<Option<WalletType>, WalletStorageError> {
+        match self.db.fetch(&DbKey::WalletType) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::WalletType(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::WalletType, other),
+            Err(e) => log_error(DbKey::WalletType, e),
+        }
+    }
+
+    pub fn set_wallet_type(&self, wallet_type: WalletType) -> Result<(), WalletStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::WalletType(wallet_type)))?;
+        Ok(())
+    }
 }
 
 impl Display for DbValue {
@@ -404,6 +423,7 @@ impl Display for DbValue {
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
             DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
             DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
+            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {:?}", wallet_type)),
         }
     }
 }

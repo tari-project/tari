@@ -19,7 +19,12 @@ newtype-ops = "0.1"
 once_cell = "1.8.0"
 rand = "0.8"
 serde = { version = "1.0.106", features = ["derive"] }
+strum = "0.22"
+strum_macros = "0.22"
 thiserror = "1.0.29"
 base64 = "0.21.0"
 blake2 = "0.10"
 primitive-types = { version = "0.12", features = ["serde"] }
+
+[package.metadata.cargo-machete]
+ignored = ["strum", "strum_macros"] # this is so we can run cargo machete without getting false positive about macro dependancies

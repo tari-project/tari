@@ -1,0 +1,21 @@
+{
+  "apiLevel": "1",
+  "binary": "target/nanosplus/release/app.hex",
+  "dataSize": 0,
+  "derivationPath": {
+    "curves": [
+      "secp256k1",
+      "ed25519"
+    ],
+    "paths": [
+      "44'/1022'",
+      "m/5261654'",
+      "m/44'"
+    ]
+  },
+  "flags": "0",
+  "icon": "key_14x14.gif",
+  "name": "MinoTari Wallet",
+  "targetId": "0x33100004",
+  "version": "0.52.0-pre.0"
+}

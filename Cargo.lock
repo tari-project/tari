@@ -2281,6 +2281,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
+name = "hidapi"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "798154e4b6570af74899d71155fb0072d5b17e6aa12f39c8ef22c60fb8ec99e7"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "winapi",
+]
+
+[[package]]
 name = "hkdf"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2724,6 +2736,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledger-apdu"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe435806c197dfeaa5efcded5e623c4b8230fd28fdf1e91e7a86e40ef2acbf90"
+dependencies = [
+ "arrayref",
+ "no-std-compat",
+ "snafu",
+]
+
+[[package]]
+name = "ledger-transport"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1117f2143d92c157197785bf57711d7b02f2cfa101e162f8ca7900fb7f976321"
+dependencies = [
+ "async-trait",
+ "ledger-apdu",
+]
+
+[[package]]
+name = "ledger-transport"
+version = "0.10.0"
+source = "git+https://github.com/Zondax/ledger-rs?rev=20e2a20#20e2a2076d799d449ff6f07eb0128548b358d9bc"
+dependencies = [
+ "async-trait",
+ "ledger-apdu",
+]
+
+[[package]]
+name = "ledger-transport-hid"
+version = "0.10.0"
+source = "git+https://github.com/Zondax/ledger-rs?rev=20e2a20#20e2a2076d799d449ff6f07eb0128548b358d9bc"
+dependencies = [
+ "byteorder",
+ "cfg-if",
+ "hex",
+ "hidapi",
+ "ledger-transport 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc",
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.149"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3099,6 +3156,7 @@ dependencies = [
  "crossterm 0.25.0",
  "digest 0.10.7",
  "futures 0.3.29",
+ "ledger-transport-hid",
  "log",
  "log4rs",
  "minotari_app_grpc",
@@ -3537,6 +3595,12 @@ dependencies = [
  "libc",
  "memoffset 0.6.5",
 ]
+
+[[package]]
+name = "no-std-compat"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b93853da6d84c2e3c7d730d6473e8817692dd89be387eb01b94d7f108ecb5b8c"
 
 [[package]]
 name = "nohash-hasher"
@@ -5631,6 +5695,8 @@ dependencies = [
  "primitive-types",
  "rand",
  "serde",
+ "strum",
+ "strum_macros",
  "tari_common",
  "tari_crypto",
  "tari_utilities",
@@ -5800,6 +5866,8 @@ dependencies = [
  "futures 0.3.29",
  "hex",
  "integer-encoding",
+ "ledger-transport 0.10.0 (git+https://github.com/Zondax/ledger-rs?rev=20e2a20)",
+ "ledger-transport-hid",
  "libsqlite3-sys",
  "lmdb-zero",
  "log",

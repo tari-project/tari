@@ -32,6 +32,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
+    wallet_types::WalletType,
 };
 use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
@@ -165,6 +166,7 @@ where
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
+        wallet_type: WalletType,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
@@ -203,6 +205,7 @@ where
                 key_manager_backend,
                 master_seed,
                 factories.clone(),
+                wallet_type,
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,
@@ -759,6 +762,25 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
     };
 
     Ok(master_seed)
+}
+
+pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
+    wallet_type: Option<WalletType>,
+    db: &WalletDatabase<T>,
+) -> Result<WalletType, WalletError> {
+    let db_wallet_type = db.get_wallet_type()?;
+
+    match (db_wallet_type, wallet_type) {
+        (None, None) => {
+            panic!("Something is very wrong, no wallet type was found in the DB, or provided (on first run)")
+        },
+        (Some(_), Some(_)) => panic!("Something is very wrong we have a wallet type from the DB and on first run"),
+        (None, Some(t)) => {
+            db.set_wallet_type(t)?;
+            Ok(t)
+        },
+        (Some(t), None) => Ok(t),
+    }
 }
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {

@@ -422,6 +422,11 @@ impl WalletSqliteDatabase {
                 WalletSettingSql::new(DbKey::LastAccessedNetwork, network).set(&mut conn)?;
                 WalletSettingSql::new(DbKey::LastAccessedVersion, version).set(&mut conn)?;
             },
+            DbKeyValuePair::WalletType(wallet_type) => {
+                kvp_text = "WalletType";
+                WalletSettingSql::new(DbKey::WalletType, serde_json::to_string(&wallet_type).unwrap())
+                    .set(&mut conn)?;
+            },
         }
 
         if start.elapsed().as_millis() > 0 {
@@ -461,6 +466,7 @@ impl WalletSqliteDatabase {
             DbKey::SecondaryKeySalt |
             DbKey::SecondaryKeyHash |
             DbKey::WalletBirthday |
+            DbKey::WalletType |
             DbKey::CommsIdentitySignature |
             DbKey::LastAccessedNetwork |
             DbKey::LastAccessedVersion => {
@@ -510,6 +516,9 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::SecondaryKeySalt => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeySalt),
             DbKey::SecondaryKeyHash => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeyHash),
             DbKey::WalletBirthday => WalletSettingSql::get(key, &mut conn)?.map(DbValue::WalletBirthday),
+            DbKey::WalletType => {
+                WalletSettingSql::get(key, &mut conn)?.map(|d| DbValue::WalletType(serde_json::from_str(&d).unwrap()))
+            },
             DbKey::LastAccessedNetwork => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedNetwork),
             DbKey::LastAccessedVersion => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedVersion),
             DbKey::CommsIdentitySignature => WalletSettingSql::get(key, &mut conn)?
