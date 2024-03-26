@@ -118,7 +118,7 @@ pub enum ChainStorageError {
     #[error("Key {key} in {table_name} already exists")]
     KeyExists { table_name: &'static str, key: String },
     #[error("Database resize required")]
-    DbResizeRequired,
+    DbResizeRequired(Option<usize>),
     #[error("DB transaction was too large ({0} operations)")]
     DbTransactionTooLarge(usize),
     #[error("DB needs to be resynced: {0}")]
@@ -183,7 +183,7 @@ impl ChainStorageError {
             _err @ ChainStorageError::IoError(_) |
             _err @ ChainStorageError::CannotCalculateNonTipMmr(_) |
             _err @ ChainStorageError::KeyExists { .. } |
-            _err @ ChainStorageError::DbResizeRequired |
+            _err @ ChainStorageError::DbResizeRequired(_) |
             _err @ ChainStorageError::DbTransactionTooLarge(_) |
             _err @ ChainStorageError::DatabaseResyncRequired(_) |
             _err @ ChainStorageError::BlockError(_) |
@@ -213,7 +213,7 @@ impl From<lmdb_zero::Error> for ChainStorageError {
                 field: "<unknown>",
                 value: "<unknown>".to_string(),
             },
-            Code(error::MAP_FULL) => ChainStorageError::DbResizeRequired,
+            Code(error::MAP_FULL) => ChainStorageError::DbResizeRequired(None),
             _ => ChainStorageError::AccessError(err.to_string()),
         }
     }

@@ -86,7 +86,7 @@ where
                 target: LOG_TARGET, "Could not insert {} bytes with key '{}' into '{}' ({:?})",
                 val_buf.len(), to_hex(key.as_lmdb_bytes()), table_name, err
             );
-            Err(ChainStorageError::DbResizeRequired)
+            Err(ChainStorageError::DbResizeRequired(Some(val_buf.len())))
         },
         Err(e) => {
             error!(
@@ -116,7 +116,7 @@ where
     txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
-                return ChainStorageError::DbResizeRequired;
+                return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
             }
         }
         error!(
@@ -137,7 +137,7 @@ where
     txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
-                return ChainStorageError::DbResizeRequired;
+                return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
             }
         }
         error!(

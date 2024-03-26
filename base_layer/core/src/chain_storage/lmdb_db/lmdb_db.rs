@@ -23,7 +23,15 @@
 use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
 
 use fs2::FileExt;
-use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use lmdb_zero::{
+    open,
+    traits::AsLmdbBytes,
+    ConstTransaction,
+    Database,
+    Environment,
+    ReadTransaction,
+    WriteTransaction,
+};
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -55,6 +63,7 @@ use crate::{
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
+            helpers::serialize,
             lmdb::{
                 fetch_db_entry_sizes,
                 lmdb_clear,
@@ -321,6 +330,21 @@ impl LMDBDatabase {
     fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
         #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
+
+        // Ensure there will be enough space in the database to insert the block before it is attempted; this is more
+        // efficient than relying on an error if the LMDB environment map size was reached with each component's insert
+        // operation, with cleanup, resize and re-try. This will also prevent block sync from stalling due to LMDB
+        // environment map size being reached.
+        if txn.operations().iter().any(|op| {
+            matches!(op, InsertOrphanBlock { .. }) ||
+                matches!(op, InsertTipBlockBody { .. }) ||
+                matches!(op, InsertChainOrphanBlock { .. })
+        }) {
+            unsafe {
+                LMDBStore::resize_if_required(&self.env, &self.env_config)?;
+            }
+        }
+
         let write_txn = self.write_transaction()?;
         for op in txn.operations() {
             trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {}", op);
@@ -1397,7 +1421,29 @@ impl LMDBDatabase {
 
     fn insert_tip_smt(&self, txn: &WriteTransaction<'_>, smt: &OutputSmt) -> Result<(), ChainStorageError> {
         let k = MetadataKey::TipSmt;
-        lmdb_replace(txn, &self.tip_utxo_smt, &k.as_u32(), smt)
+
+        match lmdb_replace(txn, &self.tip_utxo_smt, &k.as_u32(), smt) {
+            Ok(_) => {
+                trace!(
+                    "Inserted {} bytes with key '{}' into 'tip_utxo_smt' (size {})",
+                    serialize(smt).unwrap_or_default().len(),
+                    to_hex(k.as_u32().as_lmdb_bytes()),
+                    smt.size()
+                );
+                Ok(())
+            },
+            Err(e) => {
+                if let ChainStorageError::DbResizeRequired(Some(val)) = e {
+                    trace!(
+                        "Could NOT insert {} bytes with key '{}' into 'tip_utxo_smt' (size {})",
+                        val,
+                        to_hex(k.as_u32().as_lmdb_bytes()),
+                        smt.size()
+                    );
+                }
+                Err(e)
+            },
+        }
     }
 
     fn update_block_accumulated_data(
@@ -1761,7 +1807,7 @@ impl BlockchainBackend for LMDBDatabase {
 
                     return Ok(());
                 },
-                Err(ChainStorageError::DbResizeRequired) => {
+                Err(ChainStorageError::DbResizeRequired(shortfall)) => {
                     info!(
                         target: LOG_TARGET,
                         "Database resize required (resized {} time(s) in this transaction)",
@@ -1772,7 +1818,7 @@ impl BlockchainBackend for LMDBDatabase {
                     // BlockchainDatabase, so we know there are no other threads taking out LMDB transactions when this
                     // is called.
                     unsafe {
-                        LMDBStore::resize(&self.env, &self.env_config)?;
+                        LMDBStore::resize(&self.env, &self.env_config, shortfall)?;
                     }
                 },
                 Err(e) => {
