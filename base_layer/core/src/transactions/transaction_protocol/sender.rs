@@ -1043,7 +1043,7 @@ mod test {
         let key_manager = create_memory_db_key_manager();
         let p1 = TestParams::new(&key_manager).await;
         let p2 = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let script = TariScript::default();
         let output_features = OutputFeatures::default();
@@ -1106,7 +1106,7 @@ mod test {
         let a_change_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
         let script = script!(Nop);
         let consensus_constants = create_consensus_constants(0);
@@ -1213,7 +1213,7 @@ mod test {
         let alice_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(25000), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![]).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let script = script!(Nop);
@@ -1324,9 +1324,9 @@ mod test {
         let factories = CryptoFactories::default();
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(10000), 0, &key_manager).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![]).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![]).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let script = script!(Nop);
@@ -1431,7 +1431,7 @@ mod test {
         // Alice's parameters
         let key_manager = create_memory_db_key_manager();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
-        let input = create_test_input(utxo_amount, 0, &key_manager).await;
+        let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
@@ -1469,7 +1469,7 @@ mod test {
         // Alice's parameters
         let key_manager = create_memory_db_key_manager();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
-        let input = create_test_input(utxo_amount, 0, &key_manager).await;
+        let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
@@ -1511,7 +1511,7 @@ mod test {
         // Bob's parameters
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroMinotari(25000);
-        let input = create_test_input(alice_value, 0, &key_manager_alice).await;
+        let input = create_test_input(alice_value, 0, &key_manager_alice, vec![]).await;
         let script = script!(Nop);
         let consensus_constants = create_consensus_constants(0);
 

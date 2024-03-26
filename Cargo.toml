@@ -31,7 +31,7 @@ members = [
     "applications/minotari_merge_mining_proxy",
     "applications/minotari_miner",
     "integration_tests",
-    "hash_domains",
+    "hashing",
 ]
 
 # Add here until we move to edition=2021

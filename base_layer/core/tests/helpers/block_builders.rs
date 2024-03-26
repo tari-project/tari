@@ -368,9 +368,7 @@ pub async fn append_block<B: BlockchainBackend>(
     achieved_difficulty: Difficulty,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
-    append_block_with_coinbase(db, prev_block, txns, consensus, achieved_difficulty, key_manager)
-        .await
-        .map(|(b, wo)| (b, wo))
+    append_block_with_coinbase(db, prev_block, txns, consensus, achieved_difficulty, key_manager).await
 }
 
 /// Create a new block with the provided transactions and add a coinbase output. The new MMR roots are calculated, and

@@ -42,6 +42,7 @@ use tari_core::transactions::{
 use tari_crypto::tari_utilities::ByteArray;
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::hex::Hex;
 
 use crate::{
     output_manager_service::{
@@ -120,7 +121,7 @@ impl OutputSql {
 
     /// Retrieves UTXOs by a set of given rules
     #[allow(clippy::cast_sign_loss)]
-    pub fn fetch_outputs_by(
+    pub fn fetch_outputs_by_query(
         q: OutputBackendQuery,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
@@ -378,6 +379,31 @@ impl OutputSql {
             .load(conn)?)
     }
 
+    /// Verify that outputs with specified commitments exist in the database
+    pub fn verify_outputs_exist(
+        commitments: &[Commitment],
+        conn: &mut SqliteConnection,
+    ) -> Result<bool, OutputManagerStorageError> {
+        #[derive(QueryableByName, Clone)]
+        struct CountQueryResult {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+        let placeholders = commitments
+            .iter()
+            .map(|v| format!("x'{}'", v.to_hex()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = sql_query(format!(
+            "SELECT COUNT(*) as count FROM outputs WHERE commitment IN ({})",
+            placeholders
+        ));
+        let query_result = query.load::<CountQueryResult>(conn)?;
+        let commitments_len = i64::try_from(commitments.len())
+            .map_err(|e| OutputManagerStorageError::ConversionError { reason: e.to_string() })?;
+        Ok(query_result[0].count == commitments_len)
+    }
+
     /// Return the available, time locked, pending incoming and pending outgoing balance
     #[allow(clippy::cast_possible_wrap)]
     pub fn get_balance(
@@ -394,7 +420,7 @@ impl OutputSql {
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
             let balance_query = sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
                  FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
@@ -407,6 +433,8 @@ impl OutputSql {
             )
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)

@@ -13,4 +13,4 @@ edition = "2018"
 
 # So you're thinking about adding a dependency here?
 # This crate is utilized in the compilation of _most_ of our other crates. You're probably about
-# to create a cyclic depedency. Please think hard whether this change is actually required.
+# to create a cyclic dependency. Please think hard whether this change is actually required.

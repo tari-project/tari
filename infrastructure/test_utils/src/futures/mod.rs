@@ -105,7 +105,7 @@ mod test {
     #[should_panic]
     fn panic_context() {
         let mut my_fut = future::poll_fn::<(), _>(|cx: &mut Context<'_>| {
-            cx.waker().clone().wake();
+            cx.waker().wake_by_ref();
             Poll::Pending
         });
         panic_context!(cx);

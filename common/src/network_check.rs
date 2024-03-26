@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common::{
+use tari_features::resolver::Target;
+use thiserror::Error;
+
+use crate::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_features::resolver::Target;
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NetworkCheckError {
@@ -48,13 +49,13 @@ impl From<NetworkCheckError> for ExitError {
     }
 }
 
-#[cfg(tari_network_mainnet)]
+#[cfg(tari_target_network_mainnet)]
 pub const TARGET_NETWORK: Target = Target::MainNet;
 
-#[cfg(tari_network_nextnet)]
+#[cfg(tari_target_network_nextnet)]
 pub const TARGET_NETWORK: Target = Target::NextNet;
 
-#[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
+#[cfg(all(not(tari_target_network_mainnet), not(tari_target_network_nextnet)))]
 pub const TARGET_NETWORK: Target = Target::TestNet;
 
 pub fn is_network_choice_valid(network: Network) -> Result<Network, NetworkCheckError> {

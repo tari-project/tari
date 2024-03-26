@@ -132,7 +132,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
 
 #[then(
     expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be \
-            Mined_or_Faux_Confirmed"
+            Mined_or_OneSidedConfirmed"
 )]
 async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -146,7 +146,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
     let miner_ps = world.miners.get(&miner).unwrap();
     let num_retries = 100;
     println!(
-        "Detecting {} Mined_or_Faux_Confirmed transactions for wallet {}",
+        "Detecting {} Mined_or_OneSidedConfirmed transactions for wallet {}",
         wallet_tx_ids.len(),
         wallet
     );
@@ -158,10 +158,11 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
             };
             let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
             let tx_status = res.transactions.first().unwrap().status;
-            // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
-            if tx_status == 6 {
+            if tx_status == grpc::TransactionStatus::MinedConfirmed as i32 ||
+                tx_status == grpc::TransactionStatus::OneSidedConfirmed as i32
+            {
                 println!(
-                    "Wallet transaction with id {} has been detected with status Mined_or_Faux_Confirmed",
+                    "Wallet transaction with id {} has been detected with status Mined_or_OneSidedConfirmed",
                     tx_id
                 );
                 break 'inner;
@@ -169,13 +170,13 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
 
             if retry == num_retries {
                 panic!(
-                    "Unable to have wallet transaction with tx_id = {} with status Mined_or_Faux_Confirmed",
+                    "Unable to have wallet transaction with tx_id = {} with status Mined_or_OneSidedConfirmed",
                     tx_id
                 );
             }
 
             println!(
-                "Mine a block for tx_id {} to have status Mined_or_Faux_Confirmed",
+                "Mine a block for tx_id {} to have status Mined_or_OneSidedConfirmed",
                 tx_id
             );
             miner_ps.mine(world, Some(1), None, None).await;
@@ -185,7 +186,9 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
     }
 }
 
-#[then(expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_or_Faux_Confirmed")]
+#[then(
+    expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_or_OneSidedConfirmed"
+)]
 async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     world: &mut TariWorld,
     node: String,
@@ -205,13 +208,13 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     let mut mined_status_flag = false;
 
     println!(
-        "Detecting transactions on wallet {}, while mining on node {}, to be Mined_or_Faux_Confirmed",
+        "Detecting transactions on wallet {}, while mining on node {}, to be Mined_or_OneSidedConfirmed",
         &wallet, &node
     );
 
     for tx_id in wallet_tx_ids {
         println!(
-            "Waiting for transaction with id {} to have status Mined_or_Faux_Confirmed, while mining on node {}",
+            "Waiting for transaction with id {} to have status Mined_or_OneSidedConfirmed, while mining on node {}",
             tx_id, &node
         );
 
@@ -221,15 +224,16 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             };
             let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
             let tx_status = res.transactions.first().unwrap().status;
-            // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
-            if tx_status == 6 {
-                println!("Transaction with id {} has been Mined_or_Faux_Confirmed", tx_id);
+            if tx_status == grpc::TransactionStatus::MinedConfirmed as i32 ||
+                tx_status == grpc::TransactionStatus::OneSidedConfirmed as i32
+            {
+                println!("Transaction with id {} has been Mined_or_OneSidedConfirmed", tx_id);
                 mined_status_flag = true;
                 break 'inner;
             }
 
             println!(
-                "Mine a block for tx_id {} to have status Mined_or_Faux_Confirmed",
+                "Mine a block for tx_id {} to have status Mined_or_OneSidedConfirmed",
                 tx_id
             );
             mine_block(
@@ -248,14 +252,14 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
         if !mined_status_flag {
             panic!(
                 "Failed to have transaction with id {} on wallet {}, while mining on node {}, to be \
-                 Mined_or_Faux_Confirmed",
+                 Mined_or_OneSidedConfirmed",
                 tx_id, &wallet, &node
             );
         }
     }
 
     println!(
-        "Wallet {} has all transactions Mined_or_Faux_Confirmed, while mining on node {}",
+        "Wallet {} has all transactions Mined_or_OneSidedConfirmed, while mining on node {}",
         &wallet, &node
     );
 }

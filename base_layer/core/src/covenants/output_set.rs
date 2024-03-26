@@ -163,7 +163,7 @@ impl<T> Eq for Indexed<T> {}
 
 impl<T> PartialOrd for Indexed<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.index.partial_cmp(&other.index)
+        Some(self.cmp(other))
     }
 }
 

@@ -9,12 +9,12 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = { path = "../shutdown" }
-tari_comms = { path = "../../comms/core" }
+tari_shutdown = { path = "../shutdown", version = "1.0.0-pre.11a" }
+tari_comms = { path = "../../comms/core", version = "1.0.0-pre.11a" }
 
 futures = { version = "^0.3.1" }
 rand = "0.8"
-tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync"] }
+tokio = { version = "1.36", features = ["rt-multi-thread", "time", "sync"] }
 tempfile = "3.1.0"
 
 [dev-dependencies]

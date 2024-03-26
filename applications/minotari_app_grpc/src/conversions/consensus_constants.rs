@@ -29,7 +29,7 @@ use crate::tari_rpc as grpc;
 impl From<ConsensusConstants> for grpc::ConsensusConstants {
     #[allow(clippy::too_many_lines)]
     fn from(cc: ConsensusConstants) -> Self {
-        let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
+        let (emission_initial, emission_decay, inflation_bips, tail_epoch_length) = cc.emission_amounts();
         let weight_params = cc.transaction_weight_params().params();
         let input_version_range = cc.input_version_range().clone().into_inner();
         let input_version_range = grpc::Range {
@@ -100,6 +100,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
 
         let proof_of_work = HashMap::from_iter([(0u32, randomx_pow), (1u32, sha3x_pow)]);
 
+        #[allow(deprecated)]
         Self {
             coinbase_min_maturity: cc.coinbase_min_maturity(),
             blockchain_version: cc.blockchain_version().into(),
@@ -110,7 +111,9 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             median_timestamp_count: u64::try_from(cc.median_timestamp_count()).unwrap_or(0),
             emission_initial: emission_initial.into(),
             emission_decay: emission_decay.to_vec(),
-            emission_tail: emission_tail.into(),
+            emission_tail: 0,
+            inflation_bips,
+            tail_epoch_length,
             min_sha3x_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).into(),
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,

@@ -104,7 +104,7 @@ where
         // input
         let derive_key = mac_domain_hasher::<D>(LABEL_DERIVE_KEY)
             .chain(self.seed.entropy())
-            .chain(self.branch_seed.as_str().as_bytes())
+            .chain(self.branch_seed.as_bytes())
             .chain(key_index.to_le_bytes())
             .finalize();
 

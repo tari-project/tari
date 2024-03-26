@@ -121,6 +121,7 @@ impl AppState {
             cached_data,
             cache_update_cooldown: None,
             config: AppStateConfig::default(),
+            completed_tx_filter: TransactionFilter::AbandonedCoinbases,
             wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
@@ -183,6 +184,13 @@ impl AppState {
         drop(inner);
         self.update_cache().await;
         Ok(())
+    }
+
+    pub fn toggle_abandoned_coinbase_filter(&mut self) {
+        self.completed_tx_filter = match self.completed_tx_filter {
+            TransactionFilter::AbandonedCoinbases => TransactionFilter::None,
+            TransactionFilter::None => TransactionFilter::AbandonedCoinbases,
+        };
     }
 
     pub async fn update_cache(&mut self) {
@@ -556,7 +564,15 @@ impl AppState {
     }
 
     pub fn get_completed_txs(&self) -> Vec<&CompletedTransactionInfo> {
-        self.cached_data.completed_txs.iter().collect()
+        if self.completed_tx_filter == TransactionFilter::AbandonedCoinbases {
+            self.cached_data
+                .completed_txs
+                .iter()
+                .filter(|tx| !matches!(tx.status, TransactionStatus::CoinbaseNotInBlockChain))
+                .collect()
+        } else {
+            self.cached_data.completed_txs.iter().collect()
+        }
     }
 
     pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
@@ -956,6 +972,41 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
+        let wallet_id = WalletIdentity::new(self.wallet.comms.node_identity(), self.wallet.network.as_network());
+        let eid = wallet_id.address.to_emoji_string();
+        let qr_link = format!(
+            "tari://{}/transactions/send?tariAddress={}",
+            wallet_id.network,
+            wallet_id.address.to_hex()
+        );
+        let code = QrCode::new(qr_link).unwrap();
+        let image = code
+            .render::<unicode::Dense1x2>()
+            .dark_color(unicode::Dense1x2::Dark)
+            .light_color(unicode::Dense1x2::Light)
+            .build()
+            .lines()
+            .skip(1)
+            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
+        let identity = MyIdentity {
+            tari_address: wallet_id.address.to_hex(),
+            network_address: wallet_id
+                .node_identity
+                .public_addresses()
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            emoji_id: eid,
+            qr_code: image,
+            node_id: wallet_id.node_identity.node_id().to_string(),
+        };
+        self.data.my_identity = identity;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         self.refresh_network_id().await?;
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
@@ -1033,7 +1084,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
+                Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
             )
             .await?;
 
@@ -1058,7 +1109,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
+                Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
             )
             .await?;
 
@@ -1096,7 +1147,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone(),
+                Some(previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
             )
             .await?;
 
@@ -1369,4 +1420,10 @@ impl Default for AppStateConfig {
             cache_update_cooldown: Duration::from_millis(100),
         }
     }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum TransactionFilter {
+    None,
+    AbandonedCoinbases,
 }

@@ -196,6 +196,8 @@ struct TransportConfig;
  */
 struct UnblindedOutput;
 
+struct Vec_u8;
+
 /**
  * -------------------------------- Vector ------------------------------------------------ ///
  */
@@ -347,6 +349,7 @@ struct TariUtxo {
   uint64_t mined_timestamp;
   uint64_t lock_height;
   uint8_t status;
+  struct Vec_u8 coinbase_extra;
 };
 
 #ifdef __cplusplus
@@ -2707,6 +2710,8 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  const char *passphrase,
                                  const struct TariSeedWords *seed_words,
                                  const char *network_str,
+                                 const char *peer_seed_str,
+                                 bool dns_sec,
                                  void (*callback_received_transaction)(TariPendingInboundTransaction*),
                                  void (*callback_received_transaction_reply)(TariCompletedTransaction*),
                                  void (*callback_received_finalized_transaction)(TariCompletedTransaction*),
@@ -2994,10 +2999,27 @@ bool wallet_verify_message_signature(struct TariWallet *wallet,
  * # Safety
  * None
  */
-bool wallet_add_base_node_peer(struct TariWallet *wallet,
+bool wallet_set_base_node_peer(struct TariWallet *wallet,
                                TariPublicKey *public_key,
                                const char *address,
                                int *error_out);
+
+/**
+ * Gets all seed peers known by the wallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `TariPublicKeys` - Returns a list of all known public keys
+ *
+ * # Safety
+ * None
+ */
+struct TariPublicKeys *wallet_get_seed_peers(struct TariWallet *wallet,
+                                             int *error_out);
 
 /**
  * Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the

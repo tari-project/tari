@@ -43,8 +43,8 @@ impl Reorg {
     pub fn from_reorged_blocks(added: &VecDeque<Arc<ChainBlock>>, removed: &[Arc<ChainBlock>]) -> Self {
         // Expects blocks to be ordered sequentially highest height to lowest (as in rewind_to_height)
         Self {
-            new_height: added.get(0).map(|b| b.header().height).unwrap_or_default(),
-            new_hash: added.get(0).map(|b| *b.hash()).unwrap_or_default(),
+            new_height: added.front().map(|b| b.header().height).unwrap_or_default(),
+            new_hash: added.front().map(|b| *b.hash()).unwrap_or_default(),
             prev_height: removed.first().map(|b| b.header().height).unwrap_or_default(),
             prev_hash: removed.first().map(|b| *b.hash()).unwrap_or_default(),
             num_blocks_added: added.len() as u64,

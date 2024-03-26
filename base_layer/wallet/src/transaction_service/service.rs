@@ -107,6 +107,7 @@ use crate::{
             TransactionServiceResponse,
         },
         protocols::{
+            check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
@@ -784,16 +785,19 @@ where
                 let tx_id = match tx {
                     PendingInbound(inbound_tx) => {
                         let tx_id = inbound_tx.tx_id;
+                        check_transaction_size(&inbound_tx, tx_id)?;
                         self.db.insert_pending_inbound_transaction(tx_id, inbound_tx)?;
                         tx_id
                     },
                     PendingOutbound(outbound_tx) => {
                         let tx_id = outbound_tx.tx_id;
+                        check_transaction_size(&outbound_tx, tx_id)?;
                         self.db.insert_pending_outbound_transaction(tx_id, outbound_tx)?;
                         tx_id
                     },
                     Completed(completed_tx) => {
                         let tx_id = completed_tx.tx_id;
+                        check_transaction_size(&completed_tx.transaction, tx_id)?;
                         self.db.insert_completed_transaction(tx_id, completed_tx)?;
                         tx_id
                     },
@@ -824,6 +828,7 @@ where
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
                 .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
+                .await
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::SetLowPowerMode => {
                 self.set_power_mode(PowerMode::Low).await?;
@@ -1030,7 +1035,8 @@ where
                     None,
                     None,
                 )?,
-            )?;
+            )
+            .await?;
 
             let _result = reply_channel
                 .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
@@ -1279,7 +1285,8 @@ where
                 None,
                 None,
             )?,
-        )?;
+        )
+        .await?;
 
         let tx_output = output
             .to_transaction_output(&self.resources.transaction_key_manager_service)
@@ -1467,7 +1474,8 @@ where
                 None,
                 None,
             )?,
-        )?;
+        )
+        .await?;
 
         Ok(tx_id)
     }
@@ -1728,7 +1736,8 @@ where
                 None,
                 None,
             )?,
-        )?;
+        )
+        .await?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", tx_id);
 
         Ok((tx_id, BurntProof {
@@ -2866,7 +2875,7 @@ where
     }
 
     /// Submit a completed transaction to the Transaction Manager
-    fn submit_transaction(
+    async fn submit_transaction(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2875,12 +2884,17 @@ where
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_transaction.tx_id;
         trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
-        self.db.insert_completed_transaction(tx_id, completed_transaction)?;
+        self.db
+            .insert_completed_transaction(tx_id, completed_transaction.clone())?;
         trace!(
             target: LOG_TARGET,
             "Launch the transaction broadcast protocol for submitted transaction ({}).",
             tx_id
         );
+        if let Err(e) = check_transaction_size(&completed_transaction.transaction, tx_id) {
+            self.cancel_transaction(tx_id, TxCancellationReason::Oversized).await;
+            return Err(e.into());
+        }
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,
@@ -2891,9 +2905,24 @@ where
         Ok(())
     }
 
+    async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {
+        if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", tx_id, e
+            );
+        }
+        if let Err(e) = self.resources.db.reject_completed_transaction(tx_id, reason) {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", tx_id, e
+            );
+        }
+    }
+
     /// Submit a completed coin split transaction to the Transaction Manager. This is different from
     /// `submit_transaction` in that it will expose less information about the completed transaction.
-    pub fn submit_transaction_to_self(
+    pub async fn submit_transaction_to_self(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2920,7 +2949,8 @@ where
                 None,
                 None,
             )?,
-        )?;
+        )
+        .await?;
         Ok(())
     }
 

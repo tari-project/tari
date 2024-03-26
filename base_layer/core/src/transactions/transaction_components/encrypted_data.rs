@@ -40,7 +40,7 @@ use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
-use tari_hash_domains::TransactionSecureNonceKdfDomain;
+use tari_hashing::TransactionSecureNonceKdfDomain;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,

@@ -26,11 +26,11 @@ Scenario: Get Transaction Info
     Then wallet WALLET_B detects all transactions are at least Broadcast
     When mining node MINER2 mines 1 blocks
     Then all nodes are at height 5
-    Then wallet WALLET_A detects all transactions are at least Mined_or_Faux_Unconfirmed
-    Then wallet WALLET_B detects all transactions are at least Mined_or_Faux_Unconfirmed
+    Then wallet WALLET_A detects all transactions are at least Mined_or_OneSidedUnconfirmed
+    Then wallet WALLET_B detects all transactions are at least Mined_or_OneSidedUnconfirmed
     When mining node MINER2 mines 10 blocks
     Then all nodes are at height 15
-    Then wallet WALLET_A detects all transactions as Mined_or_Faux_Confirmed
-    Then wallet WALLET_B detects all transactions as Mined_or_Faux_Confirmed
+    Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
+    Then wallet WALLET_B detects all transactions as Mined_or_OneSidedConfirmed
     # This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds

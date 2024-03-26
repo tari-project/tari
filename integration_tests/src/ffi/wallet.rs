@@ -178,6 +178,8 @@ impl Wallet {
                 CString::new("kensentme").unwrap().into_raw(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
+                CString::new("").unwrap().into_raw(),
+                false,
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -202,6 +204,7 @@ impl Wallet {
                 println!("wallet_create error {}", error);
             }
         }
+        #[allow(clippy::arc_with_non_send_sync)]
         let wallet = Arc::new(Mutex::new(Self {
             ptr,
             liveness_data: Default::default(),
@@ -235,14 +238,14 @@ impl Wallet {
         let mut error = 0;
         let success;
         unsafe {
-            success = ffi_import::wallet_add_base_node_peer(
+            success = ffi_import::wallet_set_base_node_peer(
                 self.ptr,
                 base_node.get_ptr(),
                 CString::new(address).unwrap().into_raw(),
                 &mut error,
             );
             if error > 0 {
-                println!("wallet_add_base_node_peer error {}", error);
+                println!("wallet_set_base_node_peer error {}", error);
             }
         }
         success

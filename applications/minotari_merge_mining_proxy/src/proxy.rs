@@ -226,7 +226,6 @@ impl InnerService {
         let (parts, mut json_resp) = monerod_resp.into_parts();
 
         debug!(target: LOG_TARGET, "handle_submit_block: submit request #{}", request);
-        debug!(target: LOG_TARGET, "Params received: #{:?}", request["params"]);
         let params = match request["params"].as_array() {
             Some(v) => v,
             None => {
@@ -257,7 +256,7 @@ impl InnerService {
                 hex::encode(hash)
             );
 
-            let mut block_data = match self.block_templates.get(&hash).await {
+            let mut block_data = match self.block_templates.get_final_template(&hash).await {
                 Some(d) => d,
                 None => {
                     info!(
@@ -270,36 +269,53 @@ impl InnerService {
             };
             let monero_data = monero_rx::construct_monero_data(
                 monero_block,
-                block_data.monero_seed.clone(),
+                block_data.template.monero_seed.clone(),
                 block_data.aux_chain_hashes.clone(),
-                block_data.tari_hash,
+                block_data.template.tari_merge_mining_hash,
             )?;
 
             debug!(target: LOG_TARGET, "Monero PoW Data: {:?}", monero_data);
 
-            let header_mut = block_data.tari_block.header.as_mut().unwrap();
-            let height = header_mut.height;
-            BorshSerialize::serialize(&monero_data, &mut header_mut.pow.as_mut().unwrap().pow_data)
+            let tari_header_mut = block_data
+                .template
+                .tari_block
+                .header
+                .as_mut()
+                .ok_or(MmProxyError::UnexpectedMissingData("tari_block.header".to_string()))?;
+            let pow_mut = tari_header_mut
+                .pow
+                .as_mut()
+                .ok_or(MmProxyError::UnexpectedMissingData("tari_block.header.pow".to_string()))?;
+            BorshSerialize::serialize(&monero_data, &mut pow_mut.pow_data)
                 .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
-            let tari_header = header_mut.clone().try_into().map_err(MmProxyError::ConversionError)?;
+            let tari_header = tari_header_mut
+                .clone()
+                .try_into()
+                .map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
-                let diff = randomx_difficulty(&tari_header, &self.randomx_factory, &gen_hash, &self.consensus_manager)?;
+                let diff = randomx_difficulty(
+                    &tari_header,
+                    &self.randomx_factory,
+                    self.consensus_manager.get_genesis_block().hash(),
+                    &self.consensus_manager,
+                )?;
                 trace!(
                     target: LOG_TARGET,
                     "Finished calculate achieved Tari difficultly - achieved {} vs. target {}",
-                    diff.as_u64(),
-                    block_data.tari_difficulty
+                    diff,
+                    block_data.template.tari_difficulty
                 );
                 diff.as_u64()
             } else {
-                block_data.tari_difficulty
+                block_data.template.tari_difficulty
             };
 
-            if achieved_target >= block_data.tari_difficulty {
-                match base_node_client.submit_block(block_data.tari_block).await {
+            let height = tari_header_mut.height;
+            if achieved_target >= block_data.template.tari_difficulty {
+                match base_node_client.submit_block(block_data.template.tari_block).await {
                     Ok(resp) => {
                         if self.config.submit_to_origin {
                             json_resp = json_rpc::success_response(
@@ -327,7 +343,7 @@ impl InnerService {
                                 json_resp
                             );
                         }
-                        self.block_templates.remove(&hash).await;
+                        self.block_templates.remove_final_block_template(&hash).await;
                     },
                     Err(err) => {
                         debug!(
@@ -404,7 +420,6 @@ impl InnerService {
         let mut grpc_client = self.base_node_client.clone();
 
         // Add merge mining tag on blocktemplate request
-        debug!(target: LOG_TARGET, "Requested new block template from Minotari base node");
         if !self.initial_sync_achieved.load(Ordering::SeqCst) {
             let grpc::TipInfoResponse {
                 initial_sync_achieved,
@@ -455,12 +470,15 @@ impl InnerService {
             difficulty,
         };
 
-        let final_block_template_data = new_block_protocol.get_next_block_template(monero_mining_data).await?;
+        let final_block_template_data = new_block_protocol
+            .get_next_block_template(monero_mining_data, &self.block_templates)
+            .await?;
 
-        monerod_resp["result"]["blocktemplate_blob"] = final_block_template_data.blocktemplate_blob.into();
-        monerod_resp["result"]["blockhashing_blob"] = final_block_template_data.blockhashing_blob.into();
+        monerod_resp["result"]["blocktemplate_blob"] = final_block_template_data.blocktemplate_blob.clone().into();
+        monerod_resp["result"]["blockhashing_blob"] = final_block_template_data.blockhashing_blob.clone().into();
         monerod_resp["result"]["difficulty"] = final_block_template_data.target_difficulty.as_u64().into();
 
+        let tari_difficulty = final_block_template_data.template.tari_difficulty;
         let tari_height = final_block_template_data
             .template
             .tari_block
@@ -468,9 +486,9 @@ impl InnerService {
             .as_ref()
             .map(|h| h.height)
             .unwrap_or(0);
+        let aux_chain_mr = hex::encode(final_block_template_data.aux_chain_mr.clone());
         let block_reward = final_block_template_data.template.tari_miner_data.reward;
         let total_fees = final_block_template_data.template.tari_miner_data.total_fees;
-        let mining_hash = final_block_template_data.merge_mining_hash;
         let monerod_resp = add_aux_data(
             monerod_resp,
             json!({ "base_difficulty": final_block_template_data.template.monero_difficulty }),
@@ -479,20 +497,13 @@ impl InnerService {
             monerod_resp,
             json!({
                 "id": TARI_CHAIN_ID,
-                "difficulty": final_block_template_data.template.tari_difficulty,
+                "difficulty": tari_difficulty,
                 "height": tari_height,
-                // The merge mining hash, before the final block hash can be calculated
-                "mining_hash": mining_hash.to_hex(),
+                // The aux chain merkle root, before the final block hash can be calculated
+                "mining_hash": aux_chain_mr,
                 "miner_reward": block_reward + total_fees,
             }),
         );
-
-        self.block_templates
-            .save(
-                final_block_template_data.aux_chain_mr,
-                final_block_template_data.template,
-            )
-            .await;
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
         Ok(proxy::into_response(parts, &monerod_resp))

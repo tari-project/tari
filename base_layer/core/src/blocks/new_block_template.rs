@@ -22,6 +22,7 @@
 
 use std::fmt::{Display, Formatter};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -36,7 +37,7 @@ use crate::{
 
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct NewBlockTemplate {
     /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata
     /// for the block that the Base Node is able to complete on behalf of a Miner.

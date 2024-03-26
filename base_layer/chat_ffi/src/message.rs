@@ -162,15 +162,16 @@ pub unsafe extern "C" fn chat_metadata_get_at(
 
     let message = &(*message);
 
-    let len = message.metadata.len() - 1;
-    if position as usize > len {
+    let len = message.metadata.len();
+    let position = position as usize;
+    if message.metadata.is_empty() || position > len - 1 {
         error = LibChatError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
     let message_metadata_vec = &(*(message).metadata);
-    let message_metadata = Box::new(message_metadata_vec[position as usize].clone());
+    let message_metadata = Box::new(message_metadata_vec[position].clone());
 
     Box::into_raw(message_metadata)
 }
@@ -198,7 +199,9 @@ pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_
     }
 
     let message = &(*message);
-    message.metadata.len() as c_longlong
+    #[allow(clippy::cast_possible_wrap)]
+    let res = message.metadata.len() as i64;
+    res
 }
 
 /// Returns a pointer to a ChatByteVector representing the data of the Message
@@ -289,7 +292,7 @@ pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, erro
         return -1;
     }
 
-    c_int::try_from((*message).direction.as_byte()).unwrap_or(-1)
+    c_int::from((*message).direction.as_byte())
 }
 
 /// Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch

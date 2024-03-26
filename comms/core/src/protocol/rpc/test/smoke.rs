@@ -186,7 +186,7 @@ async fn request_response_errors_and_streaming() {
     let stream = client.streaming_error2().await.unwrap();
     let results = stream.collect::<Vec<_>>().await;
     assert_eq!(results.len(), 2);
-    let first_reply = results.get(0).unwrap().as_ref().unwrap();
+    let first_reply = results.first().unwrap().as_ref().unwrap();
     assert_eq!(first_reply, "This is ok");
 
     let second_reply = results.get(1).unwrap().as_ref().unwrap_err();

@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core" }
-tari_comms_dht = {  path = "../../comms/dht" }
-tari_common = {  path = "../../common" }
+tari_comms = {  path = "../../comms/core", version = "1.0.0-pre.11a" }
+tari_comms_dht = {  path = "../../comms/dht", version = "1.0.0-pre.11a" }
+tari_common = {  path = "../../common", version = "1.0.0-pre.11a" }
 tari_crypto = { version = "0.20" }
-tari_service_framework = {  path = "../service_framework" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
+tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.11a" }
+tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.11a" }
+tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-pre.11a" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -32,7 +32,7 @@ rustls = "0.20.2"
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["macros"] }
+tokio = { version = "1.36", features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = ["time"] }
 tower = "0.4.11"
 trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"] }
@@ -46,7 +46,7 @@ clap = "3.2"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-pre.11a" }
 
 [features]
 test-mocks = []

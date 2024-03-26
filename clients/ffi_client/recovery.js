@@ -186,7 +186,7 @@ try {
   let publicKey = lib.public_key_create(publicKeyByteVector, err);
 
   console.log("Set base node peer...", publicKeyHex);
-  lib.wallet_add_base_node_peer(
+  lib.wallet_set_base_node_peer(
     wallet,
     publicKey,
     "/onion3/2m2xnylrsqbaozsndkbmfisxxbwh2vgvs6oyfak2qah4snnxykrf7zad:18141",

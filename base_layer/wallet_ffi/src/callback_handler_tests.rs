@@ -507,17 +507,15 @@ mod test {
             0,
             123.into(),
             ts_now.timestamp_millis() as u64,
-        );
+        )
+        .unwrap();
 
         base_node_event_sender
             .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
                 node_id: Some(NodeId::new()),
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(true),
-                updated: Some(NaiveDateTime::from_timestamp_millis(
-                    ts_now.timestamp_millis() - (60 * 1000),
-                ))
-                .unwrap(),
+                updated: NaiveDateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),
                 latency: Some(Duration::from_micros(500)),
             })))
             .unwrap();

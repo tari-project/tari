@@ -43,7 +43,7 @@ use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
-use minotari_app_utilities::{common_cli_args::CommonCliArgs, network_check::set_network_if_choice_valid};
+use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
@@ -101,8 +101,6 @@ pub async fn run_base_node_with_cli(
     cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
-    set_network_if_choice_valid(config.network())?;
-
     #[cfg(feature = "metrics")]
     {
         metrics::install(

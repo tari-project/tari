@@ -69,13 +69,13 @@ pub fn socket_or_multi(addr: &str) -> Result<Multiaddr, Error> {
 
 /// Implement this trait to specify custom configuration overrides for a network when loading the config
 pub trait ConfigOverrideProvider {
-    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)>;
+    fn get_config_property_overrides(&self, network: &mut Network) -> Vec<(String, String)>;
 }
 
 pub struct NoConfigOverrides;
 
 impl ConfigOverrideProvider for NoConfigOverrides {
-    fn get_config_property_overrides(&self, _default_network: Network) -> Vec<(String, String)> {
+    fn get_config_property_overrides(&self, _network: &mut Network) -> Vec<(String, String)> {
         Vec::new()
     }
 }

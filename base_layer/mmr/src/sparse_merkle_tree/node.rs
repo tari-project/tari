@@ -177,23 +177,13 @@ impl<'a> ExactSizeIterator for PathIterator<'a> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(bound(deserialize = "H:"))]
 #[serde(bound(serialize = "H:"))]
 pub enum Node<H> {
     Empty(EmptyNode),
     Leaf(LeafNode<H>),
     Branch(BranchNode<H>),
-}
-
-impl<H> Clone for Node<H> {
-    fn clone(&self) -> Self {
-        match self {
-            Empty(n) => Empty(n.clone()),
-            Leaf(n) => Leaf(n.clone()),
-            Branch(_) => panic!("Branch nodes cannot be cloned"),
-        }
-    }
 }
 
 impl<H> Node<H> {
@@ -660,7 +650,7 @@ mod test {
 
     #[test]
     fn hash_type_from_slice() {
-        let arr = vec![1u8; 32];
+        let arr = [1u8; 32];
         assert!(matches!(NodeKey::try_from(&arr[..3]), Err(SMTError::ArrayTooShort(3))));
         assert!(NodeKey::try_from(&arr[..]).is_ok());
         assert!(matches!(

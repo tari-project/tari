@@ -32,7 +32,7 @@ use crate::{
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
-        unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolError},
+        unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
         FeePerGramStat,
         MempoolConfig,
         StateResponse,
@@ -52,7 +52,7 @@ pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
 pub struct MempoolStorage {
-    unconfirmed_pool: UnconfirmedPool,
+    pub(crate) unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
     rules: ConsensusManager,
@@ -154,6 +154,23 @@ impl MempoolStorage {
             .rules
             .consensus_constants(self.last_seen_height)
             .transaction_weight_params()
+    }
+
+    /// Ensures that all transactions are safely deleted in order and from all storage and then
+    /// re-inserted
+    pub(crate) fn remove_and_reinsert_transactions(
+        &mut self,
+        transactions: Vec<(TransactionKey, Arc<Transaction>)>,
+    ) -> Result<(), MempoolError> {
+        for (tx_key, _) in &transactions {
+            self.unconfirmed_pool
+                .remove_transaction(*tx_key)
+                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+        }
+        self.insert_txs(transactions.iter().map(|(_, tx)| tx.clone()).collect())
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+
+        Ok(())
     }
 
     // Insert a set of new transactions into the UTxPool.
@@ -285,11 +302,10 @@ impl MempoolStorage {
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into the given weight
-    pub fn retrieve_and_revalidate(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        let results = self.unconfirmed_pool.fetch_highest_priority_txs(total_weight)?;
-        self.insert_txs(results.transactions_to_insert)
-            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        Ok(results.retrieved_transactions)
+    pub fn retrieve(&self, total_weight: u64) -> Result<RetrieveResults, MempoolError> {
+        self.unconfirmed_pool
+            .fetch_highest_priority_txs(total_weight)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
     pub fn retrieve_by_excess_sigs(

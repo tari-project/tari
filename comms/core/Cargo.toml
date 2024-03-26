@@ -11,9 +11,9 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.20" }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.11a" }
+tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-pre.11a" }
+tari_shutdown = {  path = "../../infrastructure/shutdown" , version = "1.0.0-pre.11a"}
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -41,7 +41,7 @@ serde_derive = "1.0.119"
 sha3 = "0.10"
 snow = { version = "0.9.5", features = ["default-resolver"] }
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
+tokio = { version = "1.36", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-util = { version = "0.6.7", features = ["codec", "compat"] }
 tower = {version = "0.4", features = ["util"]}
@@ -58,7 +58,7 @@ serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-pre.11a" }
 
 [features]
 c_integration = []

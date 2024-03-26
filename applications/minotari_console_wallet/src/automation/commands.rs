@@ -317,7 +317,9 @@ async fn set_base_node_peer(
 ) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
     println!("Setting base node peer...");
     println!("{}::{}", public_key, address);
-    wallet.set_base_node_peer(public_key.clone(), address.clone()).await?;
+    wallet
+        .set_base_node_peer(public_key.clone(), Some(address.clone()))
+        .await?;
     Ok((public_key, address))
 }
 
@@ -351,7 +353,7 @@ pub async fn discover_peer(
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    transactions_per_second: u32,
+    transactions_per_second: f64,
     duration: Duration,
     start_amount: MicroMinotari,
     increase_amount: MicroMinotari,
@@ -360,6 +362,13 @@ pub async fn make_it_rain(
     transaction_type: MakeItRainTransactionType,
     message: String,
 ) -> Result<(), CommandError> {
+    // Limit the transactions per second to a reasonable range
+    // Notes:
+    // - The 'transactions_per_second' is best effort and not guaranteed.
+    // - If a slower rate is requested as what is achievable, transactions will be delayed to match the rate.
+    // - If a faster rate is requested as what is achievable, the maximum rate will be that of the integrated system.
+    // - The default value of 25/s may not be achievable.
+    let transactions_per_second = transactions_per_second.abs().max(0.01).min(250.0);
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
@@ -380,7 +389,7 @@ pub async fn make_it_rain(
         );
         sleep(Duration::from_millis(delay_ms)).await;
 
-        let num_txs = (f64::from(transactions_per_second) * duration.as_secs() as f64) as usize;
+        let num_txs = (transactions_per_second * duration.as_secs() as f64) as usize;
         let started_at = Utc::now();
 
         struct TransactionSendStats {
@@ -411,10 +420,19 @@ pub async fn make_it_rain(
 
                 // Manage transaction submission rate
                 let actual_ms = (Utc::now() - started_at).num_milliseconds();
-                let target_ms = (i as f64 / f64::from(transactions_per_second) / 1000.0) as i64;
+                let target_ms = (i as f64 * (1000.0 / transactions_per_second)) as i64;
+                trace!(
+                    target: LOG_TARGET,
+                    "make-it-rain {}: target {:?} ms vs. actual {:?} ms", i, target_ms, actual_ms
+                );
                 if target_ms - actual_ms > 0 {
                     // Maximum delay between Txs set to 120 s
-                    sleep(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
+                    let delay_ms = Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64);
+                    trace!(
+                        target: LOG_TARGET,
+                        "make-it-rain {}: delaying for {:?} ms", i, delay_ms
+                    );
+                    sleep(delay_ms).await;
                 }
                 let delayed_for = Instant::now();
                 let sender_clone = sender.clone();

@@ -22,7 +22,7 @@
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use tari_hash_domains::ConfidentialOutputHashDomain;
+use tari_hashing::ConfidentialOutputHashDomain;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 

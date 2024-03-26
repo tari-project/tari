@@ -274,14 +274,14 @@ mod tests {
     #[derive(Clone, Serialize, Deserialize, Debug)]
     #[allow(clippy::struct_excessive_bools)]
     struct TestInnerConfig {
-        deny_methods: Vec<GrpcMethod>,
+        allow_methods: Vec<GrpcMethod>,
     }
 
     #[test]
     fn it_deserializes_enums() {
         let config_str = r#"
             name = "blockchain champion"
-            inner_config.deny_methods = [
+            inner_config.allow_methods = [
                 "list_headers",
                 "get_constants",
             #    "get_blocks"
@@ -292,10 +292,10 @@ mod tests {
         let config = toml::from_str::<TestConfig>(config_str).unwrap();
 
         // Enums in the config
-        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::ListHeaders));
-        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::GetConstants));
-        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
-        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::Identify));
-        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
+        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::ListHeaders));
+        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::GetConstants));
+        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
+        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::Identify));
+        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
     }
 }

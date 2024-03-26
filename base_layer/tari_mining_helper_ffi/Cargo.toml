@@ -7,20 +7,26 @@ version = "1.0.0-pre.5"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core" }
+tari_comms = { path = "../../comms/core" }
 tari_crypto = { version = "0.20" }
-tari_common = {  path = "../../common" }
-tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
+tari_common = { path = "../../common" }
+tari_core = { path = "../core", default-features = false, features = ["transactions", "base_node_proto", "base_node"] }
+tari_common_types = {  path = "../../base_layer/common_types", version = "1.0.0-pre.11a" }
 tari_utilities = { version = "0.7" }
 libc = "0.2.65"
 thiserror = "1.0.26"
 borsh = "1.2"
 hex = "0.4.2"
+tokio = { version = "1.36", features = ["rt"] }
 
 [dev-dependencies]
-tari_core = { path = "../core", features = ["transactions", "base_node"]}
-
+tari_core = { path = "../core", features = ["transactions", "base_node"] }
 rand = "0.8"
 
+[build-dependencies]
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11a" }
+cbindgen = "0.24.3"
+tari_common = { path = "../../common", features = ["build", "static-application-info"] }
+
 [lib]
-crate-type = ["staticlib","cdylib"]
+crate-type = ["cdylib"]

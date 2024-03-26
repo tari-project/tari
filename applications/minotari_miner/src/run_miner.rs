@@ -29,14 +29,11 @@ use minotari_app_grpc::{
     tari_rpc::{base_node_client::BaseNodeClient, TransactionOutput as GrpcTransactionOutput},
     tls::protocol_string,
 };
-use minotari_app_utilities::{
-    network_check::set_network_if_choice_valid,
-    parse_miner_input::{
-        base_node_socket_address,
-        verify_base_node_grpc_mining_responses,
-        wallet_payment_address,
-        BaseNodeGrpcClient,
-    },
+use minotari_app_utilities::parse_miner_input::{
+    base_node_socket_address,
+    verify_base_node_grpc_mining_responses,
+    wallet_payment_address,
+    BaseNodeGrpcClient,
 };
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
@@ -75,8 +72,6 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let cfg = load_configuration(config_path.as_path(), true, cli.non_interactive_mode, &cli)?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
-
-    set_network_if_choice_valid(config.network)?;
 
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
     let key_manager = create_memory_db_key_manager();
@@ -137,9 +132,9 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             if let MinerError::BaseNodeNotResponding(_) = e {
                 error!(target: LOG_TARGET, "{}", e.to_string());
                 println!();
-                let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods denied in \
-                           its 'config.toml'? Please ensure these methods are commented out:\n  \
-                           'grpc_server_deny_methods': \"get_new_block_template\", \"get_tip_info\", \
+                let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods allowed in \
+                           its 'config.toml'? Please ensure these methods are enabled in:\n  \
+                           'grpc_server_allow_methods': \"get_new_block_template\", \"get_tip_info\", \
                            \"get_new_block\", \"submit_block\"";
                 println!("{}", msg);
                 println!();

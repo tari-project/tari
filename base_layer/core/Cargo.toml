@@ -23,29 +23,33 @@ base_node = [
 ]
 base_node_proto = []
 benches = ["base_node"]
+ledger = [
+  "ledger-transport",
+  "ledger-transport-hid"
+]
 metrics = ["tari_metrics"]
 
 [dependencies]
-tari_common = { path = "../../common" }
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
-tari_comms_dht = { path = "../../comms/dht" }
-tari_comms_rpc_macros = { path = "../../comms/rpc_macros" }
+tari_common = { path = "../../common", version = "1.0.0-pre.11a" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.11a" }
+tari_comms = { path = "../../comms/core", version = "1.0.0-pre.11a" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.11a" }
+tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.11a" }
 tari_crypto = { version = "0.20", features = ["borsh"] }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true }
-tari_mmr = { path = "../../base_layer/mmr", optional = true }
-tari_p2p = { path = "../../base_layer/p2p" }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_service_framework = { path = "../service_framework" }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_storage = { path = "../../infrastructure/storage" }
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.11a" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true , version = "1.0.0-pre.11a"}
+tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.11a" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.0.0-pre.11a" }
+tari_service_framework = { path = "../service_framework", version = "1.0.0-pre.11a" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-pre.11a" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-pre.11a" }
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.0.0-pre.11a" }
 tari_utilities = { version = "0.7", features = ["borsh"] }
 tari_key_manager = { path = "../key_manager", features = [
   "key_manager_service",
-] }
+], version = "1.0.0-pre.11a" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_hash_domains = { path = "../../hash_domains" }
+tari_hashing = { path = "../../hashing" }
 
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
@@ -62,6 +66,8 @@ fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 integer-encoding = "3.0"
+ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
+ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
@@ -82,11 +88,11 @@ sha2 = "0.10"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["time", "sync", "macros"] }
+tokio = { version = "1.36", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
-tiny-keccak = { git = "https://github.com/tari-project/tiny-keccak", rev = "bcddc65530d8646de7282cd8d18d891dc434b643", features = [
+tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
   "keccak",
 ] }
 
@@ -104,7 +110,8 @@ toml = { version = "0.5" }
 quickcheck = "1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build"] }
+tari_common = { path = "../../common", features = ["build"], version = "1.0.0-pre.11a" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11a" }
 
 [[bench]]
 name = "mempool"

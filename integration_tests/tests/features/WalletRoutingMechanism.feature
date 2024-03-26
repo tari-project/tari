@@ -23,12 +23,12 @@ Feature: Wallet Routing Mechanism
       When I wait 1 seconds
       #   And mining node MINER mines 1 blocks
       #  Then all nodes are at height 21
-      #   Then all wallets detect all transactions as Mined_or_Faux_Unconfirmed
+      #   Then all wallets detect all transactions as Mined_or_OneSidedUnconfirmed
       #   # This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 11 blocks
       #  Then all nodes are at height 32
-      #   Then all wallets detect all transactions as Mined_or_Faux_Confirmed
+      #   Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
       #   This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds
       #   @long-running

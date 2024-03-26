@@ -32,7 +32,7 @@ use tari_core::{
     },
     blocks::{ChainBlock, NewBlock},
     chain_storage::BlockchainDatabaseConfig,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
     transactions::{
@@ -88,9 +88,7 @@ async fn propagate_and_forward_many_valid_blocks() {
     let carol_node_identity = random_node_identity();
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (block0, outputs) = create_genesis_block_with_utxos(&[T, T], &consensus_constants, &key_manager).await;
 
     let (tx01, _tx01_out) = spend_utxos(
@@ -222,7 +220,6 @@ async fn propagate_and_forward_many_valid_blocks() {
     dan_node.shutdown().await;
 }
 
-static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 async fn propagate_and_forward_invalid_block_hash() {
@@ -237,9 +234,7 @@ async fn propagate_and_forward_invalid_block_hash() {
     let carol_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let key_manager = create_memory_db_key_manager();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (block0, genesis_coinbase) = create_genesis_block(&consensus_constants, &key_manager).await;
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
@@ -370,9 +365,7 @@ async fn propagate_and_forward_invalid_block() {
     let dan_node_identity = random_node_identity();
     let key_manager = create_memory_db_key_manager();
     let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
+    let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (block0, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)

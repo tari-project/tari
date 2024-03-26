@@ -148,7 +148,6 @@ where
                     );
                     self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
                         .await?;
-                    self.publish_event(TransactionEvent::NewBlockMined(unmined_tx.tx_id));
                 }
             }
         }
@@ -249,7 +248,7 @@ where
         let mut unmined = vec![];
         #[allow(clippy::mutable_key_type)]
         let mut batch_signatures = HashMap::new();
-        for tx_info in batch.iter() {
+        for tx_info in batch {
             // Imported transactions do not have a signature; this is represented by the default signature in info
             if tx_info.signature != Signature::default() {
                 batch_signatures.insert(tx_info.signature.clone(), tx_info);

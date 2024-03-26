@@ -31,7 +31,7 @@ chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 console-subscriber = "0.1.8"
 config = { version = "0.13.0" }
-crossterm = { version = "0.23.1", features = ["event-stream"] }
+crossterm = { version = "0.25.0", features = ["event-stream"] }
 derive_more = "0.99.17"
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
@@ -45,7 +45,7 @@ rustyline-derive = "0.5"
 serde = "1.0.136"
 strum = { version = "0.22", features = ["derive"] }
 thiserror = "^1.0.26"
-tokio = { version = "1.23", features = ["signal"] }
+tokio = { version = "1.36", features = ["signal"] }
 tonic = { version = "0.8.3", features = ["tls", "tls-roots" ] }
 
 # Metrics
@@ -58,7 +58,7 @@ safe = []
 libtor = ["tari_libtor"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features"}
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11a"}
 
 [package.metadata.cargo-machete]
 ignored = [

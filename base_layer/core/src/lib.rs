@@ -57,7 +57,7 @@ mod domain_hashing {
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_hash_domains::ValidatorNodeBmtHashDomain;
+    use tari_hashing::ValidatorNodeBmtHashDomain;
     use tari_mmr::{
         pruned_hashset::PrunedHashSet,
         sparse_merkle_tree::SparseMerkleTree,

@@ -49,8 +49,9 @@ use tari_crypto::{
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::SecretKey,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::hex::Hex,
 };
+use tari_hashing::TransactionHashDomain;
 use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
@@ -70,7 +71,6 @@ use crate::{
             TransactionInput,
             WalletOutput,
         },
-        TransactionHashDomain,
     },
 };
 
@@ -429,7 +429,7 @@ impl TransactionOutput {
             .chain(commitment)
             .chain(&message);
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize().into(),
         }
     }
 
@@ -464,7 +464,7 @@ impl TransactionOutput {
             .chain(encrypted_data)
             .chain(minimum_value_promise);
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize().into(),
         }
     }
 
@@ -515,7 +515,7 @@ impl Display for TransactionOutput {
 
 impl PartialOrd for TransactionOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.commitment.partial_cmp(&other.commitment)
+        Some(self.cmp(other))
     }
 }
 
@@ -545,29 +545,11 @@ pub fn batch_verify_range_proofs(
                     minimum_value_promise: output.minimum_value_promise.into(),
                 }],
             });
-            proofs.push(output.proof_result()?.to_vec().clone());
+            proofs.push(output.proof_result()?.as_vec());
         }
-        if let Err(err_1) = prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
-            for output in &bulletproof_plus_proofs {
-                if let Err(err_2) = output.verify_range_proof(prover) {
-                    return Err(RangeProofError::InvalidRangeProof {
-                        reason: format!(
-                            "commitment {}, minimum_value_promise {}, proof {} ({:?})",
-                            output.commitment.to_hex(),
-                            output.minimum_value_promise,
-                            output.proof_hex_display(false),
-                            err_2,
-                        ),
-                    });
-                }
-            }
-            Err(RangeProofError::InvalidRangeProof {
-                reason: format!(
-                    "Batch verification failed, but individual verification passed - {:?}",
-                    err_1
-                ),
-            })?
-        }
+
+        // Attempt to verify the range proofs in a batch
+        prover.verify_batch(proofs, statements.iter().collect())?;
     }
 
     let revealed_value_proofs = outputs
