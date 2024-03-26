@@ -146,7 +146,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
             Err(e) => {
                 let mut txn = self.db.write_transaction();
-                txn.insert_bad_block(header.hash(), header.height);
+                txn.insert_bad_block(header.hash(), header.height, e.to_string());
                 txn.commit().await?;
                 return Err(e.into());
             },

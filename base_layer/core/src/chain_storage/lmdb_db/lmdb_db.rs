@@ -471,8 +471,8 @@ impl LMDBDatabase {
                         &MetadataValue::HorizonData(horizon_data.clone()),
                     )?;
                 },
-                InsertBadBlock { hash, height } => {
-                    self.insert_bad_block_and_cleanup(&write_txn, hash, *height)?;
+                InsertBadBlock { hash, height, reason } => {
+                    self.insert_bad_block_and_cleanup(&write_txn, hash, *height, reason.to_string())?;
                 },
                 InsertReorg { reorg } => {
                     lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.timestamp(), &reorg)?;
@@ -1586,13 +1586,14 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         hash: &HashOutput,
         height: u64,
+        reason: String,
     ) -> Result<(), ChainStorageError> {
         #[cfg(test)]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 10000;
         #[cfg(not(test))]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 0;
 
-        lmdb_replace(txn, &self.bad_blocks, hash.deref(), &height)?;
+        lmdb_replace(txn, &self.bad_blocks, hash.deref(), &(height, reason))?;
         // Clean up bad blocks that are far from the tip
         let metadata = fetch_metadata(txn, &self.metadata_db)?;
         let deleted_before_height = metadata
@@ -2388,9 +2389,12 @@ impl BlockchainBackend for LMDBDatabase {
             .collect()
     }
 
-    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<(bool, String), ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_exists(&txn, &self.bad_blocks, block_hash.deref())
+        match lmdb_get::<_, (u64, String)>(&txn, &self.bad_blocks, block_hash.deref())? {
+            Some((_height, reason)) => Ok((true, reason)),
+            None => Ok((false, "".to_string())),
+        }
     }
 
     fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError> {

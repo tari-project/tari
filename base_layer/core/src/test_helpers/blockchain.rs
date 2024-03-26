@@ -392,7 +392,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_total_size_stats()
     }
 
-    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<(bool, String), ChainStorageError> {
         self.db.as_ref().unwrap().bad_block_exists(block_hash)
     }
 
