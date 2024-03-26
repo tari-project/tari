@@ -25,12 +25,10 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U64;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PublicKey, Signature};
+use tari_hashing::TransactionHashDomain;
 use tari_utilities::ByteArray;
 
-use crate::{
-    consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
-    transactions::TransactionHashDomain,
-};
+use crate::consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CodeTemplateRegistration {
@@ -54,6 +52,7 @@ impl CodeTemplateRegistration {
             .chain(&self.binary_sha)
             .chain(&self.sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
             .finalize()
+            .into()
     }
 
     pub fn create_challenge_from_components(
@@ -68,6 +67,7 @@ impl CodeTemplateRegistration {
             .chain(binary_sha)
             .chain(&sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
             .finalize()
+            .into()
     }
 }
 
