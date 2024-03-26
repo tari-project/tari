@@ -689,7 +689,7 @@ mod validator_node_merkle_root {
         let (sk, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let signature = ValidatorNodeSignature::sign(&sk, &public_key, &[]);
         let (sidechain_private, sidechain_public) = RistrettoPublicKey::random_keypair(&mut OsRng);
-        let sidechain_signature = Signature::sign(&sidechain_private, &public_key.as_bytes(), &mut OsRng).unwrap();
+        let sidechain_signature = Signature::sign(&sidechain_private, public_key.as_bytes(), &mut OsRng).unwrap();
         let features = OutputFeatures::for_validator_node_registration(
             public_key.clone(),
             signature.signature().clone(),
