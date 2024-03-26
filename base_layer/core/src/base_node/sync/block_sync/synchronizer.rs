@@ -336,7 +336,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         .db
                         .write_transaction()
                         .delete_orphan(header_hash)
-                        .insert_bad_block(header_hash, current_height)
+                        .insert_bad_block(header_hash, current_height, err.to_string())
                         .commit()
                         .await
                     {

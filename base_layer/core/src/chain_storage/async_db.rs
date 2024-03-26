@@ -239,9 +239,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(chain_header_or_orphan_exists(block_hash: BlockHash) -> bool, "header_exists");
 
-    make_async_fn!(bad_block_exists(block_hash: BlockHash) -> bool, "bad_block_exists");
+    make_async_fn!(bad_block_exists(block_hash: BlockHash) -> (bool, String), "bad_block_exists");
 
-    make_async_fn!(add_bad_block(hash: BlockHash, height: u64) -> (), "add_bad_block");
+    make_async_fn!(add_bad_block(hash: BlockHash, height: u64, reason: String) -> (), "add_bad_block");
 
     make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
 
@@ -403,8 +403,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn insert_bad_block(&mut self, hash: HashOutput, height: u64) -> &mut Self {
-        self.transaction.insert_bad_block(hash, height);
+    pub fn insert_bad_block(&mut self, hash: HashOutput, height: u64, reason: String) -> &mut Self {
+        self.transaction.insert_bad_block(hash, height, reason);
         self
     }
 

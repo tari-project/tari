@@ -975,10 +975,12 @@ where B: BlockchainBackend
         if db.contains(&DbKey::HeaderHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
-        if db.bad_block_exists(block_hash)? {
+        let block_exist = db.bad_block_exists(block_hash)?;
+        if block_exist.0 {
             return Err(ChainStorageError::ValidationError {
                 source: ValidationError::BadBlockFound {
                     hash: block_hash.to_hex(),
+                    reason: block_exist.1,
                 },
             });
         }
@@ -1152,16 +1154,16 @@ where B: BlockchainBackend
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
-    pub fn bad_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+    pub fn bad_block_exists(&self, hash: BlockHash) -> Result<(bool, String), ChainStorageError> {
         let db = self.db_read_access()?;
         db.bad_block_exists(hash)
     }
 
     /// Adds a block hash to the list of bad blocks so it wont get process again.
-    pub fn add_bad_block(&self, hash: BlockHash, height: u64) -> Result<(), ChainStorageError> {
+    pub fn add_bad_block(&self, hash: BlockHash, height: u64, reason: String) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         let mut txn = DbTransaction::new();
-        txn.insert_bad_block(hash, height);
+        txn.insert_bad_block(hash, height, reason);
         db.write(txn)
     }
 
@@ -1914,7 +1916,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 e
             );
             if e.get_ban_reason().is_some() && e.get_ban_reason().unwrap().ban_duration != BanPeriod::Short {
-                txn.insert_bad_block(block.header().hash(), block.header().height);
+                txn.insert_bad_block(block.header().hash(), block.header().height, e.to_string());
             }
             // We removed a block from the orphan chain, so the chain is now "broken", so we remove the rest of the
             // remaining blocks as well.
@@ -2163,7 +2165,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         },
 
         Err(e) => {
-            txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height);
+            txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height, e.to_string());
             db.write(txn)?;
             return Err(e.into());
         },
