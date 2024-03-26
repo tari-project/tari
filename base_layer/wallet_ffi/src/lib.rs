@@ -2506,8 +2506,8 @@ pub unsafe extern "C" fn seed_words_get_at(
         error = LibWalletError::from(InterfaceError::NullError("seed words".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
-        let len = (*seed_words).0.len() - 1; // clamp to length
-        if position > len as u32 {
+        let len = (*seed_words).0.len(); // clamp to length
+        if (*seed_words).0.is_empty() || position > (len - 1) as u32 {
             error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
         } else if let Ok(v) = CString::new(
