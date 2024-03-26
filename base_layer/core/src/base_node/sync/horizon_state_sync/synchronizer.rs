@@ -661,10 +661,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         );
                         helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
 
-                    batch_verify_range_proofs(&self.prover, &[&output])?;
-                    let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
-                    let smt_node = ValueHash::try_from(output.smt_hash(current_header.height).as_slice())?;
-                    if let Err(e) = output_smt.insert(smt_key, smt_node) {
+                        batch_verify_range_proofs(&self.prover, &[&output])?;
+                        let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
+                        let smt_node = ValueHash::try_from(output.smt_hash(current_header.height).as_slice())?;
+                        if let Err(e) = output_smt.insert(smt_key, smt_node) {
                             error!(
                                 target: LOG_TARGET,
                                 "Output commitment({}) already in SMT",
@@ -672,12 +672,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             );
                             return Err(e.into());
                         }
-                    txn.insert_output_via_horizon_sync(
-                        output,
-                        current_header.hash(),
-                        current_header.height,
-                        current_header.timestamp.as_u64(),
-                    );
+                        txn.insert_output_via_horizon_sync(
+                            output,
+                            current_header.hash(),
+                            current_header.height,
+                            current_header.timestamp.as_u64(),
+                        );
 
                         // We have checked the range proof, and we have checked that the linked to header exists.
                         txn.commit().await?;
