@@ -1603,8 +1603,9 @@ impl LMDBDatabase {
             return Ok(());
         }
 
-        let num_deleted =
-            lmdb_delete_each_where::<[u8], u64, _>(txn, &self.bad_blocks, |_, v| Some(v < deleted_before_height))?;
+        let num_deleted = lmdb_delete_each_where::<[u8], (u64, String), _>(txn, &self.bad_blocks, |_, (v, _)| {
+            Some(v < deleted_before_height)
+        })?;
         debug!(target: LOG_TARGET, "Cleaned out {} stale bad blocks", num_deleted);
 
         Ok(())
@@ -2391,9 +2392,19 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn bad_block_exists(&self, block_hash: HashOutput) -> Result<(bool, String), ChainStorageError> {
         let txn = self.read_transaction()?;
-        match lmdb_get::<_, (u64, String)>(&txn, &self.bad_blocks, block_hash.deref())? {
-            Some((_height, reason)) => Ok((true, reason)),
-            None => Ok((false, "".to_string())),
+        // We do this to ensure backwards compatibility on older exising dbs that did not store a reason
+        let exist = lmdb_exists(&txn, &self.bad_blocks, block_hash.deref())?;
+        match lmdb_get::<_, (u64, String)>(&txn, &self.bad_blocks, block_hash.deref()) {
+            Ok(Some((_height, reason))) => Ok((true, reason)),
+            Ok(None) => Ok((false, "".to_string())),
+            Err(ChainStorageError::AccessError(e)) => {
+                if exist {
+                    Ok((true, "No reason recorded".to_string()))
+                } else {
+                    Err(ChainStorageError::AccessError(e))
+                }
+            },
+            Err(e) => Err(e),
         }
     }
 
