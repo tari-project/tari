@@ -15,7 +15,7 @@ tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_crypto = { version = "0.20" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "range-proof-update" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = {path="../../infrastructure/storage"}
@@ -30,7 +30,7 @@ borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 console-subscriber = "0.1.8"
-config = { version = "0.13.0" }
+config = { version = "0.14.0" }
 crossterm = { version = "0.25.0", features = ["event-stream"] }
 derive_more = "0.99.17"
 either = "1.6.1"

@@ -35,7 +35,7 @@ tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-p
 tari_comms = { path = "../../comms/core", version = "1.0.0-pre.11a" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.11a" }
 tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.11a" }
-tari_crypto = { version = "0.20", features = ["borsh"] }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "range-proof-update", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.11a" }
 tari_mmr = { path = "../../base_layer/mmr", optional = true , version = "1.0.0-pre.11a"}
 tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.11a" }
@@ -100,10 +100,10 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
 criterion = { version = "0.4.0" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = { path = "../../infrastructure/test_utils" }
-curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
+curve25519-dalek = { version = "4" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
-config = { version = "0.13.0" }
+config = { version = "0.14.0" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"
 toml = { version = "0.5" }

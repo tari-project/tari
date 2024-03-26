@@ -13,7 +13,7 @@ minotari_node = { path = "../applications/minotari_node", features = ["metrics"]
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_chat_client = { path = "../base_layer/contacts/src/chat_client" }
 minotari_chat_ffi = { path = "../base_layer/chat_ffi" }
-tari_crypto = { version = "0.20" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "range-proof-update" }
 tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
@@ -35,7 +35,7 @@ tari_key_manager = { path = "../base_layer/key_manager" }
 anyhow = "1.0.53"
 async-trait = "0.1.50"
 chrono = { version = "0.4.22", default-features = false }
-config = "0.13.0"
+config = "0.14.0"
 csv = "1.1"
 cucumber = { version = "0.20.0", features = ["default", "libtest", "output-junit"] }
 futures = { version = "^0.3.1" }
