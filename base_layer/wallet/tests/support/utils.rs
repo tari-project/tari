@@ -52,6 +52,17 @@ pub async fn make_input<R: Rng + CryptoRng>(
         .unwrap()
 }
 
+pub async fn make_fake_input_from_copy(
+    wallet_output: &mut WalletOutput,
+    key_manager: &MemoryDbKeyManager,
+) -> WalletOutput {
+    let (spend_key_id, _spend_key_pk, script_key_id, _script_key_pk) =
+        key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+    wallet_output.spending_key_id = spend_key_id;
+    wallet_output.script_key_id = script_key_id;
+    wallet_output.clone()
+}
+
 pub async fn create_wallet_output_from_sender_data(
     info: &TransactionSenderMessage,
     key_manager: &MemoryDbKeyManager,

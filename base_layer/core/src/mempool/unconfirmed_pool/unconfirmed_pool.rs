@@ -48,7 +48,7 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
-type TransactionKey = usize;
+pub type TransactionKey = usize;
 
 /// Configuration for the UnconfirmedPool
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
@@ -92,9 +92,10 @@ pub struct UnconfirmedPool {
 }
 
 // helper class to reduce type complexity
+#[derive(Debug, Clone)]
 pub struct RetrieveResults {
     pub retrieved_transactions: Vec<Arc<Transaction>>,
-    pub transactions_to_insert: Vec<Arc<Transaction>>,
+    pub transactions_to_remove_and_insert: Vec<(TransactionKey, Arc<Transaction>)>,
 }
 
 pub type CompleteTransactionBranch = HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
@@ -183,7 +184,7 @@ impl UnconfirmedPool {
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
     #[allow(clippy::too_many_lines)]
-    pub fn fetch_highest_priority_txs(&mut self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
+    pub fn fetch_highest_priority_txs(&self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
         // The process of selection is as follows:
         // Assume that all transaction have the same weight for simplicity. A(20)->B(2) means A depends on B and A has
         // fee 20 and B has fee 2. A(20)->B(2)->C(14), D(12)
@@ -297,24 +298,10 @@ impl UnconfirmedPool {
                 0,
             )?;
         }
-        if !transactions_to_remove_and_recheck.is_empty() {
-            // we need to remove all transactions that need to be rechecked.
-            debug!(
-                target: LOG_TARGET,
-                "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
-                transactions_to_remove_and_recheck.len()
-            );
-        }
-        for (tx_key, _) in &transactions_to_remove_and_recheck {
-            self.remove_transaction(*tx_key)?;
-        }
 
         let results = RetrieveResults {
             retrieved_transactions: selected_txs.into_values().collect(),
-            transactions_to_insert: transactions_to_remove_and_recheck
-                .into_iter()
-                .map(|(_, tx)| tx)
-                .collect(),
+            transactions_to_remove_and_insert: transactions_to_remove_and_recheck,
         };
         Ok(results)
     }
@@ -544,7 +531,7 @@ impl UnconfirmedPool {
             .flat_map(|tx| tx.body.inputs())
             .map(|i| i.output_hash())
             .collect::<HashSet<_>>();
-        for (_, transaction) in current_transactions.iter() {
+        for transaction in current_transactions.values() {
             for input in transaction.body.inputs() {
                 if insert_set.contains(&input.output_hash()) {
                     return true;
@@ -646,8 +633,7 @@ impl UnconfirmedPool {
                         Ok(Some(v)) => Some(Ok(v)),
                         Ok(None) => None,
                     })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter(),
+                    .collect::<Result<Vec<_>, _>>()?,
             );
             debug!(
                 target: LOG_TARGET,
@@ -680,8 +666,7 @@ impl UnconfirmedPool {
                         Ok(Some(v)) => Some(Ok(v)),
                         Ok(None) => None,
                     })
-                    .collect::<Result<Vec<_>, _>>()?
-                    .into_iter(),
+                    .collect::<Result<Vec<_>, _>>()?,
             );
             debug!(
                 target: LOG_TARGET,
@@ -705,7 +690,10 @@ impl UnconfirmedPool {
     }
 
     /// Ensures that all transactions are safely deleted in order and from all storage
-    fn remove_transaction(&mut self, tx_key: TransactionKey) -> Result<Option<Arc<Transaction>>, UnconfirmedPoolError> {
+    pub(crate) fn remove_transaction(
+        &mut self,
+        tx_key: TransactionKey,
+    ) -> Result<Option<Arc<Transaction>>, UnconfirmedPoolError> {
         let prioritized_transaction = match self.tx_by_key.remove(&tx_key) {
             Some(tx) => tx,
             None => return Ok(None),

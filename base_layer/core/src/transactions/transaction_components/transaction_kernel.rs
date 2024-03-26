@@ -33,6 +33,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_hashing::TransactionHashDomain;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
 use super::TransactionKernelVersion;
@@ -42,7 +43,6 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{KernelFeatures, TransactionError},
         transaction_protocol::TransactionMetadata,
-        TransactionHashDomain,
     },
 };
 
@@ -211,7 +211,7 @@ impl TransactionKernel {
             .chain(total_excess)
             .chain(message);
         match version {
-            TransactionKernelVersion::V0 => common.finalize(),
+            TransactionKernelVersion::V0 => common.finalize().into(),
         }
     }
 
@@ -231,7 +231,7 @@ impl TransactionKernel {
             .chain(features)
             .chain(burn_commitment);
         match version {
-            TransactionKernelVersion::V0 => common.finalize(),
+            TransactionKernelVersion::V0 => common.finalize().into(),
         }
     }
 }
@@ -258,7 +258,7 @@ impl Display for TransactionKernel {
 
 impl PartialOrd for TransactionKernel {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.excess_sig.partial_cmp(&other.excess_sig)
+        Some(self.cmp(other))
     }
 }
 

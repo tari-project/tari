@@ -49,10 +49,16 @@ pub enum Network {
 }
 
 impl Network {
-    pub fn get_current_or_default() -> Self {
+    pub fn get_current_or_user_setting_or_default() -> Self {
         match CURRENT_NETWORK.get() {
             Some(&network) => network,
-            None => Network::default(),
+            None => {
+                // Check to see if the network has been set by the environment, otherwise use the default
+                match std::env::var("TARI_NETWORK") {
+                    Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::default()),
+                    Err(_) => Network::default(),
+                }
+            },
         }
     }
 
@@ -80,17 +86,20 @@ impl Network {
 
 /// The default network for all applications
 impl Default for Network {
-    #[cfg(tari_network_mainnet)]
+    #[cfg(tari_target_network_mainnet)]
     fn default() -> Self {
-        Network::StageNet
+        match std::env::var("TARI_NETWORK") {
+            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::StageNet),
+            Err(_) => Network::StageNet,
+        }
     }
 
-    #[cfg(tari_network_nextnet)]
+    #[cfg(tari_target_network_nextnet)]
     fn default() -> Self {
         Network::NextNet
     }
 
-    #[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     fn default() -> Self {
         Network::Esmeralda
     }
@@ -191,6 +200,11 @@ mod test {
     #[test]
     fn network_default() {
         let network = Network::default();
+        #[cfg(tari_target_network_mainnet)]
+        assert!(matches!(network, Network::MainNet | Network::StageNet));
+        #[cfg(tari_target_network_nextnet)]
+        assert_eq!(network, Network::NextNet);
+        #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
         assert_eq!(network, Network::Esmeralda);
     }
 

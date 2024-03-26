@@ -72,6 +72,7 @@ pub async fn create_test_input<
     amount: MicroMinotari,
     maturity: u64,
     key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+    coinbase_extra: Vec<u8>,
 ) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
@@ -80,6 +81,7 @@ pub async fn create_test_input<
                 value: amount,
                 features: OutputFeatures {
                     maturity,
+                    coinbase_extra,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -354,12 +356,14 @@ pub async fn create_coinbase_wallet_output(
         .unwrap()
 }
 
-pub async fn create_wallet_output_with_data(
+pub async fn create_wallet_output_with_data<
+    TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone + 'static,
+>(
     script: TariScript,
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroMinotari,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
 ) -> Result<WalletOutput, String> {
     test_params
         .create_output(

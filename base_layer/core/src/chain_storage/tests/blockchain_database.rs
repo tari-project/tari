@@ -477,22 +477,6 @@ mod prepare_new_block {
 mod fetch_header_containing_kernel_mmr {
     use super::*;
     use crate::transactions::key_manager::create_memory_db_key_manager;
-
-    #[test]
-    fn it_returns_genesis() {
-        let db = setup();
-        let genesis = db.fetch_block(0, true).unwrap();
-        assert_eq!(genesis.block().body.kernels().len(), 1);
-        let mut mmr_position = 0;
-        genesis.block().body.kernels().iter().for_each(|_| {
-            let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
-            assert_eq!(header.height(), 0);
-            mmr_position += 1;
-        });
-        let err = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap_err();
-        matches!(err, ChainStorageError::ValueNotFound { .. });
-    }
-
     #[tokio::test]
     async fn it_returns_corresponding_header() {
         let db = setup();

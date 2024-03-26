@@ -72,8 +72,9 @@ impl BalanceEnquiryDebouncer {
         if let Ok(balance) = self.output_manager_service.get_balance().await {
             trace!(
                 target: LOG_TARGET,
-                "Initial balance: available {}, incoming {}, outgoing {}",
+                "Initial balance: available {}, time-locked {}, incoming {}, outgoing {}",
                 balance.available_balance,
+                balance.time_locked_balance.unwrap_or(0.into()),
                 balance.pending_incoming_balance,
                 balance.pending_outgoing_balance
             );

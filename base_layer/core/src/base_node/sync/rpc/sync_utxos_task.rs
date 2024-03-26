@@ -192,6 +192,9 @@ where B: BlockchainBackend + 'static
 
             let mut outputs = Vec::with_capacity(outputs_with_statuses.len());
             for (output, spent) in outputs_with_statuses {
+                if output.is_burned() {
+                    continue;
+                }
                 if !spent {
                     match proto::types::TransactionOutput::try_from(output.clone()) {
                         Ok(tx_ouput) => {

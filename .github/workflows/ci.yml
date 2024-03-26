@@ -11,7 +11,7 @@ name: CI
   merge_group:
 
 env:
-  toolchain: nightly-2023-06-04
+  toolchain: nightly-2023-12-12
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -116,7 +116,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # This job runs on self-hosted, so use local-cache instead.
-        uses: maxnowack/local-cache@v1
+        uses: maxnowack/local-cache@v2
         with:
           path: |
             ~/.cargo/registry/index
@@ -167,6 +167,17 @@ jobs:
     permissions:
       checks: write
       pull-requests: write
+    strategy:
+      matrix:
+        tari_target_network: [
+          { target: "testnet", network: "esmeralda" },
+          { target: "nextnet", network: "nextnet" },
+          { target: "mainnet", network: "stagenet" },
+        ]
+    env:
+      TARI_TARGET_NETWORK: ${{ matrix.tari_target_network.target }}
+      TARI_NETWORK: ${{ matrix.tari_target_network.network }}
+      RUST_LOG: debug
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -184,7 +195,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # This job runs on self-hosted, so use local-cache instead.
-        uses: maxnowack/local-cache@v1
+        uses: maxnowack/local-cache@v2
         with:
           path: |
             ~/.cargo/registry/index
@@ -192,21 +203,22 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
           restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked --force
       - name: cargo test compile
-        run: cargo test --no-run --locked --all-features --release
+        run: cargo test -vv --no-run --locked --all-features --release
       - name: cargo test
         run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact
         uses: actions/upload-artifact@v4  # upload test results as artifact
         if: always()
         with:
-          name: test-results
+          name: test-results-${{ matrix.tari_target_network.target }}.${{ matrix.tari_target_network.network }}
           path: ${{ github.workspace }}/target/nextest/ci/junit.xml
 
   # Allows other workflows to know the PR number
@@ -226,7 +238,7 @@ jobs:
           name: pr_num
           path: ./pr_num.txt
 
-# needed for test results
+  # needed for test results
   event_file:
     name: "Upload Event File for Test Results"
     runs-on: ubuntu-latest

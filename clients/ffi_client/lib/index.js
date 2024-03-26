@@ -44,7 +44,7 @@ const libWallet = ffi.Library("./libminotari_wallet_ffi.dylib", {
     transportRef,
     ["string", u8ArrayPtr, u16, "string", "string", errPtr],
   ],
-  wallet_add_base_node_peer: [bool, [walletRef, u8ArrayPtr, "string", errPtr]],
+  wallet_set_base_node_peer: [bool, [walletRef, u8ArrayPtr, "string", errPtr]],
   wallet_create: [
     walletRef,
     [

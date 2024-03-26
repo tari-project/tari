@@ -14,6 +14,7 @@ use serde::{
 
 use crate::{
     configuration::{bootstrap::prompt, ConfigOverrideProvider, Network},
+    network_check::set_network_if_choice_valid,
     ConfigError,
     LOG_TARGET,
 };
@@ -65,7 +66,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         .build()
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
-    let network = match cfg.get_string("network") {
+    let mut network = match cfg.get_string("network") {
         Ok(network) => {
             Network::from_str(&network).map_err(|e| ConfigError::new("Invalid network", Some(e.to_string())))?
         },
@@ -82,7 +83,11 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     };
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
-    let overrides = overrides.get_config_property_overrides(network);
+    let overrides = overrides.get_config_property_overrides(&mut network);
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    set_network_if_choice_valid(network)?;
+
     if overrides.is_empty() {
         return Ok(cfg);
     }
@@ -114,10 +119,10 @@ pub fn prompt_default_config() -> [&'static str; 12] {
 /// Returns the default configuration file template in parts from the embedded presets. If use_mining_config is true,
 /// the base node configuration that enables mining is returned, otherwise the non-mining configuration is returned.
 pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
-    let base_node_deny_methods = if use_mining_config {
-        include_str!("../../config/presets/c_base_node_b_mining_deny_methods.toml")
+    let base_node_allow_methods = if use_mining_config {
+        include_str!("../../config/presets/c_base_node_b_mining_allow_methods.toml")
     } else {
-        include_str!("../../config/presets/c_base_node_b_non_mining_deny_methods.toml")
+        include_str!("../../config/presets/c_base_node_b_non_mining_allow_methods.toml")
     };
 
     let common = include_str!("../../config/presets/a_common.toml");
@@ -125,7 +130,7 @@ pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
         common,
         include_str!("../../config/presets/b_peer_seeds.toml"),
         include_str!("../../config/presets/c_base_node_a.toml"),
-        base_node_deny_methods,
+        base_node_allow_methods,
         include_str!("../../config/presets/c_base_node_c.toml"),
         include_str!("../../config/presets/d_console_wallet.toml"),
         include_str!("../../config/presets/g_miner.toml"),

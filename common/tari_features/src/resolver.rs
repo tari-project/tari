@@ -64,10 +64,10 @@ impl Display for Target {
 // Identify the target network by
 // 1. Checking whether --config tari-network=xxx was passed in as a config flag to cargo (or from Cargo.toml)
 // 2. Checking the environment variable TARI_NETWORK is set
-// 3. default to mainnet
+// 3. default to testnet (should be mainnet after launch)
 pub fn identify_target() -> Target {
-    check_envar("CARGO_CFG_TARI_NETWORK")
-        .or_else(|| check_envar("TARI_NETWORK"))
+    check_envar("CARGO_CFG_TARI_TARGET_NETWORK")
+        .or_else(|| check_envar("TARI_TARGET_NETWORK"))
         .unwrap_or(Target::TestNet)
 }
 
@@ -79,19 +79,21 @@ pub fn check_envar(envar: &str) -> Option<Target> {
 }
 
 pub fn list_active_features() {
-    println!("These features are ACTIVE on mainnet (no special code handling is done)");
+    println!("tari_feature:These features are ACTIVE on mainnet (no special code handling is done)");
     FEATURE_LIST
         .iter()
         .filter(|f| f.is_active())
-        .for_each(|f| println!("{}", f));
+        .for_each(|f| println!("tari_feature:{f}"));
+    println!("tari_feature:End of ACTIVE feature list");
 }
 
 pub fn list_removed_features() {
-    println!("These features are DEPRECATED and will never be compiled");
+    println!("tari_feature:These features are DEPRECATED and will never be compiled");
     FEATURE_LIST
         .iter()
         .filter(|f| f.was_removed())
-        .for_each(|f| println!("{}", f));
+        .for_each(|f| println!("tari_feature:{f}"));
+    println!("tari_feature:End of DEPRECATED feature list");
 }
 
 pub fn resolve_features(target: Target) -> Result<(), String> {
@@ -110,17 +112,17 @@ pub fn resolve_features(target: Target) -> Result<(), String> {
 }
 
 pub fn activate_feature(feature: &Feature) {
-    println!("** Activating {} **", feature);
+    println!("tari_feature:** Activating {feature} **");
     println!("cargo:rustc-cfg={}", feature.attr_name());
 }
 
 pub fn build_features() {
     // Make sure to rebuild when the network changes
-    println!("cargo:rerun-if-env-changed=TARI_NETWORK");
+    println!("cargo:rerun-if-env-changed=TARI_TARGET_NETWORK");
 
     let target = identify_target();
-    println!("cargo:rustc-cfg=tari_network_{}", target.as_key_str());
-    println!("Building for {}", target);
+    println!("cargo:rustc-cfg=tari_target_network_{}", target.as_key_str());
+    println!("tari_feature:Building for {target}");
     list_active_features();
     list_removed_features();
     if let Err(e) = resolve_features(target) {

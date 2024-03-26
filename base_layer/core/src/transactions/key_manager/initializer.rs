@@ -28,7 +28,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::{types::PublicKey, wallet_types::WalletType};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::storage::database::{KeyManagerBackend, KeyManagerDatabase},
@@ -44,17 +44,24 @@ where T: KeyManagerBackend<PublicKey>
     backend: Option<T>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
+    wallet_type: WalletType,
 }
 
 impl<T> TransactionKeyManagerInitializer<T>
 where T: KeyManagerBackend<PublicKey> + 'static
 {
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
-    pub fn new(backend: T, master_seed: CipherSeed, crypto_factories: CryptoFactories) -> Self {
+    pub fn new(
+        backend: T,
+        master_seed: CipherSeed,
+        crypto_factories: CryptoFactories,
+        wallet_type: WalletType,
+    ) -> Self {
         Self {
             backend: Some(backend),
             master_seed,
             crypto_factories,
+            wallet_type,
         }
     }
 }
@@ -73,6 +80,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
             self.master_seed.clone(),
             KeyManagerDatabase::new(backend),
             self.crypto_factories.clone(),
+            self.wallet_type,
         )?;
         context.register_handle(key_manager);
 

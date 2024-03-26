@@ -177,10 +177,11 @@ impl DbTransaction {
     }
 
     /// Inserts a block hash into the bad block list
-    pub fn insert_bad_block(&mut self, block_hash: HashOutput, height: u64) -> &mut Self {
+    pub fn insert_bad_block(&mut self, block_hash: HashOutput, height: u64, reason: String) -> &mut Self {
         self.operations.push(WriteOperation::InsertBadBlock {
             hash: block_hash,
             height,
+            reason,
         });
         self
     }
@@ -310,6 +311,7 @@ pub enum WriteOperation {
     InsertBadBlock {
         hash: HashOutput,
         height: u64,
+        reason: String,
     },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
@@ -446,7 +448,9 @@ impl fmt::Display for WriteOperation {
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
             DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
             DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash),
-            InsertBadBlock { hash, height } => write!(f, "Insert bad block #{} {}", height, hash),
+            InsertBadBlock { hash, height, reason } => {
+                write!(f, "Insert bad block #{} {} for {}", height, hash, reason)
+            },
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),

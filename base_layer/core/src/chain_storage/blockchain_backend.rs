@@ -165,7 +165,7 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError>;
 
     /// Check if a block hash is in the bad block list
-    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError>;
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<(bool, String), ChainStorageError>;
 
     /// Fetches all tracked reorgs
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;

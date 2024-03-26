@@ -47,6 +47,7 @@ use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
 };
+use tari_hashing::TransactionHashDomain;
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
@@ -262,7 +263,7 @@ pub async fn send_burn_transaction_task(
     // burning minotari
     // ----------------------------------------------------------------------------
 
-    let (burn_tx_id, original_proof) = transaction_service_handle
+    let (burn_tx_id, original_proof) = match transaction_service_handle
         .burn_tari(
             amount,
             selection_criteria,
@@ -273,15 +274,16 @@ pub async fn send_burn_transaction_task(
             sidechain_id_knowledge_proof,
         )
         .await
-        .map_err(|err| {
-            log::error!("failed to burn minotari: {:?}", err);
-
+    {
+        Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to burn minotari: {:?}", e);
             result_tx
-                .send(UiTransactionBurnStatus::Error(UiError::from(err).to_string()))
+                .send(UiTransactionBurnStatus::Error(format!("burn error: {}", e)))
                 .unwrap();
-        })
-        .unwrap();
-
+            return;
+        },
+    };
     // ----------------------------------------------------------------------------
     // starting a feedback loop to wait for the answer from the transaction service
     // ----------------------------------------------------------------------------
@@ -305,14 +307,38 @@ pub async fn send_burn_transaction_task(
                             range_proof: original_proof.range_proof.0,
                         };
 
-                        let serialized_proof =
-                            serde_json::to_string_pretty(&wrapped_proof).expect("failed to serialize burn proof");
+                        let serialized_proof = match serde_json::to_string_pretty(&wrapped_proof) {
+                            Ok(proof) => proof,
+                            Err(e) => {
+                                error!(target: LOG_TARGET, "failed to serialize burn proof: {:?}", e);
+                                result_tx
+                                    .send(UiTransactionBurnStatus::Error(format!(
+                                        "failure to create proof {:?}",
+                                        e
+                                    )))
+                                    .unwrap();
+                                return;
+                            },
+                        };
 
                         let proof_id = random::<u32>();
+
                         let filepath =
                             burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json", proof_id)));
 
-                        std::fs::write(filepath, serialized_proof.as_bytes()).expect("failed to save burn proof");
+                        match std::fs::write(filepath, serialized_proof.as_bytes()) {
+                            Ok(()) => {},
+                            Err(e) => {
+                                error!(target: LOG_TARGET, "failed to write burn proof: {:?}", e);
+                                result_tx
+                                    .send(UiTransactionBurnStatus::Error(format!(
+                                        "failure to write proof {:?}",
+                                        e
+                                    )))
+                                    .unwrap();
+                                return;
+                            },
+                        };
 
                         let result = db.create_burnt_proof(
                             proof_id,

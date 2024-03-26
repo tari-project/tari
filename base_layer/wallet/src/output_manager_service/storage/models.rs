@@ -100,7 +100,7 @@ impl PartialEq for DbWalletOutput {
 
 impl PartialOrd<DbWalletOutput> for DbWalletOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.wallet_output.value.partial_cmp(&other.wallet_output.value)
+        Some(self.cmp(other))
     }
 }
 

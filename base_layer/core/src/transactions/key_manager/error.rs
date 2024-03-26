@@ -20,8 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::{Deserialize, Serialize};
 use tari_crypto::signatures::CommitmentAndPublicKeySignatureError;
 use tari_key_manager::error::KeyManagerError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::transactions::transaction_components::TransactionError;
@@ -39,5 +41,37 @@ pub enum CoreKeyManagerError {
 impl From<CommitmentAndPublicKeySignatureError> for CoreKeyManagerError {
     fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
         CoreKeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
+    }
+}
+
+/// Ledger device errors.
+#[derive(Debug, PartialEq, Error, Deserialize, Serialize, Clone, Eq)]
+pub enum LedgerDeviceError {
+    /// HID API error
+    #[error("HID API error `{0}`")]
+    HidApi(String),
+    /// Native HID transport error
+    #[error("Native HID transport error `{0}`")]
+    NativeTransport(String),
+    /// Ledger application not started
+    #[error("Ledger application not started")]
+    ApplicationNotStarted,
+    /// Ledger application instruction error
+    #[error("Ledger application instruction error `{0}`")]
+    Instruction(String),
+    /// Ledger application processing error
+    #[error("Processing error `{0}`")]
+    Processing(String),
+    /// Conversion error to or from ledger
+    #[error("Conversion failed: {0}")]
+    ByteArrayError(String),
+    /// Not yet supported
+    #[error("Ledger is not fully supported")]
+    NotSupported,
+}
+
+impl From<ByteArrayError> for LedgerDeviceError {
+    fn from(e: ByteArrayError) -> Self {
+        LedgerDeviceError::ByteArrayError(e.to_string())
     }
 }

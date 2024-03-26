@@ -91,7 +91,7 @@ impl ContactsTab {
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
         let mut column4_items = Vec::new();
-        for c in windowed_view.iter() {
+        for c in windowed_view {
             column0_items.push(ListItem::new(Span::raw(c.alias.clone())));
             column1_items.push(ListItem::new(Span::raw(c.address.clone())));
             column2_items.push(ListItem::new(Span::raw(display_compressed_string(

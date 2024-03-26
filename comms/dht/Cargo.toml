@@ -10,14 +10,14 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../core", features = ["rpc"] }
-tari_common = { path = "../../common" }
-tari_comms_rpc_macros = {  path = "../rpc_macros" }
+tari_comms = { path = "../core", features = ["rpc"], version = "1.0.0-dan.5" }
+tari_common = { path = "../../common", version = "1.0.0-dan.5" }
+tari_comms_rpc_macros = { path = "../rpc_macros", version = "1.0.0-dan.5" }
 tari_crypto = { version = "0.20" }
 tari_utilities = { version = "0.7" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_common_sqlite = { path = "../../common_sqlite" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-dan.5" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-dan.5" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-dan.5" }
 
 anyhow = "1.0.53"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -40,15 +40,15 @@ zeroize = "1"
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.1.3"
-#tokio = { version = "1.20", features = ["rt", "macros", "tracing"] }
+#tokio = { version = "1.36", features = ["rt", "macros", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
-tokio = { version = "1.23", features = ["rt", "macros"] }
+tokio = { version = "1.36", features = ["rt", "macros"] }
 
 # tower-filter dependencies
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 env_logger = "0.10"
 futures-test = { version = "0.3.5" }
@@ -62,7 +62,7 @@ clap = "3.2"
 
 
 [build-dependencies]
-tari_common = {  path = "../../common" }
+tari_common = { path = "../../common", version = "1.0.0-dan.5" }
 
 [features]
 test-mocks = []

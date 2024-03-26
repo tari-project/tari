@@ -1,5 +1,6 @@
 ./applications/minotari_node/assets/tari_banner.rs
 ./applications/minotari_node/assets/tari_logo.rs
+./applications/minotari_node/osx-pkg/entitlements.xml
 ./base_layer/contacts/src/schema.rs
 ./base_layer/key_manager/src/schema.rs
 ./base_layer/p2p/src/dns/roots/tls.rs

@@ -365,7 +365,7 @@ fn check_weight(
     if block_weight <= max_weight {
         trace!(
             target: LOG_TARGET,
-            "SV - Block contents for block #{} : {}; weight {}.",
+            "Aggregated body at height #{} : {}; weight {} is valid.",
             height,
             body.to_counts_string(),
             block_weight,

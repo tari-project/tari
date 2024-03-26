@@ -35,9 +35,9 @@ pub struct Cli {
 }
 
 impl ConfigOverrideProvider for Cli {
-    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
-        let mut overrides = self.common.get_config_property_overrides(default_network);
-        let network = self.common.network.unwrap_or(default_network);
+    fn get_config_property_overrides(&self, network: &mut Network) -> Vec<(String, String)> {
+        let mut overrides = self.common.get_config_property_overrides(network);
+        *network = self.common.network.unwrap_or(*network);
         overrides.push(("merge_mining_proxy.override_from".to_string(), network.to_string()));
         overrides.push(("merge_mining_proxy.network".to_string(), network.to_string()));
         overrides

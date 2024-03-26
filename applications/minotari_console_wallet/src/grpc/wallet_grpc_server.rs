@@ -115,7 +115,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     grpc::{convert_to_transaction_event, TransactionWrapper},
-    notifier::{CANCELLED, CONFIRMATION, MINED, NEW_BLOCK_MINED, QUEUED, RECEIVED, SENT},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -250,7 +250,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         println!("{}::{}", public_key, net_address);
         let mut wallet = self.wallet.clone();
         wallet
-            .set_base_node_peer(public_key.clone(), net_address.clone())
+            .set_base_node_peer(public_key.clone(), Some(net_address.clone()))
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
@@ -264,10 +264,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
         };
         Ok(Response::new(GetBalanceResponse {
-            available_balance: balance
-                .available_balance
-                .saturating_sub(balance.time_locked_balance.unwrap_or_default())
-                .0,
+            available_balance: balance.available_balance.0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
             pending_outgoing_balance: balance.pending_outgoing_balance.0,
             timelocked_balance: balance.time_locked_balance.unwrap_or_default().0,
@@ -706,19 +703,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 Ok(msg) => {
                                     use minotari_wallet::transaction_service::handle::TransactionEvent::*;
                                     match (*msg).clone() {
-                                        NewBlockMined(tx_id) => {
-                                            match transaction_service.get_any_transaction(tx_id).await {
-                                                Ok(found_transaction) => {
-                                                    if let Some(WalletTransaction::PendingOutbound(tx)) = found_transaction {
-                                                        let transaction_event = convert_to_transaction_event(NEW_BLOCK_MINED.to_string(),
-                                                            TransactionWrapper::Outbound(Box::new(tx)));
-                                                        send_transaction_event(transaction_event, &mut sender).await;
-                                                    }
-
-                                                },
-                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
-                                            }
-                                        },
                                         ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
                                         TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
                                         TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
@@ -771,26 +755,31 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetAllCompletedTransactions"
+            "GetAllCompletedTransactions: Incoming GRPC request"
         );
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
             .get_completed_transactions()
             .await
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
+        debug!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactions: Found {} completed transactions",
+            transactions.len()
+        );
 
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
-            for (_, txn) in transactions {
+            for (i, (_, txn)) in transactions.iter().enumerate() {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
                         source_address: txn.source_address.to_bytes().to_vec(),
                         dest_address: txn.destination_address.to_bytes().to_vec(),
-                        status: TransactionStatus::from(txn.status) as i32,
+                        status: TransactionStatus::from(txn.status.clone()) as i32,
                         amount: txn.amount.into(),
                         is_cancelled: txn.cancelled.is_some(),
-                        direction: TransactionDirection::from(txn.direction) as i32,
+                        direction: TransactionDirection::from(txn.direction.clone()) as i32,
                         fee: txn.fee.into(),
                         timestamp: txn.timestamp.timestamp() as u64,
                         excess_sig: txn
@@ -799,11 +788,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .unwrap_or(&Signature::default())
                             .get_signature()
                             .to_vec(),
-                        message: txn.message,
+                        message: txn.message.clone(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
-                    Ok(_) => (),
+                    Ok(_) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "GetAllCompletedTransactions: Sent transaction TxId: {} ({} of {})",
+                            txn.tx_id,
+                            i + 1,
+                            transactions.len()
+                        );
+                    },
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
                         match sender.send(Err(Status::unknown("Error sending data"))).await {

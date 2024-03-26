@@ -2,12 +2,9 @@
   {
     "name": "linux-x86_64",
     "runs-on": "ubuntu-20.04",
-    "rust": "nightly-2023-06-04",
+    "rust": "nightly-2023-12-12",
     "target": "x86_64-unknown-linux-gnu",
-    "cross": false,
-    "target_cpu": "x86-64",
-    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "default, safe"
+    "cross": false
   },
   {
     "name": "linux-arm64",
@@ -15,31 +12,31 @@
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
     "cross": true,
-    "target_cpu": "generic",
-    "features": "safe",
-    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
     "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests"
+  },
+  {
+    "name": "linux-riscv64",
+    "runs-on": "ubuntu-latest",
+    "rust": "stable",
+    "target": "riscv64gc-unknown-linux-gnu",
+    "cross": true,
+    "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
+    "build_enabled": true,
+    "best-effort": true
   },
   {
     "name": "macos-x86_64",
     "runs-on": "macos-11",
     "rust": "stable",
     "target": "x86_64-apple-darwin",
-    "cross": false,
-    "target_cpu": "x86-64",
-    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "default, safe"
+    "cross": false
   },
   {
     "name": "macos-arm64",
     "runs-on": "macos-14",
     "rust": "stable",
     "target": "aarch64-apple-darwin",
-    "cross": false,
-    "target_cpu": "generic",
-    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "default, safe",
-    "build_enabled": true
+    "cross": false
   },
   {
     "name": "windows-x64",
@@ -47,9 +44,7 @@
     "rust": "stable",
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
-    "target_cpu": "x86-64",
     "features": "safe",
-    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
     "flags": "--workspace --exclude tari_libtor"
   },
   {
@@ -58,9 +53,9 @@
     "rust": "stable",
     "target": "aarch64-pc-windows-msvc",
     "cross": false,
-    "target_cpu": "generic",
     "features": "safe",
-    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
+    "target_bins": "minotari_node, minotari_console_wallet, minotari_merge_mining_proxy, minotari_miner",
+    "flags": "--workspace --exclude tari_libtor",
     "build_enabled": false
   }
 ]

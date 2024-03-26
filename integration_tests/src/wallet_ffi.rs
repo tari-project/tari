@@ -145,8 +145,7 @@ impl WalletFFI {
     }
 
     pub fn get_counters(&self) -> &mut Callbacks {
-        let callback = Callbacks::instance();
-        callback
+        Callbacks::instance()
     }
 
     pub fn start_txo_validation(&self) -> u64 {

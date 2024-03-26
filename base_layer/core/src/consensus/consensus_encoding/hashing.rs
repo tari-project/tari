@@ -20,59 +20,37 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write, marker::PhantomData};
-
-use blake2::Blake2b;
 use borsh::BorshSerialize;
-use digest::{
-    consts::{U32, U64},
-    Digest,
-};
+use digest::Digest;
 use tari_common::configuration::Network;
-use tari_crypto::{hash_domain, hashing::DomainSeparation};
+use tari_crypto::hashing::DomainSeparation;
+use tari_hashing::DomainSeparatedBorshHasher;
 
 /// Domain separated consensus encoding hasher.
+/// This is a thin wrapper around the domain-separated Borsh hasher but adds the network byte in its constructor
+/// functions
 pub struct DomainSeparatedConsensusHasher<M, D> {
-    _m: PhantomData<M>,
-    _d: PhantomData<D>,
+    hasher: DomainSeparatedBorshHasher<M, D>,
 }
 
 impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
 where D: Default
 {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(label: &'static str) -> ConsensusHasher<D> {
-        Self::new_with_network(label, Network::get_current_or_default())
+    pub fn new(label: &'static str) -> Self {
+        Self::new_with_network(label, Network::get_current_or_user_setting_or_default())
     }
 
-    pub fn new_with_network(label: &'static str, network: Network) -> ConsensusHasher<D> {
-        let mut digest = D::default();
-        M::add_domain_separation_tag(&mut digest, &format!("{}.n{}", label, network.as_byte()));
-        ConsensusHasher::from_digest(digest)
+    pub fn new_with_network(label: &'static str, network: Network) -> Self {
+        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network.as_byte()));
+        Self { hasher }
     }
-}
 
-#[derive(Clone)]
-pub struct ConsensusHasher<D> {
-    writer: WriteHashWrapper<D>,
-}
-
-impl<D: Digest> ConsensusHasher<D> {
-    fn from_digest(digest: D) -> Self {
-        Self {
-            writer: WriteHashWrapper(digest),
-        }
-    }
-}
-
-impl ConsensusHasher<Blake2b<U32>> {
-    pub fn finalize(self) -> [u8; 32] {
-        self.writer.0.finalize().into()
+    pub fn finalize(self) -> digest::Output<D> {
+        self.hasher.finalize()
     }
 
     pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
-        BorshSerialize::serialize(data, &mut self.writer)
-            .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
+        self.hasher.update_consensus_encode(data);
     }
 
     pub fn chain<T: BorshSerialize>(mut self, data: &T) -> Self {
@@ -81,61 +59,11 @@ impl ConsensusHasher<Blake2b<U32>> {
     }
 }
 
-impl ConsensusHasher<Blake2b<U64>> {
-    pub fn finalize(self) -> [u8; 64] {
-        self.writer.0.finalize().into()
-    }
-
-    pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
-        BorshSerialize::serialize(data, &mut self.writer)
-            .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
-    }
-
-    pub fn chain<T: BorshSerialize>(mut self, data: &T) -> Self {
-        self.update_consensus_encode(data);
-        self
-    }
-}
-
-impl Default for ConsensusHasher<Blake2b<U32>> {
+impl<M: DomainSeparation, D: Digest + Default> Default for DomainSeparatedConsensusHasher<M, D> {
     /// This `default` implementation is provided for convenience, but should not be used as the de-facto consensus
-    /// hasher, rather create a new unique hash domain.
+    /// hasher, rather specify a specific label
     fn default() -> Self {
-        hash_domain!(
-            DefaultConsensusHashDomain,
-            "com.tari.base_layer.core.consensus.consensus_encoding.hashing",
-            0
-        );
-        DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain, Blake2b<U32>>::new("default")
-    }
-}
-
-impl Default for ConsensusHasher<Blake2b<U64>> {
-    /// This `default` implementation is provided for convenience, but should not be used as the de-facto consensus
-    /// hasher, rather create a new unique hash domain.
-    fn default() -> Self {
-        hash_domain!(
-            DefaultConsensusHashDomain,
-            "com.tari.base_layer.core.consensus.consensus_encoding.hashing",
-            0
-        );
-        DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain, Blake2b<U64>>::new("default")
-    }
-}
-
-/// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait.
-/// Do not use the DomainSeparatedHasher with this.
-#[derive(Clone)]
-struct WriteHashWrapper<D>(D);
-
-impl<D: Digest> Write for WriteHashWrapper<D> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.update(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        DomainSeparatedConsensusHasher::<M, D>::new("default")
     }
 }
 
@@ -174,7 +102,7 @@ mod tests {
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
-        let network = Network::get_current_or_default();
+        let network = Network::get_current_or_user_setting_or_default();
 
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
@@ -185,12 +113,12 @@ mod tests {
             .chain(&255u64)
             .finalize();
 
-        assert_eq!(hash, expected_hash.as_ref());
+        assert_eq!(hash, expected_hash);
     }
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
-        let network = Network::get_current_or_default();
+        let network = Network::get_current_or_user_setting_or_default();
 
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop);
@@ -202,7 +130,7 @@ mod tests {
             .chain(&test_subject)
             .finalize();
 
-        assert_eq!(hash, expected_hash.as_ref());
+        assert_eq!(hash, expected_hash);
     }
 
     #[test]
@@ -210,9 +138,40 @@ mod tests {
         let blake_hasher = Blake2b::<U32>::default();
         let blake_hash = blake_hasher.chain_update(b"").finalize();
 
-        let default_consensus_hasher = ConsensusHasher::<Blake2b<U32>>::default();
+        let default_consensus_hasher = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::default();
         let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();
 
         assert_ne!(blake_hash.as_slice(), default_consensus_hash.as_slice());
+    }
+
+    #[test]
+    fn it_uses_the_network_environment_variable_if_set() {
+        let label = "test";
+        let input = [1u8; 32];
+
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            // Generate a specific network hash
+            let hash_specify_network =
+                DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, network)
+                    .chain(&input)
+                    .finalize();
+
+            // Generate an inferred network hash
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+            let inferred_network_hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
+                .chain(&input)
+                .finalize();
+            std::env::remove_var("TARI_NETWORK");
+
+            // They should be equal
+            assert_eq!(hash_specify_network, inferred_network_hash);
+        }
     }
 }

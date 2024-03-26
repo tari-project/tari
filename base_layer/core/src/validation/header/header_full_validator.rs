@@ -174,8 +174,12 @@ pub fn check_timestamp_ftl(
 }
 
 fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
-    if db.bad_block_exists(hash)? {
-        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
+    let block_exist = db.bad_block_exists(hash)?;
+    if block_exist.0 {
+        return Err(ValidationError::BadBlockFound {
+            hash: hash.to_hex(),
+            reason: block_exist.1,
+        });
     }
     Ok(())
 }

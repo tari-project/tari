@@ -90,8 +90,10 @@ hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
+use tari_hashing::TransactionHashDomain;
+
 use super::tari_amount::MicroMinotari;
-use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant, transactions::TransactionHashDomain};
+use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and WalletOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.

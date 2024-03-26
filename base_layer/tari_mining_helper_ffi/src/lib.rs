@@ -30,14 +30,30 @@
 
 mod error;
 use core::ptr;
-use std::{convert::TryFrom, ffi::CString, slice};
+use std::{convert::TryFrom, ffi::CString, slice, str::FromStr};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
-use tari_core::{blocks::BlockHeader, proof_of_work::sha3x_difficulty};
+use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
+use tari_common_types::tari_address::TariAddress;
+use tari_core::{
+    blocks::{BlockHeader, NewBlockTemplate},
+    consensus::ConsensusManager,
+    proof_of_work::sha3x_difficulty,
+    transactions::{
+        generate_coinbase,
+        key_manager::create_memory_db_key_manager,
+        transaction_components::RangeProofType,
+    },
+};
 use tari_crypto::tari_utilities::hex::Hex;
+use tokio::runtime::Runtime;
 
 use crate::error::{InterfaceError, MiningHelperError};
+mod consts {
+    // Import the auto-generated const values from the Manifest and Git
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}
 
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 #[derive(Debug, PartialEq, Clone)]
@@ -233,6 +249,155 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
     (*header).0 = buffer;
 }
 
+/// Injects a coinbase into a blocktemplate
+///
+/// ## Arguments
+/// `block_template_bytes` - The block template as bytes, serialized with borsh.io
+/// `value` - The value of the coinbase
+/// `stealth_payment` - Boolean value, is this a stealh payment or normal one-sided
+/// `revealed_value_proof` - Boolean value, should this use the reveal value proof, or BP+
+/// `wallet_payment_address` - The address to pay the coinbase to
+/// `coinbase_extra` - The value of the coinbase extra field
+/// `network` - The value of the network
+///
+/// ## Returns
+/// `block_template_bytes` - The updated block template
+/// `error_out` - Error code returned, 0 means no error
+///
+/// # Safety
+/// None
+#[allow(clippy::too_many_lines)]
+#[no_mangle]
+pub unsafe extern "C" fn inject_coinbase(
+    block_template_bytes: *mut ByteVector,
+    coibase_value: c_ulonglong,
+    stealth_payment: bool,
+    revealed_value_proof: bool,
+    wallet_payment_address: *const c_char,
+    coinbase_extra: *const c_char,
+    network: c_uint,
+    error_out: *mut c_int,
+) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if block_template_bytes.is_null() {
+        error = MiningHelperError::from(InterfaceError::NullError("block template".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+    if wallet_payment_address.is_null() {
+        error = MiningHelperError::from(InterfaceError::NullError("wallet_payment_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+    let native_string_address = CString::from_raw(wallet_payment_address as *mut i8)
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let wallet_address = match TariAddress::from_str(&native_string_address) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidAddress(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    if coinbase_extra.is_null() {
+        error = MiningHelperError::from(InterfaceError::NullError("coinbase_extra".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+    let network_u8 = match u8::try_from(network) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let network = match Network::try_from(network_u8) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    };
+    let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8)
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let mut bytes = (*block_template_bytes).0.as_slice();
+    let mut block_template: NewBlockTemplate = match BorshDeserialize::deserialize(&mut bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let key_manager = create_memory_db_key_manager();
+
+    let consensus_manager = match ConsensusManager::builder(network).build() {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::NullError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let range_proof_type = if revealed_value_proof {
+        RangeProofType::RevealedValue
+    } else {
+        RangeProofType::BulletProofPlus
+    };
+    let height = block_template.header.height;
+    let (coinbase_output, coinbase_kernel) = match runtime.block_on(async {
+        // we dont count the fee or the reward here, we assume the caller has calculated the amount to be the exact
+        // value for the coinbase(s) they want.
+        generate_coinbase(
+            0.into(),
+            coibase_value.into(),
+            height,
+            coinbase_extra_string.as_bytes(),
+            &key_manager,
+            &wallet_address,
+            stealth_payment,
+            consensus_manager.consensus_constants(height),
+            range_proof_type,
+        )
+        .await
+    }) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::CoinbaseBuildError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    block_template.body.add_output(coinbase_output);
+    block_template.body.add_kernel(coinbase_kernel);
+    block_template.body.sort();
+    let mut buffer = Vec::new();
+    BorshSerialize::serialize(&block_template, &mut buffer).unwrap();
+    (*block_template_bytes).0 = buffer;
+}
+
 /// Returns the difficulty of a share
 ///
 /// ## Arguments
@@ -245,9 +410,36 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn share_difficulty(
+    header: *mut ByteVector,
+    network: c_uint,
+    error_out: *mut c_int,
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+    let network_u8 = match u8::try_from(network) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    let network = match Network::try_from(network_u8) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 1;
+    };
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -297,12 +489,36 @@ pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *m
 pub unsafe extern "C" fn share_validate(
     header: *mut ByteVector,
     hash: *const c_char,
+    network: c_uint,
     share_difficulty: c_ulonglong,
     template_difficulty: c_ulonglong,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+    let network_u8 = match u8::try_from(network) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    let network = match Network::try_from(network_u8) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 1;
+        },
+    };
+    // Set the static network variable according to the user chosen network (for use with
+    // `get_current_or_user_setting_or_default()`) -
+    if let Err(e) = set_network_if_choice_valid(network) {
+        error = MiningHelperError::from(InterfaceError::InvalidNetwork(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 1;
+    };
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -355,6 +571,7 @@ mod tests {
     use tari_core::{
         blocks::{genesis_block::get_genesis_block, Block},
         proof_of_work::Difficulty,
+        transactions::tari_amount::MicroMinotari,
     };
 
     use super::*;
@@ -386,9 +603,34 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 11937686248184272944;
-        let difficulty = Difficulty::from_u64(35357).expect("Failed to create difficulty");
+        #[cfg(tari_target_network_mainnet)]
+        let (nonce, difficulty, network) = match Network::get_current_or_user_setting_or_default() {
+            Network::MainNet => (
+                3145418102407526886,
+                Difficulty::from_u64(1505).unwrap(),
+                Network::MainNet,
+            ),
+            Network::StageNet => (
+                135043993867732261,
+                Difficulty::from_u64(1059).unwrap(),
+                Network::StageNet,
+            ),
+            _ => panic!("Invalid network for mainnet target"),
+        };
+        #[cfg(tari_target_network_nextnet)]
+        let (nonce, difficulty, network) = (
+            5154919981564263219,
+            Difficulty::from_u64(2950).unwrap(),
+            Network::NextNet,
+        );
+        #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
+        let (nonce, difficulty, network) = (
+            8520885611996410570,
+            Difficulty::from_u64(3143).unwrap(),
+            Network::Esmeralda,
+        );
         unsafe {
+            set_network_if_choice_valid(network).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
@@ -396,13 +638,14 @@ mod tests {
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-            inject_nonce(byte_vec, NONCE, error_ptr);
+            inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, error_ptr);
+            let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
             if result != difficulty.as_u64() {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
                 let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
+                eprintln!("network = {network:?}");
                 eprintln!("nonce = {:?}", nonce);
                 eprintln!("difficulty = {:?}", difficulty);
                 panic!(
@@ -417,6 +660,7 @@ mod tests {
     #[test]
     fn check_difficulty() {
         unsafe {
+            let network = Network::get_current_or_user_setting_or_default();
             let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -426,7 +670,7 @@ mod tests {
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, error_ptr);
+            let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
             assert_eq!(result, difficulty.as_u64());
             byte_vector_destroy(byte_vec);
         }
@@ -453,6 +697,7 @@ mod tests {
     #[test]
     fn check_share() {
         unsafe {
+            let network = Network::get_current_or_user_setting_or_default();
             let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -471,6 +716,7 @@ mod tests {
             let result = share_validate(
                 byte_vec,
                 hash_hex_broken_ptr,
+                u32::from(network.as_byte()),
                 share_difficulty,
                 template_difficulty,
                 error_ptr,
@@ -485,20 +731,41 @@ mod tests {
             share_difficulty = difficulty.as_u64() + 1000;
             template_difficulty = difficulty.as_u64() + 2000;
             // let calculate for invalid share and target diff
-            let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
+            let result = share_validate(
+                byte_vec,
+                hash_hex_ptr,
+                u32::from(network.as_byte()),
+                share_difficulty,
+                template_difficulty,
+                error_ptr,
+            );
             assert_eq!(result, 4);
             assert_eq!(error, 4);
             // let calculate for valid share and invalid target diff
             share_difficulty = difficulty.as_u64();
             let hash_hex = CString::new(hash.clone()).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
-            let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
+            let result = share_validate(
+                byte_vec,
+                hash_hex_ptr,
+                u32::from(network.as_byte()),
+                share_difficulty,
+                template_difficulty,
+                error_ptr,
+            );
             assert_eq!(result, 1);
             // let calculate for valid target diff
             template_difficulty = difficulty.as_u64();
             let hash_hex = CString::new(hash).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
-            let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
+            let result = share_validate(
+                byte_vec,
+                hash_hex_ptr,
+                u32::from(network.as_byte()),
+                share_difficulty,
+                template_difficulty,
+                error_ptr,
+            );
             assert_eq!(result, 0);
             byte_vector_destroy(byte_vec);
         }
@@ -527,6 +794,51 @@ mod tests {
             let success = public_key_hex_validate(test_pk_ptr, error_ptr);
             assert!(!success);
             assert_ne!(error, 0);
+        }
+    }
+
+    #[test]
+    fn check_inject_coinbase() {
+        unsafe {
+            let network = Network::get_current_or_user_setting_or_default();
+            let mut error = -1;
+            let error_ptr = &mut error as *mut c_int;
+            let header = BlockHeader::new(0);
+            let block =
+                NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into()).unwrap();
+
+            let block_bytes = borsh::to_vec(&block).unwrap();
+            #[allow(clippy::cast_possible_truncation)]
+            let len = block_bytes.len() as u32;
+            let byte_vec = byte_vector_create(block_bytes.as_ptr(), len, error_ptr);
+
+            let address = TariAddress::default();
+            let add_string = CString::new(address.to_string()).unwrap();
+            let add_ptr: *const c_char = CString::into_raw(add_string) as *const c_char;
+
+            let extra_string = CString::new("a").unwrap();
+            let extra_ptr: *const c_char = CString::into_raw(extra_string) as *const c_char;
+
+            inject_coinbase(
+                byte_vec,
+                100,
+                false,
+                true,
+                add_ptr,
+                extra_ptr,
+                u32::from(network.as_byte()),
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+
+            let block_temp: NewBlockTemplate = BorshDeserialize::deserialize(&mut (*byte_vec).0.as_slice()).unwrap();
+
+            assert_eq!(block_temp.body.kernels().len(), 1);
+            assert_eq!(block_temp.body.outputs().len(), 1);
+            assert!(block_temp.body.outputs()[0].features.is_coinbase());
+            assert_eq!(block_temp.body.outputs()[0].features.coinbase_extra, vec![97]);
+            assert_eq!(block_temp.body.outputs()[0].minimum_value_promise, MicroMinotari(100));
         }
     }
 }

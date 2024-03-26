@@ -22,7 +22,7 @@
 
 use std::{
     fmt,
-    fmt::Display,
+    fmt::{Display, Write},
     future::Future,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -304,7 +304,10 @@ impl Display for DiscoveryParams {
             f,
             "DiscoveryParams({} peer(s) ({}), num_peers_to_request = {})",
             self.peers.len(),
-            self.peers.iter().map(|p| format!("{}, ", p)).collect::<String>(),
+            self.peers.iter().fold(String::new(), |mut peers, p| {
+                let _ = write!(peers, "{p}, ");
+                peers
+            }),
             self.num_peers_to_request
         )
     }

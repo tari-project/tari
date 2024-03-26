@@ -129,7 +129,7 @@ async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, n
 async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
     let mut nodes_at_height: IndexMap<&String, (u64, Vec<u8>)> = IndexMap::new();
 
-    for (name, _) in world.base_nodes.iter() {
+    for (name, _) in &world.base_nodes {
         nodes_at_height.insert(name, (0, vec![]));
     }
 
@@ -168,7 +168,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
     let mut nodes_at_height: IndexMap<&String, u64> = IndexMap::new();
 
-    for (name, _) in world.base_nodes.iter() {
+    for (name, _) in &world.base_nodes {
         nodes_at_height.insert(name, 0);
     }
 
@@ -687,7 +687,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for Kernel does not match. \
-             Expected: 3, received: 4"
+             Expected: 2, received: 3"
                 .to_string(),
             e.message()
         ),
@@ -712,7 +712,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
-             Expected: 102, received: 103"
+             Expected: 2, received: 3"
                 .to_string(),
             e.message()
         ),

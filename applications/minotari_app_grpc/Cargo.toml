@@ -8,7 +8,7 @@ version = "1.0.0-dan.5"
 edition = "2018"
 
 [dependencies]
-tari_common_types = {  path = "../../base_layer/common_types" }
+tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
 tari_crypto = { version = "0.20" }
@@ -24,13 +24,14 @@ prost = "0.11.9"
 prost-types = "0.11.9"
 rand = "0.8"
 rcgen = "0.11.3"
-subtle = { version = "2.5.0", features = ["core_hint_black_box"] }
+subtle = "2.5.0"
 thiserror = "1"
-tokio = { version = "1.23", features = ["fs"] }
-tonic = { version = "0.8.3", features = ["tls"]}
+tokio = { version = "1.36", features = ["fs"] }
+tonic = { version = "0.8.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
+tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }
 tonic-build = "0.8.4"
 
 [package.metadata.cargo-machete]

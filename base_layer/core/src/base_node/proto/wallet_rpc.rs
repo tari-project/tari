@@ -226,7 +226,7 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
     fn from(response: TxQueryResponse) -> Self {
         Self {
             location: proto::TxLocation::from(response.location) as i32,
-            best_block_hash: response.best_block_hash.map(|v| v.to_vec()).unwrap_or(vec![]),
+            best_block_hash: response.best_block_hash.map(|v| v.to_vec()).unwrap_or_default(),
             confirmations: response.confirmations,
             is_synced: response.is_synced,
             best_block_height: response.best_block_height,

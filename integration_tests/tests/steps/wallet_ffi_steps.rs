@@ -262,7 +262,7 @@ async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet
 #[then(expr = "I wait for ffi wallet {word} to have at least {int} contacts to be {word}")]
 async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, status: String) {
     assert!(
-        vec!["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
+        ["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
         "Unknown status: {}",
         status
     );
@@ -412,12 +412,12 @@ async fn ffi_detects_transaction(
     status: String,
 ) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    assert!(vec![
+    assert!([
         "TRANSACTION_STATUS_BROADCAST",
         "TRANSACTION_STATUS_MINED_UNCONFIRMED",
         "TRANSACTION_STATUS_MINED",
-        "TRANSACTION_STATUS_FAUX_UNCONFIRMED",
-        "TRANSACTION_STATUS_FAUX_CONFIRMED"
+        "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED",
+        "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED"
     ]
     .contains(&status.as_str()));
     println!(
@@ -430,8 +430,8 @@ async fn ffi_detects_transaction(
             "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
             "TRANSACTION_STATUS_MINED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_mined_unconfirmed(),
             "TRANSACTION_STATUS_MINED" => ffi_wallet.get_counters().get_transaction_mined(),
-            "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_unconfirmed(),
-            "TRANSACTION_STATUS_FAUX_CONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_confirmed(),
+            "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_unconfirmed(),
+            "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED" => ffi_wallet.get_counters().get_transaction_faux_confirmed(),
             _ => unreachable!(),
         };
         if found_count >= count {

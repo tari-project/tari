@@ -22,7 +22,7 @@ Feature: Stress Test
         # When mining node MINER mines 3 blocks
         # When mining node MINER mines <NumCoinsplitsNeeded> blocks
         # Then all nodes are on the same chain tip
-        # Then wallet WALLET_A detects all transactions as Mined_or_Faux_Confirmed
+        # Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
         # When I send <NumTransactions> transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
         # # Mine enough blocks for the first block of transactions to be confirmed.
         # When mining node MINER mines 4 blocks
@@ -30,9 +30,9 @@ Feature: Stress Test
         # # Now wait until all transactions are detected as confirmed in WALLET_A, continue to mine blocks if transactions
         # # are not found to be confirmed as sometimes the previous mining occurs faster than transactions are submitted
         # # to the mempool
-        # Then while mining via SHA3 miner MINER all transactions in wallet WALLET_A are found to be Mined_or_Faux_Confirmed
-        # # Then wallet WALLET_B detects all transactions as Mined_or_Faux_Confirmed
-        # Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_or_Faux_Confirmed
+        # Then while mining via SHA3 miner MINER all transactions in wallet WALLET_A are found to be Mined_or_OneSidedConfirmed
+        # # Then wallet WALLET_B detects all transactions as Mined_or_OneSidedConfirmed
+        # Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_or_OneSidedConfirmed
 
         # @flaky
         # Examples:
@@ -71,7 +71,7 @@ Feature: Stress Test
         # When mining node MINER mines 8 blocks
 
         # Then all nodes are on the same chain tip
-        # Then wallet WALLET_A detects all transactions as Mined_or_Faux_Confirmed
+        # Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
         # When I send 2000 transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
         # # Mine enough blocks for the first block of transactions to be confirmed.
         # When mining node MINER mines 4 blocks
@@ -79,6 +79,6 @@ Feature: Stress Test
         # # Now wait until all transactions are detected as confirmed in WALLET_A, continue to mine blocks if transactions
         # # are not found to be confirmed as sometimes the previous mining occurs faster than transactions are submitted
         # # to the mempool
-        # Then while mining via SHA3 miner MINER all transactions in wallet WALLET_A are found to be Mined_or_Faux_Confirmed
-        # # Then wallet WALLET_B detects all transactions as Mined_or_Faux_Confirmed
-        # Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_or_Faux_Confirmed
+        # Then while mining via SHA3 miner MINER all transactions in wallet WALLET_A are found to be Mined_or_OneSidedConfirmed
+        # # Then wallet WALLET_B detects all transactions as Mined_or_OneSidedConfirmed
+        # Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_or_OneSidedConfirmed

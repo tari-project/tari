@@ -147,15 +147,16 @@ pub unsafe extern "C" fn message_vector_get_at(
     }
 
     let messages = &(*messages);
+    let position = position as usize;
+    let len = messages.0.len();
 
-    let len = messages.0.len() - 1;
-    if position as usize > len {
+    if messages.0.is_empty() || position > len - 1 {
         error = LibChatError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new(messages.0[position as usize].clone()))
+    Box::into_raw(Box::new(messages.0[position].clone()))
 }
 
 /// Frees memory for MessagesVector

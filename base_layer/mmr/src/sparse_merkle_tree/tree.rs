@@ -31,7 +31,7 @@ pub enum DeleteResult {
     KeyNotFound,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(bound(deserialize = "H:"))]
 #[serde(bound(serialize = "H:"))]
 pub struct SparseMerkleTree<H> {

@@ -19,14 +19,25 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#[cfg(feature = "ledger")]
+use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
+#[cfg(feature = "ledger")]
+use ledger_transport::APDUCommand;
+#[cfg(feature = "ledger")]
+use ledger_transport_hid::TransportNativeHID;
 use log::*;
+#[cfg(feature = "ledger")]
+use once_cell::sync::Lazy;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::{
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+    wallet_types::WalletType,
+};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
@@ -54,33 +65,32 @@ use tari_key_manager::{
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::RwLock;
 
-use crate::{
-    one_sided::diffie_hellman_stealth_domain_hasher,
-    transactions::{
-        transaction_components::{KernelFeatures, TransactionError, TransactionInput, TransactionInputVersion},
-        CryptoFactories,
-    },
-};
-
 const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 use crate::{
     common::ConfidentialOutputHasher,
+    one_sided::diffie_hellman_stealth_domain_hasher,
     transactions::{
         key_manager::{
             interface::{TransactionKeyManagerBranch, TxoStage},
+            LedgerDeviceError,
             TariKeyId,
         },
         tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
+            KernelFeatures,
             RangeProofType,
+            TransactionError,
+            TransactionInput,
+            TransactionInputVersion,
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
             TransactionOutputVersion,
         },
+        CryptoFactories,
     },
 };
 
@@ -95,7 +105,11 @@ pub struct TransactionKeyManagerInner<TBackend> {
     db: KeyManagerDatabase<TBackend, PublicKey>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
+    wallet_type: WalletType,
 }
+
+#[cfg(feature = "ledger")]
+pub static TRANSPORT: Lazy<Arc<Mutex<Option<TransportNativeHID>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
@@ -108,12 +122,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
+        wallet_type: WalletType,
     ) -> Result<Self, KeyManagerServiceError> {
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
             db,
             master_seed,
             crypto_factories,
+            wallet_type,
         };
         km.add_standard_core_branches()?;
         Ok(km)
@@ -429,6 +445,46 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
+    pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
+        match self.wallet_type {
+            WalletType::Software => self.get_private_key(script_key_id).await.map_err(|e| e.into()),
+            WalletType::Ledger(_account) => {
+                #[cfg(not(feature = "ledger"))]
+                return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
+
+                #[cfg(feature = "ledger")]
+                {
+                    let data = script_key_id.managed_index().expect("and index").to_le_bytes().to_vec();
+                    let command = APDUCommand {
+                        cla: 0x80,
+                        ins: 0x02, // GetPrivateKey - see `./applications/mp_ledger/src/main.rs/Instruction`
+                        p1: 0x00,
+                        p2: 0x00,
+                        data,
+                    };
+                    let binding = TRANSPORT.lock().expect("lock exists");
+                    let transport = binding.as_ref().expect("transport exists");
+                    match transport.exchange(&command) {
+                        Ok(result) => {
+                            if result.data().len() < 33 {
+                                return Err(LedgerDeviceError::Processing(format!(
+                                    "'get_private_key' insufficient data - expected 33 got {} bytes ({:?})",
+                                    result.data().len(),
+                                    result
+                                ))
+                                .into());
+                            }
+                            PrivateKey::from_canonical_bytes(&result.data()[1..33])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))
+                        },
+                        Err(e) => Err(LedgerDeviceError::Instruction(format!("GetPrivateKey: {}", e)).into()),
+                    }
+                }
+                // end script private key
+            },
+        }
+    }
+
     pub async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
@@ -443,8 +499,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
         let commitment = self.get_commitment(spend_key_id, value).await?;
-        let script_private_key = self.get_private_key(script_key_id).await?;
         let spend_private_key = self.get_private_key(spend_key_id).await?;
+        let script_private_key = self.get_script_private_key(script_key_id).await?;
 
         let challenge = TransactionInput::finalize_script_signature_challenge(
             txi_version,

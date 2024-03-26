@@ -111,6 +111,10 @@ pub enum MmProxyError {
     ParseInputError(#[from] ParseInputError),
     #[error("Base node not responding to gRPC requests: {0}")]
     BaseNodeNotResponding(String),
+    #[error("Unexpected missing data: {0}")]
+    UnexpectedMissingData(String),
+    #[error("Failed to get block template: {0}")]
+    FailedToGetBlockTemplate(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

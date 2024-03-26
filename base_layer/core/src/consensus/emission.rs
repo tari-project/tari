@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp;
-
 use crate::transactions::tari_amount::MicroMinotari;
 
 pub trait Emission {
@@ -29,32 +27,50 @@ pub trait Emission {
     fn supply_at_block(&self, height: u64) -> MicroMinotari;
 }
 
-/// The Minotari emission schedule. The emission schedule determines how much Minotari is mined as a block reward at
-/// every block.
-///
-/// NB: We don't know what the final emission schedule will be on Minotari yet, so do not give any weight to values or
-/// formulae provided in this file, they will almost certainly change ahead of main-net release.
+/// The Minotari emission schedule with inflating tail emission. The emission schedule determines how much Minotari is
+/// mined as a block reward at every block.
 #[derive(Debug, Clone)]
 pub struct EmissionSchedule {
     initial: MicroMinotari,
     decay: &'static [u64],
-    tail: MicroMinotari,
+    inflation_bips: u64,           // Tail inflation in basis points. 100 bips = 1 percentage point
+    epoch_length: u64,             // The number of blocks in an inflation epoch
+    initial_supply: MicroMinotari, // The supply at block 0, from faucets or premine
 }
 
 impl EmissionSchedule {
     /// Create a new emission schedule instance.
     ///
-    /// The Emission schedule follows a similar pattern to Monero; with an exponentially decaying emission rate with
-    /// a constant tail emission rate.
+    /// ## Primary emission schedule
     ///
-    /// The block reward is given by
-    ///  $$ r_n = \mathrm{MAX}(\mathrm(intfloor(r_{n-1} * (1 - \epsilon)), t) n > 0 $$
+    /// The Emission schedule follows a similar pattern to Monero; with an initially exponentially decaying emission
+    /// rate and a tail emission.
+    ///
+    ///
+    /// The decay portion is given by
+    ///  $$ r_n = \lfloor r_{n-1} * (1 - \epsilon) \rfloor, n > 0 $$
     ///  $$ r_0 = A_0 $$
     ///
     /// where
     ///  * $$A_0$$ is the genesis block reward
     ///  * $$1 - \epsilon$$ is the decay rate
-    ///  * $$t$$ is the constant tail emission rate
+    ///
+    /// The decay parameters are determined as described in [#decay_parameters].
+    ///
+    ///  ## Tail emission
+    ///
+    ///  If the feature `mainnet_emission` is not enabled, the tail emission is constant. It is triggered if the reward
+    ///  would fall below the `tail` value.
+    ///
+    /// If the feature `mainnet_emission` is enabled, the tail emission is calculated as follows:
+    ///
+    ///  At each block, the reward is multiplied by `EPOCH_LENGTH` (approximately a year's worth of blocks) to
+    /// calculate `annual_supply`.
+    ///  If `annual_supply/current_supply` is less than `0.01*inflation_bips`% then we enter tail emission mode.
+    ///
+    ///  Every `EPOCH_LENGTH` blocks, the inflation rate is recalculated based on the current supply.
+    ///
+    /// ## Decay parameters
     ///
     /// The `intfloor` function is an integer-math-based multiplication of an integer by a fraction that's very close
     /// to one (e.g. 0.998,987,123,432)` that
@@ -97,12 +113,24 @@ impl EmissionSchedule {
     ///
     /// The shift right operation will overflow if shifting more than 63 bits. `new` will panic if any of the decay
     /// values are greater than or equal to 64.
-    pub fn new(initial: MicroMinotari, decay: &'static [u64], tail: MicroMinotari) -> EmissionSchedule {
+    pub fn new(
+        initial: MicroMinotari,
+        decay: &'static [u64],
+        inflation_bips: u64,
+        epoch_length: u64,
+        initial_supply: MicroMinotari,
+    ) -> EmissionSchedule {
         assert!(
             decay.iter().all(|i| *i < 64),
             "Decay value would overflow. All `decay` values must be less than 64"
         );
-        EmissionSchedule { initial, decay, tail }
+        EmissionSchedule {
+            initial,
+            decay,
+            inflation_bips,
+            epoch_length,
+            initial_supply,
+        }
     }
 
     /// Utility function to calculate the decay parameters that are provided in [EmissionSchedule::new]. This function
@@ -113,7 +141,7 @@ impl EmissionSchedule {
     ///
     /// Input : `k`: A string representing a floating point number of (nearly) arbitrary precision, and less than one.
     ///
-    /// Returns: An array of powers of negative two when when applied as a shift right and sum operation is very
+    /// Returns: An array of powers of negative two when applied as a shift right and sum operation is very
     /// close to (1-k)*n.
     ///
     /// None - If k is not a valid floating point number less than one.
@@ -173,18 +201,6 @@ impl EmissionSchedule {
     /// the emission curve if you're interested in the supply as well as the reward.
     ///
     /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
-    ///
-    /// ```edition2018
-    /// use tari_core::{
-    ///     consensus::emission::EmissionSchedule,
-    ///     transactions::tari_amount::MicroMinotari,
-    /// };
-    /// // Print the reward and supply for first 100 blocks
-    /// let schedule = EmissionSchedule::new(10.into(), &[3], 1.into());
-    /// for (n, reward, supply) in schedule.iter().take(100) {
-    ///     println!("{:3} {:9} {:9}", n, reward, supply);
-    /// }
-    /// ```
     pub fn iter(&self) -> EmissionRate {
         EmissionRate::new(self)
     }
@@ -203,15 +219,19 @@ pub struct EmissionRate<'a> {
     supply: MicroMinotari,
     reward: MicroMinotari,
     schedule: &'a EmissionSchedule,
+    epoch: u64,
+    epoch_counter: u64,
 }
 
 impl<'a> EmissionRate<'a> {
     fn new(schedule: &'a EmissionSchedule) -> EmissionRate<'a> {
         EmissionRate {
             block_num: 0,
-            supply: MicroMinotari(0),
+            supply: schedule.initial_supply,
             reward: MicroMinotari(0),
             schedule,
+            epoch: 0,
+            epoch_counter: 0,
         }
     }
 
@@ -227,21 +247,53 @@ impl<'a> EmissionRate<'a> {
         self.reward
     }
 
+    fn next_decay_reward(&self) -> MicroMinotari {
+        let r = self.reward.as_u64();
+        self.schedule
+            .decay
+            .iter()
+            .fold(self.reward, |sum, i| sum - MicroMinotari::from(r >> *i))
+    }
+
     /// Calculates the next reward by multiplying the decay factor by the previous block reward using integer math.
     ///
     /// We write the decay factor, 1 - k, as a sum of fraction powers of two. e.g. if we wanted 0.25 as our k, then
     /// (1-k) would be 0.75 = 1/2 plus 1/4 (1/2^2).
     ///
     /// Then we calculate k.R = (1 - e).R = R - e.R = R - (0.5 * R + 0.25 * R) = R - R >> 1 - R >> 2
-    fn next_reward(&self) -> MicroMinotari {
-        let r = self.reward.as_u64();
-        let next = self
-            .schedule
-            .decay
-            .iter()
-            .fold(self.reward, |sum, i| sum - MicroMinotari::from(r >> *i));
+    fn next_reward(&mut self) {
+        // Inflation phase
+        if self.epoch > 0 {
+            self.epoch_counter += 1;
+            if self.epoch_counter >= self.schedule.epoch_length {
+                self.epoch_counter = 0;
+                self.epoch += 1;
+                self.reward = self.new_tail_emission();
+            }
+        } else {
+            // Decay phase
+            let cutoff = self.new_tail_emission();
+            let next_decay_reward = self.next_decay_reward();
+            if self.epoch == 0 && next_decay_reward > cutoff {
+                self.reward = next_decay_reward;
+            } else {
+                self.epoch = 1;
+                self.reward = cutoff;
+            }
+        }
+    }
 
-        cmp::max(next, self.schedule.tail)
+    fn new_tail_emission(&self) -> MicroMinotari {
+        // Remember: 100% = 10,000 bips
+        let epoch_issuance = self
+            .supply
+            .as_u128()
+            .saturating_mul(u128::from(self.schedule.inflation_bips)) /
+            10_000u128;
+        #[allow(clippy::cast_possible_truncation)]
+        let epoch_issuance = epoch_issuance as u64; // intentionally allow rounding via truncation
+        let reward = epoch_issuance / self.schedule.epoch_length; // in uT
+        MicroMinotari::from((reward / 1_000_000) * 1_000_000) // truncate to nearest whole XTR
     }
 }
 
@@ -252,11 +304,11 @@ impl Iterator for EmissionRate<'_> {
         self.block_num += 1;
         if self.block_num == 1 {
             self.reward = self.schedule.initial;
-            self.supply = self.schedule.initial;
+            self.supply = self.supply.checked_add(self.reward)?;
             return Some((self.block_num, self.reward, self.supply));
         }
-        self.reward = self.next_reward();
-        // Once we've reached max supply, the iterator is done
+        self.next_reward(); // Has side effect
+                            // Once we've reached max supply, the iterator is done
         self.supply = self.supply.checked_add(self.reward)?;
         Some((self.block_num, self.reward, self.supply))
     }
@@ -280,108 +332,6 @@ impl Emission for EmissionSchedule {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        consensus::emission::{Emission, EmissionSchedule},
-        transactions::tari_amount::{uT, MicroMinotari, T},
-    };
-
-    #[test]
-    fn schedule() {
-        let schedule = EmissionSchedule::new(
-            MicroMinotari::from(10_000_100),
-            &[22, 23, 24, 26, 27],
-            MicroMinotari::from(100),
-        );
-        assert_eq!(schedule.block_reward(0), MicroMinotari::from(0));
-        assert_eq!(schedule.supply_at_block(0), MicroMinotari::from(0));
-        assert_eq!(schedule.block_reward(1), MicroMinotari::from(10_000_100));
-        assert_eq!(schedule.supply_at_block(1), MicroMinotari::from(10_000_100));
-        // These values have been independently calculated
-        assert_eq!(schedule.block_reward(100 + 1), MicroMinotari::from(9_999_800));
-        assert_eq!(schedule.supply_at_block(100 + 1), MicroMinotari::from(1_009_994_950));
-    }
-
-    #[test]
-    fn huge_block_number() {
-        // let mut n = (std::i32::MAX - 1) as u64;
-        let height = 262_800_000; // 1000 years' problem
-        let schedule = EmissionSchedule::new(
-            MicroMinotari::from(10000000u64),
-            &[22, 23, 24, 26, 27],
-            MicroMinotari::from(100),
-        );
-        // Slow but does not overflow
-        assert_eq!(schedule.block_reward(height + 1), MicroMinotari::from(4_194_303));
-    }
-
-    #[test]
-    fn generate_emission_schedule_as_iterator() {
-        const INITIAL: u64 = 10_000_100;
-        let schedule = EmissionSchedule::new(
-            MicroMinotari::from(INITIAL),
-            &[2], // 0.25 decay
-            MicroMinotari::from(100),
-        );
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-        assert_eq!(schedule.supply_at_block(0), MicroMinotari(0));
-        let values = schedule.iter().take(101).collect::<Vec<_>>();
-        let (height, reward, supply) = values[0];
-        assert_eq!(height, 1);
-        assert_eq!(reward, MicroMinotari::from(INITIAL));
-        assert_eq!(supply, MicroMinotari::from(INITIAL));
-        let (height, reward, supply) = values[1];
-        assert_eq!(height, 2);
-        assert_eq!(reward, MicroMinotari::from(7_500_075));
-        assert_eq!(supply, MicroMinotari::from(17_500_175));
-        let (height, reward, supply) = values[2];
-        assert_eq!(height, 3);
-        assert_eq!(reward, MicroMinotari::from(5_625_057));
-        assert_eq!(supply, MicroMinotari::from(23_125_232));
-        let (height, reward, supply) = values[10];
-        assert_eq!(height, 11);
-        assert_eq!(reward, MicroMinotari::from(563_142));
-        assert_eq!(supply, MicroMinotari::from(38_310_986));
-        let (height, reward, supply) = values[41];
-        assert_eq!(height, 42);
-        assert_eq!(reward, MicroMinotari::from(100));
-        assert_eq!(supply, MicroMinotari::from(40_000_252));
-
-        let mut tot_supply = MicroMinotari::from(0);
-        for (_, reward, supply) in schedule.iter().take(1000) {
-            tot_supply += reward;
-            assert_eq!(tot_supply, supply);
-        }
-    }
-
-    #[test]
-    #[allow(clippy::identity_op)]
-    fn emission() {
-        let emission = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
-        let mut emission = emission.iter();
-        // decay is 1 - 0.25 - 0.125 = 0.625
-        assert_eq!(emission.block_height(), 0);
-        assert_eq!(emission.block_reward(), MicroMinotari(0));
-        assert_eq!(emission.supply(), MicroMinotari(0));
-
-        assert_eq!(emission.next(), Some((1, 1_000_000 * uT, 1_000_000 * uT)));
-        assert_eq!(emission.next(), Some((2, 250_000 * uT, 1_250_000 * uT)));
-        assert_eq!(emission.next(), Some((3, 62_500 * uT, 1_312_500 * uT)));
-        assert_eq!(emission.next(), Some((4, 15_625 * uT, 1_328_125 * uT)));
-        assert_eq!(emission.next(), Some((5, 3_907 * uT, 1_332_032 * uT)));
-        assert_eq!(emission.next(), Some((6, 978 * uT, 1_333_010 * uT)));
-        assert_eq!(emission.next(), Some((7, 245 * uT, 1_333_255 * uT)));
-        // Tail emission kicks in
-        assert_eq!(emission.next(), Some((8, 100 * uT, 1_333_355 * uT)));
-        assert_eq!(emission.next(), Some((9, 100 * uT, 1_333_455 * uT)));
-
-        assert_eq!(emission.block_height(), 9);
-        assert_eq!(emission.block_reward(), 100 * uT);
-        assert_eq!(emission.supply(), 1333455 * uT);
-        let schedule = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
-        assert_eq!(emission.block_reward(), schedule.block_reward(9));
-        assert_eq!(emission.supply(), schedule.supply_at_block(9))
-    }
-
     #[test]
     fn calc_array() {
         assert_eq!(EmissionSchedule::decay_params("1.00"), None);
@@ -398,5 +348,127 @@ mod test {
             21, 22, 23, 25, 26, 37, 38, 39, 41, 45, 49, 50, 51, 52, 55, 57, 59, 60, 63
         ]);
         assert_eq!(EmissionSchedule::decay_params("0.0").unwrap(), vec![0]);
+    }
+
+    use crate::{
+        consensus::emission::{Emission, EmissionSchedule},
+        transactions::tari_amount::{MicroMinotari, T},
+    };
+
+    #[test]
+    #[allow(clippy::cast_possible_truncation)]
+    fn mainnet_emission() {
+        let epoch_length = 30 * 24 * 366;
+        let halflife = 3 * 30 * 24 * 365;
+        let a0 = MicroMinotari::from(12_923_971_428);
+        let decay = &[21u64, 22, 23, 25, 26, 37, 38, 40];
+        let premine = 6_300_000_000 * T;
+        let schedule = EmissionSchedule::new(a0, decay, 100, epoch_length, premine);
+        let mut iter = schedule.iter();
+        assert_eq!(iter.block_num, 0);
+        assert_eq!(iter.reward, MicroMinotari::from(0));
+        assert_eq!(iter.supply, premine);
+        let (num, reward, supply) = iter.next().unwrap();
+        // Block 1
+        assert_eq!(num, 1);
+        assert_eq!(reward, MicroMinotari::from(12_923_971_428));
+        assert_eq!(supply, MicroMinotari::from(6_300_012_923_971_428));
+        // Block 2
+        let (num, reward, supply) = iter.next().unwrap();
+        assert_eq!(num, 2);
+        assert_eq!(reward, MicroMinotari::from(12_923_960_068));
+        assert_eq!(supply, MicroMinotari::from(6_300_025_847_931_496));
+
+        // Block 788,400. 50% Mined
+        let mut iter = iter.skip_while(|(num, _, _)| *num < halflife);
+        let (num, reward, supply) = iter.next().unwrap();
+        assert_eq!(num, halflife);
+        assert_eq!(reward.as_u64(), 6_463_480_936);
+        let total_supply = 21_000_000_000 * T - premine;
+        let residual = (supply - premine) * 2 - total_supply;
+        // Within 0.01% of mining half the total supply
+        assert!(residual < total_supply / 10000, "Residual: {}", residual);
+        // Head to tail emission
+        let mut iter = iter.skip_while(|(num, _, _)| *num < 3_220_980);
+        let (num, reward, supply) = iter.next().unwrap();
+        assert_eq!(num, 3_220_980);
+        assert_eq!(reward, MicroMinotari::from(764_000_449));
+        assert_eq!(supply, MicroMinotari::from(20_140_382_328_948_420));
+        let (num, reward, _) = iter.next().unwrap();
+        assert_eq!(num, 3_220_981);
+        assert_eq!(reward, 764 * T);
+        let (num, reward, _) = iter.next().unwrap();
+        assert_eq!(num, 3_220_982);
+        assert_eq!(reward, 764 * T);
+        // Next boosting
+        let mut iter = iter.skip((epoch_length - 3) as usize);
+        let (num, reward, supply) = iter.next().unwrap();
+        assert_eq!(num, 3_484_500);
+        assert_eq!(reward, 764 * T);
+        assert_eq!(supply, MicroMinotari::from(20_341_711_608_948_420));
+        let (num, reward, _) = iter.next().unwrap();
+        assert_eq!(num, 3_484_501);
+        assert_eq!(reward, 771 * T);
+        let (num, reward, supply) = iter.next().unwrap();
+        assert_eq!(num, 3_484_502);
+        assert_eq!(reward, 771 * T);
+        // Check supply inflation. Because of rounding, it could be between 98 and 100 bips
+        let epoch_supply = 771 * T * epoch_length;
+        let inflation = (10000 * epoch_supply / supply).as_u64(); // 1 bip => 100
+        assert!(inflation < 100 && inflation > 98, "Inflation: {} bips", inflation);
+    }
+
+    #[test]
+    fn huge_block_number() {
+        // let mut n = (std::i32::MAX - 1) as u64;
+        let height = 262_800_000; // 1000 years' problem
+        let schedule = EmissionSchedule::new(
+            MicroMinotari::from(10000000u64),
+            &[22, 23, 24, 26, 27],
+            0,
+            100000,
+            MicroMinotari::from(0),
+        );
+        // Slow but does not overflow
+        assert_eq!(schedule.block_reward(height + 1), MicroMinotari::from(4_194_303));
+    }
+
+    #[test]
+    fn generate_emission_schedule_as_iterator() {
+        const INITIAL: u64 = 10_000_100;
+        let schedule = EmissionSchedule::new(
+            MicroMinotari::from(INITIAL),
+            &[2], // 0.25 decay
+            1000,
+            10,
+            100 * T,
+        );
+        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
+        assert_eq!(schedule.supply_at_block(0), 100 * T);
+        let values = schedule.iter().take(101).collect::<Vec<_>>();
+        let (height, reward, supply) = values[0];
+        assert_eq!(height, 1);
+        assert_eq!(reward, MicroMinotari::from(INITIAL));
+        assert_eq!(supply, MicroMinotari::from(INITIAL) + 100 * T);
+        let (height, reward, supply) = values[1];
+        assert_eq!(height, 2);
+        assert_eq!(reward, MicroMinotari::from(7_500_075));
+        assert_eq!(supply, MicroMinotari::from(117_500_175));
+        let (height, reward, supply) = values[2];
+        assert_eq!(height, 3);
+        assert_eq!(reward, MicroMinotari::from(5_625_057));
+        assert_eq!(supply, MicroMinotari::from(123_125_232));
+        let (height, reward, supply) = values[8];
+        assert_eq!(height, 9);
+        assert_eq!(reward, MicroMinotari::from(1_001_140));
+        assert_eq!(supply, MicroMinotari::from(136_996_989));
+        let (height, reward, supply) = values[9];
+        assert_eq!(height, 10);
+        assert_eq!(reward, MicroMinotari::from(1_000_000));
+        assert_eq!(supply, MicroMinotari::from(137_996_989));
+        let (height, reward, supply) = values[99];
+        assert_eq!(height, 100);
+        assert_eq!(reward, MicroMinotari::from(2_000_000));
+        assert_eq!(supply, MicroMinotari::from(248_996_989));
     }
 }

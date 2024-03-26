@@ -351,7 +351,7 @@ impl AggregateBody {
     /// Lists the number of inputs, outputs, and kernels in the block
     pub fn to_counts_string(&self) -> String {
         format!(
-            "{} input(s), {} output(s), {} kernel(s)",
+            "input(s): {}, output(s): {}, kernel(s): {}",
             self.inputs.len(),
             self.outputs.len(),
             self.kernels.len()
@@ -408,7 +408,7 @@ impl From<Transaction> for AggregateBody {
 impl Display for AggregateBody {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         if !self.is_sorted() {
-            writeln!(fmt, "WARNING: Block body is not sorted.")?;
+            writeln!(fmt, "WARNING: Body is not sorted.")?;
         }
         writeln!(fmt, "--- Transaction Kernels ---")?;
         for (i, kernel) in self.kernels.iter().enumerate() {

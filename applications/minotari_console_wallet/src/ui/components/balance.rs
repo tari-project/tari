@@ -53,7 +53,7 @@ impl<B: Backend> Component<B> for Balance {
         let available_balance = Spans::from(vec![
             Span::styled("Available:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            Span::raw(format!("{}", balance.available_balance.saturating_sub(time_locked))),
+            Span::raw(format!("{}", balance.available_balance)),
             Span::raw(format!(" (Time Locked: {})", time_locked)),
         ]);
         let incoming_balance = Spans::from(vec![

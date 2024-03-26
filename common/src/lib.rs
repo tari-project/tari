@@ -53,6 +53,7 @@
 #[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;
 pub mod exit_codes;
+pub mod network_check;
 #[macro_use]
 mod logging;
 pub mod configuration;

@@ -11,39 +11,39 @@ edition = "2018"
 default = []
 
 [dependencies]
+minotari_app_grpc = { path = "../minotari_app_grpc" }
+minotari_app_utilities = { path = "../minotari_app_utilities", features = ["miner_input"] }
+minotari_node_grpc_client = { path = "../../clients/rust/base_node_grpc_client" }
+minotari_wallet_grpc_client = { path = "../../clients/rust/wallet_grpc_client" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-minotari_app_utilities = { path = "../minotari_app_utilities", features = ["miner_input"] }
+tari_key_manager = { path = "../../base_layer/key_manager", features = ["key_manager_service"] }
 tari_utilities = { version = "0.7" }
-minotari_node_grpc_client = { path = "../../clients/rust/base_node_grpc_client" }
-minotari_wallet_grpc_client = { path = "../../clients/rust/wallet_grpc_client" }
-minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_key_manager = {  path = "../../base_layer/key_manager", features = ["key_manager_service"] }
 
 anyhow = "1.0.53"
-crossterm = { version = "0.25.0" }
 bincode = "1.3.1"
 borsh = "1.2"
 bytes = "1.1"
-chrono = { version = "0.4.6", default-features = false }
+chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = { version = "0.13.0" }
-futures = "0.3.5"
+crossterm = { version = "0.25.0" }
+futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 hyper = "0.14.12"
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
 monero = { version = "0.20.0" }
 reqwest = { version = "0.11.4", features = ["json"] }
-serde = { version = "1.0.106", features = ["derive"] }
+serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.26"
-tokio = { version = "1.23", features = ["macros"] }
+tokio = { version = "1.36", features = ["macros"] }
 tonic = "0.8.3"
 tracing = "0.1"
 url = "2.1.1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features"}
+tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }

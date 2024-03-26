@@ -74,6 +74,27 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     Ok(WalletDbConnection::new(pool, Some(file_lock)))
 }
 
+pub fn run_migration_and_create_sqlite_memory_connection(
+    sqlite_pool_size: usize,
+) -> Result<WalletDbConnection, WalletStorageError> {
+    let mut pool = SqliteConnectionPool::new(
+        String::from(":memory:"),
+        sqlite_pool_size,
+        true,
+        true,
+        Duration::from_secs(60),
+    );
+    pool.create_pool()?;
+    let mut connection = pool.get_pooled_connection()?;
+
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+    connection
+        .run_pending_migrations(MIGRATIONS)
+        .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
+
+    Ok(WalletDbConnection::new(pool, None))
+}
+
 pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorageError> {
     let lock_file_path = match db_path.file_name() {
         None => {

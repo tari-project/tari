@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use lmdb_zero::error;
-use tari_common_types::types::FixedHashSizeError;
+use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
@@ -139,6 +139,8 @@ pub enum ChainStorageError {
     FromKeyBytesFailed(String),
     #[error("Sparse Merkle Tree error: {0}")]
     SMTError(#[from] SMTError),
+    #[error("Invalid ChainMetaData: {0}")]
+    InvalidChainMetaData(#[from] ChainMetaDataError),
 }
 
 impl ChainStorageError {
@@ -190,6 +192,7 @@ impl ChainStorageError {
             _err @ ChainStorageError::FixedHashSizeError(_) |
             _err @ ChainStorageError::CompositeKeyLengthExceeded |
             _err @ ChainStorageError::FromKeyBytesFailed(_) |
+            _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange => None,
         }
     }

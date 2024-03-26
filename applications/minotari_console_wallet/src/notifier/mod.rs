@@ -46,7 +46,6 @@ pub const QUEUED: &str = "queued";
 pub const CONFIRMATION: &str = "confirmation";
 pub const MINED: &str = "mined";
 pub const CANCELLED: &str = "cancelled";
-pub const NEW_BLOCK_MINED: &str = "new_block_mined";
 
 #[derive(Clone)]
 // FIXME

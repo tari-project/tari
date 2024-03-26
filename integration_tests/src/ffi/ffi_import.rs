@@ -386,6 +386,8 @@ extern "C" {
         passphrase: *const c_char,
         seed_words: *const TariSeedWords,
         network_str: *const c_char,
+        peer_seed_str: *const c_char,
+        dns_sec: bool,
         callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -451,7 +453,7 @@ extern "C" {
         msg: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
-    pub fn wallet_add_base_node_peer(
+    pub fn wallet_set_base_node_peer(
         wallet: *mut TariWallet,
         public_key: *mut TariPublicKey,
         address: *const c_char,
