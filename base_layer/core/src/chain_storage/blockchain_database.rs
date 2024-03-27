@@ -23,7 +23,7 @@
 use std::{
     cmp,
     cmp::Ordering,
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
@@ -43,11 +43,11 @@ use tari_common_types::{
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash},
+    sparse_merkle_tree::{DeleteResult, NodeKey, SparseMerkleTree, ValueHash},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::TemplateRegistrationEntry;
+use super::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{
         Block,
@@ -103,6 +103,7 @@ use crate::{
     PrunedInputMmr,
     PrunedKernelMmr,
     ValidatorNodeBMT,
+    ValidatorNodeSmtHasherBlake256,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -1239,9 +1240,21 @@ where B: BlockchainBackend
         db.write(txn)
     }
 
-    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    pub fn fetch_all_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_active_validator_nodes(height)
+        db.fetch_all_active_validator_nodes(height)
+    }
+
+    pub fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+        validator_network: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_active_validator_nodes(height, validator_network)
     }
 
     pub fn fetch_template_registrations<T: RangeBounds<u64>>(
@@ -1366,9 +1379,9 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
     let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
-        let validator_nodes = db.fetch_active_validator_nodes(block_height)?;
+        let validator_nodes = db.fetch_all_active_validator_nodes(block_height)?;
         (
-            FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?,
+            FixedHash::try_from(calculate_validator_node_mr(&validator_nodes)?)?,
             validator_nodes.len(),
         )
     } else {
@@ -1389,8 +1402,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     Ok(mmr_roots)
 }
 
-pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> tari_mmr::Hash {
-    fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
+pub fn calculate_validator_node_mr(
+    validator_nodes: &[ValidatorNodeRegistrationInfo],
+) -> Result<tari_mmr::Hash, ChainStorageError> {
+    fn hash_node((pk, s): &(&PublicKey, &[u8; 32])) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
             .chain(pk)
             .chain(s)
@@ -1398,8 +1413,37 @@ pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) ->
             .to_vec()
     }
 
-    let vn_bmt = ValidatorNodeBMT::create(validator_nodes.iter().map(hash_node).collect::<Vec<_>>());
-    vn_bmt.get_merkle_root()
+    let mut hash_map = HashMap::new();
+    for ValidatorNodeRegistrationInfo {
+        public_key: pk,
+        sidechain_id: network,
+        shard_key,
+    } in validator_nodes
+    {
+        hash_map
+            .entry(network.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
+            .or_insert_with(|| Vec::with_capacity(1))
+            .push((pk, shard_key));
+    }
+    let mut roots = HashMap::new();
+    for (validator_network, set) in hash_map {
+        let mut sorted_set = set.clone();
+        sorted_set.sort_unstable_by(|a, b| a.0.to_vec().cmp(&b.0.to_vec()));
+
+        let vn_bmt = ValidatorNodeBMT::create(sorted_set.iter().map(hash_node).collect::<Vec<_>>());
+        roots.insert(validator_network, vn_bmt.get_merkle_root());
+    }
+
+    let mut keys = roots.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    let mut root_mt = SparseMerkleTree::<ValidatorNodeSmtHasherBlake256>::new();
+    for key in keys {
+        let node_key = NodeKey::try_from(key.as_slice())?;
+        let value_hash = ValueHash::try_from(roots[&key].as_slice())?;
+        root_mt.insert(node_key, value_hash)?;
+    }
+
+    Ok(Vec::from(root_mt.hash().as_slice()))
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {

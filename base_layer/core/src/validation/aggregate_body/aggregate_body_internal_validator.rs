@@ -30,7 +30,7 @@ use tari_crypto::{
     ristretto::pedersen::PedersenCommitment,
 };
 use tari_script::ScriptContext;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
@@ -116,6 +116,8 @@ impl AggregateBodyInternalConsistencyValidator {
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;
+            check_template_registration_utxo(output)?;
+            check_confidential_output_utxo(output)?;
         }
 
         check_weight(body, height, constants)?;
@@ -141,6 +143,58 @@ impl AggregateBodyInternalConsistencyValidator {
 
         Ok(())
     }
+}
+
+fn check_confidential_output_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
+    if let Some(conf_output) = output.features.confidential_output_data() {
+        if conf_output.sidechain_id.is_some() || conf_output.sidechain_id_knowledge_proof.is_some() {
+            // If one of these is set, both must be set
+            if conf_output.sidechain_id.is_none() || conf_output.sidechain_id_knowledge_proof.is_none() {
+                return Err(ValidationError::ConfidentialOutputSidechainNotSet);
+            }
+            // If set, the signature must be valid
+            let sig_pub_key = conf_output.sidechain_id.as_ref().unwrap();
+            if !conf_output
+                .sidechain_id_knowledge_proof
+                .as_ref()
+                .unwrap()
+                .verify(sig_pub_key, conf_output.claim_public_key.to_vec())
+            {
+                return Err(ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
+    if let Some(temp) = output.features.code_template_registration() {
+        let challenge = temp.create_challenge(&temp.author_public_key);
+        if !temp.author_signature.verify(&temp.author_public_key, challenge) {
+            return Err(ValidationError::TemplateAuthorSignatureNotValid);
+        }
+
+        if temp.sidechain_id.is_some() || temp.sidechain_id_knowledge_proof.is_some() {
+            // If one of these is set, both must be set
+            if temp.sidechain_id.is_none() || temp.sidechain_id_knowledge_proof.is_none() {
+                return Err(ValidationError::TemplateRegistrationSidechainNotSet);
+            }
+
+            // If set, the signature must be valid
+            let sig_pub_key = temp.sidechain_id.as_ref().unwrap();
+            // TODO: I've used the author pub key here. The author signature includes the network
+            // as part of it's challenge. Should there be other fields in here as well?
+            if !temp
+                .sidechain_id_knowledge_proof
+                .as_ref()
+                .unwrap()
+                .verify(sig_pub_key, temp.author_public_key.to_vec())
+            {
+                return Err(ValidationError::TemplateInvalidSidechainIdKnowledgeProof);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
@@ -393,8 +447,25 @@ fn check_validator_node_registration_utxo(
             });
         }
 
+        // TODO: This should be the claim public key that is being signed
         if !reg.is_valid_signature_for(&[]) {
             return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+
+        if reg.sidechain_id().is_some() || reg.sidechain_id_knowledge_proof().is_some() {
+            // If one of these is set, both must be set
+            if reg.sidechain_id().is_none() || reg.sidechain_id_knowledge_proof().is_none() {
+                return Err(ValidationError::ValidatorNodeRegistrationSidechainNotSet);
+            }
+            // If set, the signature must be valid
+            let sig_pub_key = reg.sidechain_id().unwrap();
+            if !reg
+                .sidechain_id_knowledge_proof()
+                .unwrap()
+                .verify(sig_pub_key, reg.public_key().to_vec())
+            {
+                return Err(ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
+            }
         }
     }
     Ok(())

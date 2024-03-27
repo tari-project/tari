@@ -92,7 +92,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
         let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
         output_smt.insert(smt_key, smt_node).unwrap();
     }
-    let vn_mmr = calculate_validator_node_mr(&[]);
+    let vn_mmr = calculate_validator_node_mr(&[]).unwrap();
 
     block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     block.header.output_mr = FixedHash::try_from(output_smt.hash().as_slice()).unwrap();
@@ -122,8 +122,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -174,8 +173,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("36881d87e25183f5189d2dca5f7da450c399e7006dafd9bd9240f73a5fb3f0ad").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = FixedHash::zero()
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -232,8 +230,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
             FixedHash::from_hex("bc5d677b0b8349adc9d7e4a18ace7406986fc7017866f4fd351ecb0f35d6da5e").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -286,8 +283,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("3f4011ec1e8ddfbd66fb7331c5623b38f529a66e81233d924df85f2070b2aacb").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.validator_node_mr = FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -374,8 +370,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
-                .unwrap(),
+            validator_node_mr: FixedHash::zero(),
             validator_node_size: 0,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
@@ -406,7 +401,7 @@ mod test {
 
     use super::*;
     use crate::{
-        chain_storage::calculate_validator_node_mr,
+        chain_storage::{calculate_validator_node_mr, ValidatorNodeRegistrationInfo},
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{
@@ -510,19 +505,25 @@ mod test {
                     .as_ref()
                     .and_then(|f| f.validator_node_registration())
                     .unwrap();
-                vn_nodes.push((
-                    reg.public_key().clone(),
-                    reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                ));
+                vn_nodes.push(ValidatorNodeRegistrationInfo {
+                    public_key: reg.public_key().clone(),
+                    sidechain_id: None,
+                    shard_key: reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+                });
             }
         }
+
+        assert_eq!(&vn_nodes, &vec![]);
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(
             FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
             block.header().output_mr,
         );
-        assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
+        assert_eq!(
+            calculate_validator_node_mr(&vn_nodes).unwrap(),
+            block.header().validator_node_mr,
+        );
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
         // is correct)

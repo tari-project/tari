@@ -611,22 +611,22 @@ mod tests {
                 Network::MainNet,
             ),
             Network::StageNet => (
-                135043993867732261,
-                Difficulty::from_u64(1059).unwrap(),
+                5024328429923549037,
+                Difficulty::from_u64(2065).unwrap(),
                 Network::StageNet,
             ),
             _ => panic!("Invalid network for mainnet target"),
         };
         #[cfg(tari_target_network_nextnet)]
         let (nonce, difficulty, network) = (
-            5154919981564263219,
-            Difficulty::from_u64(2950).unwrap(),
+            10034243937442353464,
+            Difficulty::from_u64(1190).unwrap(),
             Network::NextNet,
         );
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
         let (nonce, difficulty, network) = (
-            8520885611996410570,
-            Difficulty::from_u64(3143).unwrap(),
+            9571285381070445492,
+            Difficulty::from_u64(2412).unwrap(),
             Network::Esmeralda,
         );
         unsafe {

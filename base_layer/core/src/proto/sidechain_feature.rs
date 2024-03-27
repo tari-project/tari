@@ -94,6 +94,16 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
         let claim_public_key =
             PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| format!("claim_public_key: {}", e))?;
 
+        let sidechain_id = if value.sidechain_id.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_canonical_bytes(&value.sidechain_id).map_err(|e| format!("sidechain_id: {}", e))?)
+        };
+        let sidechain_id_knowledge_proof = value
+            .sidechain_id_knowledge_proof
+            .map(|v| Signature::try_from(v).map_err(|e| format!("sidechain_id_knowledge_proof: {}", e)))
+            .transpose()?;
+
         Ok(Self::new(
             ValidatorNodeSignature::new(
                 public_key,
@@ -103,6 +113,8 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
                     .ok_or("signature not provided")??,
             ),
             claim_public_key,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         ))
     }
 }
@@ -113,6 +125,8 @@ impl From<ValidatorNodeRegistration> for proto::types::ValidatorNodeRegistration
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
             claim_public_key: value.claim_public_key().to_vec(),
+            sidechain_id: value.sidechain_id().map(|v| v.to_vec()).unwrap_or_default(),
+            sidechain_id_knowledge_proof: value.sidechain_id_knowledge_proof().map(|v| v.into()),
         }
     }
 }
@@ -122,6 +136,15 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
     type Error = String;
 
     fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
+        let sidechain_id = if value.sidechain_id.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_canonical_bytes(&value.sidechain_id).map_err(|e| format!("sidechain_id: {}", e))?)
+        };
+        let sidechain_id_knowledge_proof = value
+            .sidechain_id_knowledge_proof
+            .map(|v| Signature::try_from(v).map_err(|e| format!("sidechain_id_knowledge_proof: {}", e)))
+            .transpose()?;
         Ok(Self {
             author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
@@ -143,6 +166,8 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
                 .ok_or("Build info not provided")??,
             binary_sha: value.binary_sha.try_into().map_err(|_| "Invalid commit sha")?,
             binary_url: MaxSizeString::try_from(value.binary_url).map_err(|e| e.to_string())?,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         })
     }
 }
@@ -158,6 +183,8 @@ impl From<CodeTemplateRegistration> for proto::types::TemplateRegistration {
             build_info: Some(value.build_info.into()),
             binary_sha: value.binary_sha.to_vec(),
             binary_url: value.binary_url.to_string(),
+            sidechain_id: value.sidechain_id.map(|v| v.to_vec()).unwrap_or_default(),
+            sidechain_id_knowledge_proof: value.sidechain_id_knowledge_proof.map(|v| v.into()),
         }
     }
 }
@@ -167,8 +194,19 @@ impl TryFrom<proto::types::ConfidentialOutputData> for ConfidentialOutputData {
     type Error = String;
 
     fn try_from(value: proto::types::ConfidentialOutputData) -> Result<Self, Self::Error> {
+        let sidechain_id = if value.sidechain_id.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_canonical_bytes(&value.sidechain_id).map_err(|e| format!("sidechain_id: {}", e))?)
+        };
+        let sidechain_id_knowledge_proof = value
+            .sidechain_id_knowledge_proof
+            .map(|v| Signature::try_from(v).map_err(|e| format!("sidechain_id_knowledge_proof: {}", e)))
+            .transpose()?;
         Ok(ConfidentialOutputData {
             claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         })
     }
 }
@@ -177,6 +215,8 @@ impl From<ConfidentialOutputData> for proto::types::ConfidentialOutputData {
     fn from(value: ConfidentialOutputData) -> Self {
         Self {
             claim_public_key: value.claim_public_key.to_vec(),
+            sidechain_id: value.sidechain_id.map(|v| v.to_vec()).unwrap_or_default(),
+            sidechain_id_knowledge_proof: value.sidechain_id_knowledge_proof.map(|v| v.into()),
         }
     }
 }

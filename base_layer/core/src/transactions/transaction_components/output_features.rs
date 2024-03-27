@@ -127,11 +127,17 @@ impl OutputFeatures {
     }
 
     /// creates output features for a burned output with confidential output data
-    pub fn create_burn_confidential_output(claim_public_key: PublicKey) -> OutputFeatures {
+    pub fn create_burn_confidential_output(
+        claim_public_key: PublicKey,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
+    ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Burn,
             sidechain_feature: Some(SideChainFeature::ConfidentialOutput(ConfidentialOutputData {
                 claim_public_key,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
             })),
             ..Default::default()
         }
@@ -150,11 +156,18 @@ impl OutputFeatures {
         public_key: PublicKey,
         signature: Signature,
         claim_public_key: PublicKey,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
             sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
-                ValidatorNodeRegistration::new(ValidatorNodeSignature::new(public_key, signature), claim_public_key),
+                ValidatorNodeRegistration::new(
+                    ValidatorNodeSignature::new(public_key, signature),
+                    claim_public_key,
+                    sidechain_id,
+                    sidechain_id_knowledge_proof,
+                ),
             )),
             ..Default::default()
         }
@@ -169,6 +182,8 @@ impl OutputFeatures {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
@@ -181,6 +196,8 @@ impl OutputFeatures {
                 build_info,
                 binary_sha,
                 binary_url,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
             })),
             ..Default::default()
         }
@@ -196,6 +213,12 @@ impl OutputFeatures {
         self.sidechain_feature
             .as_ref()
             .and_then(|s| s.code_template_registration())
+    }
+
+    pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.confidential_output_data())
     }
 
     pub fn is_coinbase(&self) -> bool {

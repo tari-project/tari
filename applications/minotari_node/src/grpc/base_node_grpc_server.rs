@@ -44,7 +44,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
@@ -1812,8 +1812,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
+        let sidechain_id = if request.sidechain_id.is_empty() {
+            Some(
+                PublicKey::from_canonical_bytes(&request.sidechain_id)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid validator_network '{}'", e)))?,
+            )
+        } else {
+            None
+        };
+
         task::spawn(async move {
-            let active_validator_nodes = match handler.get_active_validator_nodes(request.height).await {
+            let active_validator_nodes = match handler.get_active_validator_nodes(request.height, sidechain_id).await {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Base node service error: {}", err,);
                     return;
@@ -1821,10 +1830,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
 
-            for (public_key, shard_key) in active_validator_nodes {
+            for ValidatorNodeRegistrationInfo {
+                public_key,
+                sidechain_id,
+                shard_key,
+            } in active_validator_nodes
+            {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
                     shard_key: shard_key.to_vec(),
+                    sidechain_id: sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]),
                 };
 
                 if tx.send(Ok(active_validator_node)).await.is_err() {

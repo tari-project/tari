@@ -27,12 +27,12 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{HashOutput, PrivateKey},
 };
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::TemplateRegistrationEntry,
+    chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
@@ -58,7 +58,7 @@ pub enum NodeCommsResponse {
     TargetDifficulty(Difficulty),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
-    FetchValidatorNodesKeysResponse(Vec<(PublicKey, [u8; 32])>),
+    FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }

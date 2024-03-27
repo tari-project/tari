@@ -32,6 +32,8 @@ pub struct BurnTab {
     burn_input_mode: BurnInputMode,
     burnt_proof_filepath_field: String,
     claim_public_key_field: String,
+    sidechain_id_field: String,
+    sidechain_id_knowledge_proof_field: String,
     amount_field: String,
     fee_field: String,
     message_field: String,
@@ -51,6 +53,8 @@ impl BurnTab {
             burn_input_mode: BurnInputMode::None,
             burnt_proof_filepath_field: String::new(),
             claim_public_key_field: String::new(),
+            sidechain_id_field: String::new(),
+            sidechain_id_knowledge_proof_field: String::new(),
             amount_field: String::new(),
             fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
             message_field: String::new(),
@@ -78,6 +82,8 @@ impl BurnTab {
         let vert_chunks = Layout::default()
             .constraints(
                 [
+                    Constraint::Length(3),
+                    Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
@@ -141,10 +147,30 @@ impl BurnTab {
             .block(Block::default().borders(Borders::ALL).title("To (C)laim Public Key:"));
         f.render_widget(claim_public_key_input, vert_chunks[2]);
 
+        let sidechain_id_input = Paragraph::new(self.sidechain_id_field.as_ref())
+            .style(match self.burn_input_mode {
+                BurnInputMode::ClaimPublicKey => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("Sidechain ID:"));
+        f.render_widget(sidechain_id_input, vert_chunks[3]);
+
+        let sidechain_id_knowledge_proof_input = Paragraph::new(self.sidechain_id_knowledge_proof_field.as_ref())
+            .style(match self.burn_input_mode {
+                BurnInputMode::ClaimPublicKey => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Sidechain ID Knowledge Proof:"),
+            );
+        f.render_widget(sidechain_id_knowledge_proof_input, vert_chunks[4]);
+
         let amount_fee_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .split(vert_chunks[3]);
+            .split(vert_chunks[5]);
 
         let amount_input = Paragraph::new(self.amount_field.to_string())
             .style(match self.burn_input_mode {
@@ -168,7 +194,7 @@ impl BurnTab {
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("(M)essage:"));
-        f.render_widget(message_input, vert_chunks[4]);
+        f.render_widget(message_input, vert_chunks[6]);
 
         match self.burn_input_mode {
             BurnInputMode::None => (),
@@ -200,9 +226,9 @@ impl BurnTab {
             ),
             BurnInputMode::Message => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[4].x + self.message_field.width() as u16 + 1,
+                vert_chunks[6].x + self.message_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
-                vert_chunks[4].y + 1,
+                vert_chunks[6].y + 1,
             ),
         }
     }
@@ -300,6 +326,18 @@ impl BurnTab {
                         Some(self.claim_public_key_field.clone())
                     };
 
+                    let sidechain_id = if self.sidechain_id_field.is_empty() {
+                        None
+                    } else {
+                        Some(self.sidechain_id_field.clone())
+                    };
+
+                    let sidechain_id_knowledge_proof = if self.sidechain_id_knowledge_proof_field.is_empty() {
+                        None
+                    } else {
+                        Some(self.sidechain_id_knowledge_proof_field.clone())
+                    };
+
                     let (tx, rx) = watch::channel(UiTransactionBurnStatus::Initiated);
 
                     let mut reset_fields = false;
@@ -312,6 +350,8 @@ impl BurnTab {
                                 UtxoSelectionCriteria::default(),
                                 fee_per_gram,
                                 self.message_field.clone(),
+                                sidechain_id,
+                                sidechain_id_knowledge_proof,
                                 tx,
                             )) {
                                 Err(e) => {

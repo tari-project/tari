@@ -2768,6 +2768,8 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
         fee_per_gram: fee,
         message: "Burning some tari".to_string(),
         claim_public_key: identity.public_key,
+        sidechain_id: vec![],
+        sidechain_id_knowledge_proof: None,
     };
 
     let result = client.create_burn_transaction(req).await.unwrap();

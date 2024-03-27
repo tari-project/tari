@@ -139,7 +139,7 @@ async fn genesis_template(
 
 #[test]
 fn print_new_genesis_block_values() {
-    let vn_mr = calculate_validator_node_mr(&[]);
+    let vn_mr = calculate_validator_node_mr(&[]).unwrap();
     let validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
 
     // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`

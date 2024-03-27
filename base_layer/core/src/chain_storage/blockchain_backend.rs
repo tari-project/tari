@@ -6,7 +6,7 @@ use tari_common_types::{
     types::{Commitment, HashOutput, PublicKey, Signature},
 };
 
-use super::TemplateRegistrationEntry;
+use super::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
@@ -172,7 +172,18 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches the validator node set for the given height ordered according to height of registration and canonical
     /// block body ordering.
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError>;
+    fn fetch_all_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
+
+    /// Fetches the validator node set for the given height ordered according to height of registration and canonical
+    /// block body ordering.
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+        validator_network: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
     /// Returns the shard key for the validator node if valid at the given height.
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError>;
     /// Returns all template registrations within (inclusive) the given height range.

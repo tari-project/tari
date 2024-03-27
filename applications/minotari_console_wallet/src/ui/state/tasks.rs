@@ -36,14 +36,17 @@ use tari_common_types::{
     types::{PublicKey, Signature},
 };
 use tari_core::{
-    consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
+    consensus::{MaxSizeBytes, MaxSizeString},
     transactions::{
         tari_amount::MicroMinotari,
+        transaction_components,
         transaction_components::{BuildInfo, OutputFeatures, TemplateType},
     },
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
-use tari_hashing::TransactionHashDomain;
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
@@ -239,6 +242,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
     claim_public_key: Option<PublicKey>,
@@ -246,6 +250,8 @@ pub async fn send_burn_transaction_task(
     selection_criteria: UtxoSelectionCriteria,
     message: String,
     fee_per_gram: MicroMinotari,
+    sidechain_id: Option<PublicKey>,
+    sidechain_id_knowledge_proof: Option<Signature>,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -258,7 +264,15 @@ pub async fn send_burn_transaction_task(
     // ----------------------------------------------------------------------------
 
     let (burn_tx_id, original_proof) = match transaction_service_handle
-        .burn_tari(amount, selection_criteria, fee_per_gram, message, claim_public_key)
+        .burn_tari(
+            amount,
+            selection_criteria,
+            fee_per_gram,
+            message,
+            claim_public_key,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
+        )
         .await
     {
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
@@ -373,6 +387,7 @@ pub async fn send_register_template_transaction_task(
     binary_url: String,
     binary_sha: String,
     fee_per_gram: MicroMinotari,
+    sidechain_id_key: Option<&RistrettoSecretKey>,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,
@@ -459,12 +474,27 @@ pub async fn send_register_template_transaction_task(
 
     let author_public_key = PublicKey::from_secret_key(&author_private_key);
     let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-    let challenge = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
-        .chain(&author_public_key)
-        .chain(&public_nonce)
-        .chain(&binary_sha)
-        .chain(&b"")
-        .finalize();
+
+    let pub_validator_key = sidechain_id_key.map(PublicKey::from_secret_key);
+
+    let sidechain_id_knowledge_proof = match sidechain_id_key {
+        Some(key) => Some(match Signature::sign(key, author_public_key.to_vec(), &mut OsRng) {
+            Ok(signature) => signature,
+            Err(e) => {
+                error!(target: LOG_TARGET, "failed to sign network knowledge proof: {}", e);
+                result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
+                return;
+            },
+        }),
+        None => None,
+    };
+
+    let challenge = transaction_components::CodeTemplateRegistration::create_challenge_from_components(
+        &author_public_key,
+        &public_nonce,
+        &binary_sha,
+        pub_validator_key.as_ref(),
+    );
 
     let author_signature = Signature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
         .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
@@ -487,6 +517,8 @@ pub async fn send_register_template_transaction_task(
             binary_sha,
             binary_url,
             fee_per_gram,
+            pub_validator_key,
+            sidechain_id_knowledge_proof,
         )
         .await;
 

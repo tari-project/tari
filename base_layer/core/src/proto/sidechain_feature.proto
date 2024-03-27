@@ -19,6 +19,8 @@ message ValidatorNodeRegistration {
     bytes public_key = 1;
     Signature signature = 2;
     bytes claim_public_key = 3;
+    bytes sidechain_id = 4;
+    Signature sidechain_id_knowledge_proof = 5;
 }
 
 message TemplateRegistration {
@@ -30,10 +32,14 @@ message TemplateRegistration {
     BuildInfo build_info = 6;
     bytes binary_sha = 7;
     string binary_url = 8;
+    bytes sidechain_id = 9;
+    Signature sidechain_id_knowledge_proof = 10;
 }
 
 message ConfidentialOutputData {
     bytes claim_public_key = 1;
+    bytes sidechain_id = 2;
+    Signature sidechain_id_knowledge_proof = 3;
 }
 
 message TemplateType {

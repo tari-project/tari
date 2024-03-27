@@ -83,7 +83,7 @@ pub use utxo_mined_info::*;
 
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
-use tari_common_types::types::HashOutput;
+use tari_common_types::types::{HashOutput, PublicKey};
 
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
@@ -92,4 +92,11 @@ pub use template_registation::TemplateRegistrationEntry;
 pub struct ChainTipData {
     pub hash: HashOutput,
     pub total_accumulated_difficulty: U256,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidatorNodeRegistrationInfo {
+    pub public_key: PublicKey,
+    pub sidechain_id: Option<PublicKey>,
+    pub shard_key: [u8; 32],
 }

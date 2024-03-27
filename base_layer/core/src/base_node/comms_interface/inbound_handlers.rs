@@ -395,8 +395,14 @@ where B: BlockchainBackend + 'static
                     },
                 ))
             },
-            NodeCommsRequest::FetchValidatorNodesKeys { height } => {
-                let active_validator_nodes = self.blockchain_db.fetch_active_validator_nodes(height).await?;
+            NodeCommsRequest::FetchValidatorNodesKeys {
+                height,
+                validator_network,
+            } => {
+                let active_validator_nodes = self
+                    .blockchain_db
+                    .fetch_active_validator_nodes(height, validator_network)
+                    .await?;
                 Ok(NodeCommsResponse::FetchValidatorNodesKeysResponse(
                     active_validator_nodes,
                 ))

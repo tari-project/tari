@@ -61,6 +61,7 @@ use crate::{
         OutputMinedInfo,
         Reorg,
         TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -400,8 +401,22 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
+    fn fetch_all_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_all_active_validator_nodes(height)
+    }
+
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+        validator_network: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_active_validator_nodes(height, validator_network)
     }
 
     fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {

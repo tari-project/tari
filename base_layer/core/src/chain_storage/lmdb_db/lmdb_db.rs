@@ -92,6 +92,7 @@ use crate::{
         Reorg,
         TemplateRegistrationEntry,
         ValidatorNodeEntry,
+        ValidatorNodeRegistrationInfo,
     },
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
@@ -925,6 +926,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
@@ -1385,6 +1387,7 @@ impl LMDBDatabase {
             end_epoch: next_epoch + constants.validator_node_validity_period_epochs(),
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
+            sidechain_id: vn_reg.sidechain_id().cloned(),
         };
 
         store.insert(header.height, &validator_node)?;
@@ -2451,7 +2454,10 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    fn fetch_all_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
         let constants = self.consensus_manager.consensus_constants(height);
@@ -2464,6 +2470,19 @@ impl BlockchainBackend for LMDBDatabase {
         let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = end_epoch.as_u64() * constants.epoch_length();
         let nodes = vn_store.get_vn_set(start_height, end_height)?;
+        Ok(nodes)
+    }
+
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+        validator_network: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let nodes = self
+            .fetch_all_active_validator_nodes(height)?
+            .into_iter()
+            .filter(|vn| vn.sidechain_id == validator_network)
+            .collect();
         Ok(nodes)
     }
 

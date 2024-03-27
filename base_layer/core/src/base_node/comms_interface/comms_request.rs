@@ -46,7 +46,10 @@ pub enum NodeCommsRequest {
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingBlocks { range: RangeInclusive<u64>, compact: bool },
+    FetchMatchingBlocks {
+        range: RangeInclusive<u64>,
+        compact: bool,
+    },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
     FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
@@ -55,11 +58,24 @@ pub enum NodeCommsRequest {
     GetNewBlock(NewBlockTemplate),
     GetBlockFromAllChains(HashOutput),
     FetchKernelByExcessSig(Signature),
-    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
-    FetchValidatorNodesKeys { height: u64 },
-    GetShardKey { height: u64, public_key: PublicKey },
-    FetchTemplateRegistrations { start_height: u64, end_height: u64 },
-    FetchUnspentUtxosInBlock { block_hash: BlockHash },
+    FetchMempoolTransactionsByExcessSigs {
+        excess_sigs: Vec<PrivateKey>,
+    },
+    FetchValidatorNodesKeys {
+        height: u64,
+        validator_network: Option<PublicKey>,
+    },
+    GetShardKey {
+        height: u64,
+        public_key: PublicKey,
+    },
+    FetchTemplateRegistrations {
+        start_height: u64,
+        end_height: u64,
+    },
+    FetchUnspentUtxosInBlock {
+        block_hash: BlockHash,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,8 +114,19 @@ impl Display for NodeCommsRequest {
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
             },
-            FetchValidatorNodesKeys { height } => {
-                write!(f, "FetchValidatorNodesKeys ({})", height)
+            FetchValidatorNodesKeys {
+                height,
+                validator_network,
+            } => {
+                write!(
+                    f,
+                    "FetchValidatorNodesKeys ({}, {})",
+                    height,
+                    validator_network
+                        .as_ref()
+                        .map(|n| n.to_hex())
+                        .unwrap_or_else(|| "None".to_string())
+                )
             },
             GetShardKey { height, public_key } => {
                 write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)

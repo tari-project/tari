@@ -146,6 +146,8 @@ pub async fn burn_tari(
             fee_per_gram * uT,
             message,
             None,
+            None,
+            None,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -208,6 +210,8 @@ pub async fn register_validator_node(
     validator_node_public_key: PublicKey,
     validator_node_signature: Signature,
     validator_node_claim_public_key: PublicKey,
+    sidechain_id: Option<PublicKey>,
+    sidechain_id_knowledge_proof: Option<Signature>,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     message: String,
@@ -218,6 +222,8 @@ pub async fn register_validator_node(
             validator_node_public_key,
             validator_node_signature,
             validator_node_claim_public_key,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
             selection_criteria,
             fee_per_gram,
             message,
@@ -1025,6 +1031,17 @@ pub async fn command_runner(
                         RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
                     ),
                     args.validator_node_claim_public_key.into(),
+                    args.sidechain_id.map(|v| v.into()),
+                    if args.sidechain_id_knowledge_proof_nonce.is_none() ||
+                        args.sidechain_id_knowledge_proof_sig.is_empty()
+                    {
+                        None
+                    } else {
+                        Some(Signature::new(
+                            args.sidechain_id_knowledge_proof_nonce.as_ref().unwrap().clone().into(),
+                            RistrettoSecretKey::from_vec(&args.sidechain_id_knowledge_proof_sig[0])?,
+                        ))
+                    },
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     args.message,

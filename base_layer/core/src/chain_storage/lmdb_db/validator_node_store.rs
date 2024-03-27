@@ -35,6 +35,7 @@ use crate::chain_storage::{
     },
     ChainStorageError,
     ValidatorNodeEntry,
+    ValidatorNodeRegistrationInfo,
 };
 
 pub type ShardKey = [u8; 32];
@@ -136,7 +137,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         &self,
         start_height: u64,
         end_height: u64,
-    ) -> Result<Vec<(PublicKey, ShardKey)>, ChainStorageError> {
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let mut cursor = self.db_read_cursor()?;
 
         let mut nodes = Vec::new();
@@ -150,7 +151,11 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     return Ok(Vec::new());
                 }
                 dedup_map.insert(vn.public_key.clone(), 0);
-                nodes.push(Some((vn.public_key, vn.shard_key)));
+                nodes.push(Some(ValidatorNodeRegistrationInfo {
+                    public_key: vn.public_key,
+                    sidechain_id: vn.sidechain_id,
+                    shard_key: vn.shard_key,
+                }));
             },
             None => return Ok(Vec::new()),
         }
@@ -169,12 +174,20 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     .expect("get_vn_set: internal dedeup map is not in sync with nodes");
                 *node_mut = None;
             }
-            nodes.push(Some((vn.public_key, vn.shard_key)));
+            nodes.push(Some(ValidatorNodeRegistrationInfo {
+                public_key: vn.public_key,
+                sidechain_id: vn.sidechain_id,
+                shard_key: vn.shard_key,
+            }));
             i += 1;
         }
 
         let mut vn_set = nodes.into_iter().flatten().collect::<Vec<_>>();
-        vn_set.sort_by(|(_, a), (_, b)| a.cmp(b));
+        vn_set.sort_by(|vn_a, vn_b| {
+            vn_a.sidechain_id
+                .cmp(&vn_b.sidechain_id)
+                .then(vn_a.shard_key.cmp(&vn_b.shard_key))
+        });
         Ok(vn_set)
     }
 
@@ -243,7 +256,7 @@ mod tests {
         store: &ValidatorNodeStore<'_, WriteTransaction<'_>>,
         start_height: u64,
         n: usize,
-    ) -> Vec<(PublicKey, ShardKey)> {
+    ) -> Vec<ValidatorNodeRegistrationInfo> {
         let mut nodes = Vec::new();
         for i in 0..n {
             let public_key = new_public_key();
@@ -256,9 +269,13 @@ mod tests {
                     ..Default::default()
                 })
                 .unwrap();
-            nodes.push((public_key, shard_key));
+            nodes.push(ValidatorNodeRegistrationInfo {
+                public_key,
+                sidechain_id: None,
+                shard_key,
+            });
         }
-        nodes.sort_by(|(_, a), (_, b)| a.cmp(b));
+        nodes.sort_by(|a, b| a.sidechain_id.cmp(&b.sidechain_id).then(a.shard_key.cmp(&b.shard_key)));
         nodes
     }
 
@@ -306,17 +323,17 @@ mod tests {
             let nodes = insert_n_vns(&store, 1, 3);
             // Node 0 and 1 re-register at height 4
 
-            let s0 = make_hash(nodes[0].1);
+            let s0 = make_hash(nodes[0].shard_key);
             store
                 .insert(4, &ValidatorNodeEntry {
-                    public_key: nodes[0].0.clone(),
+                    public_key: nodes[0].public_key.clone(),
                     shard_key: s0,
                     commitment: Commitment::from_public_key(&new_public_key()),
                     ..Default::default()
                 })
                 .unwrap();
 
-            let s1 = make_hash(nodes[1].1);
+            let s1 = make_hash(nodes[1].shard_key);
             // The commitment is used last in the key and so changes the order they appear in the LMDB btree.
             // We insert them in reverse order to demonstrate that insert order does not necessarily match the vn set
             // order.
@@ -327,7 +344,7 @@ mod tests {
             ordered_commitments.sort();
             store
                 .insert(5, &ValidatorNodeEntry {
-                    public_key: nodes[1].0.clone(),
+                    public_key: nodes[1].public_key.clone(),
                     shard_key: make_hash(s1),
                     commitment: ordered_commitments[1].clone(),
                     ..Default::default()
@@ -336,7 +353,7 @@ mod tests {
             // This insert is counted as before the previous one because the commitment is "less"
             store
                 .insert(5, &ValidatorNodeEntry {
-                    public_key: nodes[1].0.clone(),
+                    public_key: nodes[1].public_key.clone(),
                     shard_key: s1,
                     commitment: ordered_commitments[0].clone(),
                     ..Default::default()
@@ -346,7 +363,7 @@ mod tests {
             let set = store.get_vn_set(1, 5).unwrap();
             // s1 and s2 have replaced the previous shard keys, and are now ordered last since they come after node2
             assert_eq!(set.len(), 3);
-            assert_eq!(set.iter().filter(|s| s.0 == nodes[1].0).count(), 1);
+            assert_eq!(set.iter().filter(|s| s.public_key == nodes[1].public_key).count(), 1);
         }
     }
 
@@ -359,10 +376,10 @@ mod tests {
             let txn = db.write_transaction();
             let store = create_store(&db, &txn);
             let nodes = insert_n_vns(&store, 1, 3);
-            let new_shard_key = make_hash(nodes[0].1);
+            let new_shard_key = make_hash(nodes[0].shard_key);
             store
                 .insert(4, &ValidatorNodeEntry {
-                    public_key: nodes[0].0.clone(),
+                    public_key: nodes[0].public_key.clone(),
                     shard_key: new_shard_key,
                     commitment: Commitment::from_public_key(&new_public_key()),
 
@@ -371,16 +388,16 @@ mod tests {
                 .unwrap();
 
             // Height 0-3 has original shard key
-            let s = store.get_shard_key(0, 3, &nodes[0].0).unwrap().unwrap();
-            assert_eq!(s, nodes[0].1);
+            let s = store.get_shard_key(0, 3, &nodes[0].public_key).unwrap().unwrap();
+            assert_eq!(s, nodes[0].shard_key);
             // Height 0-4 has shard key that was replaced at height 4
-            let s = store.get_shard_key(0, 4, &nodes[0].0).unwrap().unwrap();
+            let s = store.get_shard_key(0, 4, &nodes[0].public_key).unwrap().unwrap();
             assert_eq!(s, new_shard_key);
-            assert!(store.get_shard_key(5, 5, &nodes[0].0).unwrap().is_none());
-            let s = store.get_shard_key(0, 3, &nodes[1].0).unwrap().unwrap();
-            assert_eq!(s, nodes[1].1);
-            let s = store.get_shard_key(0, 3, &nodes[2].0).unwrap().unwrap();
-            assert_eq!(s, nodes[2].1);
+            assert!(store.get_shard_key(5, 5, &nodes[0].public_key).unwrap().is_none());
+            let s = store.get_shard_key(0, 3, &nodes[1].public_key).unwrap().unwrap();
+            assert_eq!(s, nodes[1].shard_key);
+            let s = store.get_shard_key(0, 3, &nodes[2].public_key).unwrap().unwrap();
+            assert_eq!(s, nodes[2].shard_key);
         }
     }
 }

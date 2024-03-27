@@ -586,26 +586,28 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::types::PublicKey;
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_comms::types::Signature;
+    use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
+    use tari_mmr::sparse_merkle_tree::SparseMerkleTree;
+    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
-        chain_storage::calculate_validator_node_mr,
+        chain_storage::{calculate_validator_node_mr, ValidatorNodeRegistrationInfo},
         transactions::{
             key_manager::create_memory_db_key_manager,
             transaction_components::{OutputFeatures, ValidatorNodeSignature},
         },
-        ValidatorNodeBMT,
+        ValidatorNodeSmtHasherBlake256,
     };
 
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_memory_db_key_manager();
-        let vn_mmr = ValidatorNodeBMT::create(Vec::new());
+        let mut vn_mmr = SparseMerkleTree::<ValidatorNodeSmtHasherBlake256>::new();
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
-        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root());
+        assert_eq!(blocks[0].header.validator_node_mr.as_slice(), vn_mmr.hash().as_slice());
     }
 
     #[tokio::test]
@@ -614,12 +616,14 @@ mod validator_node_merkle_root {
         let key_manager = create_memory_db_key_manager();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
-        let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let (sk, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let signature = ValidatorNodeSignature::sign(&sk, &public_key, &[]);
         let features = OutputFeatures::for_validator_node_registration(
             public_key.clone(),
             signature.signature().clone(),
             public_key.clone(),
+            None,
+            None,
         );
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
@@ -650,7 +654,69 @@ mod validator_node_merkle_root {
             .unwrap()
             .unwrap();
 
-        let merkle_root = calculate_validator_node_mr(&[(public_key, shard_key)]);
+        let merkle_root = calculate_validator_node_mr(&[ValidatorNodeRegistrationInfo {
+            public_key,
+            sidechain_id: None,
+            shard_key,
+        }])
+        .unwrap();
+
+        let tip = db.fetch_tip_header().unwrap();
+        assert_eq!(tip.header().validator_node_mr, merkle_root);
+    }
+
+    #[tokio::test]
+    async fn it_has_the_correct_merkle_root_for_current_vn_set_with_sidechain() {
+        let db = setup();
+        let key_manager = create_memory_db_key_manager();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
+
+        let (sk, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let signature = ValidatorNodeSignature::sign(&sk, &public_key, &[]);
+        let (sidechain_private, sidechain_public) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let sidechain_signature = Signature::sign(&sidechain_private, public_key.as_bytes(), &mut OsRng).unwrap();
+        let features = OutputFeatures::for_validator_node_registration(
+            public_key.clone(),
+            signature.signature().clone(),
+            public_key.clone(),
+            Some(sidechain_public.clone()),
+            Some(sidechain_signature),
+        );
+        let (tx, _outputs) = schema_to_transaction(
+            &[txn_schema!(
+                from: vec![outputs[0].clone()],
+                to: vec![50 * T],
+                features: features
+            )],
+            &key_manager,
+        )
+        .await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
+        let (block, _) = create_next_block(
+            &db,
+            &blocks[0],
+            tx,
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        )
+        .await;
+        db.add_block(block).unwrap().assert_added();
+
+        let consts = db.consensus_constants().unwrap();
+        let (_, _) = add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager).await;
+
+        let shard_key = db
+            .get_shard_key(consts.epoch_length(), public_key.clone())
+            .unwrap()
+            .unwrap();
+
+        let merkle_root = calculate_validator_node_mr(&[ValidatorNodeRegistrationInfo {
+            public_key,
+            sidechain_id: Some(sidechain_public),
+            shard_key,
+        }])
+        .unwrap();
 
         let tip = db.fetch_tip_header().unwrap();
         assert_eq!(tip.header().validator_node_mr, merkle_root);

@@ -38,13 +38,22 @@ use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
     claim_public_key: PublicKey,
+    sidechain_id: Option<PublicKey>,
+    sidechain_id_knowledge_proof: Option<Signature>,
 }
 
 impl ValidatorNodeRegistration {
-    pub fn new(signature: ValidatorNodeSignature, claim_public_key: PublicKey) -> Self {
+    pub fn new(
+        signature: ValidatorNodeSignature,
+        claim_public_key: PublicKey,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
+    ) -> Self {
         Self {
             signature,
             claim_public_key,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
         }
     }
 
@@ -82,6 +91,14 @@ impl ValidatorNodeRegistration {
     pub fn signature(&self) -> &Signature {
         self.signature.signature()
     }
+
+    pub fn sidechain_id(&self) -> Option<&PublicKey> {
+        self.sidechain_id.as_ref()
+    }
+
+    pub fn sidechain_id_knowledge_proof(&self) -> Option<&Signature> {
+        self.sidechain_id_knowledge_proof.as_ref()
+    }
 }
 
 fn does_require_new_shard_key(public_key: &PublicKey, epoch: VnEpoch, interval: VnEpoch) -> bool {
@@ -115,6 +132,8 @@ mod test {
         ValidatorNodeRegistration::new(
             ValidatorNodeSignature::sign(&sk, &claim_public_key, b"valid"),
             claim_public_key,
+            None,
+            None,
         )
     }
 
@@ -139,6 +158,8 @@ mod test {
             reg = ValidatorNodeRegistration::new(
                 ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
                 Default::default(),
+                None,
+                None,
             );
             assert!(!reg.is_valid_signature_for(b"valid"));
         }

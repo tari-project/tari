@@ -97,12 +97,16 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: CommsPublicKey,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -117,6 +121,8 @@ pub enum TransactionServiceRequest {
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -481,6 +487,8 @@ impl TransactionServiceHandle {
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: PublicKey,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -492,6 +500,8 @@ impl TransactionServiceHandle {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -514,6 +524,8 @@ impl TransactionServiceHandle {
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -527,6 +539,8 @@ impl TransactionServiceHandle {
                 binary_sha,
                 binary_url,
                 fee_per_gram,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
             })
             .await??
         {
@@ -569,6 +583,8 @@ impl TransactionServiceHandle {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+        sidechain_id: Option<PublicKey>,
+        sidechain_id_knowledge_proof: Option<Signature>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
@@ -578,6 +594,8 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 message,
                 claim_public_key,
+                sidechain_id,
+                sidechain_id_knowledge_proof,
             })
             .await??
         {
