@@ -88,6 +88,9 @@ impl PrioritizedTransaction {
         dependent_outputs: Option<Vec<HashOutput>>,
     ) -> Result<PrioritizedTransaction, TransactionError> {
         let weight = transaction.calculate_weight(weighting)?;
+        if weight == 0 {
+            return Err(TransactionError::ZeroWeight);
+        }
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -161,5 +164,25 @@ mod tests {
         .unwrap();
 
         assert!(p2 > p1);
+    }
+
+    #[test]
+    fn empty_transaction() {
+        let weighting = TransactionWeight::latest();
+        match PrioritizedTransaction::new(
+            0,
+            &weighting,
+            Arc::new(Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                Default::default(),
+                Default::default(),
+            )),
+            None,
+        ) {
+            Ok(_) => panic!("Empty transaction should not be valid"),
+            Err(e) => assert_eq!(e, TransactionError::ZeroWeight),
+        }
     }
 }
