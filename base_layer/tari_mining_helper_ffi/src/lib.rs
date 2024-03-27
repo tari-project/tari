@@ -611,8 +611,8 @@ mod tests {
                 Network::MainNet,
             ),
             Network::StageNet => (
-                135043993867732261,
-                Difficulty::from_u64(1059).unwrap(),
+                5024328429923549037,
+                Difficulty::from_u64(2065).unwrap(),
                 Network::StageNet,
             ),
             _ => panic!("Invalid network for mainnet target"),
