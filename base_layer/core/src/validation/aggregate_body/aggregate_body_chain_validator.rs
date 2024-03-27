@@ -110,27 +110,44 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
     db: &B,
 ) -> Result<Vec<TransactionInput>, ValidationError> {
     let mut inputs: Vec<TransactionInput> = body.inputs().clone();
+    let outputs: Vec<TransactionOutput> = body.outputs().clone();
     for input in &mut inputs {
         if input.is_compact() {
-            let output_mined_info = db
-                .fetch_output(&input.output_hash())?
-                .ok_or(ValidationError::UnknownInput)?;
+            let output = match db.fetch_output(&input.output_hash()) {
+                Ok(val) => match val {
+                    Some(output_mined_info) => output_mined_info.output,
+                    None => {
+                        let input_output_hash = input.output_hash();
+                        if let Some(found) = outputs.iter().find(|o| o.hash() == input_output_hash) {
+                            found.clone()
+                        } else {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Input not found in database or block, commitment: {}, hash: {}",
+                                input.commitment()?.to_hex(), input_output_hash.to_hex()
+                            );
+                            return Err(ValidationError::UnknownInput);
+                        }
+                    },
+                },
+                Err(e) => return Err(ValidationError::from(e)),
+            };
 
-            let rp_hash = match output_mined_info.output.proof {
+            let rp_hash = match output.proof {
                 Some(proof) => proof.hash(),
                 None => FixedHash::zero(),
             };
             input.add_output_data(
-                output_mined_info.output.version,
-                output_mined_info.output.features,
-                output_mined_info.output.commitment,
-                output_mined_info.output.script,
-                output_mined_info.output.sender_offset_public_key,
-                output_mined_info.output.covenant,
-                output_mined_info.output.encrypted_data,
-                output_mined_info.output.metadata_signature,
+                output.version,
+                output.features,
+                output.commitment,
+                output.script,
+                output.sender_offset_public_key,
+                output.covenant,
+                output.encrypted_data,
+                output.metadata_signature,
                 rp_hash,
-                output_mined_info.output.minimum_value_promise,
+                output.minimum_value_promise,
             );
         }
     }
@@ -207,11 +224,16 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) ->
                 }
 
                 let output_hashes = output_hashes.as_ref().unwrap();
-                let output_hash = input.output_hash();
-                if output_hashes.iter().any(|output| output == &output_hash) {
+                let input_output_hash = input.output_hash();
+                if output_hashes.iter().any(|val| val == &input_output_hash) {
                     continue;
                 }
-                not_found_inputs.push(output_hash);
+                warn!(
+                    target: LOG_TARGET,
+                    "Input not found in database, commitment: {}, hash: {}",
+                    input.commitment()?.to_hex(), input_output_hash.to_hex()
+                );
+                not_found_inputs.push(input_output_hash);
             },
             Err(err) => {
                 return Err(err);

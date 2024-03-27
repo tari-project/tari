@@ -163,7 +163,8 @@ pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd
     true
 }
 
-/// This function checks that an input is a valid spendable UTXO
+/// This function checks that an input is a valid spendable UTXO in the database. It cannot confirm
+/// zero confermation transactions.
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
     let output_hash = input.output_hash();
     if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(input.commitment()?)? {
@@ -203,7 +204,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 
     warn!(
         target: LOG_TARGET,
-        "Validation failed due to input: {} which does not exist yet", input
+        "Input ({}, {}) does not exist in the database yet", input.commitment()?.to_hex(), output_hash.to_hex()
     );
     Err(ValidationError::UnknownInput)
 }
