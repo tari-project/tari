@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+use tari_core::transactions::key_manager::SecretTransactionKeyManagerInterface;
 pub mod config;
 pub mod error;
 pub mod handle;
@@ -103,7 +103,7 @@ where T: OutputManagerBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();

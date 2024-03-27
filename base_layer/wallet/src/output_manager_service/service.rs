@@ -22,13 +22,15 @@
 
 use std::{convert::TryInto, fmt, sync::Arc};
 
+use blake2::Blake2b;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use digest::{consts::U64, Digest};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::types::CommsDHKE;
 use tari_core::{
@@ -39,7 +41,12 @@ use tari_core::{
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{
+            SecretTransactionKeyManagerInterface,
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+        },
         tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
@@ -58,7 +65,16 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::SecretKey;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::SecretKey,
+    ristretto::{
+        pedersen::commitment_factory::PedersenCommitmentFactory,
+        RistrettoComSig,
+        RistrettoPublicKey,
+        RistrettoSecretKey,
+    },
+};
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -113,7 +129,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -411,7 +427,46 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
+            OutputManagerRequest::CreateOwnerProof(output, nonce) => self
+                .create_owner_proof(output, nonce)
+                .await
+                .map(OutputManagerResponse::OwnerProofCreated),
         }
+    }
+
+    async fn create_owner_proof(
+        &self,
+        commitment: Commitment,
+        message: String,
+    ) -> Result<RistrettoComSig, OutputManagerError> {
+        let output = self.resources.db.fetch_by_commitment(commitment.clone())?;
+        let wallet_output: WalletOutput = output.into();
+        let private_key = self
+            .resources
+            .key_manager
+            .get_private_key(&wallet_output.spending_key_id)
+            .await?;
+        let nonce_a = RistrettoSecretKey::random(&mut OsRng);
+        let nonce_x = RistrettoSecretKey::random(&mut OsRng);
+
+        let nonce_commitment = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
+        let challenge = Blake2b::<U64>::new()
+            .chain_update(commitment.as_bytes())
+            .chain_update(nonce_commitment.as_bytes())
+            .chain_update(format!("create_owner_proof::{}", message).as_bytes())
+            .finalize();
+        let new_sig = RistrettoComSig::sign(
+            &RistrettoSecretKey::from(wallet_output.value.as_u64()),
+            &private_key,
+            &nonce_a,
+            &nonce_x,
+            &challenge,
+            &PedersenCommitmentFactory::default(),
+        )
+            // TODO: Add proper error
+        .map_err(|e| OutputManagerError::ServiceError("Could not create comsig".to_string()))?;
+
+        Ok(new_sig)
     }
 
     fn get_output_info_by_tx_id(&self, tx_id: TxId) -> Result<OutputInfoByTxId, OutputManagerError> {
