@@ -588,6 +588,7 @@ mod validator_node_merkle_root {
     use rand::rngs::OsRng;
     use tari_comms::types::Signature;
     use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
+    use tari_mmr::sparse_merkle_tree::SparseMerkleTree;
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -597,16 +598,16 @@ mod validator_node_merkle_root {
             key_manager::create_memory_db_key_manager,
             transaction_components::{OutputFeatures, ValidatorNodeSignature},
         },
-        ValidatorNodeBMT,
+        ValidatorNodeSmtHasherBlake256,
     };
 
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_memory_db_key_manager();
-        let vn_mmr = ValidatorNodeBMT::create(Vec::new());
+        let mut vn_mmr = SparseMerkleTree::<ValidatorNodeSmtHasherBlake256>::new();
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
-        assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root());
+        assert_eq!(blocks[0].header.validator_node_mr.as_slice(), vn_mmr.hash().as_slice());
     }
 
     #[tokio::test]
