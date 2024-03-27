@@ -122,8 +122,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::zero();
+        block.header.validator_node_mr = FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -174,8 +173,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("36881d87e25183f5189d2dca5f7da450c399e7006dafd9bd9240f73a5fb3f0ad").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::zero()
+        block.header.validator_node_mr = FixedHash::zero()
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -232,8 +230,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
             FixedHash::from_hex("bc5d677b0b8349adc9d7e4a18ace7406986fc7017866f4fd351ecb0f35d6da5e").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::zero();
+        block.header.validator_node_mr = FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -286,8 +283,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("3f4011ec1e8ddfbd66fb7331c5623b38f529a66e81233d924df85f2070b2aacb").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
-        block.header.validator_node_mr =
-            FixedHash::zero();
+        block.header.validator_node_mr = FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
