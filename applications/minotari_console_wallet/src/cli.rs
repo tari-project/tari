@@ -136,6 +136,7 @@ pub enum CliCommands {
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
+    CreateOwnerProof(CreateOwnerProofArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -303,5 +304,11 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_public_nonce: UniPublicKey,
     pub validator_node_signature: Vec<u8>,
     #[clap(short, long, default_value = "Registering VN")]
+    pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateOwnerProofArgs {
+    pub commitment: UniPublicKey,
     pub message: String,
 }

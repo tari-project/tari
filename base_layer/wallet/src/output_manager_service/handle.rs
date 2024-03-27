@@ -36,6 +36,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_crypto::{ristretto::RistrettoComSig, signatures::CommitmentSignature};
 use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -118,6 +119,7 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    CreateOwnerProof(Commitment, String),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -202,6 +204,14 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            CreateOwnerProof(commitment, message) => {
+                write!(
+                    f,
+                    "CreateOwnerProof(commitment: {}, message: {})",
+                    commitment.to_hex(),
+                    message
+                )
+            },
         }
     }
 }
@@ -238,6 +248,7 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
+    OwnerProofCreated(RistrettoComSig),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -387,6 +398,21 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputMetadataSignatureUpdated => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_owner_proof(
+        &mut self,
+        commitment: Commitment,
+        message: String,
+    ) -> Result<RistrettoComSig, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateOwnerProof(commitment, message))
+            .await??
+        {
+            OutputManagerResponse::OwnerProofCreated(sig) => Ok(sig),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

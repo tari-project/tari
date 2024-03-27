@@ -91,6 +91,12 @@ impl FromStr for UniPublicKey {
     }
 }
 
+impl UniPublicKey {
+    pub fn as_public_key(&self) -> &PublicKey {
+        &self.0
+    }
+}
+
 impl From<UniPublicKey> for PublicKey {
     fn from(id: UniPublicKey) -> Self {
         id.0

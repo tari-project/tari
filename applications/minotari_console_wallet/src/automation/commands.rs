@@ -107,6 +107,7 @@ pub enum WalletCommand {
     MintTokens,
     CreateInitialCheckpoint,
     RevalidateWalletDb,
+    CreateOwnerProof,
 }
 
 #[derive(Debug)]
@@ -1048,6 +1049,31 @@ pub async fn command_runner(
                     println!();
                 },
                 Err(err) => eprintln!("Error generating certificates: {}", err),
+            },
+            CreateOwnerProof(args) => match output_service.get_unspent_outputs().await {
+                Ok(utxos) => {
+                    let utxos: Vec<(WalletOutput, Commitment)> = utxos
+                        .into_iter()
+                        .map(|v| (v.wallet_output, v.commitment))
+                        .filter(|(o, c)| &c.as_public_key() == &args.commitment.as_public_key())
+                        .collect();
+
+                    let count = utxos.len();
+                    if count == 0 {
+                        eprintln!("No UTXOs found with commitment");
+                        continue;
+                    }
+                    match output_service
+                        .create_owner_proof(utxos[0].1.clone(), args.message)
+                        .await
+                    {
+                        Ok(proof) => {
+                            println!("Owner Proof: {}", proof.to_vec().to_hex());
+                        },
+                        Err(e) => eprintln!("CreateOwnerProof error! {}", e),
+                    }
+                },
+                Err(e) => eprintln!("CreateOwnerProof error! {}", e),
             },
         }
     }
