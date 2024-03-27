@@ -126,7 +126,7 @@ impl AppState {
             wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
-                Duration::from_secs(5),
+                wallet_config.balance_enquiry_cooldown_period,
                 output_manager_service,
             ),
             wallet_config,
