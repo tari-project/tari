@@ -19,7 +19,7 @@ tari_features = { path = "./tari_features", version = "1.0.0-pre.11a"}
 
 anyhow = "1.0.53"
 blake2 = "0.10"
-config = { version = "0.13.0", default_features = false, features = ["toml"] }
+config = { version = "0.14.0", default_features = false, features = ["toml"] }
 dirs-next = "1.0.2"
 git2 = { version = "0.18", default_features = false, optional = true }
 log = "0.4.8"
