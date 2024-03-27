@@ -123,7 +123,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -175,7 +175,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::zero()
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -233,7 +233,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -287,7 +287,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::zero();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
