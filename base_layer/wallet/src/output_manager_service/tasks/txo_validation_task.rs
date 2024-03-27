@@ -186,10 +186,10 @@ where
                     .for_protocol(self.operation_id)?;
             }
 
-            let unmined_hashes: Vec<_> = unmined.iter().map(|o| o.hash).collect();
-            if !unmined_hashes.is_empty() {
+            let unmined_info: Vec<_> = unmined.iter().map(|o| o.commitment.clone()).collect();
+            if !unmined_info.is_empty() {
                 self.db
-                    .update_last_validation_timestamps(unmined_hashes)
+                    .update_last_validation_timestamps(unmined_info)
                     .for_protocol(self.operation_id)?;
             }
         }

@@ -46,7 +46,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Perform a batch update of the outputs' unmined and invalid state
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' last validation timestamp
-    fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
+    fn update_last_validation_timestamps(&self, commitments: Vec<Commitment>) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' spent status
     fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
