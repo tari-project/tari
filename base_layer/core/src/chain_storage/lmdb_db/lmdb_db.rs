@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
+use std::{cmp::max, convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
 
 use fs2::FileExt;
 use lmdb_zero::{
@@ -41,7 +41,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
@@ -331,23 +331,10 @@ impl LMDBDatabase {
         #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
 
-        // Ensure there will be enough space in the database to insert the block before it is attempted; this is more
-        // efficient than relying on an error if the LMDB environment map size was reached with each component's insert
-        // operation, with cleanup, resize and re-try. This will also prevent block sync from stalling due to LMDB
-        // environment map size being reached.
-        if txn.operations().iter().any(|op| {
-            matches!(op, InsertOrphanBlock { .. }) ||
-                matches!(op, InsertTipBlockBody { .. }) ||
-                matches!(op, InsertChainOrphanBlock { .. })
-        }) {
-            unsafe {
-                LMDBStore::resize_if_required(&self.env, &self.env_config)?;
-            }
-        }
-
+        let number_of_operations = txn.operations().len();
         let write_txn = self.write_transaction()?;
-        for op in txn.operations() {
-            trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {}", op);
+        for (i, op) in txn.operations().iter().enumerate() {
+            trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {} ({} of {})", op, i + 1, number_of_operations);
             match op {
                 InsertOrphanBlock(block) => self.insert_orphan_block(&write_txn, block)?,
                 InsertChainHeader { header } => {
@@ -514,40 +501,41 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 26] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 27] {
         [
-            ("metadata_db", &self.metadata_db),
-            ("headers_db", &self.headers_db),
-            ("header_accumulated_data_db", &self.header_accumulated_data_db),
-            ("block_accumulated_data_db", &self.block_accumulated_data_db),
-            ("block_hashes_db", &self.block_hashes_db),
-            ("utxos_db", &self.utxos_db),
-            ("inputs_db", &self.inputs_db),
-            ("txos_hash_to_index_db", &self.txos_hash_to_index_db),
-            ("kernels_db", &self.kernels_db),
-            ("kernel_excess_index", &self.kernel_excess_index),
-            ("kernel_excess_sig_index", &self.kernel_excess_sig_index),
-            ("kernel_mmr_size_index", &self.kernel_mmr_size_index),
-            ("utxo_commitment_index", &self.utxo_commitment_index),
-            ("contract_index", &self.contract_index),
-            ("unique_id_index", &self.unique_id_index),
+            (LMDB_DB_METADATA, &self.metadata_db),
+            (LMDB_DB_HEADERS, &self.headers_db),
+            (LMDB_DB_HEADER_ACCUMULATED_DATA, &self.header_accumulated_data_db),
+            (LMDB_DB_BLOCK_ACCUMULATED_DATA, &self.block_accumulated_data_db),
+            (LMDB_DB_BLOCK_HASHES, &self.block_hashes_db),
+            (LMDB_DB_UTXOS, &self.utxos_db),
+            (LMDB_DB_INPUTS, &self.inputs_db),
+            (LMDB_DB_TXOS_HASH_TO_INDEX, &self.txos_hash_to_index_db),
+            (LMDB_DB_KERNELS, &self.kernels_db),
+            (LMDB_DB_KERNEL_EXCESS_INDEX, &self.kernel_excess_index),
+            (LMDB_DB_KERNEL_EXCESS_SIG_INDEX, &self.kernel_excess_sig_index),
+            (LMDB_DB_KERNEL_MMR_SIZE_INDEX, &self.kernel_mmr_size_index),
+            (LMDB_DB_UTXO_COMMITMENT_INDEX, &self.utxo_commitment_index),
+            (LMDB_DB_CONTRACT_ID_INDEX, &self.contract_index),
+            (LMDB_DB_UNIQUE_ID_INDEX, &self.unique_id_index),
             (
-                "deleted_txo_hash_to_header_index",
+                LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX,
                 &self.deleted_txo_hash_to_header_index,
             ),
-            ("orphans_db", &self.orphans_db),
+            (LMDB_DB_ORPHANS, &self.orphans_db),
             (
-                "orphan_header_accumulated_data_db",
+                LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA,
                 &self.orphan_header_accumulated_data_db,
             ),
-            ("monero_seed_height_db", &self.monero_seed_height_db),
-            ("orphan_chain_tips_db", &self.orphan_chain_tips_db),
-            ("orphan_parent_map_index", &self.orphan_parent_map_index),
-            ("bad_blocks", &self.bad_blocks),
-            ("reorgs", &self.reorgs),
-            ("validator_nodes", &self.validator_nodes),
-            ("validator_nodes_mapping", &self.validator_nodes_mapping),
-            ("template_registrations", &self.template_registrations),
+            (LMDB_DB_MONERO_SEED_HEIGHT, &self.monero_seed_height_db),
+            (LMDB_DB_ORPHAN_CHAIN_TIPS, &self.orphan_chain_tips_db),
+            (LMDB_DB_ORPHAN_PARENT_MAP_INDEX, &self.orphan_parent_map_index),
+            (LMDB_DB_BAD_BLOCK_LIST, &self.bad_blocks),
+            (LMDB_DB_REORGS, &self.reorgs),
+            (LMDB_DB_VALIDATOR_NODES, &self.validator_nodes),
+            (LMDB_DB_TIP_UTXO_SMT, &self.tip_utxo_smt),
+            (LMDB_DB_VALIDATOR_NODES_MAPPING, &self.validator_nodes_mapping),
+            (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
         ]
     }
 
@@ -1420,24 +1408,38 @@ impl LMDBDatabase {
     }
 
     fn insert_tip_smt(&self, txn: &WriteTransaction<'_>, smt: &OutputSmt) -> Result<(), ChainStorageError> {
+        let start = Instant::now();
         let k = MetadataKey::TipSmt;
+
+        // This is best effort, if it fails (typically when the entry does not yet exist) we just log it
+        if let Err(e) = lmdb_delete(txn, &self.tip_utxo_smt, &k.as_u32(), LMDB_DB_TIP_UTXO_SMT) {
+            debug!(
+                "Could NOT delete '{}' db with key '{}' ({})",
+                LMDB_DB_TIP_UTXO_SMT,
+                to_hex(k.as_u32().as_lmdb_bytes()),
+                e
+            );
+        }
 
         match lmdb_replace(txn, &self.tip_utxo_smt, &k.as_u32(), smt) {
             Ok(_) => {
                 trace!(
-                    "Inserted {} bytes with key '{}' into 'tip_utxo_smt' (size {})",
-                    serialize(smt).unwrap_or_default().len(),
+                    "Inserted {} MB with key '{}' into '{}' (size {}) in {:.2?}",
+                    serialize(smt).unwrap_or_default().len() / BYTES_PER_MB,
                     to_hex(k.as_u32().as_lmdb_bytes()),
-                    smt.size()
+                    LMDB_DB_TIP_UTXO_SMT,
+                    smt.size(),
+                    start.elapsed()
                 );
                 Ok(())
             },
             Err(e) => {
                 if let ChainStorageError::DbResizeRequired(Some(val)) = e {
                     trace!(
-                        "Could NOT insert {} bytes with key '{}' into 'tip_utxo_smt' (size {})",
-                        val,
+                        "Could NOT insert {} MB with key '{}' into '{}' (size {})",
+                        val / BYTES_PER_MB,
                         to_hex(k.as_u32().as_lmdb_bytes()),
+                        LMDB_DB_TIP_UTXO_SMT,
                         smt.size()
                     );
                 }
@@ -1791,10 +1793,35 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(());
         }
 
+        // Ensure there will be enough space in the database to insert the block and replace the SMT before it is
+        // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
+        // the write operation, with cleanup, resize and re-try afterwards.
+        let block_operations = txn.operations().iter().filter(|op| {
+            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
+                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
+                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
+        });
+        let count = block_operations.count();
+        if count > 0 {
+            let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(&self.env)?;
+            trace!(
+                target: LOG_TARGET,
+                "[apply_db_transaction] Block insert operations: {}, mapsize: {} MB, used: {} MB, remaining: {} MB",
+                count, mapsize / BYTES_PER_MB, size_used_bytes / BYTES_PER_MB, size_left_bytes / BYTES_PER_MB
+            );
+            unsafe {
+                LMDBStore::resize_if_required(
+                    &self.env,
+                    &self.env_config,
+                    Some(max(self.env_config.grow_size_bytes(), 128 * BYTES_PER_MB)),
+                )?;
+            }
+        }
+
         let mark = Instant::now();
-        // Resize this many times before assuming something is not right
-        const MAX_RESIZES: usize = 5;
-        for i in 0..MAX_RESIZES {
+        // Resize this many times before assuming something is not right (up to 1 GB)
+        let max_resizes = 1024 * BYTES_PER_MB / self.env_config.grow_size_bytes();
+        for i in 0..max_resizes {
             let num_operations = txn.operations().len();
             match self.apply_db_transaction(&txn) {
                 Ok(_) => {
@@ -1807,7 +1834,7 @@ impl BlockchainBackend for LMDBDatabase {
 
                     return Ok(());
                 },
-                Err(ChainStorageError::DbResizeRequired(shortfall)) => {
+                Err(ChainStorageError::DbResizeRequired(size_that_could_not_be_written)) => {
                     info!(
                         target: LOG_TARGET,
                         "Database resize required (resized {} time(s) in this transaction)",
@@ -1818,7 +1845,7 @@ impl BlockchainBackend for LMDBDatabase {
                     // BlockchainDatabase, so we know there are no other threads taking out LMDB transactions when this
                     // is called.
                     unsafe {
-                        LMDBStore::resize(&self.env, &self.env_config, shortfall)?;
+                        LMDBStore::resize(&self.env, &self.env_config, size_that_could_not_be_written)?;
                     }
                 },
                 Err(e) => {
