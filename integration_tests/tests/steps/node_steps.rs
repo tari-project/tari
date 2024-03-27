@@ -20,15 +20,29 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use minotari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
+use minotari_app_grpc::tari_rpc::{
+    self as grpc,
+    pow_algo::PowAlgos,
+    GetBlocksRequest,
+    GetNewBlockTemplateWithCoinbasesRequest,
+    GetNewBlockWithCoinbasesRequest,
+    ListHeadersRequest,
+    NewBlockCoinbase,
+    NewBlockTemplateRequest,
+    PowAlgo,
+};
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
-use tari_core::blocks::Block;
+use tari_common_types::tari_address::TariAddress;
+use tari_core::{blocks::Block, transactions::aggregated_body::AggregateBody};
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
@@ -716,6 +730,143 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
                 .to_string(),
             e.message()
         ),
+    }
+}
+
+#[then(expr = "generate a block with 2 coinbases from node {word}")]
+async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = NewBlockTemplateRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+    };
+
+    let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
+
+    let block_template = template_response.new_block_template.clone().unwrap();
+    let miner_data = template_response.miner_data.clone().unwrap();
+    let amount = miner_data.reward + miner_data.total_fees;
+    let request = GetNewBlockWithCoinbasesRequest {
+        new_template: Some(block_template),
+        coinbases: vec![
+            NewBlockCoinbase {
+                address: TariAddress::from_hex("30a815df7b8d7f653ce3252f08a21d570b1ac44958cb4d7af0e0ef124f89b11943")
+                    .unwrap()
+                    .to_hex(),
+                value: amount - 1000,
+                stealth_payment: false,
+                revealed_value_proof: true,
+                coinbase_extra: Vec::new(),
+            },
+            NewBlockCoinbase {
+                address: TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0")
+                    .unwrap()
+                    .to_hex(),
+                value: 1000,
+                stealth_payment: false,
+                revealed_value_proof: true,
+                coinbase_extra: Vec::new(),
+            },
+        ],
+    };
+
+    let new_block = client.get_new_block_with_coinbases(request).await.unwrap().into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 2);
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {}", e),
+    }
+}
+
+#[then(expr = "generate a block with 2 coinbases as a single request from node {word}")]
+async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases: vec![
+            NewBlockCoinbase {
+                address: TariAddress::from_hex("30a815df7b8d7f653ce3252f08a21d570b1ac44958cb4d7af0e0ef124f89b11943")
+                    .unwrap()
+                    .to_hex(),
+                value: 1,
+                stealth_payment: false,
+                revealed_value_proof: true,
+                coinbase_extra: Vec::new(),
+            },
+            NewBlockCoinbase {
+                address: TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0")
+                    .unwrap()
+                    .to_hex(),
+                value: 2,
+                stealth_payment: false,
+                revealed_value_proof: true,
+                coinbase_extra: Vec::new(),
+            },
+        ],
+    };
+    let new_block = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    println!("{}", body);
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 2);
+    let mut num_6154266700 = 0;
+    let mut num_12308533398 = 0;
+    for output in body.outputs() {
+        if output.minimum_value_promise.as_u64() == 6154266700 {
+            num_6154266700 += 1;
+        }
+        if output.minimum_value_promise.as_u64() == 12308533398 {
+            num_12308533398 += 1;
+        }
+    }
+    assert_eq!(num_6154266700, 1);
+    assert_eq!(num_12308533398, 1);
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {}", e),
     }
 }
 

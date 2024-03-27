@@ -22,6 +22,9 @@ tari_storage = {path="../../infrastructure/storage"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.7" }
+tari_key_manager = { path = "../../base_layer/key_manager", features = [
+    "key_manager_service",
+], version = "1.0.0-pre.11a" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"

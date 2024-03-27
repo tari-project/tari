@@ -32,6 +32,8 @@ grpc_server_allow_methods = [
     #"get_tokens_in_circulation",
     #"get_network_difficulty",
     #"get_new_block_template",
+    #"get_new_block_with_coinbases",
+    #"get_new_block_template_with_coinbases",
     #"get_new_block",
     #"get_new_block_blob",
     #"submit_block",

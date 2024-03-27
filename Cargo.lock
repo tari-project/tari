@@ -3353,6 +3353,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_features",
+ "tari_key_manager",
  "tari_libtor",
  "tari_metrics",
  "tari_p2p",
