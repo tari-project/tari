@@ -163,4 +163,11 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn empty_body_weight() {
+        let weighting = TransactionWeight::latest();
+        let body = AggregateBody::empty();
+        assert_eq!(weighting.calculate_body(&body).unwrap(), 0);
+    }
 }

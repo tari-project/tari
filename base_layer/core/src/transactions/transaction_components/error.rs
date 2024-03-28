@@ -75,6 +75,8 @@ pub enum TransactionError {
     EncryptedDataError(String),
     #[error("Ledger device error: {0}")]
     LedgerDeviceError(#[from] LedgerDeviceError),
+    #[error("Transaction has a zero weight, not possible")]
+    ZeroWeight,
 }
 
 impl From<KeyManagerServiceError> for TransactionError {
