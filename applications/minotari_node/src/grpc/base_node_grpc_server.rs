@@ -140,7 +140,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        let mining_method = vec![
+        let mining_method = [
             GrpcMethod::GetVersion,
             GrpcMethod::GetNewBlockTemplate,
             GrpcMethod::GetNewBlockWithCoinbases,
@@ -152,7 +152,7 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetTipInfo,
         ];
 
-        let second_layer_methods = vec![
+        let second_layer_methods = [
             GrpcMethod::GetVersion,
             GrpcMethod::GetConstants,
             GrpcMethod::GetMempoolTransactions,

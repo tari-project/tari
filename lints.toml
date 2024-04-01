@@ -69,4 +69,5 @@ allow = [
     'clippy::too_many_arguments',
     # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
     'clippy::bool-assert-comparison',
+    'clippy::blocks_in_conditions',
 ]

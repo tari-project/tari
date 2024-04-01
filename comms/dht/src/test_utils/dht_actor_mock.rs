@@ -72,7 +72,7 @@ impl DhtMockState {
     }
 
     pub fn get_setting(&self, key: DhtMetadataKey) -> Option<Vec<u8>> {
-        self.settings.read().unwrap().get(&key.to_string()).map(Clone::clone)
+        self.settings.read().unwrap().get(&key.to_string()).cloned()
     }
 }
 
@@ -124,13 +124,7 @@ impl DhtActorMock {
                     .unwrap();
             },
             GetMetadata(key, reply_tx) => {
-                let _result = reply_tx.send(Ok(self
-                    .state
-                    .settings
-                    .read()
-                    .unwrap()
-                    .get(&key.to_string())
-                    .map(Clone::clone)));
+                let _result = reply_tx.send(Ok(self.state.settings.read().unwrap().get(&key.to_string()).cloned()));
             },
             SetMetadata(key, value, reply_tx) => {
                 self.state.settings.write().unwrap().insert(key.to_string(), value);

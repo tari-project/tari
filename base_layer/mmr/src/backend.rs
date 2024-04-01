@@ -83,7 +83,7 @@ impl<T: Clone + PartialEq> ArrayLike for Vec<T> {
     }
 
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
-        Ok((self as &[Self::Value]).get(index).map(Clone::clone))
+        Ok((self as &[Self::Value]).get(index).cloned())
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
