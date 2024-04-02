@@ -151,6 +151,17 @@ impl BaseNodeGrpcServer {
 
         self.config.grpc_server_allow_methods.contains(&grpc_method)
     }
+
+    fn check_method_enabled<T>(&self, method: GrpcMethod) -> Option<Result<Response<T>, Status>> {
+        if !self.is_method_enabled(method) {
+            warn!(target: LOG_TARGET, "`{}` method called but it is not allowed. Allow it in the config file or start the node with a different set of CLI options", method);
+            return Some(Err(Status::permission_denied(format!(
+                "`{}` method not made available",
+                method
+            ))));
+        }
+        None
+    }
 }
 
 pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
@@ -190,10 +201,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetNetworkDifficulty) {
-            return Err(Status::permission_denied(
-                "`GetNetworkDifficulty` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNetworkDifficulty) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -310,10 +319,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetMempoolTransactionsRequest>,
     ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetMempoolTransactions) {
-            return Err(Status::permission_denied(
-                "`GetMempoolTransactions` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetMempoolTransactions) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let _request = request.into_inner();
@@ -375,8 +382,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::ListHeaders) {
-            return Err(Status::permission_denied("`ListHeaders` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::ListHeaders) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -548,10 +555,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
     ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetNewBlockTemplate) {
-            return Err(Status::permission_denied(
-                "`GetNewBlockTemplate` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlockTemplate) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -614,8 +619,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetNewBlock) {
-            return Err(Status::permission_denied("`GetNewBlock` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlock) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -695,8 +700,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetNewBlockBlob) {
-            return Err(Status::permission_denied("`GetNewBlockBlob` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlockBlob) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -780,8 +785,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::Block>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::SubmitBlock) {
-            return Err(Status::permission_denied("`SubmitBlock` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitBlock) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -816,8 +821,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockBlobRequest>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::SubmitBlockBlob) {
-            return Err(Status::permission_denied("`SubmitBlockBlob` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitBlockBlob) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
@@ -859,10 +864,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SubmitTransactionRequest>,
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::SubmitTransaction) {
-            return Err(Status::permission_denied(
-                "`SubmitTransaction` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitTransaction) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -915,10 +918,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::TransactionStateRequest>,
     ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::TransactionState) {
-            return Err(Status::permission_denied(
-                "`TransactionState` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::TransactionState) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -1006,8 +1007,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
     ) -> Result<Response<Self::GetPeersStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetPeers) {
-            return Err(Status::permission_denied("`GetPeers` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetPeers) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
@@ -1041,8 +1042,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetBlocks) {
-            return Err(Status::permission_denied("`GetBlocks` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlocks) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -1112,8 +1113,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetTipInfo) {
-            return Err(Status::permission_denied("`GetTipInfo` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTipInfo) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
@@ -1142,8 +1143,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchKernelsRequest>,
     ) -> Result<Response<Self::SearchKernelsStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::SearchKernels) {
-            return Err(Status::permission_denied("`SearchKernels` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::SearchKernels) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
@@ -1200,8 +1201,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchUtxosRequest>,
     ) -> Result<Response<Self::SearchUtxosStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::SearchUtxos) {
-            return Err(Status::permission_denied("`SearchUtxos` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::SearchUtxos) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
@@ -1258,10 +1259,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,
     ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::FetchMatchingUtxos) {
-            return Err(Status::permission_denied(
-                "`FetchMatchingUtxos` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::FetchMatchingUtxos) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
@@ -1331,8 +1330,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetBlockTiming) {
-            return Err(Status::permission_denied("`GetBlockTiming` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockTiming) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
@@ -1383,8 +1382,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockHeight>,
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetConstants) {
-            return Err(Status::permission_denied("`GetConstants` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetConstants) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
@@ -1411,8 +1410,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetBlockSize) {
-            return Err(Status::permission_denied("`GetBlockSize` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockSize) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         get_block_group(
@@ -1428,8 +1427,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetBlockFees) {
-            return Err(Status::permission_denied("`GetBlockFees` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockFees) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         get_block_group(
@@ -1442,8 +1441,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetVersion) {
-            return Err(Status::permission_denied("`GetVersion` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetVersion) {
+            return value;
         }
         Ok(Response::new(consts::APP_VERSION.to_string().into()))
     }
@@ -1452,8 +1451,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
-        if !self.is_method_enabled(GrpcMethod::CheckForUpdates) {
-            return Err(Status::permission_denied("`CheckForUpdates` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::CheckForUpdates) {
+            return value;
         }
         let mut resp = tari_rpc::SoftwareUpdate::default();
 
@@ -1471,10 +1470,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetTokensInCirculation) {
-            return Err(Status::permission_denied(
-                "`GetTokensInCirculation` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTokensInCirculation) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
@@ -1533,8 +1530,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncProgressResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetSyncProgress) {
-            return Err(Status::permission_denied("`GetSyncProgress` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSyncProgress) {
+            return value;
         }
         let state = self
             .state_machine_handle
@@ -1580,8 +1577,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetSyncInfo) {
-            return Err(Status::permission_denied("`GetSyncInfo` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSyncInfo) {
+            return value;
         }
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
         let response = self
@@ -1610,8 +1607,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
     ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetHeaderByHash) {
-            return Err(Status::permission_denied("`GetHeaderByHash` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetHeaderByHash) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
@@ -1652,8 +1649,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
-        if !self.is_method_enabled(GrpcMethod::Identify) {
-            return Err(Status::permission_denied("`Identify` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::Identify) {
+            return value;
         }
         let identity = self.comms.node_identity_ref();
         Ok(Response::new(tari_rpc::NodeIdentity {
@@ -1667,10 +1664,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetNetworkStatus) {
-            return Err(Status::permission_denied(
-                "`GetNetworkStatus` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNetworkStatus) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let status = self
@@ -1707,10 +1702,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::ListConnectedPeers) {
-            return Err(Status::permission_denied(
-                "`ListConnectedPeers` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::ListConnectedPeers) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let mut connectivity = self.comms.connectivity();
@@ -1747,8 +1740,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetMempoolStats) {
-            return Err(Status::permission_denied("`GetMempoolStats` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetMempoolStats) {
+            return value;
         }
         let report_error_flag = self.report_error_flag();
         let mut mempool_handle = self.mempool_service.clone();
@@ -1771,8 +1764,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetShardKeyRequest>,
     ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetShardKey) {
-            return Err(Status::permission_denied("`GetShardKey` method not made available"));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetShardKey) {
+            return value;
         }
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
@@ -1801,10 +1794,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetActiveValidatorNodesRequest>,
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetActiveValidatorNodes) {
-            return Err(Status::permission_denied(
-                "`GetActiveValidatorNodes` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetActiveValidatorNodes) {
+            return value;
         }
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
@@ -1862,10 +1853,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
     ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetTemplateRegistrations) {
-            return Err(Status::permission_denied(
-                "`GetTemplateRegistrations` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTemplateRegistrations) {
+            return value;
         }
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
@@ -1948,10 +1937,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetSideChainUtxosRequest>,
     ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
-        if !self.is_method_enabled(GrpcMethod::GetSideChainUtxos) {
-            return Err(Status::permission_denied(
-                "`GetSideChainUtxos` method not made available",
-            ));
+        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSideChainUtxos) {
+            return value;
         }
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
