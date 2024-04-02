@@ -502,7 +502,7 @@ where KM: TransactionKeyManagerInterface
             return self.build_err("Fee is less than the minimum");
         }
 
-        let change_output_pair = match { change_output } {
+        let change_output_pair = match change_output {
             Some((output, sender_offset_key_id)) => {
                 if self.sender_custom_outputs.len() >= MAX_TRANSACTION_OUTPUTS {
                     return self.build_err("Too many outputs in transaction");

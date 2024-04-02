@@ -14,7 +14,7 @@ name: Build docker images - workflow_call/on-demand
       toolchain:
         type: string
         description: 'Rust toolchain'
-        default: nightly-2023-12-12
+        default: nightly-2024-02-04
       arch:
         type: string
         default: x86-64
