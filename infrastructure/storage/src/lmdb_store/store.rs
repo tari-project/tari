@@ -352,7 +352,7 @@ impl LMDBStore {
     pub fn flush(&self) -> Result<(), lmdb_zero::error::Error> {
         let start = Instant::now();
         self.env.sync(true)?;
-        trace!(target: LOG_TARGET, "LMDB buffers flashed in {:.2?}", start.elapsed());
+        trace!(target: LOG_TARGET, "LMDB buffers flushed in {:.2?}", start.elapsed());
         Ok(())
     }
 
