@@ -82,9 +82,8 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 
     let chat_byte_vector_length = chat_byte_vector_get_length(data, error_out);
     let mut bytes: Vec<u8> = Vec::new();
-    for c in 0..chat_byte_vector_length {
+    for c in 0..chat_byte_vector_length - 1 {
         let byte = chat_byte_vector_get_at(data, c as c_uint, error_out);
-        assert_eq!(error, 0);
         bytes.push(byte);
     }
 
