@@ -42,11 +42,6 @@
 # Base node reconnect timeout after any GRPC or miner error (default: 10 s)
 #wait_timeout_on_error = 10
 
-# The extra data to store in the coinbase, usually some data about the mining pool.
-# Note that this data is publicly readable, but it is suggested you populate it so that
-# pool dominance can be seen before any one party has more than 51%. (default = "minotari_miner")
-#coinbase_extra = "minotari_miner"
-
 # The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
 # e.g. "78e724f466d202abdee0f23c261289074e4a2fc9eb61e83e0179eead76ce2d3f17"
 #wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"

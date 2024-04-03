@@ -63,7 +63,6 @@ use crate::{
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
-            helpers::serialize,
             lmdb::{
                 fetch_db_entry_sizes,
                 lmdb_clear,
@@ -486,7 +485,7 @@ impl LMDBDatabase {
                     self.insert_bad_block_and_cleanup(&write_txn, hash, *height, reason.to_string())?;
                 },
                 InsertReorg { reorg } => {
-                    lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.timestamp(), &reorg)?;
+                    lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.timestamp(), &reorg, None)?;
                 },
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
@@ -719,7 +718,7 @@ impl LMDBDatabase {
         k: MetadataKey,
         v: &MetadataValue,
     ) -> Result<(), ChainStorageError> {
-        lmdb_replace(txn, &self.metadata_db, &k.as_u32(), v)?;
+        lmdb_replace(txn, &self.metadata_db, &k.as_u32(), v, None)?;
         Ok(())
     }
 
@@ -1421,11 +1420,13 @@ impl LMDBDatabase {
             );
         }
 
-        match lmdb_replace(txn, &self.tip_utxo_smt, &k.as_u32(), smt) {
+        #[allow(clippy::cast_possible_truncation)]
+        let estimated_bytes = smt.size().saturating_mul(225) as usize;
+        match lmdb_replace(txn, &self.tip_utxo_smt, &k.as_u32(), smt, Some(estimated_bytes)) {
             Ok(_) => {
                 trace!(
-                    "Inserted {} MB with key '{}' into '{}' (size {}) in {:.2?}",
-                    serialize(smt).unwrap_or_default().len() / BYTES_PER_MB,
+                    "Inserted ~{} MB with key '{}' into '{}' (size {}) in {:.2?}",
+                    estimated_bytes / BYTES_PER_MB,
                     to_hex(k.as_u32().as_lmdb_bytes()),
                     LMDB_DB_TIP_UTXO_SMT,
                     smt.size(),
@@ -1471,7 +1472,13 @@ impl LMDBDatabase {
             block_accum_data.kernels = kernel_hash_set;
         }
 
-        lmdb_replace(write_txn, &self.block_accumulated_data_db, &height, &block_accum_data)?;
+        lmdb_replace(
+            write_txn,
+            &self.block_accumulated_data_db,
+            &height,
+            &block_accum_data,
+            None,
+        )?;
         Ok(())
     }
 
@@ -1483,7 +1490,7 @@ impl LMDBDatabase {
     ) -> Result<(), ChainStorageError> {
         let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(std::u64::MAX);
         if height < current_height {
-            lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height)?;
+            lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
         };
         Ok(())
     }
@@ -1641,7 +1648,7 @@ impl LMDBDatabase {
         #[cfg(not(test))]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 0;
 
-        lmdb_replace(txn, &self.bad_blocks, hash.deref(), &(height, reason))?;
+        lmdb_replace(txn, &self.bad_blocks, hash.deref(), &(height, reason), None)?;
         // Clean up bad blocks that are far from the tip
         let metadata = fetch_metadata(txn, &self.metadata_db)?;
         let deleted_before_height = metadata
@@ -2776,6 +2783,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             &db.metadata_db,
             &k.as_u32(),
             &MetadataValue::MigrationVersion(MIGRATION_VERSION),
+            None,
         )?;
         txn.commit()?;
     }
