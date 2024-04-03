@@ -104,25 +104,33 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_int` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
+/// `c_uchar` - An uint8 that maps to MessageMetadataType enum. May return 0 if something goes wrong
 ///     '0' -> Reply
 ///     '1' -> TokenRequest
+///     '2' -> Gif
+///     '3' -> Link
 ///
 /// ## Safety
 /// `msg_metadata` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_uchar {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if msg_metadata.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
 
     let md = &(*msg_metadata);
-    c_int::from(md.metadata_type.as_byte())
+    match c_uchar::try_from(md.metadata_type.as_byte()) {
+        Ok(t) => t,
+        Err(_e) => {
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }
 
 /// Returns a ptr to a ByteVector

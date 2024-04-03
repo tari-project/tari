@@ -80,6 +80,8 @@ pub enum MessageMetadataType {
     Reply = 0,
     #[default]
     TokenRequest = 1,
+    Gif = 2,
+    Link = 3,
 }
 
 impl MessageMetadataType {

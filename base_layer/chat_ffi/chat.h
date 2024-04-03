@@ -700,14 +700,16 @@ void add_chat_message_metadata(struct Message *message,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
+ * `c_uchar` - An uint8 that maps to MessageMetadataType enum. May return 0 if something goes wrong
  *     '0' -> Reply
  *     '1' -> TokenRequest
+ *     '2' -> Gif
+ *     '3' -> Link
  *
  * ## Safety
  * `msg_metadata` should be destroyed eventually
  */
-int read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
+unsigned char read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
 
 /**
  * Returns a ptr to a ByteVector
