@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr;
+use std::{convert::TryFrom, ptr};
 
-use libc::{c_int, c_longlong, c_uchar};
+use libc::{c_int, c_uchar, c_ulonglong};
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::handle::ContactsLivenessData;
 
@@ -97,8 +97,8 @@ pub unsafe extern "C" fn read_liveness_data_online_status(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_longlong` - A c_longlong rep of an enum for a contacts online status. May return -1 if an error
-/// occurs, or 0 if the contact has never been seen
+/// `c_ulonglong` - A c_longlong rep of timestamp for a contacts last seen status.
+/// 0 if the contact has never been seen or an error occurs.
 ///
 /// ## Safety
 /// `liveness` should be destroyed eventually
@@ -106,7 +106,7 @@ pub unsafe extern "C" fn read_liveness_data_online_status(
 pub unsafe extern "C" fn read_liveness_data_last_seen(
     liveness: *mut ContactsLivenessData,
     error_out: *mut c_int,
-) -> c_longlong {
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -117,7 +117,13 @@ pub unsafe extern "C" fn read_liveness_data_last_seen(
     }
 
     match (*liveness).last_ping_pong_received() {
-        Some(last_seen) => last_seen.timestamp(),
+        Some(last_seen) => match u64::try_from(last_seen.timestamp()) {
+            Ok(ls) => ls as c_ulonglong,
+            Err(_e) => {
+                ptr::swap(error_out, &mut error as *mut c_int);
+                0
+            },
+        },
         None => 0,
     }
 }
