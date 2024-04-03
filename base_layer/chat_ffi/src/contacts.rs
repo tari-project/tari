@@ -105,7 +105,7 @@ pub unsafe extern "C" fn check_online_status(
     let result = (*client).runtime.block_on((*client).client.check_online_status(&rec));
 
     match result {
-        Ok(status) => status.as_u8().into(),
+        Ok(status) => status.as_u8(),
         Err(e) => {
             error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);

@@ -82,9 +82,12 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 
     let chat_byte_vector_length = chat_byte_vector_get_length(data, error_out);
     let mut bytes: Vec<u8> = Vec::new();
-    for c in 0..chat_byte_vector_length - 1 {
-        let byte = chat_byte_vector_get_at(data, c as c_uint, error_out);
-        bytes.push(byte);
+
+    if chat_byte_vector_length > 0 {
+        for c in 0..chat_byte_vector_length {
+            let byte = chat_byte_vector_get_at(data, c as c_uint, error_out);
+            bytes.push(byte);
+        }
     }
 
     let metadata = MessageMetadata {
@@ -239,14 +242,15 @@ mod test {
 
             let metadata_type = read_chat_metadata_type(metadata_ptr, error_out);
             let metadata_byte_vector = read_chat_metadata_data(metadata_ptr, error_out);
+            let metadata_byte_vector_len = chat_byte_vector_get_length(metadata_byte_vector, error_out);
 
             let mut metadata_data = vec![];
 
-            for i in 0..len {
+            for i in 0..metadata_byte_vector_len {
                 metadata_data.push(chat_byte_vector_get_at(metadata_byte_vector, i, error_out));
             }
 
-            assert_eq!(metadata_type, i32::from(md_type));
+            assert_eq!(metadata_type, md_type);
             assert_eq!(metadata_data, data_bytes);
 
             destroy_chat_message_metadata(metadata_ptr);

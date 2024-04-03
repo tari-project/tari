@@ -199,13 +199,7 @@ pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_
     }
 
     let message = &(*message);
-<<<<<<< HEAD
-    #[allow(clippy::cast_possible_wrap)]
-    let res = message.metadata.len() as i64;
-    res
-=======
     message.metadata.len() as c_uint
->>>>>>> 8f14baff1 (Standardize functions returning non signed ints)
 }
 
 /// Returns a pointer to a ChatByteVector representing the data of the Message

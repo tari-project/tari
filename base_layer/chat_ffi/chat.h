@@ -550,13 +550,12 @@ struct MessageMetadata *chat_metadata_get_at(struct Message *message,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_ulonglong` - The length of the metadata vector for a Message. May return 0 if something goes wrong
+ * `c_uint` - The length of the metadata vector for a Message. May return 0 if something goes wrong
  *
  * ## Safety
  * `message` should be destroyed eventually
  */
-unsigned long long chat_message_metadata_len(struct Message *message,
-                                             int *error_out);
+unsigned int chat_message_metadata_len(struct Message *message, int *error_out);
 
 /**
  * Returns a pointer to a ChatByteVector representing the data of the Message
@@ -598,7 +597,7 @@ struct TariAddress *read_chat_message_address(struct Message *message, int *erro
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - A c_uchar rep of the direction enum. May return 0 if anything goes wrong
+ * `c_uchar` - A c_uchar rep of the direction enum. May return 0 if anything goes wrong
  *     0 => Inbound
  *     1 => Outbound
  *
@@ -761,8 +760,8 @@ void destroy_chat_message_metadata(struct MessageMetadata *ptr);
  */
 struct MessageVector *get_chat_messages(struct ChatClient *client,
                                         struct TariAddress *address,
-                                        int limit,
-                                        int page,
+                                        unsigned int limit,
+                                        unsigned int page,
                                         int *error_out);
 
 /**

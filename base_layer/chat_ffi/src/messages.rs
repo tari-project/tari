@@ -26,7 +26,6 @@ use libc::{c_int, c_uint};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::{
-    handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     types::Message,
 };
 
@@ -75,8 +74,8 @@ pub unsafe extern "C" fn get_chat_messages(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let mlimit = u64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
-    let mpage = u64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE);
+    let mlimit = u64::from(limit);
+    let mpage = u64::from(page);
 
     let result = (*client)
         .runtime
