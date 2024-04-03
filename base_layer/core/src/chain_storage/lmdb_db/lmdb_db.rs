@@ -578,7 +578,7 @@ impl LMDBDatabase {
                 mined_height: header_height,
                 mined_timestamp: header_timestamp,
             },
-            "utxos_db",
+            LMDB_DB_UTXOS,
         )?;
 
         Ok(())
@@ -1533,7 +1533,7 @@ impl LMDBDatabase {
                 buffer.copy_from_slice(&key_bytes[0..32]);
                 let key = OutputKey::new(&FixedHash::from(buffer), &input.output_hash())?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
-                lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), "utxos_db")?;
+                lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
             };
             // From 'txos_hash_to_index_db::utxos_db'
             debug!(
@@ -1545,7 +1545,7 @@ impl LMDBDatabase {
                 write_txn,
                 &self.txos_hash_to_index_db,
                 input.output_hash().as_slice(),
-                "utxos_db",
+                LMDB_DB_UTXOS,
             )?;
         }
 
@@ -1575,14 +1575,14 @@ impl LMDBDatabase {
                     write_txn,
                     &self.txos_hash_to_index_db,
                     output_hash.as_slice(),
-                    "utxos_db",
+                    LMDB_DB_UTXOS,
                 )?;
 
                 let mut buffer = [0u8; 32];
                 buffer.copy_from_slice(&key_bytes[0..32]);
                 let key = OutputKey::new(&FixedHash::from(buffer), output_hash)?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
-                lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), "utxos_db")?;
+                lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
             },
             None => return Err(ChainStorageError::InvalidOperation("Output key not found".to_string())),
         }
