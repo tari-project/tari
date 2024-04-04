@@ -7,7 +7,19 @@
 
 [merge_mining_proxy]
 
-# URL to monerod (you can add your own server here or use public nodes from https://monero.fail/) (default = "")
+
+# Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/) (default: true)
+#use_dynamic_fail_data = true
+
+# The monero fail URL to get the monerod URLs from - must be pointing to the official Monero website.
+# Valid alternatives are:
+# - mainnet:  'https://monero.fail/?chain=monero&network=mainnet&all=true' (default)
+# - stagenet: `https://monero.fail/?chain=monero&network=stagenet&all=true`
+# - testnet:  `https://monero.fail/?chain=monero&network=testnet&all=true`
+#monero_fail_url = "https://monero.fail/?chain=monero&network=mainnet&all=true"
+
+# URL to monerod (you can add your own server here or use public nodes from https://monero.fail/), only if
+# 'use_dynamic_fail_data = false' (default = "")
 
 #monerod_url = [# stagenet
 #    "http://stagenet.xmr-tw.org:38081",
@@ -77,6 +89,3 @@ monerod_url = [ # mainnet
 #stealth_payment = true
 # Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
 #range_proof_type = "revealed_value"
-
-# Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/) (default: true)
-#use_dynamic_monerod_url = true

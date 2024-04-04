@@ -141,7 +141,7 @@ impl MergeMiningProxyProcess {
                         ),
                         ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
                         (
-                            "merge_mining_proxy.use_dynamic_monerod_url".to_string(),
+                            "merge_mining_proxy.use_dynamic_fail_data".to_string(),
                             "false".to_string(),
                         ),
                     ],

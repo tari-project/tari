@@ -44,7 +44,7 @@ use crate::{
     block_template_data::BlockTemplateRepository,
     config::MergeMiningProxyConfig,
     error::MmProxyError,
-    monerod_detect::get_monerod_info,
+    monero_fail::get_monerod_info,
     proxy::MergeMiningProxyService,
     Cli,
 };
@@ -56,9 +56,11 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
-    if config.use_dynamic_monerod_url {
-        let entries = get_monerod_info(15, Duration::from_secs(5)).await?;
-        config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+    if config.use_dynamic_fail_data {
+        let entries = get_monerod_info(15, Duration::from_secs(5), &config.monero_fail_url).await?;
+        if !entries.is_empty() {
+            config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+        }
     }
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);

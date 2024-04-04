@@ -77,7 +77,7 @@ pub enum MmProxyError {
     },
     #[error("HTTP error: {0}")]
     HttpError(#[from] hyper::http::Error),
-    #[error("Grpc authentication error: {0}")]
+    #[error("HTML parse error: {0}")]
     HtmlParseError(String),
     #[error("Could not parse URL: {0}")]
     UrlParseError(#[from] url::ParseError),

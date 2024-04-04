@@ -30,8 +30,6 @@ use url::Url;
 use crate::error::MmProxyError;
 
 const LOG_TARGET: &str = "minotari_mm_proxy::monero_detect";
-/// The public available Monero nodes
-pub const MONERO_FAIL_URL: &str = "https://monero.fail/?chain=monero&network=mainnet&all=true";
 
 /// Monero public server information
 #[derive(Debug)]
@@ -62,8 +60,9 @@ pub struct MonerodEntry {
 pub async fn get_monerod_info(
     number_of_entries: usize,
     connection_test_timeout: Duration,
+    monero_fail_url: &str,
 ) -> Result<Vec<MonerodEntry>, MmProxyError> {
-    let document = get_monerod_html(MONERO_FAIL_URL).await?;
+    let document = get_monerod_html(monero_fail_url).await?;
 
     // The HTML table definition and an example entry looks like this:
     //   <table class="pure-table pure-table-horizontal pure-table-striped js-sort-table">
@@ -261,11 +260,50 @@ mod test {
     use markup5ever::{local_name, namespace_url, ns, QualName};
     use scraper::Html;
 
-    use crate::monerod_detect::{get_monerod_html, get_monerod_info, MONERO_FAIL_URL};
+    use crate::{
+        config::MergeMiningProxyConfig,
+        monero_fail::{get_monerod_html, get_monerod_info},
+    };
 
     #[tokio::test]
     async fn test_get_monerod_info() {
-        let entries = get_monerod_info(5, Duration::from_secs(2)).await.unwrap();
+        // Monero mainnet
+        let config = MergeMiningProxyConfig::default();
+        let entries = get_monerod_info(5, Duration::from_secs(2), &config.monero_fail_url)
+            .await
+            .unwrap();
+        for (i, entry) in entries.iter().enumerate() {
+            assert!(entry.up && entry.up_history.iter().all(|&v| v));
+            if i > 0 {
+                assert!(
+                    entry.response_time.unwrap_or_else(|| Duration::from_secs(100)) >=
+                        entries[i - 1].response_time.unwrap_or_else(|| Duration::from_secs(100))
+                );
+            }
+            println!("{}: {:?}", i, entry);
+        }
+
+        // Monero stagenet
+        const MONERO_FAIL_STAGNET_URL: &str = "https://monero.fail/?chain=monero&network=stagenet&all=true";
+        let entries = get_monerod_info(5, Duration::from_secs(2), MONERO_FAIL_STAGNET_URL)
+            .await
+            .unwrap();
+        for (i, entry) in entries.iter().enumerate() {
+            assert!(entry.up && entry.up_history.iter().all(|&v| v));
+            if i > 0 {
+                assert!(
+                    entry.response_time.unwrap_or_else(|| Duration::from_secs(100)) >=
+                        entries[i - 1].response_time.unwrap_or_else(|| Duration::from_secs(100))
+                );
+            }
+            println!("{}: {:?}", i, entry);
+        }
+
+        // Monero testnet
+        const MONERO_FAIL_TESTNET_URL: &str = "https://monero.fail/?chain=monero&network=testnet&all=true";
+        let entries = get_monerod_info(5, Duration::from_secs(2), MONERO_FAIL_TESTNET_URL)
+            .await
+            .unwrap();
         for (i, entry) in entries.iter().enumerate() {
             assert!(entry.up && entry.up_history.iter().all(|&v| v));
             if i > 0 {
@@ -280,7 +318,8 @@ mod test {
 
     #[tokio::test]
     async fn test_table_structure() {
-        let html_content = get_monerod_html(MONERO_FAIL_URL).await.unwrap();
+        let config = MergeMiningProxyConfig::default();
+        let html_content = get_monerod_html(&config.monero_fail_url).await.unwrap();
 
         let table_structure = extract_table_structure(&html_content);
 
