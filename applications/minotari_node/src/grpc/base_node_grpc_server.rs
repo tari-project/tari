@@ -172,15 +172,15 @@ impl BaseNodeGrpcServer {
         self.config.grpc_server_allow_methods.contains(&grpc_method)
     }
 
-    fn check_method_enabled<T>(&self, method: GrpcMethod) -> Option<Result<Response<T>, Status>> {
+    fn check_method_enabled(&self, method: GrpcMethod) -> Result<(), Status> {
         if !self.is_method_enabled(method) {
             warn!(target: LOG_TARGET, "`{}` method called but it is not allowed. Allow it in the config file or start the node with a different set of CLI options", method);
-            return Some(Err(Status::permission_denied(format!(
+            return Err(Status::permission_denied(format!(
                 "`{}` method not made available",
                 method
-            ))));
+            )));
         }
-        None
+        Ok(())
     }
 }
 
