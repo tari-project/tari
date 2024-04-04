@@ -33,6 +33,7 @@ mod error;
 mod proxy;
 mod run_merge_miner;
 use run_merge_miner::start_merge_miner;
+mod monerod_detect;
 
 pub async fn merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     start_merge_miner(cli).await

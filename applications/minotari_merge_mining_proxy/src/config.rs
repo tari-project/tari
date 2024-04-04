@@ -37,7 +37,7 @@ use tari_core::transactions::transaction_components::RangeProofType;
 #[allow(clippy::struct_excessive_bools)]
 pub struct MergeMiningProxyConfig {
     override_from: Option<String>,
-    /// URL to monerod
+    /// URL to monerod (you can add your own server here or use public nodes from https://monero.fail/)
     pub monerod_url: StringList,
     /// Username for curl
     pub monerod_username: String,
@@ -83,6 +83,8 @@ pub struct MergeMiningProxyConfig {
     pub stealth_payment: bool,
     /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
+    /// Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/)
+    pub use_dynamic_monerod_url: bool,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -108,6 +110,7 @@ impl Default for MergeMiningProxyConfig {
             wallet_payment_address: TariAddress::default().to_hex(),
             stealth_payment: true,
             range_proof_type: RangeProofType::RevealedValue,
+            use_dynamic_monerod_url: true,
         }
     }
 }

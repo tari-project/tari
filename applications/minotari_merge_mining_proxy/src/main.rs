@@ -28,6 +28,7 @@ mod cli;
 mod common;
 mod config;
 mod error;
+mod monerod_detect;
 mod proxy;
 mod run_merge_miner;
 
