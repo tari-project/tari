@@ -9,6 +9,7 @@ use std::{
     convert::TryInto,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Instant,
 };
 
 use lmdb_zero::{
@@ -41,7 +42,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "lmdb";
-const BYTES_PER_MB: usize = 1024 * 1024;
+pub const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// An atomic pointer to an LMDB database instance
 pub type DatabaseRef = Arc<Database<'static>>;
@@ -92,7 +93,8 @@ impl LMDBConfig {
 
 impl Default for LMDBConfig {
     fn default() -> Self {
-        Self::new_from_mb(16, 16, 8)
+        // Do not choose these values too small, as the entire SMT is replaced for every new block
+        Self::new_from_mb(128, 128, 64)
     }
 }
 
@@ -186,7 +188,7 @@ impl LMDBBuilder {
             let flags = self.env_flags | open::NOTLS;
             let env = builder.open(&path, flags, 0o600)?;
             // SAFETY: no transactions can be open at this point
-            LMDBStore::resize_if_required(&env, &self.env_config)?;
+            LMDBStore::resize_if_required(&env, &self.env_config, None)?;
             Arc::new(env)
         };
 
@@ -346,16 +348,15 @@ pub struct LMDBStore {
 }
 
 impl LMDBStore {
-    /// Close all databases and close the environment. You cannot be guaranteed that the dbs will be closed after
-    /// calling this function because there still may be threads accessing / writing to a database that will block
-    /// this call. However, in that case `shutdown` returns an error.
+    /// Force flush the data buffers to disk.
     pub fn flush(&self) -> Result<(), lmdb_zero::error::Error> {
-        trace!(target: LOG_TARGET, "Forcing flush of buffers to disk");
+        let start = Instant::now();
         self.env.sync(true)?;
-        debug!(target: LOG_TARGET, "LMDB Buffers have been flushed");
+        trace!(target: LOG_TARGET, "LMDB buffers flushed in {:.2?}", start.elapsed());
         Ok(())
     }
 
+    /// Write log information about the LMDB environment and databases to the log.
     pub fn log_info(&self) {
         match self.env.info() {
             Err(e) => warn!(
@@ -406,10 +407,12 @@ impl LMDBStore {
         self.databases.get(db_name).cloned()
     }
 
+    /// Returns the LMDB environment configuration
     pub fn env_config(&self) -> LMDBConfig {
         self.env_config.clone()
     }
 
+    /// Returns the LMDB environment with handle
     pub fn env(&self) -> Arc<Environment> {
         self.env.clone()
     }
@@ -421,20 +424,37 @@ impl LMDBStore {
     /// not check for this condition, the caller must ensure it explicitly.
     ///
     /// <http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5>
-    pub unsafe fn resize_if_required(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
+    pub unsafe fn resize_if_required(
+        env: &Environment,
+        config: &LMDBConfig,
+        increase_threshold_by: Option<usize>,
+    ) -> Result<(), LMDBError> {
+        let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(env)?;
+        if size_left_bytes <= config.resize_threshold_bytes + increase_threshold_by.unwrap_or_default() {
+            debug!(
+                target: LOG_TARGET,
+                "Resize required: mapsize: {} MB, used: {} MB, remaining: {} MB",
+                mapsize / BYTES_PER_MB,
+                size_used_bytes / BYTES_PER_MB,
+                size_left_bytes / BYTES_PER_MB
+            );
+            Self::resize(env, config, Some(increase_threshold_by.unwrap_or_default()))?;
+        }
+        Ok(())
+    }
+
+    /// Returns the LMDB environment statistics.
+    /// Note:
+    ///   In Windows and Ubuntu, this function does not always return the actual used size of the
+    ///   database on disk when the database has grown large (> 700MB), reason unknown (not tested
+    ///   on Mac).
+    pub fn get_stats(env: &Environment) -> Result<(usize, usize, usize), LMDBError> {
         let env_info = env.info()?;
         let stat = env.stat()?;
         let size_used_bytes = stat.psize as usize * env_info.last_pgno;
         let size_left_bytes = env_info.mapsize - size_used_bytes;
 
-        if size_left_bytes <= config.resize_threshold_bytes {
-            debug!(
-                target: LOG_TARGET,
-                "Resize required: Used bytes: {}, Remaining bytes: {}", size_used_bytes, size_left_bytes
-            );
-            Self::resize(env, config, None)?;
-        }
-        Ok(())
+        Ok((env_info.mapsize, size_used_bytes, size_left_bytes))
     }
 
     /// Grows the LMDB environment by the configured amount
@@ -444,19 +464,25 @@ impl LMDBStore {
     /// not check for this condition, the caller must ensure it explicitly.
     ///
     /// <http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5>
-    pub unsafe fn resize(env: &Environment, config: &LMDBConfig, shortfall: Option<usize>) -> Result<(), LMDBError> {
+    pub unsafe fn resize(
+        env: &Environment,
+        config: &LMDBConfig,
+        increase_threshold_by: Option<usize>,
+    ) -> Result<(), LMDBError> {
+        let start = Instant::now();
         let env_info = env.info()?;
         let current_mapsize = env_info.mapsize;
-        env.set_mapsize(current_mapsize + config.grow_size_bytes + shortfall.unwrap_or_default())?;
+        env.set_mapsize(current_mapsize + config.grow_size_bytes + increase_threshold_by.unwrap_or_default())?;
         let env_info = env.info()?;
         let new_mapsize = env_info.mapsize;
         debug!(
             target: LOG_TARGET,
-            "({}) LMDB MB, mapsize was grown from {:?} MB to {:?} MB, increased by {:?} MB",
+            "({}) LMDB MB, mapsize was grown from {} MB to {} MB, increased by {} MB, in {:.2?}",
             env.path()?.to_str()?,
             current_mapsize / BYTES_PER_MB,
             new_mapsize / BYTES_PER_MB,
-            (config.grow_size_bytes + shortfall.unwrap_or_default()) / BYTES_PER_MB,
+            (config.grow_size_bytes + increase_threshold_by.unwrap_or_default()) / BYTES_PER_MB,
+            start.elapsed()
         );
 
         Ok(())
@@ -479,15 +505,17 @@ impl LMDBDatabase {
         K: AsLmdbBytes + ?Sized,
         V: Serialize,
     {
-        const MAX_RESIZES: usize = 5;
+        // Resize this many times before assuming something is not right (up to 1 GB)
+        let max_resizes = 1024 * BYTES_PER_MB / self.env_config.grow_size_bytes();
         let value = LMDBWriteTransaction::convert_value(value)?;
-        for _ in 0..MAX_RESIZES {
+        for i in 0..max_resizes {
             match self.write(key, &value) {
                 Ok(txn) => return Ok(txn),
                 Err(error::Error::Code(error::MAP_FULL)) => {
                     info!(
                         target: LOG_TARGET,
-                        "Failed to obtain write transaction because the database needs to be resized"
+                        "Database resize required (resized {} time(s) in this transaction)",
+                        i + 1
                     );
                     unsafe {
                         LMDBStore::resize(&self.env, &self.env_config, Some(value.len()))?;

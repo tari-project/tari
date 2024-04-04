@@ -428,7 +428,7 @@ mod fetch_total_size_stats {
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
-            stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
+            stats.sizes().iter().find(|s| s.name == "utxos").unwrap().num_entries,
             genesis_output_count + 2
         );
     }

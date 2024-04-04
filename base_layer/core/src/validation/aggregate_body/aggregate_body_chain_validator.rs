@@ -110,7 +110,6 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
     db: &B,
 ) -> Result<Vec<TransactionInput>, ValidationError> {
     let mut inputs: Vec<TransactionInput> = body.inputs().clone();
-    let outputs: Vec<TransactionOutput> = body.outputs().clone();
     for input in &mut inputs {
         if input.is_compact() {
             let output = match db.fetch_output(&input.output_hash()) {
@@ -118,7 +117,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                     Some(output_mined_info) => output_mined_info.output,
                     None => {
                         let input_output_hash = input.output_hash();
-                        if let Some(found) = outputs.iter().find(|o| o.hash() == input_output_hash) {
+                        if let Some(found) = body.outputs().iter().find(|o| o.hash() == input_output_hash) {
                             found.clone()
                         } else {
                             warn!(

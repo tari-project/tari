@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
 use lmdb_zero::{
     del,
@@ -37,6 +37,7 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+use tari_storage::lmdb_store::BYTES_PER_MB;
 use tari_utilities::hex::to_hex;
 
 use crate::chain_storage::{
@@ -62,7 +63,7 @@ where
     K: AsLmdbBytes + ?Sized + Debug,
     V: Serialize + Debug,
 {
-    let val_buf = serialize(val)?;
+    let val_buf = serialize(val, None)?;
     match txn.access().put(db, key, &val_buf, put::NOOVERWRITE) {
         Ok(_) => {
             trace!(
@@ -112,7 +113,7 @@ where
     K: AsLmdbBytes + ?Sized,
     V: Serialize,
 {
-    let val_buf = serialize(val)?;
+    let val_buf = serialize(val, None)?;
     txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
@@ -128,13 +129,20 @@ where
 }
 
 /// Inserts or replaces the item at the given key. If the key does not exist, a new entry is created
-pub fn lmdb_replace<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
+pub fn lmdb_replace<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    val: &V,
+    size_hint: Option<usize>,
+) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized,
     V: Serialize,
 {
-    let val_buf = serialize(val)?;
-    txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+    let val_buf = serialize(val, size_hint)?;
+    let start = Instant::now();
+    let res = txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
                 return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
@@ -145,7 +153,16 @@ where
             "Could not replace value in lmdb transaction: {:?}", e
         );
         ChainStorageError::AccessError(e.to_string())
-    })
+    });
+    if val_buf.len() >= BYTES_PER_MB {
+        let write_time = start.elapsed();
+        trace!(
+            "lmdb_replace - {} MB, lmdb write in {:.2?}",
+            val_buf.len() / BYTES_PER_MB,
+            write_time
+        );
+    }
+    res
 }
 
 /// Deletes the given key. An error is returned if the key does not exist
@@ -175,7 +192,7 @@ where
     K: AsLmdbBytes + ?Sized,
     V: Serialize,
 {
-    txn.access().del_item(db, key, &serialize(value)?)?;
+    txn.access().del_item(db, key, &serialize(value, None)?)?;
     Ok(())
 }
 
