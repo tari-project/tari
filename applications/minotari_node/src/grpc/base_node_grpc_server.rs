@@ -221,9 +221,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNetworkDifficulty) {
-            return value;
-        }
+  self.check_method_enabled(GrpcMethod::GetNetworkDifficulty)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
