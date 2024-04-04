@@ -126,7 +126,8 @@ pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetad
     let md = &(*msg_metadata);
     match c_uchar::try_from(md.metadata_type.as_byte()) {
         Ok(t) => t,
-        Err(_e) => {
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },

@@ -116,7 +116,8 @@ pub unsafe extern "C" fn message_vector_len(messages: *mut MessageVector, error_
     let messages = &(*messages);
     match c_uint::try_from(messages.0.len()) {
         Ok(l) => l,
-        Err(_e) => {
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },

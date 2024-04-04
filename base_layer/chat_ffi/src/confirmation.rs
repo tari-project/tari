@@ -104,7 +104,8 @@ pub unsafe extern "C" fn read_confirmation_message_id(
 
     let len = match u32::try_from(data_bytes.len()) {
         Ok(l) => l,
-        Err(_e) => {
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },

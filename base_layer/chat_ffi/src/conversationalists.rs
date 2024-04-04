@@ -98,7 +98,8 @@ pub unsafe extern "C" fn conversationalists_vector_len(
     let conversationalists = &(*conversationalists);
     match c_uint::try_from(conversationalists.0.len()) {
         Ok(l) => l,
-        Err(_e) => {
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },

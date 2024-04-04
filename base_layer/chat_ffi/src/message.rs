@@ -199,7 +199,14 @@ pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_
     }
 
     let message = &(*message);
-    message.metadata.len() as c_uint
+    match c_uint::try_from(message.metadata.len()) {
+        Ok(l) => l,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        }
+    }
 }
 
 /// Returns a pointer to a ChatByteVector representing the data of the Message
@@ -292,7 +299,8 @@ pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, erro
 
     match c_uchar::try_from((*message).direction.as_byte()) {
         Ok(d) => d,
-        Err(_e) => {
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },
