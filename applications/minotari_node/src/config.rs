@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    fmt,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -219,7 +220,7 @@ pub enum DatabaseType {
 }
 
 /// A list of all the GRPC methods that can be enabled/disabled
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum GrpcMethod {
     ListHeaders,
@@ -258,6 +259,12 @@ pub enum GrpcMethod {
     GetShardKey,
     GetTemplateRegistrations,
     GetSideChainUtxos,
+}
+
+impl fmt::Display for GrpcMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[cfg(test)]
