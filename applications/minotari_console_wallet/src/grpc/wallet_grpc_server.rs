@@ -983,13 +983,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
                 message.binary_url,
                 fee_per_gram,
-                if !message.sidechain_deployment_key.is_empty() {
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
                     Some(
                         RistrettoSecretKey::from_canonical_bytes(&message.sidechain_deployment_key)
                             .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
                     )
-                } else {
-                    None
                 },
             )
             .await

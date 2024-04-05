@@ -3,3 +3,13 @@ linker = "aarch64-linux-gnu-gcc"
 
 [target.riscv64gc-unknown-linux-gnu]
 linker = "riscv64-linux-gnu-gcc"
+
+
+[alias]
+ci-fmt = "fmt --all -- --check"
+ci-fmt-fix = "fmt --all"
+ci-clippy = "lints clippy --all-targets --all-features"
+ci-test-compile = "test --no-run --workspace --all-features --no-default-features"
+ci-test = "nextest run --all-features --release --workspace --exclude integration_tests --profile ci"
+ci-cucumber = "test --all-features --release --package integration_tests"
+#ci-check = "check --workspace --release --all-features --all-targets --lock

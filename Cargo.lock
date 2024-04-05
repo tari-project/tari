@@ -3185,7 +3185,6 @@ dependencies = [
  "tari_key_manager",
  "tari_libtor",
  "tari_p2p",
- "tari_script",
  "tari_shutdown",
  "tari_utilities",
  "thiserror",
