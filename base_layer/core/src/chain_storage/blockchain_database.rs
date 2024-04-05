@@ -1416,12 +1416,12 @@ pub fn calculate_validator_node_mr(
     let mut hash_map = HashMap::new();
     for ValidatorNodeRegistrationInfo {
         public_key: pk,
-        sidechain_id: network,
+        sidechain_id: sidechain_id,
         shard_key,
     } in validator_nodes
     {
         hash_map
-            .entry(network.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
+            .entry(sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
             .or_insert_with(|| Vec::with_capacity(1))
             .push((pk, shard_key));
     }
