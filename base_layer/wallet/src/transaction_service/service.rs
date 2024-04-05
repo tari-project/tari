@@ -37,7 +37,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -56,9 +56,10 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{
-            CodeTemplateRegistration,
+            BuildInfo,
             KernelFeatures,
             OutputFeatures,
+            TemplateType,
             Transaction,
             TransactionOutput,
             WalletOutputBuilder,
@@ -707,8 +708,6 @@ where
                 return Ok(());
             },
             TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
                 template_name,
                 template_version,
                 template_type,
@@ -716,23 +715,17 @@ where
                 binary_sha,
                 binary_url,
                 fee_per_gram,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
             } => {
                 self.register_code_template(
                     fee_per_gram,
-                    CodeTemplateRegistration {
-                        author_public_key,
-                        author_signature,
-                        template_name: template_name.clone(),
-                        template_version,
-                        template_type,
-                        build_info,
-                        binary_sha,
-                        binary_url,
-                        sidechain_id,
-                        sidechain_id_knowledge_proof,
-                    },
+                    template_name.to_string(),
+                    template_version,
+                    template_type,
+                    build_info,
+                    binary_sha,
+                    binary_url,
+                    sidechain_deployment_key,
                     UtxoSelectionCriteria::default(),
                     format!("Template Registration: {}", template_name),
                     send_transaction_join_handles,
@@ -1806,31 +1799,38 @@ where
 
     pub async fn register_code_template(
         &mut self,
-        fee_per_gram: MicroMinotari,
-        template_registration: CodeTemplateRegistration,
-        selection_criteria: UtxoSelectionCriteria,
-        message: String,
-        join_handles: &mut FuturesUnordered<
+        _fee_per_gram: MicroMinotari,
+        _template_name: String,
+        _template_version: u16,
+        _template_type: TemplateType,
+        _build_info: BuildInfo,
+        _binary_sha: FixedHash,
+        _binary_url: String,
+        _sidechain_deployment_key: Option<PrivateKey>,
+        _selection_criteria: UtxoSelectionCriteria,
+        _message: String,
+        _join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
+        _transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+        _reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        self.send_transaction(
-            self.resources.wallet_identity.address.clone(),
-            0.into(),
-            selection_criteria,
-            OutputFeatures::for_template_registration(template_registration),
-            fee_per_gram,
-            message,
-            TransactionMetadata::default(),
-            join_handles,
-            transaction_broadcast_join_handles,
-            reply_channel,
-        )
-        .await
+        todo!()
+        // self.send_transaction(
+        //     self.resources.wallet_identity.address.clone(),
+        //     0.into(),
+        //     selection_criteria,
+        //     OutputFeatures::for_template_registration(template_registration),
+        //     fee_per_gram,
+        //     message,
+        //     TransactionMetadata::default(),
+        //     join_handles,
+        //     transaction_broadcast_join_handles,
+        //     reply_channel,
+        // )
+        // .await
     }
 
     /// Sends a one side payment transaction to a recipient

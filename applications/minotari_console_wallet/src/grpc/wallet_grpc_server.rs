@@ -98,17 +98,11 @@ use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinotari, T},
-        transaction_components::{
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
-        },
+        tari_amount::MicroMinotari,
+        transaction_components::{OutputFeatures, UnblindedOutput},
     },
 };
-use tari_script::script;
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
@@ -958,52 +952,95 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateTemplateRegistrationRequest>,
     ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut output_manager = self.wallet.output_manager_service.clone();
+        // let mut output_manager = self.wallet.output_manager_service.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let template_registration = CodeTemplateRegistration::try_from(
-            message
-                .template_registration
-                .ok_or_else(|| Status::invalid_argument("template_registration is empty"))?,
-        )
-        .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
-        let fee_per_gram = message.fee_per_gram;
+        let fee_per_gram = message.fee_per_gram.into();
 
-        let message = format!("Template registration {}", template_registration.template_name);
-        let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
+        let (tx_id, template_address) = transaction_service
+            .register_code_template(
+                message.template_name.clone(),
+                message
+                    .template_version
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
+                if let Some(tt) = message.template_type {
+                    tt.try_into()
+                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("template type is missing"));
+                },
+                if let Some(bi) = message.build_info {
+                    bi.try_into()
+                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("build info is missing"));
+                },
+                message
+                    .binary_sha
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
+                message.binary_url,
+                fee_per_gram,
+                if !message.sidechain_deployment_key.is_empty() {
+                    Some(
+                        RistrettoSecretKey::from_canonical_bytes(&message.sidechain_deployment_key)
+                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
+                    )
+                } else {
+                    None
+                },
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        output = output.with_script(script![Nop]);
-
-        let (tx_id, transaction) = output_manager
-            .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Template registration transaction: {:?}", transaction
-        );
-
-        let reg_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
-            .ok_or_else(|| Status::internal("No code template registration output!"))?;
-        let template_address = reg_output.hash();
-
-        transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), message)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        // let message = format!("Template registration {}", message.template_name);
+        // let template_registration = CodeTemplateRegistration {
+        //     author_public_key: Default::default(),
+        //     author_signature: (),
+        //     template_name: (),
+        //     template_version: 0,
+        //     template_type: TemplateType::Flow,
+        //     build_info: BuildInfo {},
+        //     binary_sha: Default::default(),
+        //     binary_url: (),
+        //     sidechain_id: None,
+        //     sidechain_id_knowledge_proof: None,
+        // };
+        // let mut output = output_manager
+        //     .create_output_with_features(1 * T, OutputFeatures {
+        //         output_type: OutputType::CodeTemplateRegistration,
+        //         sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+        //         ..Default::default()
+        //     })
+        //     .await
+        //     .map_err(|e| Status::internal(e.to_string()))?;
+        //
+        // output = output.with_script(script![Nop]);
+        //
+        // let (tx_id, transaction) = output_manager
+        //     .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
+        //     .await
+        //     .map_err(|e| Status::internal(e.to_string()))?;
+        //
+        // debug!(
+        //     target: LOG_TARGET,
+        //     "Template registration transaction: {:?}", transaction
+        // );
+        //
+        // let reg_output = transaction
+        //     .body
+        //     .outputs()
+        //     .iter()
+        //     .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
+        //     .ok_or_else(|| Status::internal("No code template registration output!"))?;
+        // let template_address = reg_output.hash();
+        //
+        // transaction_service
+        //     .submit_transaction(tx_id, transaction, 0.into(), message)
+        //     .await
+        //     .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateTemplateRegistrationResponse {
             tx_id: tx_id.as_u64(),

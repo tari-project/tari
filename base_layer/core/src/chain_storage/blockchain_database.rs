@@ -1416,7 +1416,7 @@ pub fn calculate_validator_node_mr(
     let mut hash_map = HashMap::new();
     for ValidatorNodeRegistrationInfo {
         public_key: pk,
-        sidechain_id: sidechain_id,
+        sidechain_id,
         shard_key,
     } in validator_nodes
     {

@@ -22,32 +22,25 @@
 
 use std::{convert::TryFrom, path::PathBuf};
 
-use blake2::Blake2b;
-use digest::consts::U64;
 use log::{error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
 };
-use rand::{random, rngs::OsRng};
+use rand::random;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{PublicKey, Signature},
+    types::{FixedHash, PublicKey, Signature},
 };
 use tari_core::{
     consensus::{MaxSizeBytes, MaxSizeString},
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components,
         transaction_components::{BuildInfo, OutputFeatures, TemplateType},
     },
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
-use tari_key_manager::key_manager::KeyManager;
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
 
@@ -461,64 +454,70 @@ pub async fn send_register_template_transaction_task(
     // signing and sending code template registration request
     // ----------------------------------------------------------------------------
 
-    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
-
-    let author_private_key = match km.next_key() {
-        Ok(secret_key) => secret_key.key,
-        Err(e) => {
-            error!(target: LOG_TARGET, "failed to generate key: {}", e);
-            result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
-            return;
-        },
-    };
-
-    let author_public_key = PublicKey::from_secret_key(&author_private_key);
-    let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-
-    let pub_validator_key = sidechain_id_key.map(PublicKey::from_secret_key);
-
-    let sidechain_id_knowledge_proof = match sidechain_id_key {
-        Some(key) => Some(match Signature::sign(key, author_public_key.to_vec(), &mut OsRng) {
-            Ok(signature) => signature,
-            Err(e) => {
-                error!(target: LOG_TARGET, "failed to sign network knowledge proof: {}", e);
-                result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
-                return;
-            },
-        }),
-        None => None,
-    };
-
-    let challenge = transaction_components::CodeTemplateRegistration::create_challenge_from_components(
-        &author_public_key,
-        &public_nonce,
-        &binary_sha,
-        pub_validator_key.as_ref(),
-    );
-
-    let author_signature = Signature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
-        .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
-
-    // ----------------------------------------------------------------------------
-    // ============================================================================
+    // let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
+    //
+    // let author_private_key = match km.next_key() {
+    //     Ok(secret_key) => secret_key.key,
+    //     Err(e) => {
+    //         error!(target: LOG_TARGET, "failed to generate key: {}", e);
+    //         result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
+    //         return;
+    //     },
+    // };
+    //
+    // let author_public_key = PublicKey::from_secret_key(&author_private_key);
+    // let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
+    //
+    // let pub_validator_key = sidechain_id_key.map(PublicKey::from_secret_key);
+    //
+    // let sidechain_id_knowledge_proof = match sidechain_id_key {
+    //     Some(key) => Some(match Signature::sign(key, author_public_key.to_vec(), &mut OsRng) {
+    //         Ok(signature) => signature,
+    //         Err(e) => {
+    //             error!(target: LOG_TARGET, "failed to sign network knowledge proof: {}", e);
+    //             result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
+    //             return;
+    //         },
+    //     }),
+    //     None => None,
+    // };
+    //
+    // let challenge = transaction_components::CodeTemplateRegistration::create_challenge_from_components(
+    //     &author_public_key,
+    //     &public_nonce,
+    //     &binary_sha,
+    //     pub_validator_key.as_ref(),
+    // );
+    //
+    // let author_signature = Signature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
+    //     .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
+    //
+    // // ----------------------------------------------------------------------------
+    // // ============================================================================
     // ----------------------------------------------------------------------------
 
     let result = transaction_service_handle
         .register_code_template(
-            author_public_key,
-            author_signature,
-            template_name,
+            template_name.to_string(),
             template_version,
             template_type,
             BuildInfo {
                 repo_url: repository_url,
                 commit_hash: repository_commit_hash,
             },
-            binary_sha,
-            binary_url,
+            match FixedHash::try_from(binary_sha.into_vec()) {
+                Ok(hash) => hash,
+                Err(e) => {
+                    error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
+                    result_tx
+                        .send(UiTransactionSendStatus::Error(format!("Binary checksum error: {}", e)))
+                        .unwrap();
+                    return;
+                },
+            },
+            binary_url.to_string(),
             fee_per_gram,
-            pub_validator_key,
-            sidechain_id_knowledge_proof,
+            sidechain_id_key.cloned(),
         )
         .await;
 
@@ -542,7 +541,7 @@ pub async fn send_register_template_transaction_task(
         match event_stream.recv().await {
             Ok(event) => {
                 if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
-                    if sent_tx_id == *completed_tx_id {
+                    if sent_tx_id.0 == *completed_tx_id {
                         result_tx.send(UiTransactionSendStatus::TransactionComplete).unwrap();
                         return;
                     }
