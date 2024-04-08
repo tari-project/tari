@@ -1,0 +1,15 @@
+[target.nanosplus]
+runner = "speculos -m nanosp"
+
+[build]
+target = "nanosplus"
+
+[unstable]
+avoid-dev-deps = true
+build-std = ["std", "alloc"]
+build-std-features = ["compiler-builtins-mem"]
+host-config = true
+target-applies-to-host = true
+
+[host]
+rustflags = ["-Ctarget-feature=-crt-static"]

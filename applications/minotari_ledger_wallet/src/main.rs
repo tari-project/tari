@@ -1,36 +1,45 @@
-// Copyright 2022 The Tari Project
+// Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-
-//! # MinoTari Ledger Wallet
 
 #![no_std]
 #![no_main]
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
-use core::{cmp::min, mem::MaybeUninit};
 
+mod hashing;
+mod utils;
+
+mod app_ui {
+    pub mod address;
+    pub mod menu;
+    pub mod sign;
+}
+mod handlers {
+    pub mod get_private_key;
+    pub mod get_public_key;
+    pub mod get_version;
+    pub mod sign_tx;
+}
+
+use core::mem::MaybeUninit;
+
+use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
-use nanos_sdk::{
-    buttons::ButtonEvent,
-    io,
-    io::{ApduHeader, Reply, StatusWords, SyscallError},
+use handlers::{
+    get_private_key::handler_get_private_key,
+    get_public_key::handler_get_public_key,
+    get_version::handler_get_version,
+    sign_tx::{handler_sign_tx, TxContext},
 };
-use nanos_ui::ui;
-use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
-
-use crate::{
-    alloc::string::ToString,
-    utils::{byte_to_hex, get_raw_key, u64_to_string},
+#[cfg(feature = "pending_review_screen")]
+use ledger_device_sdk::ui::gadgets::display_pending_review;
+use ledger_device_sdk::{
+    io::{ApduHeader, Comm, Event, Reply, StatusWords},
+    ui::gadgets::SingleMessage,
 };
 
-static MINOTARI_LEDGER_ID: u32 = 535348;
-static MINOTARI_ACCOUNT_ID: u32 = 7041;
-
-pub mod hashing;
-pub mod utils;
-
-nanos_sdk::set_panic!(nanos_sdk::exiting_panic);
+ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 /// Allocator heap size
 const HEAP_SIZE: usize = 1024 * 26;
@@ -45,8 +54,8 @@ static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
 /// Error handler for allocation
 #[alloc_error_handler]
 fn alloc_error(_: core::alloc::Layout) -> ! {
-    ui::SingleMessage::new("allocation error!").show_and_wait();
-    nanos_sdk::exit_app(250)
+    SingleMessage::new("allocation error!").show_and_wait();
+    ledger_device_sdk::exit_app(250)
 }
 
 /// Initialise allocator
@@ -67,123 +76,115 @@ unsafe impl critical_section::Impl for MyCriticalSection {
     }
 }
 
-/// App Version parameters
-const NAME: &str = env!("CARGO_PKG_NAME");
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+// P2 for last APDU to receive.
+const P2_SIGN_TX_LAST: u8 = 0x00;
+// P2 for more APDU to receive.
+const P2_SIGN_TX_MORE: u8 = 0x80;
+// P1 for first APDU number.
+const P1_SIGN_TX_START: u8 = 0x00;
+// P1 for maximum APDU number.
+const P1_SIGN_TX_MAX: u8 = 0x03;
 
-enum Instruction {
-    GetVersion,
-    GetPrivateKey,
-    BadInstruction(u8),
-    Exit,
+// Application status words.
+#[repr(u16)]
+pub enum AppSW {
+    Deny = 0x6985,
+    WrongP1P2 = 0x6A86,
+    InsNotSupported = 0x6D00,
+    ClaNotSupported = 0x6E00,
+    TxDisplayFail = 0xB001,
+    AddrDisplayFail = 0xB002,
+    TxWrongLength = 0xB004,
+    TxParsingFail = 0xB005,
+    TxHashFail = 0xB006,
+    TxSignFail = 0xB008,
+    KeyDeriveFail = 0xB009,
+    VersionParsingFail = 0xB00A,
+    WrongApduLength = StatusWords::BadLen as u16,
 }
 
-impl From<io::ApduHeader> for Instruction {
-    fn from(header: io::ApduHeader) -> Instruction {
-        match header.ins {
-            0x01 => Self::GetVersion,
-            0x02 => Self::GetPrivateKey,
-            0x03 => Self::Exit,
-            other => Self::BadInstruction(other),
+impl From<AppSW> for Reply {
+    fn from(sw: AppSW) -> Reply {
+        Reply(sw as u16)
+    }
+}
+
+/// Possible input commands received through APDUs.
+pub enum Instruction {
+    GetVersion,
+    GetAppName,
+    GetPrivateKey { display: bool },
+    GetPubkey { display: bool },
+    SignTx { chunk: u8, more: bool },
+}
+
+impl TryFrom<ApduHeader> for Instruction {
+    type Error = AppSW;
+
+    /// APDU parsing logic.
+    ///
+    /// Parses INS, P1 and P2 bytes to build an [`Instruction`]. P1 and P2 are translated to
+    /// strongly typed variables depending on the APDU instruction code. Invalid INS, P1 or P2
+    /// values result in errors with a status word, which are automatically sent to the host by the
+    /// SDK.
+    ///
+    /// This design allows a clear separation of the APDU parsing logic and commands handling.
+    ///
+    /// Note that CLA is not checked here. Instead the method [`Comm::set_expected_cla`] is used in
+    /// [`sample_main`] to have this verification automatically performed by the SDK.
+    fn try_from(value: ApduHeader) -> Result<Self, Self::Error> {
+        match (value.ins, value.p1, value.p2) {
+            (3, 0, 0) => Ok(Instruction::GetVersion),
+            (4, 0, 0) => Ok(Instruction::GetAppName),
+            (2, 0, 0) => Ok(Instruction::GetPrivateKey { display: value.p1 != 0 }),
+            (5, 0 | 1, 0) => Ok(Instruction::GetPubkey { display: value.p1 != 0 }),
+            (6, P1_SIGN_TX_START, P2_SIGN_TX_MORE) | (6, 1..=P1_SIGN_TX_MAX, P2_SIGN_TX_LAST | P2_SIGN_TX_MORE) => {
+                Ok(Instruction::SignTx {
+                    chunk: value.p1,
+                    more: value.p2 == P2_SIGN_TX_MORE,
+                })
+            },
+            (3..=6, _, _) => Err(AppSW::WrongP1P2),
+            (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
 }
 
 #[no_mangle]
 extern "C" fn sample_main() {
-    let mut comm = io::Comm::new();
-    init();
-    let messages = alloc::vec!["MinoTari Wallet", "keep the app open..", "[exit = both buttons]"];
-    let mut index = 0;
-    ui::SingleMessage::new(messages[index]).show();
+    // Create the communication manager, and configure it to accept only APDU from the 0xe0 class.
+    // If any APDU with a wrong class value is received, comm will respond automatically with
+    // BadCla status word.
+    let mut comm = Comm::new().set_expected_cla(0x80);
+
+    // Developer mode / pending review popup
+    // must be cleared with user interaction
+    #[cfg(feature = "pending_review_screen")]
+    display_pending_review(&mut comm);
+
+    let mut tx_ctx = TxContext::new();
+
     loop {
-        let event = comm.next_event::<ApduHeader>();
-        match event {
-            io::Event::Button(ButtonEvent::BothButtonsRelease) => nanos_sdk::exit_app(0),
-            io::Event::Button(ButtonEvent::RightButtonRelease) => {
-                index = min(index + 1, messages.len() - 1);
-                ui::SingleMessage::new(messages[index]).show()
-            },
-            io::Event::Button(ButtonEvent::LeftButtonRelease) => {
-                if index > 0 {
-                    index -= 1;
-                }
-                ui::SingleMessage::new(messages[index]).show()
-            },
-            io::Event::Button(_) => {},
-            io::Event::Command(apdu_header) => match handle_apdu(&mut comm, apdu_header.into()) {
+        // Wait for either a specific button push to exit the app
+        // or an APDU command
+        if let Event::Command(ins) = ui_menu_main(&mut comm) {
+            match handle_apdu(&mut comm, ins, &mut tx_ctx) {
                 Ok(()) => comm.reply_ok(),
-                Err(e) => comm.reply(e),
-            },
-            io::Event::Ticker => {},
+                Err(sw) => comm.reply(sw),
+            }
         }
     }
 }
 
-// Perform ledger instructions
-fn handle_apdu(comm: &mut io::Comm, instruction: Instruction) -> Result<(), Reply> {
-    if comm.rx == 0 {
-        return Err(io::StatusWords::NothingReceived.into());
+fn handle_apdu(comm: &mut Comm, ins: Instruction, ctx: &mut TxContext) -> Result<(), AppSW> {
+    match ins {
+        Instruction::GetAppName => {
+            comm.append(env!("CARGO_PKG_NAME").as_bytes());
+            Ok(())
+        },
+        Instruction::GetPrivateKey { display } => handler_get_private_key(comm, display),
+        Instruction::GetVersion => handler_get_version(comm),
+        Instruction::GetPubkey { display } => handler_get_public_key(comm, display),
+        Instruction::SignTx { chunk, more } => handler_sign_tx(comm, chunk, more, ctx),
     }
-
-    match instruction {
-        Instruction::GetVersion => {
-            ui::SingleMessage::new("GetVersion...").show();
-            let name_bytes = NAME.as_bytes();
-            let version_bytes = VERSION.as_bytes();
-            comm.append(&[1]); // Format
-            comm.append(&[name_bytes.len() as u8]);
-            comm.append(name_bytes);
-            comm.append(&[version_bytes.len() as u8]);
-            comm.append(version_bytes);
-            comm.append(&[0]); // No flags
-            ui::SingleMessage::new("GetVersion... Done").show();
-            comm.reply_ok();
-        },
-        Instruction::GetPrivateKey => {
-            // first 5 bytes are instruction details
-            let offset = 5;
-            let mut address_index_bytes = [0u8; 8];
-            address_index_bytes.clone_from_slice(comm.get(offset, offset + 8));
-            let address_index = crate::u64_to_string(u64::from_le_bytes(address_index_bytes));
-
-            let mut msg = "GetPrivateKey... ".to_string();
-            msg.push_str(&address_index);
-            ui::SingleMessage::new(&msg).show();
-
-            let mut bip32_path = "m/44'/".to_string();
-            bip32_path.push_str(&MINOTARI_LEDGER_ID.to_string());
-            bip32_path.push_str(&"'/");
-            bip32_path.push_str(&MINOTARI_ACCOUNT_ID.to_string());
-            bip32_path.push_str(&"'/0/");
-            bip32_path.push_str(&address_index);
-            let path: [u32; 5] = nanos_sdk::ecc::make_bip32_path(bip32_path.as_bytes());
-
-            let raw_key = get_raw_key(&path)?;
-
-            let k = match RistrettoSecretKey::from_bytes(&raw_key) {
-                Ok(val) => val,
-                Err(_) => {
-                    ui::SingleMessage::new("Err: key conversion").show();
-                    return Err(SyscallError::InvalidParameter.into());
-                },
-            };
-            comm.append(&[1]); // version
-            comm.append(k.as_bytes());
-            comm.reply_ok();
-        },
-        Instruction::BadInstruction(val) => {
-            let mut error = "BadInstruction... ! (".to_string();
-            error.push_str(&crate::byte_to_hex(val));
-            error.push_str(&")");
-            ui::SingleMessage::new(&error).show();
-            return Err(StatusWords::BadIns.into());
-        },
-        Instruction::Exit => {
-            ui::SingleMessage::new("Exit...").show();
-            comm.reply_ok();
-            nanos_sdk::exit_app(0)
-        },
-    }
-    Ok(())
 }

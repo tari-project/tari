@@ -1,13 +1,90 @@
-// Copyright 2022 The Tari Project
+// Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! # MinoTari Ledger Wallet - Utils
+use core::str::from_utf8;
 
-use nanos_sdk::{
+use crate::AppSW;
+
+/// BIP32 path stored as an array of [`u32`].
+///
+/// # Generic arguments
+///
+/// * `S` - Maximum possible path length, i.e. the capacity of the internal buffer.
+pub struct Bip32Path<const S: usize = 10> {
+    buffer: [u32; S],
+    len: usize,
+}
+
+impl AsRef<[u32]> for Bip32Path {
+    fn as_ref(&self) -> &[u32] {
+        &self.buffer[..self.len]
+    }
+}
+
+impl<const S: usize> Default for Bip32Path<S> {
+    fn default() -> Self {
+        Self {
+            buffer: [0u32; S],
+            len: 0,
+        }
+    }
+}
+
+impl<const S: usize> TryFrom<&[u8]> for Bip32Path<S> {
+    type Error = AppSW;
+
+    /// Constructs a [`Bip32Path`] from a given byte array.
+    ///
+    /// This method will return an error in the following cases:
+    /// - the input array is empty,
+    /// - the number of bytes in the input array is not a multiple of 4,
+    /// - the input array exceeds the capacity of the [`Bip32Path`] internal buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Encoded BIP32 path. First byte is the length of the path, as encoded by ragger.
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        let input_path_len = (data.len() - 1) / 4;
+        // Check data length
+        if data.is_empty() // At least the length byte is required
+            || (input_path_len > S)
+            || (data[0] as usize * 4 != data.len() - 1)
+        {
+            return Err(AppSW::WrongApduLength);
+        }
+
+        let mut path = [0; S];
+        for (chunk, p) in data[1..].chunks(4).zip(path.iter_mut()) {
+            *p = u32::from_be_bytes(chunk.try_into().unwrap());
+        }
+
+        Ok(Self {
+            buffer: path,
+            len: input_path_len,
+        })
+    }
+}
+
+/// Returns concatenated strings, or an error if the concatenation buffer is too small.
+pub fn concatenate<'a>(strings: &[&str], output: &'a mut [u8]) -> Result<&'a str, ()> {
+    let mut offset = 0;
+
+    for s in strings {
+        let s_len = s.len();
+        if offset + s_len > output.len() {
+            return Err(());
+        }
+
+        output[offset..offset + s_len].copy_from_slice(s.as_bytes());
+        offset += s_len;
+    }
+
+    Ok(from_utf8(&output[..offset]).unwrap())
+}
+use ledger_device_sdk::{
     ecc::{bip32_derive, CurvesId, CxError, Secret},
     io::SyscallError,
 };
-use nanos_ui::ui;
 use tari_crypto::hash_domain;
 
 use crate::{
@@ -15,7 +92,7 @@ use crate::{
     hashing::DomainSeparatedConsensusHasher,
 };
 
-hash_domain!(LedgerHashDomain, "com.tari.genesis_tools.applications.mp_ldeger", 0);
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
 
 /// Convert a u64 to a string without using the standard library
 pub fn u64_to_string(number: u64) -> String {
@@ -91,7 +168,7 @@ fn cx_error_to_string(e: CxError) -> String {
 //    uniformly distributed random bytes.
 fn get_raw_key_hash(path: &[u32]) -> Result<[u8; 64], String> {
     let mut key = Secret::<96>::new();
-    let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key.as_mut()) {
+    let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key.as_mut(), None) {
         Ok(_) => {
             let binding = &key.as_ref()[..64];
             let raw_key_64: [u8; 64] = match binding.try_into() {
@@ -112,11 +189,11 @@ fn get_raw_key_hash(path: &[u32]) -> Result<[u8; 64], String> {
 pub fn get_raw_key(path: &[u32]) -> Result<[u8; 64], SyscallError> {
     match get_raw_key_hash(&path) {
         Ok(val) => Ok(val),
-        Err(e) => {
+        Err(_e) => {
             let mut msg = "".to_string();
             msg.push_str("Err: raw key >>...");
-            ui::SingleMessage::new(&msg).show_and_wait();
-            ui::SingleMessage::new(&e).show();
+            // ui::SingleMessage::new(&msg).show_and_wait();
+            // ui::SingleMessage::new(&e).show();
             Err(SyscallError::InvalidParameter.into())
         },
     }

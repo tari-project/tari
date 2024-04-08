@@ -1,0 +1,22 @@
+target
+app.json
+app_nanos.json
+app_nanosplus.json
+app_nanox.json
+
+# Temporary directory with snapshots taken during test runs
+tests/snapshots-tmp/
+
+# Python
+*.pyc[cod]
+*.egg
+__pycache__/
+*.egg-info/
+.eggs/
+.python-version
+
+# Related to the Ledger VSCode extension
+# Virtual env for sideload (macOS and Windows)
+ledger/
+# Build directory
+build/
