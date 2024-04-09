@@ -92,7 +92,7 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, PublicKey, Signature},
+    types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
@@ -595,23 +595,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
-                if message.sidechain_id.is_empty() {
+                if message.sidechain_deployment_key.is_empty() {
                     None
                 } else {
                     Some(
-                        PublicKey::from_canonical_bytes(&message.sidechain_id)
+                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                    )
-                },
-                if message.sidechain_id_knowledge_proof.is_none() {
-                    None
-                } else {
-                    Some(
-                        message
-                            .sidechain_id_knowledge_proof
-                            .unwrap()
-                            .try_into()
-                            .map_err(Status::invalid_argument)?,
                     )
                 },
             )
@@ -1064,22 +1053,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
             .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
-        let sidechain_id = if request.sidechain_id.is_empty() {
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
             None
         } else {
             Some(
-                PublicKey::from_canonical_bytes(&request.sidechain_id)
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
                     .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
             )
         };
 
-        let sidechain_id_knowledge_proof = request
-            .sidechain_id_knowledge_proof
-            .map(|v| {
-                v.try_into()
-                    .map_err(|_| Status::invalid_argument("SidechainId knowledge proof is malformed"))
-            })
-            .transpose()?;
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
             Status::internal("failed to fetch consensus constants")
@@ -1091,8 +1073,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_key,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,

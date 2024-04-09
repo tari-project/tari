@@ -96,16 +96,14 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: CommsPublicKey,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -487,8 +485,7 @@ impl TransactionServiceHandle {
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: PublicKey,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -500,8 +497,7 @@ impl TransactionServiceHandle {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -580,8 +576,7 @@ impl TransactionServiceHandle {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
@@ -591,8 +586,7 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 message,
                 claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
             })
             .await??
         {

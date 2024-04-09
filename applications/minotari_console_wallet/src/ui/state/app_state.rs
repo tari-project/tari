@@ -46,7 +46,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{PublicKey, Signature},
+    types::{PrivateKey, PublicKey},
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -62,10 +62,7 @@ use tari_core::transactions::{
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::hex::{from_hex, Hex};
 use tokio::{
     sync::{broadcast, watch, RwLock},
     task,
@@ -402,8 +399,7 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
-        sidechain_id: Option<String>,
-        sidechain_id_knowledge_proof: Option<String>,
+        sidechain_deployment_key: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -431,27 +427,11 @@ impl AppState {
             },
         };
 
-        let sidechain_id_pub = match sidechain_id {
+        let sidechain_deploy_key = match sidechain_deployment_key {
             None => None,
-            Some(sidechain_id) => match PublicKey::from_hex(sidechain_id.as_str()) {
+            Some(sidechain_id) => match PrivateKey::from_hex(sidechain_id.as_str()) {
                 Ok(s) => Some(s),
                 Err(_) => return Err(UiError::PublicKeyParseError),
-            },
-        };
-        let sc_knowledge_proof = match sidechain_id_knowledge_proof {
-            None => None,
-            Some(s) => match Vec::<u8>::from_hex(s.as_str()) {
-                Ok(bytes) => {
-                    if bytes.len() < 64 {
-                        return Err(UiError::SignatureParseError);
-                    }
-                    Some(Signature::new(
-                        PublicKey::from_canonical_bytes(&bytes[0..32]).map_err(|_| UiError::SignatureParseError)?,
-                        RistrettoSecretKey::from_canonical_bytes(&bytes[32..])
-                            .map_err(|_| UiError::SignatureParseError)?,
-                    ))
-                },
-                Err(_) => return Err(UiError::SignatureParseError),
             },
         };
 
@@ -462,8 +442,7 @@ impl AppState {
             selection_criteria,
             message,
             fee_per_gram,
-            sidechain_id_pub,
-            sc_knowledge_proof,
+            sidechain_deploy_key,
             tx_service_handle,
             inner.wallet.db.clone(),
             result_tx,

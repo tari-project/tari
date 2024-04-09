@@ -76,6 +76,7 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::{PublicKey as PKtrait, SecretKey},
+    signatures::SchnorrSignature,
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
@@ -660,8 +661,7 @@ where
                 fee_per_gram,
                 message,
                 claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
             } => self
                 .burn_tari(
                     amount,
@@ -669,8 +669,7 @@ where
                     fee_per_gram,
                     message,
                     claim_public_key,
-                    sidechain_id,
-                    sidechain_id_knowledge_proof,
+                    sidechain_deployment_key,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -683,8 +682,7 @@ where
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -695,8 +693,7 @@ where
                     validator_node_public_key,
                     validator_node_signature,
                     validator_node_claim_public_key,
-                    sidechain_id,
-                    sidechain_id_knowledge_proof,
+                    sidechain_deployment_key,
                     selection_criteria,
                     fee_per_gram,
                     message,
@@ -1539,14 +1536,28 @@ where
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
         trace!(target: LOG_TARGET, "Burning transaction start - TxId: {}", tx_id);
+        if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
+            return Err(TransactionServiceError::InvalidBurnTransaction(
+                "A sidechain deployment key was provided without a claim public key".to_string(),
+            ));
+        }
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(key) => {
+                let sidechain_id = PublicKey::from_secret_key(&key);
+                let sidechain_id_knowledge_proof =
+                    SchnorrSignature::sign(&key, claim_public_key.as_ref().unwrap().to_vec(), &mut OsRng)
+                        .map_err(|e| TransactionServiceError::InvalidBurnTransaction(format!("Error: {:?}", e)))?;
+                (Some(sidechain_id), Some(sidechain_id_knowledge_proof))
+            },
+            None => (None, None),
+        };
         let output_features = claim_public_key
             .as_ref()
             .cloned()
@@ -1762,8 +1773,7 @@ where
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: PublicKey,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -1775,6 +1785,16 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(k) => {
+                let sidechain_id = PublicKey::from_secret_key(&k);
+                let sidechain_id_knowledge_proof =
+                    SchnorrSignature::sign(&k, validator_node_public_key.to_vec(), &mut OsRng)
+                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+                (Some(sidechain_id), Some(sidechain_id_knowledge_proof))
+            },
+            None => (None, None),
+        };
         let output_features = OutputFeatures::for_validator_node_registration(
             validator_node_public_key,
             validator_node_signature,

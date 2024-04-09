@@ -31,7 +31,7 @@ use minotari_wallet::{
 use rand::random;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{FixedHash, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_core::{
     consensus::{MaxSizeBytes, MaxSizeString},
@@ -243,8 +243,7 @@ pub async fn send_burn_transaction_task(
     selection_criteria: UtxoSelectionCriteria,
     message: String,
     fee_per_gram: MicroMinotari,
-    sidechain_id: Option<PublicKey>,
-    sidechain_id_knowledge_proof: Option<Signature>,
+    sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -263,8 +262,7 @@ pub async fn send_burn_transaction_task(
             fee_per_gram,
             message,
             claim_public_key,
-            sidechain_id,
-            sidechain_id_knowledge_proof,
+            sidechain_deployment_key,
         )
         .await
     {
