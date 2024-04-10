@@ -25,7 +25,7 @@ use std::{
     fs,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use tari_common::configuration::Network;
@@ -107,20 +107,23 @@ pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<T
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    create_store_with_consensus_and_validators(rules, validators)
+    let smt = Arc::new(RwLock::new(OutputSmt::new()));
+    create_store_with_consensus_and_validators(rules, validators, smt)
 }
 
 pub fn create_store_with_consensus_and_validators(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
+    smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
-    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
+    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default(), smt)
 }
 
 pub fn create_store_with_consensus_and_validators_and_config(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
+    smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
     let backend = create_test_db();
     BlockchainDatabase::new(
@@ -129,6 +132,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
         validators,
         config,
         DifficultyCalculator::new(rules, Default::default()),
+        smt,
     )
     .unwrap()
 }
@@ -140,7 +144,8 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
         MockValidator::new(true),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories),
     );
-    create_store_with_consensus_and_validators(rules, validators)
+    let smt = Arc::new(RwLock::new(OutputSmt::new()));
+    create_store_with_consensus_and_validators(rules, validators, smt)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let rules = create_consensus_rules();
@@ -279,7 +284,7 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_status_at_header: Option<HashOutput>,
+        spend_status_at_header: Option<&HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         self.db
             .as_ref()
@@ -419,8 +424,8 @@ impl BlockchainBackend for TempDatabase {
             .fetch_template_registrations(start_height, end_height)
     }
 
-    fn fetch_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_tip_smt()
+    fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
+        self.db.as_ref().unwrap().calculate_tip_smt()
     }
 }
 
@@ -483,8 +488,10 @@ pub async fn create_main_chain<T: Into<BlockSpecs>>(
         .try_into_chain_block()
         .map(Arc::new)
         .unwrap();
-    let mut smt = db.fetch_tip_smt().unwrap();
-    let (names, chain) = create_chained_blocks(blocks, genesis_block, &mut smt).await;
+    let (names, chain) = {
+        let mut smt = db.smt_read_access().unwrap().clone();
+        create_chained_blocks(blocks, genesis_block, &mut smt).await
+    };
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
         db.add_block(block.to_arc_block()).unwrap();
@@ -554,7 +561,7 @@ impl TestBlockchain {
             wallet_payment_address,
             range_proof_type: RangeProofType::BulletProofPlus,
         };
-        let smt = blockchain.db.fetch_tip_smt().unwrap();
+        let smt = blockchain.db.smt_read_access().unwrap().clone();
 
         blockchain.chain.push(("GB", genesis, smt));
         blockchain
@@ -591,9 +598,9 @@ impl TestBlockchain {
         Ok(())
     }
 
-    pub async fn with_validators(validators: Validators<TempDatabase>) -> Self {
+    pub async fn with_validators(validators: Validators<TempDatabase>, smt: Arc<RwLock<OutputSmt>>) -> Self {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
+        let db = create_store_with_consensus_and_validators(rules.clone(), validators, smt);
         Self::new(db, rules).await
     }
 
@@ -633,7 +640,7 @@ impl TestBlockchain {
         block: Arc<ChainBlock>,
     ) -> Result<BlockAddResult, ChainStorageError> {
         let result = self.db.add_block(block.to_arc_block())?;
-        let smt = self.db.fetch_tip_smt().unwrap();
+        let smt = self.db.smt().read().unwrap().clone();
         self.chain.push((name, block, smt));
         Ok(result)
     }

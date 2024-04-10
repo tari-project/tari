@@ -19,7 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
+use std::{
+    mem,
+    ops::RangeBounds,
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 use log::*;
 use primitive_types::U256;
@@ -222,10 +227,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
 
-    make_async_fn!(fetch_tip_smt() -> OutputSmt, "fetch_tip_smt");
-
-    make_async_fn!(set_tip_smt(smt: OutputSmt) -> (), "set_tip_smt");
-
     make_async_fn!(insert_valid_headers(headers: Vec<ChainHeader>) -> (), "insert_valid_headers");
 
     //---------------------------------- Block --------------------------------------------//
@@ -393,8 +394,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
-        self.transaction.insert_tip_block_body(block);
+    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>, smt: Arc<RwLock<OutputSmt>>) -> &mut Self {
+        self.transaction.insert_tip_block_body(block, smt);
         self
     }
 

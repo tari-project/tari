@@ -91,7 +91,7 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_status_at_header: Option<HashOutput>,
+        spend_status_at_header: Option<&HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
     /// Fetch a specific output. Returns the output
@@ -181,6 +181,6 @@ pub trait BlockchainBackend: Send + Sync {
         start_height: u64,
         end_height: u64,
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
-    /// Returns the tip utxo smt
-    fn fetch_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
+    /// Calculates the tip utxo smt
+    fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
 }

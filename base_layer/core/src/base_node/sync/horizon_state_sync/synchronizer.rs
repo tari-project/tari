@@ -298,11 +298,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(sync_peer.clone(), client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
+        let cloned_backup_smt = self.db.inner().smt_read_access()?.clone();
         match self.synchronize_outputs(sync_peer, client, to_header).await {
             Ok(_) => Ok(()),
             Err(err) => {
                 // We need to clean up the outputs
                 let _ = self.clean_up_failed_output_sync(to_header).await;
+                let mut smt = self.db.inner().smt_write_access()?;
+                *smt = cloned_backup_smt;
                 Err(err)
             },
         }
@@ -618,7 +621,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut utxo_counter = 0u64;
         let mut stxo_counter = 0u64;
         let timer = Instant::now();
-        let mut output_smt = db.fetch_tip_smt().await?;
+        let mut output_smt = (*db.inner().smt_write_access()?).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
 
@@ -766,8 +769,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 txn.commit().await?;
             }
         }
-        // This has a very low probability of failure
-        db.set_tip_smt(output_smt).await?;
+        let mut writing_lock_output_smt = db.inner().smt_write_access()?;
+        *writing_lock_output_smt = output_smt;
         debug!(
             target: LOG_TARGET,
             "Finished syncing TXOs: {} unspent and {} spent downloaded in {:.2?}",

@@ -321,7 +321,8 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let validator = self.block_validator.clone();
             let res = task::spawn_blocking(move || {
                 let txn = db.db_read_access()?;
-                validator.validate_body(&*txn, &task_block)
+                let smt = db.smt().clone();
+                validator.validate_body(&*txn, &task_block, smt)
             })
             .await?;
 
@@ -367,7 +368,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_tip_block_body(block.clone())
+                .insert_tip_block_body(block.clone(), self.db.inner().smt())
                 .set_best_block(
                     block.height(),
                     header_hash,
