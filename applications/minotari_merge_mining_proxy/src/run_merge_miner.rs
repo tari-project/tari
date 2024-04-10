@@ -34,7 +34,7 @@ use minotari_app_utilities::parse_miner_input::{
 };
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
-use tari_common::{load_configuration, DefaultConfigLoader};
+use tari_common::{configuration::StringList, load_configuration, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
@@ -44,6 +44,7 @@ use crate::{
     block_template_data::BlockTemplateRepository,
     config::MergeMiningProxyConfig,
     error::MmProxyError,
+    monero_fail::get_monerod_info,
     proxy::MergeMiningProxyService,
     Cli,
 };
@@ -55,6 +56,12 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
+    if config.use_dynamic_fail_data {
+        let entries = get_monerod_info(15, Duration::from_secs(5), &config.monero_fail_url).await?;
+        if !entries.is_empty() {
+            config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+        }
+    }
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
