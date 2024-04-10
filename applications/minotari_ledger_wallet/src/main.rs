@@ -7,31 +7,21 @@
 
 extern crate alloc;
 
-mod hashing;
 mod utils;
 
 mod app_ui {
-    pub mod address;
     pub mod menu;
-    pub mod sign;
 }
 mod handlers {
     pub mod get_private_key;
-    pub mod get_public_key;
     pub mod get_version;
-    pub mod sign_tx;
 }
 
 use core::mem::MaybeUninit;
 
 use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
-use handlers::{
-    get_private_key::handler_get_private_key,
-    get_public_key::handler_get_public_key,
-    get_version::handler_get_version,
-    sign_tx::{handler_sign_tx, TxContext},
-};
+use handlers::{get_private_key::handler_get_private_key, get_version::handler_get_version};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use ledger_device_sdk::{
@@ -76,15 +66,6 @@ unsafe impl critical_section::Impl for MyCriticalSection {
     }
 }
 
-// P2 for last APDU to receive.
-const P2_SIGN_TX_LAST: u8 = 0x00;
-// P2 for more APDU to receive.
-const P2_SIGN_TX_MORE: u8 = 0x80;
-// P1 for first APDU number.
-const P1_SIGN_TX_START: u8 = 0x00;
-// P1 for maximum APDU number.
-const P1_SIGN_TX_MAX: u8 = 0x03;
-
 // Application status words.
 #[repr(u16)]
 pub enum AppSW {
@@ -113,9 +94,7 @@ impl From<AppSW> for Reply {
 pub enum Instruction {
     GetVersion,
     GetAppName,
-    GetPrivateKey { display: bool },
-    GetPubkey { display: bool },
-    SignTx { chunk: u8, more: bool },
+    GetPrivateKey,
 }
 
 impl TryFrom<ApduHeader> for Instruction {
@@ -134,16 +113,9 @@ impl TryFrom<ApduHeader> for Instruction {
     /// [`sample_main`] to have this verification automatically performed by the SDK.
     fn try_from(value: ApduHeader) -> Result<Self, Self::Error> {
         match (value.ins, value.p1, value.p2) {
-            (3, 0, 0) => Ok(Instruction::GetVersion),
-            (4, 0, 0) => Ok(Instruction::GetAppName),
-            (2, 0, 0) => Ok(Instruction::GetPrivateKey { display: value.p1 != 0 }),
-            (5, 0 | 1, 0) => Ok(Instruction::GetPubkey { display: value.p1 != 0 }),
-            (6, P1_SIGN_TX_START, P2_SIGN_TX_MORE) | (6, 1..=P1_SIGN_TX_MAX, P2_SIGN_TX_LAST | P2_SIGN_TX_MORE) => {
-                Ok(Instruction::SignTx {
-                    chunk: value.p1,
-                    more: value.p2 == P2_SIGN_TX_MORE,
-                })
-            },
+            (1, 0, 0) => Ok(Instruction::GetVersion),
+            (2, 0, 0) => Ok(Instruction::GetAppName),
+            (3, 0, 0) => Ok(Instruction::GetPrivateKey),
             (3..=6, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -152,6 +124,7 @@ impl TryFrom<ApduHeader> for Instruction {
 
 #[no_mangle]
 extern "C" fn sample_main() {
+    init();
     // Create the communication manager, and configure it to accept only APDU from the 0xe0 class.
     // If any APDU with a wrong class value is received, comm will respond automatically with
     // BadCla status word.
@@ -162,13 +135,11 @@ extern "C" fn sample_main() {
     #[cfg(feature = "pending_review_screen")]
     display_pending_review(&mut comm);
 
-    let mut tx_ctx = TxContext::new();
-
     loop {
         // Wait for either a specific button push to exit the app
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins, &mut tx_ctx) {
+            match handle_apdu(&mut comm, ins) {
                 Ok(()) => comm.reply_ok(),
                 Err(sw) => comm.reply(sw),
             }
@@ -176,15 +147,13 @@ extern "C" fn sample_main() {
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction, ctx: &mut TxContext) -> Result<(), AppSW> {
+fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<(), AppSW> {
     match ins {
         Instruction::GetAppName => {
             comm.append(env!("CARGO_PKG_NAME").as_bytes());
             Ok(())
         },
-        Instruction::GetPrivateKey { display } => handler_get_private_key(comm, display),
+        Instruction::GetPrivateKey => handler_get_private_key(comm),
         Instruction::GetVersion => handler_get_version(comm),
-        Instruction::GetPubkey { display } => handler_get_public_key(comm, display),
-        Instruction::SignTx { chunk, more } => handler_sign_tx(comm, chunk, more, ctx),
     }
 }

@@ -1,16 +1,13 @@
 {
   "apiLevel": "5",
   "binary": "target/nanosplus/release/app.hex",
-  "dataSize": 7680,
+  "dataSize": 6144,
   "derivationPath": {
     "curves": [
-      "secp256k1",
       "ed25519"
     ],
     "paths": [
-      "44'/1022'",
-      "m/5261654",
-      "m/44"
+      "44'/535348'"
     ]
   },
   "flags": "0",

@@ -1,7 +1,19 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use core::str::from_utf8;
+use blake2::{Blake2b, Digest};
+use digest::consts::U64;
+use ledger_device_sdk::{
+    ecc::{bip32_derive, CurvesId, CxError},
+    io::SyscallError,
+    ui::gadgets::SingleMessage,
+};
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use zeroize::Zeroizing;
+
+use crate::alloc::string::{String, ToString};
+
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
 
 use crate::AppSW;
 
@@ -65,35 +77,6 @@ impl<const S: usize> TryFrom<&[u8]> for Bip32Path<S> {
     }
 }
 
-/// Returns concatenated strings, or an error if the concatenation buffer is too small.
-pub fn concatenate<'a>(strings: &[&str], output: &'a mut [u8]) -> Result<&'a str, ()> {
-    let mut offset = 0;
-
-    for s in strings {
-        let s_len = s.len();
-        if offset + s_len > output.len() {
-            return Err(());
-        }
-
-        output[offset..offset + s_len].copy_from_slice(s.as_bytes());
-        offset += s_len;
-    }
-
-    Ok(from_utf8(&output[..offset]).unwrap())
-}
-use ledger_device_sdk::{
-    ecc::{bip32_derive, CurvesId, CxError, Secret},
-    io::SyscallError,
-};
-use tari_crypto::hash_domain;
-
-use crate::{
-    alloc::string::{String, ToString},
-    hashing::DomainSeparatedConsensusHasher,
-};
-
-hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
-
 /// Convert a u64 to a string without using the standard library
 pub fn u64_to_string(number: u64) -> String {
     let mut buffer = [0u8; 20]; // Maximum length for a 64-bit integer (including null terminator)
@@ -122,13 +105,6 @@ pub fn u64_to_string(number: u64) -> String {
     }
 
     String::from_utf8_lossy(&buffer[..pos]).to_string()
-}
-
-/// Convert a single byte to a hex string
-pub fn byte_to_hex(byte: u8) -> String {
-    const HEX_CHARS: [u8; 16] = *b"0123456789abcdef";
-    let hex = [HEX_CHARS[(byte >> 4) as usize], HEX_CHARS[(byte & 0x0F) as usize]];
-    String::from_utf8_lossy(&hex).to_string()
 }
 
 // Convert CxError to a string for display
@@ -166,34 +142,37 @@ fn cx_error_to_string(e: CxError) -> String {
 //     d8a57c1be0c52e9643485e77aac56d72fa6c4eb831466c2abd2d320c82d3d14929811c598c13d431bad433e037dbd97265492cea42bc2e3aad15440210a20a2d0000000000000000000000000000000000000000000000000000000000000000
 //  - This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 32
 //    uniformly distributed random bytes.
-fn get_raw_key_hash(path: &[u32]) -> Result<[u8; 64], String> {
-    let mut key = Secret::<96>::new();
-    let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key.as_mut(), None) {
+fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
+    let mut key_buffer = Zeroizing::new([0u8; 96]);
+    const BIP32_KEY_LENGTH: usize = 64;
+    let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key_buffer.as_mut(), Some(&mut [])) {
         Ok(_) => {
-            let binding = &key.as_ref()[..64];
-            let raw_key_64: [u8; 64] = match binding.try_into() {
-                Ok(v) => v,
-                Err(_) => return Err("Err: get_raw_key".to_string()),
-            };
-            raw_key_64
+            let binding = &key_buffer.as_ref()[..BIP32_KEY_LENGTH];
+            let mut key_bytes = Zeroizing::new([0u8; BIP32_KEY_LENGTH]);
+            // `copy_from_slice` will not panic as the length of the slice is equal to the length of the array
+            key_bytes.as_mut().copy_from_slice(binding);
+            key_bytes
         },
         Err(e) => return Err(cx_error_to_string(e)),
     };
 
-    Ok(DomainSeparatedConsensusHasher::<LedgerHashDomain>::new("raw_key")
-        .chain(&raw_key_64)
-        .finalize())
+    let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
+    DomainSeparatedHasher::<Blake2b<U64>, LedgerHashDomain>::new_with_label("raw_key")
+        .chain(&raw_key_64.as_ref())
+        .finalize_into(raw_key_hashed.as_mut().into());
+
+    Ok(raw_key_hashed)
 }
 
 /// Get a raw 32 byte key hash from the BIP32 path. In cas of an error, display an interactive message on the device.
-pub fn get_raw_key(path: &[u32]) -> Result<[u8; 64], SyscallError> {
+pub fn get_raw_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, SyscallError> {
     match get_raw_key_hash(&path) {
         Ok(val) => Ok(val),
-        Err(_e) => {
+        Err(e) => {
             let mut msg = "".to_string();
             msg.push_str("Err: raw key >>...");
-            // ui::SingleMessage::new(&msg).show_and_wait();
-            // ui::SingleMessage::new(&e).show();
+            SingleMessage::new(&msg).show_and_wait();
+            SingleMessage::new(&e).show_and_wait();
             Err(SyscallError::InvalidParameter.into())
         },
     }

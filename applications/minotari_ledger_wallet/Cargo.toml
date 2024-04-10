@@ -11,13 +11,10 @@ borsh = { version = "0.10", default-features = false }
 critical-section = { version = "1.1.1" }
 digest = { version = "0.10", default-features = false }
 embedded-alloc = "0.5.0"
-hex = { version = "0.4.3", default-features = false, features = ["serde"] }
 include_gif = "1.0.1"
 ledger_device_sdk = "1.7.1"
-numtoa = "0.2.4"
-serde = { version="1.0.192", default_features = false, features = ["derive"] }
-serde-json-core = { git = "https://github.com/rust-embedded-community/serde-json-core"}
 tari_crypto = { version = "0.20.0", default-features = false }
+zeroize = { version = "1" , default-features = false }
 
 # once_cell defined here just to lock the version. Other dependencies may try to go to 1.19 which is incompatabile with
 # ledger at this time. 1.19 removes "atomic-polyfill" and replaces it with "portable-atomic" which can not build due to
@@ -25,17 +22,18 @@ tari_crypto = { version = "0.20.0", default-features = false }
 once_cell = { version = "=1.18.0", default-features = false }
 
 [profile.release]
-opt-level = 'z'
-lto = true
+opt-level = 's'
+lto = "fat" # same as `true`
+panic = "abort"
 
 [features]
 default = ["pending_review_screen"]
 pending_review_screen = []
 
 [package.metadata.ledger]
-curve = ["secp256k1", "ed25519"]
+curve = ["ed25519"]
 flags = "0"
-path = ["44'/1022'", "m/5261654", "m/44"]
+path = ["44'/535348'"]
 name = "MinoTari Wallet"
 
 [package.metadata.ledger.nanos]
