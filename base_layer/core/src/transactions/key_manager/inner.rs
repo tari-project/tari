@@ -439,10 +439,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // -----------------------------------------------------------------------------------------------------------------
 
     pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
-        let k = self.get_private_key(script_key_id).await.map_err(|e| e.into());
-        match self.wallet_type {
-            WalletType::Software => k,
-            WalletType::Ledger(account) => {
+        match (self.wallet_type, script_key_id) {
+            (WalletType::Software, _) | (WalletType::Ledger(_), TariKeyId::Imported { .. } | TariKeyId::Zero) => {
+                self.get_private_key(script_key_id).await.map_err(|e| e.into())
+            },
+            (WalletType::Ledger(account), TariKeyId::Managed { branch: _, index }) => {
                 #[cfg(not(feature = "ledger"))]
                 return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
 
@@ -452,7 +453,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         .map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
 
                     let mut data = (account as u64).to_le_bytes().to_vec();
-                    data.extend_from_slice(k?.as_bytes()); // Static index. Fix this.
+                    data.extend_from_slice(&index.to_le_bytes()); // Static index. Fix this.
                     let command = APDUCommand {
                         cla: 0x80,
                         ins: 0x03,
