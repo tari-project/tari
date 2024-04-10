@@ -19,8 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[cfg(feature = "ledger")]
-use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
@@ -28,10 +26,8 @@ use digest::consts::U64;
 #[cfg(feature = "ledger")]
 use ledger_transport::APDUCommand;
 #[cfg(feature = "ledger")]
-use ledger_transport_hid::TransportNativeHID;
+use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
-#[cfg(feature = "ledger")]
-use once_cell::sync::Lazy;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
 use tari_common_types::{
@@ -107,9 +103,6 @@ pub struct TransactionKeyManagerInner<TBackend> {
     crypto_factories: CryptoFactories,
     wallet_type: WalletType,
 }
-
-#[cfg(feature = "ledger")]
-pub static TRANSPORT: Lazy<Arc<Mutex<Option<TransportNativeHID>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
@@ -446,24 +439,28 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // -----------------------------------------------------------------------------------------------------------------
 
     pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
+        let k = self.get_private_key(script_key_id).await.map_err(|e| e.into());
         match self.wallet_type {
-            WalletType::Software => self.get_private_key(script_key_id).await.map_err(|e| e.into()),
-            WalletType::Ledger(_account) => {
+            WalletType::Software => k,
+            WalletType::Ledger(account) => {
                 #[cfg(not(feature = "ledger"))]
                 return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
 
                 #[cfg(feature = "ledger")]
                 {
-                    let data = script_key_id.managed_index().expect("and index").to_le_bytes().to_vec();
+                    let transport = TransportNativeHID::new(&HidApi::new().expect("Ledger not attached"))
+                        .map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
+
+                    let mut data = (account as u64).to_le_bytes().to_vec();
+                    data.extend_from_slice(k?.as_bytes()); // Static index. Fix this.
                     let command = APDUCommand {
                         cla: 0x80,
-                        ins: 0x02, // GetPrivateKey - see `./applications/mp_ledger/src/main.rs/Instruction`
+                        ins: 0x03,
                         p1: 0x00,
                         p2: 0x00,
                         data,
                     };
-                    let binding = TRANSPORT.lock().expect("lock exists");
-                    let transport = binding.as_ref().expect("transport exists");
+
                     match transport.exchange(&command) {
                         Ok(result) => {
                             if result.data().len() < 33 {
