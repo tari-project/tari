@@ -205,7 +205,7 @@ pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_
             error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
-        }
+        },
     }
 }
 

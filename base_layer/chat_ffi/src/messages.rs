@@ -25,9 +25,7 @@ use std::{convert::TryFrom, ptr};
 use libc::{c_int, c_uint};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
-use tari_contacts::contacts_service::{
-    types::Message,
-};
+use tari_contacts::contacts_service::types::Message;
 
 use crate::{
     error::{InterfaceError, LibChatError},
