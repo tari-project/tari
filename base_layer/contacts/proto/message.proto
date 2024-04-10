@@ -18,12 +18,8 @@ enum DirectionEnum {
 }
 
 message MessageMetadata {
-  MessageTypeEnum metadata_type = 1;
+  bytes key = 1;
   bytes data = 2;
-}
-
-enum MessageTypeEnum {
-  TokenRequest = 0;
 }
 
 message Confirmation {

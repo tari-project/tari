@@ -675,9 +675,7 @@ struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_
  *
  * ## Arguments
  * `message` - A pointer to a message
- * `metadata_type` - An c_uchar that maps to MessageMetadataType enum
- *     '0' -> Reply
- *     '1' -> TokenRequest
+ * `key` - A pointer to a byte vector containing bytes for the key field
  * `data` - A pointer to a byte vector containing bytes for the data field
  * `error_out` - Pointer to an int which will be modified
  *
@@ -688,7 +686,7 @@ struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_
  * `message` should be destroyed eventually
  */
 void add_chat_message_metadata(struct Message *message,
-                               unsigned char metadata_type,
+                               struct ChatByteVector *key,
                                struct ChatByteVector *data,
                                int *error_out);
 
@@ -700,16 +698,13 @@ void add_chat_message_metadata(struct Message *message,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_uchar` - An uint8 that maps to MessageMetadataType enum. May return 0 if something goes wrong
- *     '0' -> Reply
- *     '1' -> TokenRequest
- *     '2' -> Gif
- *     '3' -> Link
+ * `*mut ChatByteVector` - A ptr to a ChatByteVector
  *
  * ## Safety
  * `msg_metadata` should be destroyed eventually
+ * the returned `ChatByteVector` should be destroyed eventually
  */
-unsigned char read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
+struct ChatByteVector *read_chat_metadata_key(struct MessageMetadata *msg_metadata, int *error_out);
 
 /**
  * Returns a ptr to a ByteVector
