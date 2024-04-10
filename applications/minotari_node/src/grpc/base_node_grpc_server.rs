@@ -221,7 +221,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
-  self.check_method_enabled(GrpcMethod::GetNetworkDifficulty)?;
+        self.check_method_enabled(GrpcMethod::GetNetworkDifficulty)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -337,9 +337,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetMempoolTransactionsRequest>,
     ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetMempoolTransactions) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetMempoolTransactions)?;
         let report_error_flag = self.report_error_flag();
         let _request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
@@ -400,9 +398,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::ListHeaders) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::ListHeaders)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -573,9 +569,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
     ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlockTemplate) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNewBlockTemplate)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
@@ -637,9 +631,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlock) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNewBlock)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
@@ -1181,9 +1173,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlockBlob) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNewBlockBlob)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
@@ -1266,9 +1256,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::Block>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitBlock) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SubmitBlock)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let block = Block::try_from(request).map_err(|e| {
@@ -1302,9 +1290,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockBlobRequest>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitBlockBlob) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SubmitBlockBlob)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
         let request = request.into_inner();
@@ -1345,9 +1331,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SubmitTransactionRequest>,
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitTransaction) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SubmitTransaction)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let txn: Transaction = request
@@ -1399,9 +1383,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::TransactionStateRequest>,
     ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::TransactionState) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::TransactionState)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let excess_sig: Signature = request
@@ -1488,9 +1470,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
     ) -> Result<Response<Self::GetPeersStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetPeers) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetPeers)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
 
@@ -1523,9 +1503,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlocks) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlocks)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -1594,9 +1572,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTipInfo) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetTipInfo)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
@@ -1624,9 +1600,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchKernelsRequest>,
     ) -> Result<Response<Self::SearchKernelsStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SearchKernels) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SearchKernels)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
@@ -1682,9 +1656,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchUtxosRequest>,
     ) -> Result<Response<Self::SearchUtxosStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SearchUtxos) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SearchUtxos)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
         let request = request.into_inner();
@@ -1740,9 +1712,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,
     ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::FetchMatchingUtxos) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::FetchMatchingUtxos)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
@@ -1811,9 +1781,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockTiming) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlockTiming)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -1863,9 +1831,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockHeight>,
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetConstants) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetConstants)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
@@ -1891,9 +1857,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockSize) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlockSize)?;
         let report_error_flag = self.report_error_flag();
         get_block_group(
             self.node_service.clone(),
@@ -1908,9 +1872,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockFees) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlockFees)?;
         let report_error_flag = self.report_error_flag();
         get_block_group(
             self.node_service.clone(),
@@ -1922,9 +1884,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetVersion) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetVersion)?;
         Ok(Response::new(consts::APP_VERSION.to_string().into()))
     }
 
@@ -1932,9 +1892,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::CheckForUpdates) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::CheckForUpdates)?;
         let mut resp = tari_rpc::SoftwareUpdate::default();
 
         if let Some(ref update) = *self.software_updater.update_notifier().borrow() {
@@ -1951,9 +1909,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTokensInCirculation) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetTokensInCirculation)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
@@ -2011,9 +1967,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncProgressResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSyncProgress) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetSyncProgress)?;
         let state = self
             .state_machine_handle
             .get_status_info_watch()
@@ -2058,9 +2012,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSyncInfo) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetSyncInfo)?;
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
         let response = self
             .state_machine_handle
@@ -2088,9 +2040,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
     ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetHeaderByHash) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetHeaderByHash)?;
         let report_error_flag = self.report_error_flag();
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
         let mut node_service = self.node_service.clone();
@@ -2130,9 +2080,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::Identify) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::Identify)?;
         let identity = self.comms.node_identity_ref();
         Ok(Response::new(tari_rpc::NodeIdentity {
             public_key: identity.public_key().to_vec(),
@@ -2145,9 +2093,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNetworkStatus) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNetworkStatus)?;
         let report_error_flag = self.report_error_flag();
         let status = self
             .comms
@@ -2183,9 +2129,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::ListConnectedPeers) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::ListConnectedPeers)?;
         let report_error_flag = self.report_error_flag();
         let mut connectivity = self.comms.connectivity();
         let peer_manager = self.comms.peer_manager();
@@ -2221,9 +2165,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetMempoolStats) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetMempoolStats)?;
         let report_error_flag = self.report_error_flag();
         let mut mempool_handle = self.mempool_service.clone();
 
@@ -2245,9 +2187,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetShardKeyRequest>,
     ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetShardKey) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetShardKey)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
@@ -2275,9 +2215,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetActiveValidatorNodesRequest>,
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetActiveValidatorNodes) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetActiveValidatorNodes)?;
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
 
@@ -2319,9 +2257,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
     ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTemplateRegistrations) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetTemplateRegistrations)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
@@ -2403,9 +2339,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetSideChainUtxosRequest>,
     ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSideChainUtxos) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetSideChainUtxos)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
