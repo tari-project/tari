@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, ffi::CStr, ptr};
 
-use libc::{c_char, c_int, c_longlong, c_uint, c_ulonglong};
+use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::types::{Message, MessageBuilder, MessageMetadata};
@@ -183,25 +183,30 @@ pub unsafe extern "C" fn chat_metadata_get_at(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_longlong` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+/// `c_uint` - The length of the metadata vector for a Message. May return 0 if something goes wrong
 ///
 /// ## Safety
 /// `message` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_longlong {
+pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if message.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
 
     let message = &(*message);
-    #[allow(clippy::cast_possible_wrap)]
-    let res = message.metadata.len() as i64;
-    res
+    match c_uint::try_from(message.metadata.len()) {
+        Ok(l) => l,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }
 
 /// Returns a pointer to a ChatByteVector representing the data of the Message
@@ -268,31 +273,38 @@ pub unsafe extern "C" fn read_chat_message_address(message: *mut Message, error_
     Box::into_raw(Box::new(address))
 }
 
-/// Returns a c_int representation of the Direction enum
+/// Returns a c_uchar representation of the Direction enum
 ///
 /// ## Arguments
 /// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_int` - A c_int rep of the direction enum. May return -1 if anything goes wrong
+/// `c_uchar` - A c_uchar rep of the direction enum. May return 0 if anything goes wrong
 ///     0 => Inbound
 ///     1 => Outbound
 ///
 /// ## Safety
 /// `message` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, error_out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, error_out: *mut c_int) -> c_uchar {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if message.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
 
-    c_int::from((*message).direction.as_byte())
+    match c_uchar::try_from((*message).direction.as_byte()) {
+        Ok(d) => d,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }
 
 /// Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch

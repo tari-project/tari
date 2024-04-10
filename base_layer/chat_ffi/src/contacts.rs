@@ -22,7 +22,7 @@
 
 use std::ptr;
 
-use libc::c_int;
+use libc::{c_int, c_uchar};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn add_chat_contact(client: *mut ChatClient, address: *mut
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `status` - Returns an int representing of the online status
+/// `status` - Returns an c_uchar representing of the online status
 ///            Online = 1,
 ///            Offline = 2,
 ///            NeverSeen = 3,
@@ -87,7 +87,7 @@ pub unsafe extern "C" fn check_online_status(
     client: *mut ChatClient,
     receiver: *mut TariAddress,
     error_out: *mut c_int,
-) -> c_int {
+) -> c_uchar {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn check_online_status(
     let result = (*client).runtime.block_on((*client).client.check_online_status(&rec));
 
     match result {
-        Ok(status) => status.as_u8().into(),
+        Ok(status) => status.as_u8(),
         Err(e) => {
             error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
