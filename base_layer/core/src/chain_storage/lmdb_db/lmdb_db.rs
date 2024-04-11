@@ -911,7 +911,7 @@ impl LMDBDatabase {
         let mut output_smt = smt.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the smt failed. {:?}", e
+                "delete_tip_block_body could not get a write lock on the smt. {:?}", e
             );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
@@ -1176,7 +1176,7 @@ impl LMDBDatabase {
         let mut output_smt = smt.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the smt failed. {:?}", e
+                "insert_tip_block_body could not get a write lock on the smt. {:?}", e
             );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
@@ -2525,8 +2525,14 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
+        let start = Instant::now();
         let metadata = self.fetch_chain_metadata()?;
         let mut smt = OutputSmt::new();
+        trace!(
+            target: LOG_TARGET,
+            "Calculating new smt at height: #{}",
+            metadata.pruned_height(),
+        );
         for height in 0..=metadata.best_block_height() {
             let header = self.fetch_chain_header_by_height(height)?;
             let outputs =
@@ -2546,6 +2552,12 @@ impl BlockchainBackend for LMDBDatabase {
                 }
             }
         }
+        trace!(
+            target: LOG_TARGET,
+            "Finished calculating new smt (size: {}), took: #{}s",
+            smt.size,
+            start.elapsed().as_millis()
+        );
         Ok(smt)
     }
 }

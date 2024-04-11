@@ -89,7 +89,7 @@ impl BlockBodyFullValidator {
         let mut output_smt = smt.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the smt failed. {:?}", e
+                "Validator could not get a write lock on the smt {:?}", e
             );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;

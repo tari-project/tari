@@ -1332,6 +1332,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     db: &T,
     rules: &ConsensusManager,
     block: &Block,
+    // we dont want to clone the SMT, so we rather change it and change it back after we are done.
     output_smt: &mut OutputSmt,
 ) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
@@ -1421,7 +1422,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
     };
-    // lets rewind the smt back to tip again
+    // We have made changes to the SMT that we dont want, sp lets rewind the SMT back to tip again as we want to have
+    // the SMT at tip.
     for output in outputs_to_add {
         if output_smt.insert(output.0.clone(), output.1).is_err() {
             error!(
@@ -2013,7 +2015,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             let mut write_smt = smt.write().map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "An attempt to get a write lock on the smt failed. {:?}", e
+                    "reorganize_chain could not get a write lock on the smt. {:?}", e
                 );
                 ChainStorageError::AccessError("write lock on smt".into())
             })?;
