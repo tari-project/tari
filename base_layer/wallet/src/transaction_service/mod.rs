@@ -29,7 +29,7 @@ use tari_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         transaction_protocol::proto::protocol as proto,
         CryptoFactories,
     },
@@ -195,7 +195,7 @@ impl<T, W, TKeyManagerInterface> ServiceInitializer for TransactionServiceInitia
 where
     T: TransactionBackend + 'static,
     W: WalletBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();

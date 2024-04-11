@@ -58,7 +58,7 @@ impl CodeTemplateRegistration {
     pub fn create_challenge_from_components(
         author_public_key: &PublicKey,
         public_nonce: &PublicKey,
-        binary_sha: &MaxSizeBytes<32>,
+        binary_sha: &[u8; 32],
         sidechain_id: Option<&PublicKey>,
     ) -> [u8; 64] {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")

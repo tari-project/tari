@@ -22,7 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
-use tari_crypto::errors::RangeProofError;
+use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use tari_utilities::{hex::HexError, ByteArrayError};
 
 use crate::error::KeyManagerError as KMError;
@@ -47,6 +47,8 @@ pub enum KeyManagerServiceError {
     RangeProofError(String),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
+    #[error("Schnorr signature error: `{0}`")]
+    SchnorrSignatureError(String),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

@@ -195,6 +195,8 @@ pub enum TransactionServiceError {
     SidechainSigningError(String),
     #[error("Invalid data for a burn transaction: `{0}`")]
     InvalidBurnTransaction(String),
+    #[error("Invalid data for field {field}")]
+    InvalidDataError { field: String },
 }
 
 impl From<RangeProofError> for TransactionServiceError {

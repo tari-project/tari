@@ -22,7 +22,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -42,7 +42,7 @@ use tari_common_types::{
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, MaxSizeBytes, MaxSizeString},
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{
@@ -53,10 +53,11 @@ use tari_core::{
     },
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             BuildInfo,
+            CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
             TemplateType,
@@ -76,6 +77,7 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::{PublicKey as PKtrait, SecretKey},
+    ristretto::RistrettoPublicKey,
     signatures::SchnorrSignature,
     tari_utilities::ByteArray,
 };
@@ -220,7 +222,7 @@ where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -1819,38 +1821,91 @@ where
 
     pub async fn register_code_template(
         &mut self,
-        _fee_per_gram: MicroMinotari,
-        _template_name: String,
-        _template_version: u16,
-        _template_type: TemplateType,
-        _build_info: BuildInfo,
-        _binary_sha: FixedHash,
-        _binary_url: String,
-        _sidechain_deployment_key: Option<PrivateKey>,
-        _selection_criteria: UtxoSelectionCriteria,
-        _message: String,
-        _join_handles: &mut FuturesUnordered<
+        fee_per_gram: MicroMinotari,
+        template_name: String,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: FixedHash,
+        binary_url: String,
+        sidechain_deployment_key: Option<PrivateKey>,
+        selection_criteria: UtxoSelectionCriteria,
+        message: String,
+        join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
-        _transaction_broadcast_join_handles: &mut FuturesUnordered<
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        _reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        todo!()
-        // self.send_transaction(
-        //     self.resources.wallet_identity.address.clone(),
-        //     0.into(),
-        //     selection_criteria,
-        //     OutputFeatures::for_template_registration(template_registration),
-        //     fee_per_gram,
-        //     message,
-        //     TransactionMetadata::default(),
-        //     join_handles,
-        //     transaction_broadcast_join_handles,
-        //     reply_channel,
-        // )
-        // .await
+        const AUTHOR_PUB_KEY_PATH: &str = "author_pub_key";
+        let (author_pub_id, author_pub_key) = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_key(AUTHOR_PUB_KEY_PATH)
+            .await?;
+        let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(k) => (
+                Some(PublicKey::from_secret_key(&k)),
+                Some(
+                    SchnorrSignature::sign(&k, author_pub_key.to_vec(), &mut OsRng)
+                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?,
+                ),
+            ),
+            None => (None, None),
+        };
+
+        let challenge = CodeTemplateRegistration::create_challenge_from_components(
+            &author_pub_key,
+            &nonce_pub,
+            &binary_sha,
+            sidechain_id.as_ref(),
+        );
+        let author_sig = self
+            .resources
+            .transaction_key_manager_service
+            .sign_raw(&challenge, &author_pub_id, nonce_secret)
+            .await
+            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+
+        let template_registration = CodeTemplateRegistration {
+            author_public_key: author_pub_key.clone(),
+            author_signature: author_sig,
+            template_name: template_name
+                .try_into()
+                .map_err(|_| TransactionServiceError::InvalidDataError {
+                    field: "template_name".to_string(),
+                })?,
+            template_version,
+            template_type,
+            build_info,
+            binary_sha: MaxSizeBytes::try_from(binary_sha.as_slice().to_vec()).map_err(|_| {
+                TransactionServiceError::InvalidDataError {
+                    field: "binary_sha".to_string(),
+                }
+            })?,
+            binary_url: MaxSizeString::try_from(binary_url).map_err(|_| TransactionServiceError::InvalidDataError {
+                field: "binary_url".to_string(),
+            })?,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
+        };
+        let output_features = OutputFeatures::for_template_registration(template_registration);
+        self.send_transaction(
+            self.resources.wallet_identity.address.clone(),
+            0.into(),
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            message,
+            TransactionMetadata::default(),
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await
     }
 
     /// Sends a one side payment transaction to a recipient

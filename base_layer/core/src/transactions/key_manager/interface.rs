@@ -25,8 +25,12 @@ use digest::consts::U64;
 use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
-use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
+use tari_crypto::{
+    hashing::DomainSeparatedHash,
+    ristretto::{RistrettoComSig, RistrettoSchnorr},
+};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
+use tari_utilities::ByteArrayError;
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
@@ -237,4 +241,16 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
     /// Gets the pedersen commitment for the specified index
     async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+
+    async fn sign_raw(
+        &self,
+        msg: &[u8],
+        key_index: &TariKeyId,
+        nonce_secret: PrivateKey,
+    ) -> Result<RistrettoSchnorr, KeyManagerServiceError> {
+        let secret = self.get_private_key(key_index).await?;
+        let sig = RistrettoSchnorr::sign_raw_canonical(&secret, nonce_secret, msg)
+            .map_err(|e| KeyManagerServiceError::SchnorrSignatureError(e.to_string()))?;
+        Ok(sig)
+    }
 }
