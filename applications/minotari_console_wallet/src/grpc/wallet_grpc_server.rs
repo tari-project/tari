@@ -947,6 +947,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let fee_per_gram = message.fee_per_gram.into();
 
+        dbg!("In template reg grpc call");
         let (tx_id, template_address) = transaction_service
             .register_code_template(
                 message.template_name.clone(),
@@ -982,7 +983,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             )
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| {
+                dbg!(&e);
+
+                Status::internal(e.to_string())
+            })?;
 
         // let message = format!("Template registration {}", message.template_name);
         // let template_registration = CodeTemplateRegistration {
