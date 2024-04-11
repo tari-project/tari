@@ -917,7 +917,7 @@ where B: BlockchainBackend
         let mmr_roots = match calculate_mmr_roots(&*db, self.rules(), &block, &mut smt) {
             Ok(v) => v,
             Err(e) => {
-                // some error happend, lets rewind the smt
+                // some error happend, lets reset the smt to its starting state
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
