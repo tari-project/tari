@@ -1843,6 +1843,7 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(TxId, HashOutput), TransactionServiceError> {
+        dbg!("in service 1");
         const AUTHOR_PUB_KEY_PATH: &str = "author_pub_key";
         let (author_pub_id, author_pub_key) = self
             .resources
@@ -1861,6 +1862,7 @@ where
             None => (None, None),
         };
 
+        dbg!("in service 2");
         let challenge = CodeTemplateRegistration::create_challenge_from_components(
             &author_pub_key,
             &nonce_pub,
@@ -1874,6 +1876,7 @@ where
             .await
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 
+        dbg!("in service 3");
         let template_registration = CodeTemplateRegistration {
             author_public_key: author_pub_key.clone(),
             author_signature: author_sig,
@@ -1896,6 +1899,7 @@ where
             sidechain_id,
             sidechain_id_knowledge_proof,
         };
+        dbg!("in service 4");
         let output_features = OutputFeatures::for_template_registration(template_registration);
         let (tx_id, main_output_hash) = self
             .send_transaction(
