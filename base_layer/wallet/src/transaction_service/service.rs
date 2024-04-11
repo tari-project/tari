@@ -37,7 +37,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -716,23 +716,27 @@ where
                 fee_per_gram,
                 sidechain_deployment_key,
             } => {
-                self.register_code_template(
-                    fee_per_gram,
-                    template_name.to_string(),
-                    template_version,
-                    template_type,
-                    build_info,
-                    binary_sha,
-                    binary_url,
-                    sidechain_deployment_key,
-                    UtxoSelectionCriteria::default(),
-                    format!("Template Registration: {}", template_name),
-                    send_transaction_join_handles,
-                    transaction_broadcast_join_handles,
-                    reply_channel.take().expect("Reply channel is not set"),
-                )
-                .await?;
-
+                let (tx_id, main_output_hash) = self
+                    .register_code_template(
+                        fee_per_gram,
+                        template_name.to_string(),
+                        template_version,
+                        template_type,
+                        build_info,
+                        binary_sha,
+                        binary_url,
+                        sidechain_deployment_key,
+                        UtxoSelectionCriteria::default(),
+                        format!("Template Registration: {}", template_name),
+                        send_transaction_join_handles,
+                        transaction_broadcast_join_handles,
+                        reply_channel.take().expect("Reply channel is not set"),
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
+                    tx_id,
+                    template_address: main_output_hash.into(),
+                })
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 destination,
@@ -992,7 +996,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
-    ) -> Result<(), TransactionServiceError> {
+    ) -> Result<(TxId, Option<HashOutput>), TransactionServiceError> {
         let tx_id = TxId::new_random();
         if destination.network() != self.resources.wallet_identity.network {
             let _result = reply_channel
@@ -1011,7 +1015,7 @@ where
                 "Received transaction with spend-to-self transaction"
             );
 
-            let (fee, transaction) = self
+            let (fee, transaction, main_output) = self
                 .resources
                 .output_manager_service
                 .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
@@ -1048,7 +1052,7 @@ where
                     e
                 });
 
-            return Ok(());
+            return Ok((tx_id, Some(main_output)));
         }
 
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
@@ -1074,7 +1078,7 @@ where
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
-        Ok(())
+        Ok((tx_id, None))
     }
 
     /// broadcasts a SHA-XTR atomic swap transaction
@@ -1815,7 +1819,8 @@ where
             transaction_broadcast_join_handles,
             reply_channel,
         )
-        .await
+        .await?;
+        Ok(())
     }
 
     pub async fn register_code_template(
@@ -1837,7 +1842,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
-    ) -> Result<(), TransactionServiceError> {
+    ) -> Result<(TxId, HashOutput), TransactionServiceError> {
         const AUTHOR_PUB_KEY_PATH: &str = "author_pub_key";
         let (author_pub_id, author_pub_key) = self
             .resources
@@ -1892,19 +1897,27 @@ where
             sidechain_id_knowledge_proof,
         };
         let output_features = OutputFeatures::for_template_registration(template_registration);
-        self.send_transaction(
-            self.resources.wallet_identity.address.clone(),
-            0.into(),
-            selection_criteria,
-            output_features,
-            fee_per_gram,
-            message,
-            TransactionMetadata::default(),
-            join_handles,
-            transaction_broadcast_join_handles,
-            reply_channel,
-        )
-        .await
+        let (tx_id, main_output_hash) = self
+            .send_transaction(
+                self.resources.wallet_identity.address.clone(),
+                0.into(),
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+                message,
+                TransactionMetadata::default(),
+                join_handles,
+                transaction_broadcast_join_handles,
+                reply_channel,
+            )
+            .await?;
+        if let Some(main_output_hash) = main_output_hash {
+            Ok((tx_id, main_output_hash))
+        } else {
+            Err(TransactionServiceError::InvalidDataError {
+                field: "main_output_hash".to_string(),
+            })
+        }
     }
 
     /// Sends a one side payment transaction to a recipient
