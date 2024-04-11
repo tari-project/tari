@@ -1850,6 +1850,7 @@ where
             .transaction_key_manager_service
             .get_next_key(AUTHOR_PUB_KEY_PATH)
             .await?;
+        dbg!("asdf 1");
         let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
             Some(k) => (
