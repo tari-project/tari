@@ -733,7 +733,6 @@ where
                 )
                 .await?;
 
-                return Ok(());
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 destination,
