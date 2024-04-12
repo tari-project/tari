@@ -169,7 +169,7 @@ fn check_confidential_output_utxo(output: &TransactionOutput) -> Result<(), Vali
 
 fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
     if let Some(temp) = output.features.code_template_registration() {
-        let challenge = temp.create_challenge(&temp.author_public_key);
+        let challenge = temp.create_challenge(&temp.author_signature.get_public_nonce());
         dbg!(challenge.to_hex());
         dbg!(temp.author_signature.get_public_nonce().to_hex());
         dbg!(temp.author_signature.get_signature().to_hex());
