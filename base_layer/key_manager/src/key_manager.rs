@@ -28,7 +28,6 @@ use serde::{Deserialize, Serialize};
 use tari_crypto::{
     hashing::LengthExtensionAttackResistant,
     keys::{PublicKey, SecretKey},
-    ristretto::RistrettoSchnorr,
     tari_utilities::byte_array::ByteArrayError,
 };
 use zeroize::Zeroize;

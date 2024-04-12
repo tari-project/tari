@@ -53,11 +53,7 @@ use tari_core::{
     },
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::{
-            SecretTransactionKeyManagerInterface,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-        },
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerBranch},
         tari_amount::MicroMinotari,
         transaction_components::{
             BuildInfo,
@@ -90,7 +86,6 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -738,7 +733,7 @@ where
                     .await?;
                 Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
                     tx_id,
-                    template_address: main_output_hash.into(),
+                    template_address: main_output_hash,
                 })
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
@@ -1844,13 +1839,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, HashOutput), TransactionServiceError> {
-        dbg!("in service 1");
         let (author_pub_id, author_pub_key) = self
             .resources
             .transaction_key_manager_service
             .get_next_key(&TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
             .await?;
-        dbg!("asdf 1");
         let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
             Some(k) => (
@@ -1886,22 +1879,16 @@ where
             sidechain_id_knowledge_proof,
         };
 
-        dbg!("in service 2");
         let challenge = template_registration.create_challenge(&nonce_pub);
-        dbg!(challenge.to_hex());
-        dbg!(author_pub_key.to_hex());
         let author_sig = self
             .resources
             .transaction_key_manager_service
             .sign_raw(&challenge, &author_pub_id, nonce_secret)
             .await
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
-        dbg!(author_sig.get_public_nonce().to_hex());
-        dbg!(author_sig.get_signature().to_hex());
 
         template_registration.author_signature = author_sig;
 
-        dbg!("in service 4");
         let output_features = OutputFeatures::for_template_registration(template_registration);
         let tx_id = TxId::new_random();
         let (fee, transaction, main_output_hash) = self
