@@ -1862,24 +1862,9 @@ where
             None => (None, None),
         };
 
-        dbg!("in service 2");
-        let challenge = CodeTemplateRegistration::create_challenge_from_components(
-            &author_pub_key,
-            &nonce_pub,
-            &binary_sha,
-            sidechain_id.as_ref(),
-        );
-        let author_sig = self
-            .resources
-            .transaction_key_manager_service
-            .sign_raw(&challenge, &author_pub_id, nonce_secret)
-            .await
-            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
-
-        dbg!("in service 3");
-        let template_registration = CodeTemplateRegistration {
+        let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_pub_key.clone(),
-            author_signature: author_sig,
+            author_signature: Signature::default(),
             template_name: template_name
                 .try_into()
                 .map_err(|_| TransactionServiceError::InvalidDataError {
@@ -1899,6 +1884,18 @@ where
             sidechain_id,
             sidechain_id_knowledge_proof,
         };
+
+        dbg!("in service 2");
+        let challenge = template_registration.create_challenge(&nonce_pub);
+        let author_sig = self
+            .resources
+            .transaction_key_manager_service
+            .sign_raw(&challenge, &author_pub_id, nonce_secret)
+            .await
+            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+
+        template_registration.author_signature = author_sig;
+
         dbg!("in service 4");
         let output_features = OutputFeatures::for_template_registration(template_registration);
         let tx_id = TxId::new_random();

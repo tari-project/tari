@@ -54,21 +54,6 @@ impl CodeTemplateRegistration {
             .finalize()
             .into()
     }
-
-    pub fn create_challenge_from_components(
-        author_public_key: &PublicKey,
-        public_nonce: &PublicKey,
-        binary_sha: &[u8; 32],
-        sidechain_id: Option<&PublicKey>,
-    ) -> [u8; 64] {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
-            .chain(author_public_key)
-            .chain(public_nonce)
-            .chain(binary_sha)
-            .chain(&sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
-            .finalize()
-            .into()
-    }
 }
 
 // -------------------------------- TemplateType -------------------------------- //
