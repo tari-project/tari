@@ -90,6 +90,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -1887,6 +1888,8 @@ where
 
         dbg!("in service 2");
         let challenge = template_registration.create_challenge(&nonce_pub);
+        dbg!(challenge.to_hex());
+        dbg!(author_pub_key.to_hex());
         let author_sig = self
             .resources
             .transaction_key_manager_service
