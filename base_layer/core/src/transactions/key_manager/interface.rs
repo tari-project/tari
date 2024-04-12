@@ -64,6 +64,7 @@ pub enum TransactionKeyManagerBranch {
     KernelNonce,
     ScriptKey,
     SenderOffset,
+    CodeTemplateAuthor,
 }
 
 impl TransactionKeyManagerBranch {
@@ -79,6 +80,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::ScriptKey => "script key".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
+            TransactionKeyManagerBranch::CodeTemplateAuthor => "code_template_author".to_string(),
         }
     }
 }

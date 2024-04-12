@@ -53,7 +53,11 @@ use tari_core::{
     },
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+        key_manager::{
+            SecretTransactionKeyManagerInterface,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+        },
         tari_amount::MicroMinotari,
         transaction_components::{
             BuildInfo,
@@ -1844,11 +1848,10 @@ where
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(TxId, HashOutput), TransactionServiceError> {
         dbg!("in service 1");
-        const AUTHOR_PUB_KEY_PATH: &str = "author_pub_key";
         let (author_pub_id, author_pub_key) = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(AUTHOR_PUB_KEY_PATH)
+            .get_next_key(&TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
             .await?;
         dbg!("asdf 1");
         let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
