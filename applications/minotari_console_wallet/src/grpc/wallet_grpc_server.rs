@@ -92,23 +92,17 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, PublicKey, Signature},
+    types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinotari, T},
-        transaction_components::{
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
-        },
+        tari_amount::MicroMinotari,
+        transaction_components::{OutputFeatures, UnblindedOutput},
     },
 };
-use tari_script::script;
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
@@ -601,23 +595,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
-                if message.sidechain_id.is_empty() {
+                if message.sidechain_deployment_key.is_empty() {
                     None
                 } else {
                     Some(
-                        PublicKey::from_canonical_bytes(&message.sidechain_id)
+                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                    )
-                },
-                if message.sidechain_id_knowledge_proof.is_none() {
-                    None
-                } else {
-                    Some(
-                        message
-                            .sidechain_id_knowledge_proof
-                            .unwrap()
-                            .try_into()
-                            .map_err(Status::invalid_argument)?,
                     )
                 },
             )
@@ -958,50 +941,46 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateTemplateRegistrationRequest>,
     ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut output_manager = self.wallet.output_manager_service.clone();
+        // let mut output_manager = self.wallet.output_manager_service.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let template_registration = CodeTemplateRegistration::try_from(
-            message
-                .template_registration
-                .ok_or_else(|| Status::invalid_argument("template_registration is empty"))?,
-        )
-        .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
-        let fee_per_gram = message.fee_per_gram;
+        let fee_per_gram = message.fee_per_gram.into();
 
-        let message = format!("Template registration {}", template_registration.template_name);
-        let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        output = output.with_script(script![Nop]);
-
-        let (tx_id, transaction) = output_manager
-            .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Template registration transaction: {:?}", transaction
-        );
-
-        let reg_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
-            .ok_or_else(|| Status::internal("No code template registration output!"))?;
-        let template_address = reg_output.hash();
-
-        transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), message)
+        let (tx_id, template_address) = transaction_service
+            .register_code_template(
+                message.template_name.clone(),
+                message
+                    .template_version
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
+                if let Some(tt) = message.template_type {
+                    tt.try_into()
+                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("template type is missing"));
+                },
+                if let Some(bi) = message.build_info {
+                    bi.try_into()
+                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("build info is missing"));
+                },
+                message
+                    .binary_sha
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
+                message.binary_url,
+                fee_per_gram,
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        RistrettoSecretKey::from_canonical_bytes(&message.sidechain_deployment_key)
+                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
+                    )
+                },
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1027,22 +1006,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
             .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
-        let sidechain_id = if request.sidechain_id.is_empty() {
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
             None
         } else {
             Some(
-                PublicKey::from_canonical_bytes(&request.sidechain_id)
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
                     .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
             )
         };
 
-        let sidechain_id_knowledge_proof = request
-            .sidechain_id_knowledge_proof
-            .map(|v| {
-                v.try_into()
-                    .map_err(|_| Status::invalid_argument("SidechainId knowledge proof is malformed"))
-            })
-            .transpose()?;
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
             Status::internal("failed to fetch consensus constants")
@@ -1054,8 +1026,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_key,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,

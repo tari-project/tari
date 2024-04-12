@@ -54,7 +54,7 @@ use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, Signature},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -138,6 +138,7 @@ pub async fn burn_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     message: String,
+    sidechain_deployment_key: Option<PrivateKey>,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
@@ -146,8 +147,7 @@ pub async fn burn_tari(
             fee_per_gram * uT,
             message,
             None,
-            None,
-            None,
+            sidechain_deployment_key,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -210,8 +210,7 @@ pub async fn register_validator_node(
     validator_node_public_key: PublicKey,
     validator_node_signature: Signature,
     validator_node_claim_public_key: PublicKey,
-    sidechain_id: Option<PublicKey>,
-    sidechain_id_knowledge_proof: Option<Signature>,
+    sidechain_deployment_key: Option<PrivateKey>,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     message: String,
@@ -222,8 +221,7 @@ pub async fn register_validator_node(
             validator_node_public_key,
             validator_node_signature,
             validator_node_claim_public_key,
-            sidechain_id,
-            sidechain_id_knowledge_proof,
+            sidechain_deployment_key,
             selection_criteria,
             fee_per_gram,
             message,
@@ -474,7 +472,7 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone())
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone(), None)
                             .await
                             .map(|(tx_id, _)| tx_id),
                     };
@@ -691,6 +689,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     args.message,
+                    None,
                 )
                 .await
                 {
@@ -1031,16 +1030,12 @@ pub async fn command_runner(
                         RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
                     ),
                     args.validator_node_claim_public_key.into(),
-                    args.sidechain_id.map(|v| v.into()),
-                    if args.sidechain_id_knowledge_proof_nonce.is_none() ||
-                        args.sidechain_id_knowledge_proof_sig.is_empty()
-                    {
+                    if args.sidechain_deployment_key.is_empty() {
                         None
                     } else {
-                        Some(Signature::new(
-                            args.sidechain_id_knowledge_proof_nonce.as_ref().unwrap().clone().into(),
-                            RistrettoSecretKey::from_vec(&args.sidechain_id_knowledge_proof_sig[0])?,
-                        ))
+                        Some(RistrettoSecretKey::from_canonical_bytes(
+                            &args.sidechain_deployment_key[0],
+                        )?)
                     },
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,

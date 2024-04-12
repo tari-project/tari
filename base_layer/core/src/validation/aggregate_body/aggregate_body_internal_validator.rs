@@ -169,8 +169,12 @@ fn check_confidential_output_utxo(output: &TransactionOutput) -> Result<(), Vali
 
 fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
     if let Some(temp) = output.features.code_template_registration() {
-        let challenge = temp.create_challenge(&temp.author_public_key);
-        if !temp.author_signature.verify(&temp.author_public_key, challenge) {
+        let challenge = temp.create_challenge(temp.author_signature.get_public_nonce());
+
+        if !temp
+            .author_signature
+            .verify_raw_uniform(&temp.author_public_key, &challenge)
+        {
             return Err(ValidationError::TemplateAuthorSignatureNotValid);
         }
 

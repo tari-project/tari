@@ -191,6 +191,12 @@ pub enum TransactionServiceError {
     TransactionTooLarge { got: usize, expected: usize },
     #[error("Pending Transaction was oversized")]
     Oversized,
+    #[error("Error signing sidechain data: `{0}`")]
+    SidechainSigningError(String),
+    #[error("Invalid data for a burn transaction: `{0}`")]
+    InvalidBurnTransaction(String),
+    #[error("Invalid data for field {field}")]
+    InvalidDataError { field: String },
 }
 
 impl From<RangeProofError> for TransactionServiceError {
@@ -277,6 +283,8 @@ pub enum TransactionStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Coinbase transactions are not supported in the wallet")]
     CoinbaseNotSupported,
+    #[error("Could not sign sidechain data: `{0}`")]
+    SidechainSigningError(String),
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

@@ -216,7 +216,7 @@ pub enum OutputManagerResponse {
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     OutputConfirmed,
     PendingTransactionConfirmed,
-    PayToSelfTransaction((MicroMinotari, Transaction)),
+    PayToSelfTransaction((MicroMinotari, Transaction, HashOutput)),
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
@@ -725,7 +725,7 @@ impl OutputManagerHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
-    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotari, Transaction, HashOutput), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction {

@@ -17,7 +17,6 @@ tari_crypto = { version = "0.20" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
-tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.7" }
 minotari_wallet = { path = "../../base_layer/wallet", features = [

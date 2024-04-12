@@ -1116,7 +1116,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
-    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotari, Transaction, HashOutput), OutputManagerError> {
         let covenant = Covenant::default();
 
         let features_and_scripts_byte_size = self
@@ -1163,6 +1163,7 @@ where
 
         let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant).await?;
 
+        let main_output_hash = output.hash;
         builder
             .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
             .await
@@ -1217,7 +1218,7 @@ where
         stp.finalize(&self.resources.key_manager).await?;
         let tx = stp.into_transaction()?;
 
-        Ok((fee, tx))
+        Ok((fee, tx, main_output_hash))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be

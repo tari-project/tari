@@ -1803,13 +1803,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
-        let sidechain_id = if !request.sidechain_id.is_empty() {
+        let sidechain_id = if request.sidechain_id.is_empty() {
+            None
+        } else {
             Some(
                 PublicKey::from_canonical_bytes(&request.sidechain_id)
                     .map_err(|e| Status::invalid_argument(format!("Invalid sidechain_id '{}'", e)))?,
             )
-        } else {
-            None
         };
 
         task::spawn(async move {

@@ -32,11 +32,10 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
-    consensus::{MaxSizeBytes, MaxSizeString},
     mempool::FeePerGramStat,
     proto,
     transactions::{
@@ -97,32 +96,27 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: CommsPublicKey,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
     },
     RegisterCodeTemplate {
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
+        template_name: String,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
+        binary_sha: FixedHash,
+        binary_url: String,
         fee_per_gram: MicroMinotari,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -279,6 +273,10 @@ pub enum TransactionServiceResponse {
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
+    CodeRegistrationTransactionSent {
+        tx_id: TxId,
+        template_address: FixedHash,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -487,8 +485,7 @@ impl TransactionServiceHandle {
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         validator_node_claim_public_key: PublicKey,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -500,8 +497,7 @@ impl TransactionServiceHandle {
                 validator_node_public_key,
                 validator_node_signature,
                 validator_node_claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -515,23 +511,18 @@ impl TransactionServiceHandle {
 
     pub async fn register_code_template(
         &mut self,
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
+        template_name: String,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
+        binary_sha: FixedHash,
+        binary_url: String,
         fee_per_gram: MicroMinotari,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
-    ) -> Result<TxId, TransactionServiceError> {
+        sidechain_deployment_key: Option<PrivateKey>,
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
                 template_name,
                 template_version,
                 template_type,
@@ -539,12 +530,14 @@ impl TransactionServiceHandle {
                 binary_sha,
                 binary_url,
                 fee_per_gram,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::CodeRegistrationTransactionSent {
+                tx_id,
+                template_address,
+            } => Ok((tx_id, template_address)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
@@ -583,8 +576,7 @@ impl TransactionServiceHandle {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
+        sidechain_deployment_key: Option<PrivateKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
@@ -594,8 +586,7 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 message,
                 claim_public_key,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
+                sidechain_deployment_key,
             })
             .await??
         {

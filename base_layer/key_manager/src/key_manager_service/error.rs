@@ -47,6 +47,8 @@ pub enum KeyManagerServiceError {
     RangeProofError(String),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
+    #[error("Schnorr signature error: `{0}`")]
+    SchnorrSignatureError(String),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

@@ -304,10 +304,8 @@ pub struct RegisterValidatorNodeArgs {
     #[clap(long, parse(try_from_str = parse_hex), required = true)]
     pub validator_node_signature: Vec<Vec<u8>>,
     pub validator_node_claim_public_key: UniPublicKey,
-    pub sidechain_id: Option<UniPublicKey>,
-    pub sidechain_id_knowledge_proof_nonce: Option<UniPublicKey>,
-    #[clap(long, parse(try_from_str = parse_hex), required= false)]
-    pub sidechain_id_knowledge_proof_sig: Vec<Vec<u8>>,
+    #[clap(long, parse(try_from_str = parse_hex), required = false)]
+    pub sidechain_deployment_key: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
 }
