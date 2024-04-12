@@ -1896,6 +1896,8 @@ where
             .sign_raw(&challenge, &author_pub_id, nonce_secret)
             .await
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+        dbg!(author_sig.get_public_nonce().to_hex());
+        dbg!(author_sig.get_signature().to_hex());
 
         template_registration.author_signature = author_sig;
 

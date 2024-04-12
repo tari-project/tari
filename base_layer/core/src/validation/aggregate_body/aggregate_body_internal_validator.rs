@@ -173,6 +173,7 @@ fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), Va
         dbg!(challenge.to_hex());
         dbg!(temp.author_signature.get_public_nonce().to_hex());
         dbg!(temp.author_signature.get_signature().to_hex());
+        dbg!(temp.author_public_key.to_hex());
 
         if !temp.author_signature.verify(&temp.author_public_key, challenge) {
             return Err(ValidationError::TemplateAuthorSignatureNotValid);
