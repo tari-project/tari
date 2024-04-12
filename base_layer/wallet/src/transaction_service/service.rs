@@ -641,7 +641,7 @@ where
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(TransactionServiceResponse::TransactionSent),
+                .map(|(tx_id, _)| TransactionServiceResponse::TransactionSent(tx_id)),
             TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 destination,
                 amount,
@@ -660,7 +660,7 @@ where
                     transaction_broadcast_join_handles,
                 )
                 .await
-                .map(TransactionServiceResponse::TransactionSent),
+                .map(|(tx_id, _)| TransactionServiceResponse::TransactionSent(tx_id)),
             TransactionServiceRequest::BurnTari {
                 amount,
                 selection_criteria,
@@ -732,9 +732,7 @@ where
                         sidechain_deployment_key,
                         UtxoSelectionCriteria::default(),
                         format!("Template Registration: {}", template_name),
-                        send_transaction_join_handles,
                         transaction_broadcast_join_handles,
-                        reply_channel.take().expect("Reply channel is not set"),
                     )
                     .await?;
                 Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
@@ -1319,7 +1317,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         script: TariScript,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, HashOutput), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
         // Prepare sender part of the transaction
@@ -1438,6 +1436,7 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
+        let main_output_hash = recipient_reply.output.hash();
         // Start finalizing
         stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
@@ -1488,7 +1487,7 @@ where
         )
         .await?;
 
-        Ok(tx_id)
+        Ok((tx_id, main_output_hash))
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -1507,7 +1506,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, HashOutput), TransactionServiceError> {
         if destination.network() != self.resources.wallet_identity.network {
             return Err(TransactionServiceError::InvalidNetwork);
         }
@@ -1839,13 +1838,10 @@ where
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         message: String,
-        join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        >,
+
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(TxId, HashOutput), TransactionServiceError> {
         dbg!("in service 1");
         let (author_pub_id, author_pub_key) = self
@@ -1906,26 +1902,17 @@ where
         dbg!("in service 4");
         let output_features = OutputFeatures::for_template_registration(template_registration);
         let (tx_id, main_output_hash) = self
-            .send_transaction(
+            .send_one_sided_to_stealth_address_transaction(
                 self.resources.wallet_identity.address.clone(),
                 0.into(),
                 selection_criteria,
                 output_features,
                 fee_per_gram,
                 message,
-                TransactionMetadata::default(),
-                join_handles,
                 transaction_broadcast_join_handles,
-                reply_channel,
             )
             .await?;
-        if let Some(main_output_hash) = main_output_hash {
-            Ok((tx_id, main_output_hash))
-        } else {
-            Err(TransactionServiceError::InvalidDataError {
-                field: "main_output_hash".to_string(),
-            })
-        }
+        Ok((tx_id, main_output_hash))
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -1944,7 +1931,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, HashOutput), TransactionServiceError> {
         if destination.network() != self.resources.wallet_identity.network {
             return Err(TransactionServiceError::InvalidNetwork);
         }
