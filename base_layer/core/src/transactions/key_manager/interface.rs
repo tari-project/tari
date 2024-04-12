@@ -251,7 +251,7 @@ pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
         nonce_secret: PrivateKey,
     ) -> Result<RistrettoSchnorr, KeyManagerServiceError> {
         let secret = self.get_private_key(key_index).await?;
-        let sig = RistrettoSchnorr::sign_raw_canonical(&secret, nonce_secret, msg)
+        let sig = RistrettoSchnorr::sign_raw_uniform(&secret, nonce_secret, msg)
             .map_err(|e| KeyManagerServiceError::SchnorrSignatureError(e.to_string()))?;
         Ok(sig)
     }
