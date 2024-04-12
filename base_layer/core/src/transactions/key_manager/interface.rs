@@ -27,10 +27,11 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hashing::DomainSeparatedHash,
+    keys::PublicKey as PublicKeyTrait,
     ristretto::{RistrettoComSig, RistrettoSchnorr},
 };
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
-use tari_utilities::ByteArrayError;
+use tari_utilities::{hex::Hex, ByteArrayError};
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
@@ -251,6 +252,9 @@ pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
         nonce_secret: PrivateKey,
     ) -> Result<RistrettoSchnorr, KeyManagerServiceError> {
         let secret = self.get_private_key(key_index).await?;
+        dbg!(PublicKey::from_secret_key(&secret).to_hex());
+        dbg!(key_index.to_string());
+
         let sig = RistrettoSchnorr::sign_raw_uniform(&secret, nonce_secret, msg)
             .map_err(|e| KeyManagerServiceError::SchnorrSignatureError(e.to_string()))?;
         Ok(sig)
