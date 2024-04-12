@@ -448,52 +448,6 @@ pub async fn send_register_template_transaction_task(
         },
     };
 
-    // ----------------------------------------------------------------------------
-    // signing and sending code template registration request
-    // ----------------------------------------------------------------------------
-
-    // let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
-    //
-    // let author_private_key = match km.next_key() {
-    //     Ok(secret_key) => secret_key.key,
-    //     Err(e) => {
-    //         error!(target: LOG_TARGET, "failed to generate key: {}", e);
-    //         result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
-    //         return;
-    //     },
-    // };
-    //
-    // let author_public_key = PublicKey::from_secret_key(&author_private_key);
-    // let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-    //
-    // let pub_validator_key = sidechain_id_key.map(PublicKey::from_secret_key);
-    //
-    // let sidechain_id_knowledge_proof = match sidechain_id_key {
-    //     Some(key) => Some(match Signature::sign(key, author_public_key.to_vec(), &mut OsRng) {
-    //         Ok(signature) => signature,
-    //         Err(e) => {
-    //             error!(target: LOG_TARGET, "failed to sign network knowledge proof: {}", e);
-    //             result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
-    //             return;
-    //         },
-    //     }),
-    //     None => None,
-    // };
-    //
-    // let challenge = transaction_components::CodeTemplateRegistration::create_challenge_from_components(
-    //     &author_public_key,
-    //     &public_nonce,
-    //     &binary_sha,
-    //     pub_validator_key.as_ref(),
-    // );
-    //
-    // let author_signature = Signature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
-    //     .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
-    //
-    // // ----------------------------------------------------------------------------
-    // // ============================================================================
-    // ----------------------------------------------------------------------------
-
     let result = transaction_service_handle
         .register_code_template(
             template_name.to_string(),
