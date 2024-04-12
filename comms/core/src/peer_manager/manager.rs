@@ -190,6 +190,26 @@ impl PeerManager {
         }
     }
 
+    pub async fn update_peer_address_latency_and_last_seen(
+        &self,
+        pubkey: &CommsPublicKey,
+        address: &Multiaddr,
+        latency: Option<Duration>,
+    ) -> Result<(), PeerManagerError> {
+        match self.find_by_public_key(pubkey).await {
+            Ok(Some(mut peer)) => {
+                if let Some(val) = latency {
+                    peer.addresses.update_latency(address, val);
+                }
+                peer.addresses.mark_last_seen_now(address);
+                self.add_peer(peer.clone()).await?;
+                Ok(())
+            },
+            Ok(None) => Err(PeerManagerError::PeerNotFoundError),
+            Err(err) => Err(err),
+        }
+    }
+
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage.read().await.direct_identity_node_id(node_id) {
@@ -234,27 +254,6 @@ impl PeerManager {
             .read()
             .await
             .closest_peers(node_id, n, excluded_peers, features)
-    }
-
-    pub async fn mark_last_seen(&self, node_id: &NodeId, addr: &Multiaddr) -> Result<(), PeerManagerError> {
-        let mut lock = self.peer_storage.write().await;
-        let mut peer = lock
-            .find_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        let source = peer
-            .addresses
-            .iter()
-            .find(|a| a.address() == addr)
-            .map(|a| a.source().clone())
-            .ok_or_else(|| PeerManagerError::AddressNotFoundError {
-                address: addr.clone(),
-                node_id: node_id.clone(),
-            })?;
-        // if we have an address, update it
-        peer.addresses.add_address(addr, &source);
-        peer.addresses.mark_last_seen_now(addr);
-        lock.add_peer(peer)?;
-        Ok(())
     }
 
     /// Fetch n random peers

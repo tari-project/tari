@@ -53,6 +53,11 @@ pub struct NetworkDiscoveryConfig {
     /// The maximum number of peers we allow per round of sync.
     /// Default: 500
     pub max_peers_to_sync_per_round: u32,
+    /// Initial refresh sync peers delay period if more than one peer needs to be synced, handy when a specific
+    /// connection needs preference.
+    /// Default: 15
+    #[serde(with = "serializers::seconds")]
+    pub initial_peer_sync_dalay: Duration,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -65,6 +70,7 @@ impl Default for NetworkDiscoveryConfig {
             on_failure_idle_period: Duration::from_secs(5),
             max_sync_peers: 5,
             max_peers_to_sync_per_round: 500,
+            initial_peer_sync_dalay: Duration::from_secs(15),
         }
     }
 }
