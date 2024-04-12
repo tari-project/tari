@@ -1901,17 +1901,21 @@ where
         };
         dbg!("in service 4");
         let output_features = OutputFeatures::for_template_registration(template_registration);
-        let (tx_id, main_output_hash) = self
-            .send_one_sided_to_stealth_address_transaction(
-                self.resources.wallet_identity.address.clone(),
-                0.into(),
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                message,
-                transaction_broadcast_join_handles,
-            )
+        let tx_id = TxId::new_random();
+        let (fee, transaction, main_output_hash) = self
+            .resources
+            .output_manager_service
+            .create_pay_to_self_transaction(tx_id, 0.into(), selection_criteria, output_features, fee_per_gram, None)
             .await?;
+        self.submit_transaction_to_self(
+            transaction_broadcast_join_handles,
+            tx_id,
+            transaction,
+            fee,
+            0.into(),
+            message,
+        )
+        .await?;
         Ok((tx_id, main_output_hash))
     }
 
