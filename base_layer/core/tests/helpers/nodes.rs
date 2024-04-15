@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::Path,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
@@ -60,6 +64,7 @@ use tari_core::{
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
     },
+    OutputSmt,
 };
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
@@ -202,10 +207,12 @@ impl BaseNodeBuilder {
         let consensus_manager = self
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
+        let smt = Arc::new(RwLock::new(OutputSmt::new()));
         let blockchain_db = create_store_with_consensus_and_validators_and_config(
             consensus_manager.clone(),
             validators,
             blockchain_db_config,
+            smt.clone(),
         );
         let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
