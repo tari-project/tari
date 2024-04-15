@@ -204,6 +204,7 @@ impl Wallet {
                 println!("wallet_create error {}", error);
             }
         }
+        #[allow(clippy::arc_with_non_send_sync)]
         let wallet = Arc::new(Mutex::new(Self {
             ptr,
             liveness_data: Default::default(),

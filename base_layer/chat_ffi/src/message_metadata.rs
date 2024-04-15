@@ -120,7 +120,7 @@ pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetad
     }
 
     let md = &(*msg_metadata);
-    c_int::try_from(md.metadata_type.as_byte()).unwrap_or(-1)
+    c_int::from(md.metadata_type.as_byte())
 }
 
 /// Returns a ptr to a ByteVector

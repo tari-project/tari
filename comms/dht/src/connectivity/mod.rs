@@ -253,7 +253,7 @@ impl DhtConnectivity {
                         .high_failure_rate_cooldown
                         .saturating_sub(ts.elapsed())
                 ))
-                .unwrap_or_else(String::new),
+                .unwrap_or_default(),
             self.neighbours.len(),
             self.config.num_neighbouring_nodes,
             neighbour_connected.len(),

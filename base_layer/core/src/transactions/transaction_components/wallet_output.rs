@@ -332,7 +332,7 @@ impl PartialEq for WalletOutput {
 
 impl PartialOrd<WalletOutput> for WalletOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.value.partial_cmp(&other.value)
+        Some(self.cmp(other))
     }
 }
 

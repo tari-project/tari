@@ -781,6 +781,7 @@ impl ConnectivityManagerActor {
     #[cfg(not(feature = "metrics"))]
     fn update_connectivity_metrics(&mut self) {}
 
+    #[allow(clippy::cast_possible_wrap)]
     #[cfg(feature = "metrics")]
     fn update_connectivity_metrics(&mut self) {
         use std::convert::TryFrom;

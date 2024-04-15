@@ -14,6 +14,8 @@ passthrough = [
   "FEATURES",
   "ROARING_ARCH",
   "TARI_NETWORK",
+  "TARI_TARGET_NETWORK",
+  "TARI_NETWORK_DIR",
 ]
 
 # Don't forget export:

@@ -358,7 +358,7 @@ impl FromStr for Minotari {
 
 impl Display for Minotari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let d1 = Decimal::try_from(self.0.as_u64()).expect("will succeed");
+        let d1 = Decimal::from(self.0.as_u64());
         let d2 = Decimal::try_from(1_000_000f64).expect("will succeed");
         let precision = f.precision().unwrap_or(6);
         write!(f, "{1:.*} T", precision, d1 / d2)

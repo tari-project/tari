@@ -60,12 +60,10 @@ where E: From<ProtoError> + Error + Clone + Send + Sync + Unpin + 'static
         let responses = (*self.messages)
             .clone()
             .into_iter()
-            .fold(Result::<_, E>::Ok(Message::new()), |msg, resp| {
-                msg.and_then(|mut msg| {
-                    resp.map(move |resp| {
-                        msg.add_answers(resp.answers().iter().cloned());
-                        msg
-                    })
+            .try_fold(Message::new(), |mut msg, resp| {
+                resp.map(move |resp| {
+                    msg.add_answers(resp.answers().iter().cloned());
+                    msg
                 })
             })
             .map(DnsResponse::from);

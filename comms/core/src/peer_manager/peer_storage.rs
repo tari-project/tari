@@ -516,6 +516,15 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
     }
 }
 
+fn is_active_peer(peer: &Peer, features: Option<PeerFeatures>, excluded_peers: &[NodeId]) -> bool {
+    features.map(|f| peer.features == f).unwrap_or(true) &&
+        !excluded_peers.contains(&peer.node_id) &&
+        !peer.is_banned() &&
+        peer.deleted_at.is_none() &&
+        peer.last_seen_since().is_some() &&
+        peer.last_seen_since().expect("Last seen to exist") <= Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
+}
+
 #[cfg(test)]
 mod test {
     use std::{borrow::BorrowMut, iter::repeat_with};
@@ -773,7 +782,7 @@ mod test {
 
         // Create 1 to 4 random addresses
         for _i in 1..=rand::thread_rng().gen_range(1..4) {
-            let n = vec![
+            let n = [
                 rand::thread_rng().gen_range(1..9),
                 rand::thread_rng().gen_range(1..9),
                 rand::thread_rng().gen_range(1..9),
@@ -877,13 +886,4 @@ mod test {
             1
         );
     }
-}
-
-fn is_active_peer(peer: &Peer, features: Option<PeerFeatures>, excluded_peers: &[NodeId]) -> bool {
-    features.map(|f| peer.features == f).unwrap_or(true) &&
-        !excluded_peers.contains(&peer.node_id) &&
-        !peer.is_banned() &&
-        peer.deleted_at.is_none() &&
-        peer.last_seen_since().is_some() &&
-        peer.last_seen_since().expect("Last seen to exist") <= Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
 }

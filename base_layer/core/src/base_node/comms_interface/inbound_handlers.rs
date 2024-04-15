@@ -618,6 +618,7 @@ where B: BlockchainBackend + 'static
                 current_meta.best_block_hash().to_hex(),
                 source_peer,
             );
+            #[allow(clippy::cast_possible_wrap)]
             #[cfg(feature = "metrics")]
             metrics::compact_block_tx_misses(header.height).set(excess_sigs.len() as i64);
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
@@ -628,6 +629,7 @@ where B: BlockchainBackend + 'static
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
+        #[allow(clippy::cast_possible_wrap)]
         #[cfg(feature = "metrics")]
         metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
 

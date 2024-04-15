@@ -1278,15 +1278,15 @@ async fn test_fee_overflow() {
             offset: txn.offset,
             body: {
                 let mut inputs = Vec::with_capacity(txn.body.inputs().len());
-                for input in txn.body.inputs().iter() {
+                for input in txn.body.inputs() {
                     inputs.push(input.clone());
                 }
                 let mut outputs = Vec::with_capacity(txn.body.outputs().len());
-                for output in txn.body.outputs().iter() {
+                for output in txn.body.outputs() {
                     outputs.push(output.clone());
                 }
                 let mut kernels = Vec::with_capacity(txn.body.kernels().len());
-                for kernel in txn.body.kernels().iter() {
+                for kernel in txn.body.kernels() {
                     kernels.push(TransactionKernel {
                         version: kernel.version,
                         features: kernel.features,
