@@ -2555,7 +2555,7 @@ impl BlockchainBackend for LMDBDatabase {
         trace!(
             target: LOG_TARGET,
             "Finished calculating new smt (size: {}), took: #{}s",
-            smt.size,
+            smt.size(),
             start.elapsed().as_millis()
         );
         Ok(smt)
