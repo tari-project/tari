@@ -115,6 +115,8 @@ impl AggregateBodyInternalConsistencyValidator {
             check_script_size(output, constants.max_script_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
+            check_template_registration_utxo(output)?;
+            check_confidential_output_utxo(output)?;
             check_validator_node_registration_utxo(constants, output, height)?;
         }
 

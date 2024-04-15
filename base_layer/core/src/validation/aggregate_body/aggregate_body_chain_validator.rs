@@ -31,7 +31,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput},
+        transaction_components::{TransactionError, TransactionInput, TransactionOutput},
     },
     validation::{
         helpers::{check_input_is_utxo, check_not_duplicate_txo, check_tari_script_byte_size},
