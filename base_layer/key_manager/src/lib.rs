@@ -139,7 +139,7 @@ mod tests {
             Hidden::hide("olá".to_string()),
         ]);
 
-        let vec_words = vec![
+        let vec_words = [
             "hi".to_string(),
             "niao".to_string(),
             "hola".to_string(),

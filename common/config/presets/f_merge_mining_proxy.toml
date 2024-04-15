@@ -7,24 +7,37 @@
 
 [merge_mining_proxy]
 
-# URL to monerod (default = "")
+
+# Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/) (default: true)
+#use_dynamic_fail_data = true
+
+# The monero fail URL to get the monerod URLs from - must be pointing to the official Monero website.
+# Valid alternatives are:
+# - mainnet:  'https://monero.fail/?chain=monero&network=mainnet&all=true' (default)
+# - stagenet: `https://monero.fail/?chain=monero&network=stagenet&all=true`
+# - testnet:  `https://monero.fail/?chain=monero&network=testnet&all=true`
+#monero_fail_url = "https://monero.fail/?chain=monero&network=mainnet&all=true"
+
+# URL to monerod (you can add your own server here or use public nodes from https://monero.fail/), only if
+# 'use_dynamic_fail_data = false' (default = "")
+
 #monerod_url = [# stagenet
 #    "http://stagenet.xmr-tw.org:38081",
-#    "http://stagenet.community.xmr.to:38081",
-#    "http://monero-stagenet.exan.tech:38081",
+#    "http://node.monerodevs.org:38089",
+#    "http://node3.monerodevs.org:38089",
 #    "http://xmr-lux.boldsuck.org:38081",
 #    "http://singapore.node.xmr.pm:38081",
 #]
 
 monerod_url = [ # mainnet
-    # more reliable
-    "http://xmr.support:18081",
     "http://node1.xmr-tw.org:18081",
+    "https://monero.homeqloud.com:443",
+    "http://monero1.com:18089",
+    "http://node.c3pool.org:18081",
+    "http://xmr-full.p2pool.uk:18089",
+    "https://monero.stackwallet.com:18081",
+    "http://xmr.support:18081",
     "http://xmr.nthrow.nyc:18081",
-    # not so reliable
-    "http://node.xmrig.com:18081",
-    "http://monero.exan.tech:18081",
-    "http://18.132.124.81:18081",
 ]
 
 # Username for curl. (default = "")

@@ -22,6 +22,7 @@ tari_storage = { path = "../../infrastructure/storage" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.7" }
+tari_key_manager = { path = "../../base_layer/key_manager", features = ["key_manager_service"] }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"
@@ -30,7 +31,7 @@ borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 console-subscriber = "0.1.8"
-config = { version = "0.13.0" }
+config = { version = "0.14.0" }
 crossterm = { version = "0.25.0", features = ["event-stream"] }
 derive_more = "0.99.17"
 either = "1.6.1"

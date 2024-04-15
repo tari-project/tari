@@ -41,10 +41,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
 };
-use tari_contacts::contacts_service::{
-    service::ContactOnlineStatus,
-    types::{Message, MessageMetadataType},
-};
+use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
 
 use crate::{chat_client::test_config, get_port};
 
@@ -92,7 +89,7 @@ extern "C" {
     pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
     pub fn add_chat_message_metadata(
         message: *mut c_void,
-        metadata_type: c_int,
+        metadata_type: *const c_char,
         data: *const c_char,
         error_out: *const c_int,
     ) -> *mut c_void;
@@ -199,20 +196,22 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
+    fn add_metadata(&self, message: Message, key: String, data: String) -> Message {
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
-        let message_type = metadata_type.as_byte();
-
         let error_out = Box::into_raw(Box::new(0));
 
-        let bytes = data.into_bytes();
-        let len = i32::try_from(bytes.len()).expect("Truncation occurred") as c_uint;
-        let byte_data = unsafe { chat_byte_vector_create(bytes.as_ptr(), len, error_out) };
+        let key_bytes = key.into_bytes();
+        let len = i32::try_from(key_bytes.len()).expect("Truncation occurred") as c_uint;
+        let byte_key = unsafe { chat_byte_vector_create(key_bytes.as_ptr(), len, error_out) };
+
+        let data_bytes = data.into_bytes();
+        let len = i32::try_from(data_bytes.len()).expect("Truncation occurred") as c_uint;
+        let byte_data = unsafe { chat_byte_vector_create(data_bytes.as_ptr(), len, error_out) };
 
         unsafe {
             add_chat_message_metadata(
                 message_ptr,
-                i32::from(message_type),
+                byte_key as *const c_char,
                 byte_data as *const c_char,
                 error_out,
             );

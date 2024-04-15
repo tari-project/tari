@@ -402,9 +402,12 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
+    pub fn update_last_validation_timestamps(
+        &self,
+        commitments: Vec<Commitment>,
+    ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.update_last_validation_timestamps(hashes)?;
+        db.update_last_validation_timestamps(commitments)?;
         Ok(())
     }
 

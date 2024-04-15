@@ -774,12 +774,11 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
         (None, None) => {
             panic!("Something is very wrong, no wallet type was found in the DB, or provided (on first run)")
         },
-        (Some(_), Some(_)) => panic!("Something is very wrong we have a wallet type from the DB and on first run"),
         (None, Some(t)) => {
             db.set_wallet_type(t)?;
             Ok(t)
         },
-        (Some(t), None) => Ok(t),
+        (Some(t), _) => Ok(t),
     }
 }
 

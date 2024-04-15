@@ -108,6 +108,7 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
             error!(target: LOG_TARGET, "Error drawing interface. {}", e);
             ExitCode::InterfaceError
         })?;
+        #[allow(clippy::blocks_in_conditions)]
         match events.next().map_err(|e| {
             error!(target: LOG_TARGET, "Error reading input event: {}", e);
             ExitCode::InterfaceError

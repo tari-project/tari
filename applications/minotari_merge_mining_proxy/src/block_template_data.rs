@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Provides methods for for building template data and storing them with timestamps.
+//! Provides methods for building template data and storing them with timestamps.
 
 use std::{collections::HashMap, convert::TryFrom, sync::Arc};
 

@@ -26,7 +26,7 @@ use cucumber::{then, when};
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     service::ContactOnlineStatus,
-    types::{Direction, Message, MessageMetadata, MessageMetadataType},
+    types::{Direction, Message, MessageMetadata},
 };
 use tari_integration_tests::{chat_client::spawn_chat_client, TariWorld};
 
@@ -108,7 +108,7 @@ async fn i_reply_to_message(
 
         let message = sender.add_metadata(
             message,
-            MessageMetadataType::Reply,
+            "reply".to_string(),
             String::from_utf8(inbound_chat_message.message_id).expect("bytes to uuid"),
         );
 
@@ -221,11 +221,7 @@ async fn have_replied_message(
         let metadata: &MessageMetadata = &inbound_chat_message.metadata[0];
 
         // Metadata data is a reply type
-        assert_eq!(
-            metadata.metadata_type,
-            MessageMetadataType::Reply,
-            "Metadata type is wrong"
-        );
+        assert_eq!(metadata.key, "reply".as_bytes(), "Metadata type is wrong");
 
         // Metadata data contains id to original message
         assert_eq!(

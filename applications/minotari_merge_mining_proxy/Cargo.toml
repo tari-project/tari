@@ -28,7 +28,7 @@ borsh = "1.2"
 bytes = "1.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
-config = { version = "0.13.0" }
+config = { version = "0.14.0" }
 crossterm = { version = "0.25.0" }
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
@@ -44,6 +44,10 @@ tokio = { version = "1.36", features = ["macros"] }
 tonic = "0.8.3"
 tracing = "0.1"
 url = "2.1.1"
+scraper = "0.19.0"
 
 [build-dependencies]
 tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }
+
+[dev-dependencies]
+markup5ever = "0.11.0"

@@ -365,7 +365,7 @@ impl HiddenServiceController {
             },
         };
 
-        let identity = self.identity.as_ref().map(Clone::clone).expect("already checked");
+        let identity = self.identity.clone().expect("already checked");
         debug!(
             target: LOG_TARGET,
             "Added hidden service with service id '{}' on port '{}'", identity.service_id, identity.onion_port

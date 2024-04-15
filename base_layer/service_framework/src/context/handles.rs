@@ -197,7 +197,7 @@ impl ServiceHandles {
         acquire_lock!(self.handles)
             .get(&type_id)
             .and_then(|b| b.downcast_ref::<H>())
-            .map(Clone::clone)
+            .cloned()
     }
 
     /// Returns the shutdown signal for this stack

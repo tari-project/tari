@@ -36,6 +36,8 @@ pub enum InterfaceError {
     AllocationError,
     #[error("An error because the supplied position was out of range")]
     PositionInvalidError,
+    #[error("Conversion error: `{0}`")]
+    ConversionError(String),
     #[error("The client had an error communication with contact services")]
     ContactServiceError(String),
 }
@@ -74,6 +76,10 @@ impl From<InterfaceError> for LibChatError {
             },
             InterfaceError::ContactServiceError(_) => Self {
                 code: 8,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::ConversionError(_) => Self {
+                code: 9,
                 message: format!("{:?}", v),
             },
         }

@@ -70,26 +70,8 @@ impl Direction {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MessageMetadata {
-    pub metadata_type: MessageMetadataType,
+    pub key: Vec<u8>,
     pub data: Vec<u8>,
-}
-
-#[repr(u8)]
-#[derive(FromPrimitive, Debug, Copy, Clone, Default, Deserialize, Serialize, PartialEq)]
-pub enum MessageMetadataType {
-    Reply = 0,
-    #[default]
-    TokenRequest = 1,
-}
-
-impl MessageMetadataType {
-    pub fn as_byte(self) -> u8 {
-        self as u8
-    }
-
-    pub fn from_byte(value: u8) -> Option<Self> {
-        FromPrimitive::from_u8(value)
-    }
 }
 
 impl TryFrom<proto::Message> for Message {
@@ -98,10 +80,7 @@ impl TryFrom<proto::Message> for Message {
     fn try_from(message: proto::Message) -> Result<Self, Self::Error> {
         let mut metadata = vec![];
         for m in message.metadata {
-            match MessageMetadata::try_from(m) {
-                Ok(md) => metadata.push(md),
-                Err(e) => return Err(e),
-            }
+            metadata.push(m.into());
         }
 
         Ok(Self {
@@ -138,19 +117,11 @@ impl From<Message> for OutboundDomainMessage<proto::Message> {
     }
 }
 
-impl TryFrom<proto::MessageMetadata> for MessageMetadata {
-    type Error = String;
-
-    fn try_from(md: proto::MessageMetadata) -> Result<Self, Self::Error> {
-        if let Some(md_type) =
-            MessageMetadataType::from_byte(u8::try_from(md.metadata_type).map_err(|e| e.to_string())?)
-        {
-            Ok(Self {
-                data: md.data,
-                metadata_type: md_type,
-            })
-        } else {
-            Err("Not a valid metadata type".into())
+impl From<proto::MessageMetadata> for MessageMetadata {
+    fn from(md: proto::MessageMetadata) -> Self {
+        Self {
+            data: md.data,
+            key: md.key,
         }
     }
 }
@@ -159,7 +130,7 @@ impl From<MessageMetadata> for proto::MessageMetadata {
     fn from(md: MessageMetadata) -> Self {
         Self {
             data: md.data,
-            metadata_type: i32::from(md.metadata_type.as_byte()),
+            key: md.key,
         }
     }
 }

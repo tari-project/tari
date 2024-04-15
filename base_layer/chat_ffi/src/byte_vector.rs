@@ -152,3 +152,17 @@ pub unsafe extern "C" fn chat_byte_vector_get_length(vec: *const ChatByteVector,
 
     (*vec).0.len() as c_uint
 }
+
+pub(crate) unsafe fn process_vector(vector: *mut ChatByteVector, error_out: *mut c_int) -> Vec<u8> {
+    let data_byte_vector_length = chat_byte_vector_get_length(vector, error_out);
+    let mut bytes: Vec<u8> = Vec::new();
+
+    if data_byte_vector_length > 0 {
+        for c in 0..data_byte_vector_length {
+            let byte = chat_byte_vector_get_at(vector, c as c_uint, error_out);
+            bytes.push(byte);
+        }
+    }
+
+    bytes
+}

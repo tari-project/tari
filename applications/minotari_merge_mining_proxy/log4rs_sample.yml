@@ -55,4 +55,15 @@ loggers:
       - stdout
       - proxy
     additive: false
-  
+  html5ever:
+    level: error
+    appenders:
+      - stdout
+      - proxy
+    additive: false
+  selectors:
+    level: error
+    appenders:
+      - stdout
+      - proxy
+    additive: false

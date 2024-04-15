@@ -222,9 +222,9 @@ fn test_multi_thread_writes() {
 #[test]
 fn test_multi_writes() {
     {
-        let env = init("multi-writes").unwrap();
+        let store = init("multi-writes").unwrap();
         for i in 0..2 {
-            let db = env.get_handle("users").unwrap();
+            let db = store.get_handle("users").unwrap();
             let res = db.with_write_transaction(|mut txn| {
                 for j in 0..1000 {
                     let v = i * 1000 + j;
@@ -235,7 +235,7 @@ fn test_multi_writes() {
             });
             assert!(res.is_ok());
         }
-        env.flush().unwrap();
+        store.flush().unwrap();
     }
     clean_up("multi-writes"); // In Windows file handles must be released before files can be deleted
 }
@@ -277,7 +277,7 @@ fn test_lmdb_resize_on_create() {
         let db_name = "test";
         {
             // Create db with large preset environment size
-            let env = LMDBBuilder::new()
+            let store = LMDBBuilder::new()
                 .set_path(&path)
                 .set_env_config(LMDBConfig::new(
                     100 * PRESET_SIZE * 1024 * 1024,
@@ -289,17 +289,17 @@ fn test_lmdb_resize_on_create() {
                 .build()
                 .unwrap();
             // Add some data that is `>= 2 * (PRESET_SIZE * 1024 * 1024)`
-            let db = env.get_handle(db_name).unwrap();
+            let db = store.get_handle(db_name).unwrap();
             let users = load_users();
             for i in 0..100 {
                 db.insert(&i, &users).unwrap();
             }
             // Ensure enough data is loaded
-            let env_info = env.env().info().unwrap();
-            let env_stat = env.env().stat().unwrap();
+            let env_info = store.env().info().unwrap();
+            let env_stat = store.env().stat().unwrap();
             size_used_round_1 = env_stat.psize as usize * env_info.last_pgno;
             assert!(size_used_round_1 >= 2 * (PRESET_SIZE * 1024 * 1024));
-            env.flush().unwrap();
+            store.flush().unwrap();
         }
 
         {

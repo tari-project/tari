@@ -139,7 +139,7 @@ impl ConnectionManagerMock {
                     .lock()
                     .await
                     .get(&node_id)
-                    .map(Clone::clone)
+                    .cloned()
                     .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses);
                 let _result = reply_tx.take().map(|tx| tx.send(result));
             },
