@@ -3,6 +3,7 @@ version = "1.0.0-dan.9"
 edition = "2021"
 
 [workspace]
+resolver = "2"
 
 members = [
     "base_layer/chat_ffi",
@@ -40,11 +41,11 @@ members = [
 
 [workspace.dependencies]
 tari_comms = { path = "comms/core", version = "1.0.0-dan.9" }
-tari_comms_dht = { path = "comms/dht", version = "1.0.0-dan.9" }
+tari_comms_dht = { path = "comms/dht", version = "1.0.0-dan.9", default-features = false }
 tari_common = { path = "common", version = "1.0.0-dan.9" }
 tari_features = { path = "common/tari_features", version = "1.0.0-dan.9" }
 tari_common_types = { path = "base_layer/common_types" }
-tari_core = { path = "base_layer/core" }
+tari_core = { path = "base_layer/core", default-features = false }
 tari_crypto = { version = "0.20" }
 tari_script = { path = "infrastructure/tari_script" }
 tari_utilities = { version = "0.7" }
@@ -75,8 +76,6 @@ minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 
 
-# Add here until we move to edition=2021
-resolver = "2"
 
 [profile.release]
 # Shutdown when panicking so we can see the error, specifically for the wallet
