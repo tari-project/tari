@@ -244,12 +244,12 @@ async fn banned() {
     // Check that the dial failed. We're checking that the listener unexpectedly
     // closes the connection before the identity protocol has completed.
     let err = reply_rx.await.unwrap().unwrap_err();
-    unpack_enum!(ConnectionManagerError::IdentityProtocolError(_err) = err);
+    assert!(matches!(err, ConnectionManagerError::IdentityProtocolError(_ery)));
 
-    unpack_enum!(
-        ConnectionManagerEvent::PeerInboundConnectFailed(ConnectionManagerError::PeerBanned) =
-            event_rx.recv().await.unwrap()
-    );
+    assert!(matches!(
+        event_rx.recv().await.unwrap(),
+        ConnectionManagerEvent::PeerInboundConnectFailed(ConnectionManagerError::PeerBanned),
+    ));
 
     shutdown.trigger();
 

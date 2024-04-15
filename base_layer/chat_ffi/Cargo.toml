@@ -4,17 +4,17 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [dependencies]
-minotari_app_utilities = { path = "../../applications/minotari_app_utilities" }
-tari_chat_client = { path = "../contacts/src/chat_client" }
-tari_common = { path = "../../common" }
-tari_common_types = { path = "../common_types" }
-tari_contacts = { path = "../contacts" }
-tari_p2p = { path = "../p2p" }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.7" }
+minotari_app_utilities = { workspace = true }
+tari_chat_client = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_contacts = { workspace = true }
+tari_p2p = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_utilities = { workspace = true }
 
 libc = "0.2.65"
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
@@ -32,11 +32,11 @@ crate-type = ["staticlib", "cdylib"]
 [dev-dependencies]
 chrono = { version = "0.4.19", default-features = false }
 rand = "0.8"
-tari_crypto = { version = "0.20" }
+tari_crypto = { workspace = true }
 
 [build-dependencies]
 cbindgen = "0.24.3"
-tari_common = { path = "../../common", features = ["build", "static-application-info"] }
+tari_common = { workspace = true, features = ["build"] }
 
 [features]
 default = ["bundled_sqlite"]

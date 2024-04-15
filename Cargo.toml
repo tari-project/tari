@@ -1,5 +1,7 @@
 [workspace.package]
 version = "1.0.0-dan.9"
+edition = "2021"
+
 [workspace]
 
 members = [
@@ -35,6 +37,43 @@ members = [
     "integration_tests",
     "hashing",
 ]
+
+[workspace.dependencies]
+tari_comms = { path = "comms/core", version = "1.0.0-dan.9" }
+tari_comms_dht = { path = "comms/dht", version = "1.0.0-dan.9" }
+tari_common = { path = "common", version = "1.0.0-dan.9" }
+tari_features = { path = "common/tari_features", version = "1.0.0-dan.9" }
+tari_common_types = { path = "base_layer/common_types" }
+tari_core = { path = "base_layer/core" }
+tari_crypto = { version = "0.20" }
+tari_script = { path = "infrastructure/tari_script" }
+tari_utilities = { version = "0.7" }
+minotari_app_grpc = { path = "applications/minotari_app_grpc" }
+minotari_app_utilities = { path = "applications/minotari_app_utilities" }
+tari_contacts = { path = "base_layer/contacts" }
+tari_key_manager = { path = "base_layer/key_manager" }
+tari_libtor = { path = "infrastructure/libtor" }
+tari_p2p = { path = "base_layer/p2p" }
+tari_shutdown = { path = "infrastructure/shutdown" }
+minotari_wallet = { path = "base_layer/wallet" }
+tari_hashing = { path = "hashing" }
+tari_common_sqlite = { path = "common_sqlite" }
+tari_service_framework = { path = "base_layer/service_framework" }
+tari_test_utils = { path = "infrastructure/test_utils" }
+tari_storage = { path = "infrastructure/storage" }
+minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client" }
+tari_comms_rpc_macros = { path = "comms/rpc_macros" }
+tari_metrics = { path = "infrastructure/metrics" }
+tari_mmr = { path = "base_layer/mmr" }
+minotari_chat_ffi = { path = "base_layer/chat_ffi" }
+minotari_console_wallet = { path = "applications/minotari_console_wallet" }
+minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy" }
+minotari_miner = { path = "applications/minotari_miner" }
+tari_chat_client = { path = "base_layer/contacts/src/chat_client" }
+minotari_node = { path = "applications/minotari_node" }
+minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
+minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
+
 
 # Add here until we move to edition=2021
 resolver = "2"

@@ -5,15 +5,15 @@ description = "A Merkle Mountain Range implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [features]
 default = []
 
 [dependencies]
-tari_utilities = { version = "0.7" }
-tari_crypto = { version = "0.20" }
-tari_common = { path = "../../common", version = "1.0.0-dan.5" }
+tari_utilities = { workspace = true }
+tari_crypto = { workspace = true }
+tari_common = { workspace = true }
 thiserror = "1.0"
 borsh = "1.2"
 digest = "0.10"

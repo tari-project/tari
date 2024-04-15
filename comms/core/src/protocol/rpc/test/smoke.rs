@@ -504,8 +504,14 @@ async fn max_global_sessions() {
         .await
         .unwrap_err();
 
-    unpack_enum!(RpcError::HandshakeError(err) = err);
-    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
+    if let RpcError::HandshakeError(new_err) = err {
+        assert!(matches!(
+            new_err,
+            RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable)
+        ));
+    } else {
+        panic!("Wrong error type")
+    }
 
     client.close().await;
     let substream = outbound.get_yamux_control().open_stream().await.unwrap();
@@ -563,8 +569,14 @@ async fn max_per_client_sessions() {
         .await
         .unwrap_err();
 
-    unpack_enum!(RpcError::HandshakeError(err) = err);
-    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
+    if let RpcError::HandshakeError(ref new_err) = err {
+        assert!(matches!(
+            new_err,
+            RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable)
+        ));
+    } else {
+        panic!("wrong error type");
+    }
 
     drop(client);
     let substream = outbound.get_yamux_control().open_stream().await.unwrap();

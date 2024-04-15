@@ -7,15 +7,14 @@ homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [features]
 build = ["toml", "prost-build"]
-static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { version = "0.20" }
-tari_features = { path = "./tari_features", version = "1.0.0-dan.5" }
+tari_crypto = { workspace = true }
+tari_features = { workspace = true }
 
 anyhow = "1.0.53"
 blake2 = "0.10"
@@ -36,8 +35,8 @@ thiserror = "1.0.29"
 toml = { version = "0.5", optional = true }
 
 [dev-dependencies]
-tari_test_utils = { path = "../infrastructure/test_utils" }
+tari_test_utils = { workspace = true }
 toml = "0.5.8"
 
 [build-dependencies]
-tari_features = { path = "./tari_features", version = "1.0.0-dan.5" }
+tari_features = { workspace = true }

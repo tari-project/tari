@@ -4,33 +4,33 @@ authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [dependencies]
-minotari_app_grpc = { path = "../applications/minotari_app_grpc" }
-minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
-minotari_node = { path = "../applications/minotari_node", features = ["metrics"] }
-minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
-tari_chat_client = { path = "../base_layer/contacts/src/chat_client" }
-minotari_chat_ffi = { path = "../base_layer/chat_ffi" }
-tari_crypto = { version = "0.20" }
-tari_common = { path = "../common" }
-tari_common_types = { path = "../base_layer/common_types" }
-tari_comms = { path = "../comms/core" }
-tari_comms_dht = { path = "../comms/dht" }
-minotari_console_wallet = { path = "../applications/minotari_console_wallet", features = ["grpc"] }
-tari_contacts = { path = "../base_layer/contacts" }
-tari_core = { path = "../base_layer/core" }
-minotari_merge_mining_proxy = { path = "../applications/minotari_merge_mining_proxy" }
-minotari_miner = { path = "../applications/minotari_miner" }
-tari_p2p = { path = "../base_layer/p2p" }
-tari_script = { path = "../infrastructure/tari_script" }
-tari_shutdown = { path = "../infrastructure/shutdown" }
-tari_utilities = { version = "0.7" }
-minotari_wallet = { path = "../base_layer/wallet" }
-minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
-minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
-tari_key_manager = { path = "../base_layer/key_manager" }
+minotari_app_grpc = { workspace = true }
+minotari_app_utilities = { workspace = true }
+minotari_node = { workspace = true, features = ["metrics"] }
+minotari_node_grpc_client = { workspace = true }
+tari_chat_client = { workspace = true }
+minotari_chat_ffi = { workspace = true }
+tari_crypto = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_comms = { workspace = true }
+tari_comms_dht = { workspace = true }
+minotari_console_wallet = { workspace = true, features = ["grpc"] }
+tari_contacts = { workspace = true }
+tari_core = { workspace = true }
+minotari_merge_mining_proxy = { workspace = true }
+minotari_miner = { workspace = true }
+tari_p2p = { workspace = true }
+tari_script = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_utilities = { workspace = true }
+minotari_wallet = { workspace = true }
+minotari_wallet_ffi = { workspace = true }
+minotari_wallet_grpc_client = { workspace = true }
+tari_key_manager = { workspace = true }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"

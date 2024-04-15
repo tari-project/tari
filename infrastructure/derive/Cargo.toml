@@ -7,7 +7,7 @@ homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [lib]
 proc-macro = true

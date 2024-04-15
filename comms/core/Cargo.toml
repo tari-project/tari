@@ -7,14 +7,14 @@ homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [dependencies]
-tari_crypto = { version = "0.20" }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-dan.5" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-dan.5" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-dan.5" }
-tari_utilities = { version = "0.7" }
+tari_crypto = { workspace = true }
+tari_metrics = { workspace = true, optional = true }
+tari_storage = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_utilities = { workspace = true }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
@@ -50,15 +50,15 @@ yamux = "=0.10.2"
 zeroize = "1"
 
 [dev-dependencies]
-tari_test_utils = { path = "../../infrastructure/test_utils" }
-tari_comms_rpc_macros = { path = "../rpc_macros" }
+tari_test_utils = { workspace = true }
+tari_comms_rpc_macros = { workspace = true }
 
 env_logger = "0.7.0"
 serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build"], version = "1.0.0-dan.5" }
+tari_common = { workspace = true, features = ["build"] }
 
 [features]
 c_integration = []

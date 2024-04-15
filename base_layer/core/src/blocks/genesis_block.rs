@@ -75,7 +75,6 @@ fn print_mr_values(block: &mut Block, print: bool) {
     if !print {
         return;
     }
-    use std::convert::TryFrom;
 
     use crate::{chain_storage::calculate_validator_node_mr, KernelMmr};
 

@@ -2,7 +2,7 @@
 name = "tari_metrics"
 description = "Tari metrics"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"

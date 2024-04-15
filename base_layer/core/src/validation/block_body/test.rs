@@ -347,7 +347,10 @@ async fn it_checks_input_maturity() {
         err,
         ValidationError::TransactionError(TransactionError::InputMaturity)
     ));
-    unpack_enum!(ValidationError::TransactionError(TransactionError::InputMaturity) = err);
+    assert!(matches!(
+        err,
+        ValidationError::TransactionError(TransactionError::InputMaturity)
+    ));
 }
 
 #[tokio::test]

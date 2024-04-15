@@ -1,7 +1,7 @@
 [package]
 name = "tari_script"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Tari script library"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
@@ -11,8 +11,8 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_crypto = { version = "0.20" }
-tari_utilities = { version = "0.7" }
+tari_crypto = { workspace = true }
+tari_utilities = { workspace = true }
 
 blake2 = "0.10"
 borsh = "1.2"

@@ -22,13 +22,12 @@
 
 use std::path::{Path, PathBuf};
 
-use minotari_wallet_grpc_client::GrpcAuthentication;
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{Network, StringList},
     SubConfigPath,
 };
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::transaction_components::RangeProofType;
 

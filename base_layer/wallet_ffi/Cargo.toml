@@ -4,22 +4,22 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [dependencies]
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["tari_mmr", "transactions"] }
-tari_common = { path = "../../common" }
-tari_common_types = { path = "../common_types" }
-tari_comms = { path = "../../comms/core", features = ["c_integration"] }
-tari_comms_dht = { path = "../../comms/dht", default-features = false }
-tari_crypto = { version = "0.20" }
-tari_key_manager = { path = "../key_manager" }
-tari_p2p = { path = "../p2p" }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.7" }
-minotari_wallet = { path = "../wallet", features = ["c_integration"] }
-tari_contacts = { path = "../../base_layer/contacts" }
+tari_core = { workspace = true, default-features = false, features = ["tari_mmr", "transactions"] }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_comms = { workspace = true, features = ["c_integration"] }
+tari_comms_dht = { workspace = true, default-features = false }
+tari_crypto = { workspace = true }
+tari_key_manager = { workspace = true }
+tari_p2p = { workspace = true }
+tari_script = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_utilities = { workspace = true }
+minotari_wallet = { workspace = true, features = ["c_integration"] }
+tari_contacts = { workspace = true }
 
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
@@ -44,14 +44,14 @@ crate-type = ["staticlib", "cdylib"]
 [dev-dependencies]
 once_cell = "1.8.0"
 tempfile = "3.1.0"
-tari_key_manager = { path = "../key_manager" }
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_test_utils = { path = "../../infrastructure/test_utils" }
-tari_service_framework = { path = "../../base_layer/service_framework" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["base_node"] }
+tari_key_manager = { workspace = true }
+tari_common_types = { workspace = true }
+tari_test_utils = { workspace = true }
+tari_service_framework = { workspace = true }
+tari_core = { workspace = true, default-features = false, features = ["base_node"] }
 borsh = "1.2"
 
 [build-dependencies]
 cbindgen = "0.24.3"
-tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }
+tari_common = { workspace = true, features = ["build"] }
+tari_features = { workspace = true }

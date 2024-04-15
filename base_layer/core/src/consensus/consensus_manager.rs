@@ -118,7 +118,6 @@ impl ConsensusManager {
         pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<TargetDifficultyWindow, String> {
-        use std::convert::TryFrom;
         let constants = self.consensus_constants(height);
         let block_window = constants.difficulty_block_window();
 
