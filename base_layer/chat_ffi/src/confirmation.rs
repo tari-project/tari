@@ -101,18 +101,27 @@ pub unsafe extern "C" fn read_confirmation_message_id(
 
     let c = &(*confirmation);
     let data_bytes = c.message_id.clone();
-    let len = u32::try_from(data_bytes.len()).expect("Can't cast from usize");
+
+    let len = match u32::try_from(data_bytes.len()) {
+        Ok(l) => l,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    };
+
     chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out)
 }
 
-/// Get a c_longlong timestamp for the Confirmation
+/// Get a c_ulonglong timestamp for the Confirmation
 ///
 /// ## Arguments
 /// `confirmation` - A pointer to the Confirmation
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_longlong` - A uint representation of time since epoch
+/// `c_ulonglong` - A uint representation of time since epoch. May return 0 on error
 ///
 /// # Safety
 /// The ```confirmation``` When done with the Confirmation it should be destroyed

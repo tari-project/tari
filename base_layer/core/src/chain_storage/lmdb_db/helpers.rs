@@ -20,23 +20,53 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Instant;
+
 use lmdb_zero::error;
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+use tari_storage::lmdb_store::BYTES_PER_MB;
 
 use crate::chain_storage::ChainStorageError;
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
-pub fn serialize<T>(data: &T) -> Result<Vec<u8>, ChainStorageError>
+/// Serialize the given data into a byte vector
+/// Note:
+///   `size_hint` is given as an option as checking what the serialized would be is expensive
+///   for large data structures at ~30% overhead
+pub fn serialize<T>(data: &T, size_hint: Option<usize>) -> Result<Vec<u8>, ChainStorageError>
 where T: Serialize {
-    let size = bincode::serialized_size(&data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-    #[allow(clippy::cast_possible_truncation)]
-    let mut buf = Vec::with_capacity(size as usize);
+    let start = Instant::now();
+    let mut buf = if let Some(size) = size_hint {
+        Vec::with_capacity(size)
+    } else {
+        let size = bincode::serialized_size(&data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        #[allow(clippy::cast_possible_truncation)]
+        Vec::with_capacity(size as usize)
+    };
+    let check_time = start.elapsed();
     bincode::serialize_into(&mut buf, data).map_err(|e| {
         error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;
+    if buf.len() >= BYTES_PER_MB {
+        let serialize_time = start.elapsed() - check_time;
+        trace!(
+            "lmdb_replace - {} MB, serialize check in {:.2?}, serialize in {:.2?}",
+            buf.len() / BYTES_PER_MB,
+            check_time,
+            serialize_time
+        );
+    }
+    if let Some(size) = size_hint {
+        if buf.len() > size {
+            warn!(
+                target: LOG_TARGET,
+                "lmdb_replace - Serialized size hint was too small. Expected {}, got {}", size, buf.len()
+            );
+        }
+    }
     Ok(buf)
 }
 

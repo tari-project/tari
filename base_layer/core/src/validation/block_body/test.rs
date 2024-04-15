@@ -99,7 +99,8 @@ async fn it_passes_if_large_output_block_is_valid() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let start = Instant::now();
-    assert!(validator.validate_body(&*txn, &block).is_ok());
+    let smt = blockchain.db().smt().clone();
+    assert!(validator.validate_body(&*txn, &block, smt).is_ok());
     let finished = start.elapsed();
     // this here here for benchmarking purposes.
     // we can extrapolate full block validation by multiplying the time by 4.6, this we get from the max_weight /weight
@@ -133,7 +134,8 @@ async fn it_validates_when_a_coinbase_is_spent() {
     block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
-    assert!(validator.validate_body(&*txn, &block).is_ok());
+    let smt = blockchain.db().smt().clone();
+    assert!(validator.validate_body(&*txn, &block, smt).is_ok());
 }
 
 #[tokio::test]
@@ -175,7 +177,8 @@ async fn it_passes_if_large_block_is_valid() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let start = Instant::now();
-    validator.validate_body(&*txn, &block).unwrap();
+    let smt = blockchain.db().smt();
+    validator.validate_body(&*txn, &block, smt).unwrap();
     // assert!(validator.validate_body(&*txn, &block).is_ok());
     let finished = start.elapsed();
     // this here here for benchmarking purposes.
@@ -203,7 +206,8 @@ async fn it_passes_if_block_is_valid() {
     block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
-    assert!(validator.validate_body(&*txn, &block).is_ok());
+    let smt = blockchain.db().smt();
+    assert!(validator.validate_body(&*txn, &block, smt).is_ok());
 }
 
 #[tokio::test]
@@ -214,7 +218,8 @@ async fn it_checks_the_coinbase_reward() {
         .create_chained_block(block_spec!("A", parent: "GB", reward: 10 * T, ))
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     println!("err {:?}", err);
     assert!(matches!(
         err,
@@ -256,9 +261,9 @@ async fn it_allows_multiple_coinbases() {
         .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))
         .await;
     let block = blockchain.mine_block("GB", block, Difficulty::min());
-
+    let smt = blockchain.db().smt();
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::BlockError(BlockValidationError::TransactionError(TransactionError::NoCoinbase))
@@ -288,7 +293,8 @@ async fn it_checks_duplicate_kernel() {
         )
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
 }
 
@@ -321,7 +327,8 @@ async fn it_checks_double_spends() {
         )
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(err, ValidationError::ContainsSTxO));
 }
 
@@ -342,7 +349,8 @@ async fn it_checks_input_maturity() {
         )
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::TransactionError(TransactionError::InputMaturity)
@@ -373,7 +381,8 @@ async fn it_checks_txo_sort_order() {
     let block = blockchain.mine_block("A", block, Difficulty::min());
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
 }
 
@@ -399,7 +408,8 @@ async fn it_limits_the_script_byte_size() {
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(err, ValidationError::TariScriptExceedsMaxSize { .. }));
 }
 
@@ -424,7 +434,8 @@ async fn it_rejects_invalid_input_metadata() {
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(err, ValidationError::UnknownInputs(_)));
 }
 
@@ -452,8 +463,9 @@ async fn it_rejects_zero_conf_double_spends() {
     let (unmined, _) = blockchain
         .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
         .await;
+    let smt = blockchain.db().smt();
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, &unmined).unwrap_err();
+    let err = validator.validate_body(&*txn, &unmined, smt).unwrap_err();
     assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
 }
 
@@ -487,7 +499,10 @@ mod body_only {
         let metadata = blockchain.db().get_chain_metadata().unwrap();
 
         let db = blockchain.db().db_read_access().unwrap();
-        let err = validator.validate(&*db, block.block(), Some(&metadata)).unwrap_err();
+        let smt = blockchain.db().smt();
+        let err = validator
+            .validate(&*db, block.block(), Some(&metadata), smt)
+            .unwrap_err();
         assert!(matches!(err, ValidationError::UnknownInputs(_)));
     }
 }

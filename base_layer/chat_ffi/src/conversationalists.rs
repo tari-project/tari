@@ -77,7 +77,7 @@ pub unsafe extern "C" fn get_conversationalists(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_int` - The length of the vector. May return -1 if something goes wrong
+/// `c_uint` - The length of the vector. May return 0 if something goes wrong
 ///
 /// ## Safety
 /// `conversationalists` should be destroyed eventually
@@ -85,18 +85,25 @@ pub unsafe extern "C" fn get_conversationalists(
 pub unsafe extern "C" fn conversationalists_vector_len(
     conversationalists: *mut ConversationalistsVector,
     error_out: *mut c_int,
-) -> c_int {
+) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if conversationalists.is_null() {
         error = LibChatError::from(InterfaceError::NullError("conversationalists".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
 
     let conversationalists = &(*conversationalists);
-    c_int::try_from(conversationalists.0.len()).unwrap_or(-1)
+    match c_uint::try_from(conversationalists.0.len()) {
+        Ok(l) => l,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }
 
 /// Reads the ConversationalistsVector and returns a pointer to a TariAddress at a given position

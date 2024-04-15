@@ -34,7 +34,7 @@ use tari_comms::{peer_manager::PeerFeatures, CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactOnlineStatus,
-    types::{Message, MessageBuilder, MessageMetadata, MessageMetadataType},
+    types::{Message, MessageBuilder, MessageMetadata},
 };
 use tari_shutdown::Shutdown;
 
@@ -45,7 +45,7 @@ const LOG_TARGET: &str = "contacts::chat_client";
 #[async_trait]
 pub trait ChatClient {
     async fn add_contact(&self, address: &TariAddress) -> Result<(), Error>;
-    fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message;
+    fn add_metadata(&self, message: Message, metadata_type: String, data: String) -> Message;
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error>;
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error>;
@@ -198,9 +198,9 @@ impl ChatClient for Client {
         MessageBuilder::new().address(receiver.clone()).message(message).build()
     }
 
-    fn add_metadata(&self, mut message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
+    fn add_metadata(&self, mut message: Message, key: String, data: String) -> Message {
         let metadata = MessageMetadata {
-            metadata_type,
+            key: key.into_bytes(),
             data: data.into_bytes(),
         };
 

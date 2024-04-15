@@ -31,7 +31,7 @@ use std::{
         RwLock,
     },
     task::{Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use borsh::BorshSerialize;
@@ -49,6 +49,7 @@ use tari_core::{
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, randomx_difficulty, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
+use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
@@ -653,7 +654,8 @@ impl InnerService {
 
         for next_url in iter {
             let uri = format!("{}{}", next_url, uri.path()).parse::<Url>()?;
-            match reqwest::get(uri.clone()).await {
+            debug!(target: LOG_TARGET, "Trying to connect to Monerod server at: {}", uri.as_str());
+            match timeout(Duration::from_secs(10), reqwest::get(uri.clone())).await {
                 Ok(_) => {
                     let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
                     *lock = Some(next_url.to_string());
@@ -662,11 +664,11 @@ impl InnerService {
                         .write()
                         .expect("Write lock should not fail");
                     *lock = Some(next_url.to_string());
-                    info!(target: LOG_TARGET, "Monerod server available: {:?}", uri.clone());
+                    info!(target: LOG_TARGET, "Monerod server available: {}", uri.as_str());
                     return Ok(uri);
                 },
                 Err(_) => {
-                    warn!(target: LOG_TARGET, "Monerod server unavailable: {:?}", uri);
+                    warn!(target: LOG_TARGET, "Monerod server unavailable: {}", uri.as_str());
                 },
             }
         }

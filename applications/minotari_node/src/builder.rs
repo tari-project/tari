@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use log::*;
 use tari_common::{
@@ -42,6 +42,7 @@ use tari_core::{
         transaction::TransactionFullValidator,
         DifficultyCalculator,
     },
+    OutputSmt,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
@@ -210,6 +211,7 @@ async fn build_node_context(
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory.clone());
+    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
@@ -226,6 +228,7 @@ async fn build_node_context(
         validators,
         app_config.base_node.storage,
         difficulty_calculator,
+        smt.clone(),
     )
     .map_err(|err| {
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {
@@ -262,6 +265,7 @@ async fn build_node_context(
         factories: factories.clone(),
         randomx_factory,
         interrupt_signal: interrupt_signal.clone(),
+        smt,
     }
     .bootstrap()
     .await?;

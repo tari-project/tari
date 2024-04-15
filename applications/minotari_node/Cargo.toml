@@ -22,6 +22,7 @@ tari_storage = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
+tari_key_manager = { path = "../../base_layer/key_manager", features = ["key_manager_service"] }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"
@@ -30,7 +31,7 @@ borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = [] }
 console-subscriber = "0.1.8"
-config = { version = "0.13.0" }
+config = { version = "0.14.0" }
 crossterm = { version = "0.25.0", features = ["event-stream"] }
 derive_more = "0.99.17"
 either = "1.6.1"

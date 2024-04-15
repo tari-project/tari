@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{Arc, RwLock};
+
 use tari_common::configuration::Network;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
@@ -59,6 +61,7 @@ use tari_core::{
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
+    OutputSmt,
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, ExecutionStack};
@@ -441,7 +444,9 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         pruning_interval: 1,
         ..Default::default()
     };
-    let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
+    let smt = Arc::new(RwLock::new(OutputSmt::new()));
+    let store =
+        create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config, smt);
     let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),

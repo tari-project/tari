@@ -34,7 +34,7 @@ tokio = { version = "1.36", features = ["signal"] }
 blake2 = "0.10"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
-config = "0.13.0"
+config = "0.14.0"
 crossterm = { version = "0.25.0" }
 digest = "0.10"
 futures = { version = "^0.3.16", default-features = false, features = [

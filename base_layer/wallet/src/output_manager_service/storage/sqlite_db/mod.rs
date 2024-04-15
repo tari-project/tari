@@ -425,12 +425,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        debug!(
-            target: LOG_TARGET,
-            "`set_received_outputs_mined_height_and_statuses` for {} outputs",
-            updates.len()
-        );
-
         let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
         if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -569,30 +563,58 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn update_last_validation_timestamps(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
+    fn update_last_validation_timestamps(&self, commitments: Vec<Commitment>) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        // Using a raw query here, as the obvious diesel query is not as performant as expected:
-        // `diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes.iter().map(|hash| hash.to_vec()))))
-        // `    .set(outputs::last_validation_timestamp.eq(Some(Utc::now().naive_utc())))
-        // `     .execute(&mut conn)
-        // `     .num_rows_affected_or_not_found(hashes.len())?;
-        let sql_query = format!(
-            r#"
-            UPDATE outputs
-            SET last_validation_timestamp = '{}'
-            WHERE hash IN ({})
-            "#,
-            Utc::now().naive_utc(),
-            hashes
-                .iter()
-                .map(|hash| format!("'{}'", hash))
-                .collect::<Vec<_>>()
-                .join(",")
+        if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        let last_validation_timestamp = Utc::now().naive_utc();
+
+        // Three queries were evaluated to determine the most efficient way to update the last validation timestamp
+        // during system-level stress testing:
+        // - Using `diesel`:
+        //   - `diesel::update(outputs::table.filter(outputs::hash.eq_any(hashes)).set(...).execute(&mut conn)`
+        //   - Note: `diesel` does not support batch updates, so we have to do it manually.
+        // - Using a raw query that mimicked the `diesel` query:
+        //   - `UPDATE outputs SET last_validation_timestamp = '{}' WHERE hash IN ({})`
+        //   - 20% faster than `diesel` on average
+        // - Using a raw query with a batch insert (as implemented below):
+        //   - `INSERT INTO outputs (..) VALUES (...) ON CONFLICT (commitment) DO UPDATE SET ...`
+        //   - 1011% faster than `diesel` on average
+
+        let mut query = String::from(
+            "INSERT INTO outputs ( commitment, last_validation_timestamp, mined_height, mined_in_block, status, \
+             mined_timestamp, spending_key, value, output_type, maturity, hash, script, input_data, \
+             script_private_key, sender_offset_public_key, metadata_signature_ephemeral_commitment, \
+             metadata_signature_ephemeral_pubkey, metadata_signature_u_a, metadata_signature_u_x, \
+             metadata_signature_u_y, spending_priority, covenant, encrypted_data, minimum_value_promise
+                    )
+                     VALUES ",
         );
-        conn.batch_execute(&sql_query)?;
+
+        query.push_str(
+            &commitments
+                .iter()
+                .map(|commitment| {
+                    format!(
+                        "(x'{}', '{}', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+                        commitment.to_hex(),
+                        last_validation_timestamp,
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join(", "),
+        );
+
+        query.push_str(
+            " ON CONFLICT (commitment) DO UPDATE SET last_validation_timestamp = excluded.last_validation_timestamp",
+        );
+
+        conn.batch_execute(&query)?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -601,7 +623,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
-                hashes.len()
+                commitments.len(),
             );
         }
 
@@ -613,12 +635,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-
-        debug!(
-            target: LOG_TARGET,
-            "`mark_outputs_as_spent` for {} outputs",
-            updates.len()
-        );
 
         let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
         if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {

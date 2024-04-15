@@ -117,8 +117,8 @@ impl MergeMiningProxyProcess {
                             "merge_mining_proxy.monerod_url".to_string(),
                             [
                                 "http://stagenet.xmr-tw.org:38081",
-                                "http://stagenet.community.xmr.to:38081",
-                                "http://monero-stagenet.exan.tech:38081",
+                                "http://node.monerodevs.org:38089",
+                                "http://node3.monerodevs.org:38089",
                                 "http://xmr-lux.boldsuck.org:38081",
                                 "http://singapore.node.xmr.pm:38081",
                             ]
@@ -140,6 +140,10 @@ impl MergeMiningProxyProcess {
                             wallet_payment_address.to_hex(),
                         ),
                         ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
+                        (
+                            "merge_mining_proxy.use_dynamic_fail_data".to_string(),
+                            "false".to_string(),
+                        ),
                     ],
                 },
                 non_interactive_mode: false,

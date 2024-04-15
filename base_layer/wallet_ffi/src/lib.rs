@@ -4919,6 +4919,7 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
     let mut connectivity = (*wallet).wallet.comms.connectivity();
     let peer_manager = (*wallet).wallet.comms.peer_manager();
 
+    #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
         let connections = connectivity.get_active_connections().await?;
         let mut public_keys = Vec::with_capacity(connections.len());
@@ -6407,6 +6408,7 @@ pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_ou
     }
     let peer_manager = (*wallet).wallet.comms.peer_manager();
     let query = PeerQuery::new().select_where(|p| p.is_seed());
+    #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
         let peers = peer_manager.perform_query(query).await?;
         let mut public_keys = Vec::with_capacity(peers.len());
