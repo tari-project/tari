@@ -594,15 +594,16 @@ where B: BlockchainBackend + 'static
     ) -> Result<Block, CommsInterfaceError> {
         let NewBlock {
             header,
-            coinbase_kernel,
-            coinbase_output,
+            coinbase_kernels,
+            coinbase_outputs,
             kernel_excess_sigs: excess_sigs,
         } = new_block;
         // If the block is empty, we dont have to ask for the block, as we already have the full block available
         // to us.
         if excess_sigs.is_empty() {
             let block = BlockBuilder::new(header.version)
-                .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+                .add_outputs(coinbase_outputs)
+                .add_kernels(coinbase_kernels)
                 .with_header(header)
                 .build();
             return Ok(block);
@@ -639,7 +640,8 @@ where B: BlockchainBackend + 'static
         metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
 
         let mut builder = BlockBuilder::new(header.version)
-            .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+            .add_outputs(coinbase_outputs)
+            .add_kernels(coinbase_kernels)
             .with_transactions(known_transactions);
 
         if missing_excess_sigs.is_empty() {

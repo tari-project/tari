@@ -184,16 +184,18 @@ impl TryFrom<proto::NewBlock> for NewBlock {
     type Error = String;
 
     fn try_from(new_block: proto::NewBlock) -> Result<Self, Self::Error> {
+        let mut coinbase_kernels = Vec::new();
+        for coinbase_kernel in new_block.coinbase_kernels {
+            coinbase_kernels.push(coinbase_kernel.try_into()?)
+        }
+        let mut coinbase_outputs = Vec::new();
+        for coinbase_output in new_block.coinbase_outputs {
+            coinbase_outputs.push(coinbase_output.try_into()?)
+        }
         Ok(Self {
             header: new_block.header.ok_or("No new block header provided")?.try_into()?,
-            coinbase_kernel: new_block
-                .coinbase_kernel
-                .ok_or("No coinbase kernel given")?
-                .try_into()?,
-            coinbase_output: new_block
-                .coinbase_output
-                .ok_or("No coinbase kernel given")?
-                .try_into()?,
+            coinbase_kernels,
+            coinbase_outputs,
             kernel_excess_sigs: new_block
                 .kernel_excess_sigs
                 .iter()
@@ -208,10 +210,18 @@ impl TryFrom<NewBlock> for proto::NewBlock {
     type Error = String;
 
     fn try_from(new_block: NewBlock) -> Result<Self, Self::Error> {
+        let mut coinbase_kernels = Vec::new();
+        for coinbase_kernel in new_block.coinbase_kernels {
+            coinbase_kernels.push(coinbase_kernel.into())
+        }
+        let mut coinbase_outputs = Vec::new();
+        for coinbase_output in new_block.coinbase_outputs {
+            coinbase_outputs.push(coinbase_output.try_into()?)
+        }
         Ok(Self {
             header: Some(new_block.header.into()),
-            coinbase_kernel: Some(new_block.coinbase_kernel.into()),
-            coinbase_output: Some(new_block.coinbase_output.try_into()?),
+            coinbase_kernels,
+            coinbase_outputs,
             kernel_excess_sigs: new_block.kernel_excess_sigs.into_iter().map(|s| s.to_vec()).collect(),
         })
     }
