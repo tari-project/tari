@@ -95,6 +95,11 @@
 # An example script is available here: applications/minotari_console_wallet/src/notifier/notify_example.sh
 #notify_file = "/path/to/script"
 
+# The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
+# For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
+# responsiveness of the wallet with slightly delayed balance updates (default = 5):
+#balance_enquiry_cooldown_period = 5
+
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
 broadcast_monitoring_timeout = 180

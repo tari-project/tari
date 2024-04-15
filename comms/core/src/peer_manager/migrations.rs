@@ -31,7 +31,7 @@ pub(super) const MIGRATION_VERSION_KEY: u64 = u64::MAX;
 
 pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
     // Add migrations here in version order
-    let migrations = vec![v7::Migration.boxed()];
+    let migrations = [v7::Migration.boxed()];
     if migrations.is_empty() {
         return Ok(());
     }

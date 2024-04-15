@@ -25,10 +25,7 @@ use std::{convert::TryFrom, ptr};
 use libc::{c_int, c_uint};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
-use tari_contacts::contacts_service::{
-    handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
-    types::Message,
-};
+use tari_contacts::contacts_service::types::Message;
 
 use crate::{
     error::{InterfaceError, LibChatError},
@@ -58,8 +55,8 @@ pub struct MessageVector(pub Vec<Message>);
 pub unsafe extern "C" fn get_chat_messages(
     client: *mut ChatClient,
     address: *mut TariAddress,
-    limit: c_int,
-    page: c_int,
+    limit: c_uint,
+    page: c_uint,
     error_out: *mut c_int,
 ) -> *mut MessageVector {
     let mut error = 0;
@@ -75,8 +72,8 @@ pub unsafe extern "C" fn get_chat_messages(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let mlimit = u64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
-    let mpage = u64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE);
+    let mlimit = u64::from(limit);
+    let mpage = u64::from(page);
 
     let result = (*client)
         .runtime
@@ -99,23 +96,30 @@ pub unsafe extern "C" fn get_chat_messages(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+/// `c_uint` - The length of the metadata vector for a Message. May return 0 if something goes wrong
 ///
 /// ## Safety
 /// `messages` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn message_vector_len(messages: *mut MessageVector, error_out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn message_vector_len(messages: *mut MessageVector, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if messages.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
 
     let messages = &(*messages);
-    c_int::try_from(messages.0.len()).unwrap_or(-1)
+    match c_uint::try_from(messages.0.len()) {
+        Ok(l) => l,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }
 
 /// Reads the MessageVector and returns a Message at a given position

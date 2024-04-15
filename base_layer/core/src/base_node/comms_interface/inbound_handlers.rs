@@ -344,6 +344,7 @@ where B: BlockchainBackend + 'static
                     "A peer has requested a block with hash {}", block_hex
                 );
 
+                #[allow(clippy::blocks_in_conditions)]
                 let maybe_block = match self
                     .blockchain_db
                     .fetch_block_by_hash(hash, true)

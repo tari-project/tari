@@ -27,7 +27,7 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
-use tari_utilities::Hidden;
+use tari_utilities::{ByteArray, Hidden};
 
 use crate::{
     key_manager_service::{
@@ -147,9 +147,15 @@ impl KeyManagerStateSql {
 
 impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
-            .concat()
-            .to_vec()
+        // Because there are two variable-length inputs in the concatenation, we prepend the length of the first
+        [
+            Self::KEY_MANAGER,
+            (self.branch_seed.len() as u64).to_le_bytes().as_bytes(),
+            self.branch_seed.as_bytes(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
     }
 
     fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
@@ -172,9 +178,15 @@ impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
 
 impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
-            .concat()
-            .to_vec()
+        // Because there are two variable-length inputs in the concatenation, we prepend the length of the first
+        [
+            Self::KEY_MANAGER,
+            (self.branch_seed.len() as u64).to_le_bytes().as_bytes(),
+            self.branch_seed.as_bytes(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
     }
 
     fn encrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {

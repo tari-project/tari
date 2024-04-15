@@ -32,12 +32,23 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::transaction_components::RangeProofType;
 
+// The default Monero fail URL for mainnet
+const MONERO_FAIL_MAINNET_URL: &str = "https://monero.fail/?chain=monero&network=mainnet&all=true";
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct MergeMiningProxyConfig {
     override_from: Option<String>,
-    /// URL to monerod
+    /// Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/)
+    pub use_dynamic_fail_data: bool,
+    /// The monero fail URL to get the monerod URLs from - must be pointing to the official Monero website.
+    /// Valid alternatives are:
+    /// - mainnet:  'https://monero.fail/?chain=monero&network=mainnet&all=true'
+    /// - stagenet: `https://monero.fail/?chain=monero&network=stagenet&all=true`
+    /// - testnet:  `https://monero.fail/?chain=monero&network=testnet&all=true`
+    pub monero_fail_url: String,
+    /// URL to monerod (you can add your own server here or use public nodes from https://monero.fail/)
     pub monerod_url: StringList,
     /// Username for curl
     pub monerod_username: String,
@@ -89,6 +100,8 @@ impl Default for MergeMiningProxyConfig {
     fn default() -> Self {
         Self {
             override_from: None,
+            use_dynamic_fail_data: true,
+            monero_fail_url: MONERO_FAIL_MAINNET_URL.into(),
             monerod_url: StringList::default(),
             monerod_username: String::new(),
             monerod_password: String::new(),

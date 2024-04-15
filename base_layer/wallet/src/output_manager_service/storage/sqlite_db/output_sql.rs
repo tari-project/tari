@@ -58,6 +58,7 @@ use crate::{
         },
         UtxoSelectionFilter,
         UtxoSelectionOrdering,
+        TRANSACTION_INPUTS_LIMIT,
     },
     schema::outputs,
 };
@@ -264,7 +265,7 @@ impl OutputSql {
             },
         };
 
-        Ok(query.load(conn)?)
+        Ok(query.limit(i64::from(TRANSACTION_INPUTS_LIMIT)).load(conn)?)
     }
 
     /// Return all unspent outputs that have a maturity above the provided chain tip

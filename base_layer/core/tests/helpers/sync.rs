@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use tari_common::configuration::Network;
 use tari_common_types::types::HashOutput;
@@ -55,6 +58,7 @@ use tari_core::{
     },
     txn_schema,
     validation::mocks::MockValidator,
+    OutputSmt,
 };
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
@@ -217,8 +221,14 @@ pub enum WhatToDelete {
 
 // Private helper function to setup a delete a block transaction.
 // Note: This private function will panic if the index is out of bounds - caller function's responsibility.
-fn delete_block(txn: &mut DbTransaction, node: &NodeInterfaces, blocks: &[ChainBlock], index: usize) {
-    txn.delete_tip_block(*blocks[index].hash());
+fn delete_block(
+    txn: &mut DbTransaction,
+    node: &NodeInterfaces,
+    blocks: &[ChainBlock],
+    index: usize,
+    smt: Arc<RwLock<OutputSmt>>,
+) {
+    txn.delete_tip_block(*blocks[index].hash(), smt);
     txn.delete_orphan(*blocks[index].hash());
     txn.set_best_block(
         blocks[index + 1].height(),
@@ -235,6 +245,7 @@ pub fn delete_some_blocks_and_headers(
     instruction: WhatToDelete,
     node: &NodeInterfaces,
 ) {
+    let smt = node.blockchain_db.smt().clone();
     if blocks_with_anchor.is_empty() || blocks_with_anchor.len() < 2 {
         panic!("blocks must have at least 2 elements");
     }
@@ -244,11 +255,11 @@ pub fn delete_some_blocks_and_headers(
         let mut txn = DbTransaction::new();
         match instruction {
             WhatToDelete::BlocksAndHeaders => {
-                delete_block(&mut txn, node, &blocks, i);
+                delete_block(&mut txn, node, &blocks, i, smt.clone());
                 txn.delete_header(blocks[i].height());
             },
             WhatToDelete::Blocks => {
-                delete_block(&mut txn, node, &blocks, i);
+                delete_block(&mut txn, node, &blocks, i, smt.clone());
             },
             WhatToDelete::Headers => {
                 txn.delete_header(blocks[i].height());

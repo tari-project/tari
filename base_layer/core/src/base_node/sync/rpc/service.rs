@@ -110,6 +110,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
     #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -273,6 +274,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     #[instrument(level = "trace", name = "sync_rpc::sync_headers", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
@@ -373,6 +375,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     #[instrument(level = "trace", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
@@ -389,6 +392,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     #[instrument(level = "debug", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,
@@ -452,6 +456,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     #[instrument(level = "trace", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn get_chain_metadata(&self, _: Request<()>) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
         let chain_metadata = self
             .db()
@@ -462,6 +467,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     #[instrument(level = "trace", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
@@ -588,6 +594,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     }
 
     #[instrument(level = "trace", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
         let req = request.message();
         let peer_node_id = request.context().peer_node_id();

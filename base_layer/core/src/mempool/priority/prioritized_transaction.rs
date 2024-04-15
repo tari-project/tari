@@ -42,7 +42,13 @@ pub struct FeePriority(Vec<u8>);
 
 impl FeePriority {
     pub fn new(transaction: &Transaction, insert_epoch: u64, weight: u64) -> Result<Self, TransactionError> {
-        let fee_per_byte = transaction.body.get_total_fee()?.as_u64().saturating_mul(1000) / weight;
+        let fee_per_byte = transaction
+            .body
+            .get_total_fee()?
+            .as_u64()
+            .saturating_mul(1000)
+            .checked_div(weight)
+            .ok_or(TransactionError::ZeroWeight)?;
         // Big-endian used here, the MSB is in the starting index. The ordering for Vec<u8> is taken from elements left
         // to right and the unconfirmed pool expects the lowest priority to be sorted lowest to highest in the
         // BTreeMap
@@ -95,7 +101,13 @@ impl PrioritizedTransaction {
         Ok(Self {
             key,
             priority: FeePriority::new(&transaction, insert_epoch, weight)?,
-            fee_per_byte: transaction.body.get_total_fee()?.as_u64().saturating_mul(1000) / weight,
+            fee_per_byte: transaction
+                .body
+                .get_total_fee()?
+                .as_u64()
+                .saturating_mul(1000)
+                .checked_div(weight)
+                .ok_or(TransactionError::ZeroWeight)?,
             weight,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
@@ -161,5 +173,38 @@ mod tests {
         .unwrap();
 
         assert!(p2 > p1);
+    }
+
+    #[test]
+    fn prioritized_from_empty_transaction() {
+        let weighting = TransactionWeight::latest();
+        match PrioritizedTransaction::new(
+            0,
+            &weighting,
+            Arc::new(Transaction::new(
+                vec![],
+                vec![],
+                vec![],
+                Default::default(),
+                Default::default(),
+            )),
+            None,
+        ) {
+            Ok(_) => panic!("Empty transaction should not be valid"),
+            Err(e) => assert_eq!(e, TransactionError::ZeroWeight),
+        }
+    }
+
+    #[test]
+    fn fee_priority_with_zero_weight() {
+        let weight = 0;
+        match FeePriority::new(
+            &Transaction::new(vec![], vec![], vec![], Default::default(), Default::default()),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            weight,
+        ) {
+            Ok(_) => panic!("Empty transaction should not be valid"),
+            Err(e) => assert_eq!(e, TransactionError::ZeroWeight),
+        }
     }
 }

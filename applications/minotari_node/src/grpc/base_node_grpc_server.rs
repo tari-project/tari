@@ -34,7 +34,10 @@ use minotari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use minotari_app_utilities::consts;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{Commitment, FixedHash, PublicKey, Signature},
+};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -49,8 +52,25 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::Transaction,
+    transactions::{
+        generate_coinbase_with_wallet_output,
+        key_manager::{
+            create_memory_db_key_manager,
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TxoStage,
+        },
+        transaction_components::{
+            KernelBuilder,
+            RangeProofType,
+            Transaction,
+            TransactionKernel,
+            TransactionKernelVersion,
+        },
+    },
 };
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
@@ -123,6 +143,8 @@ impl BaseNodeGrpcServer {
         let mining_method = [
             GrpcMethod::GetVersion,
             GrpcMethod::GetNewBlockTemplate,
+            GrpcMethod::GetNewBlockWithCoinbases,
+            GrpcMethod::GetNewBlockTemplateWithCoinbases,
             GrpcMethod::GetNewBlock,
             GrpcMethod::GetNewBlockBlob,
             GrpcMethod::SubmitBlock,
@@ -148,19 +170,18 @@ impl BaseNodeGrpcServer {
         if self.config.second_layer_grpc_enabled && second_layer_methods.contains(&grpc_method) {
             return true;
         }
-
         self.config.grpc_server_allow_methods.contains(&grpc_method)
     }
 
-    fn check_method_enabled<T>(&self, method: GrpcMethod) -> Option<Result<Response<T>, Status>> {
+    fn check_method_enabled(&self, method: GrpcMethod) -> Result<(), Status> {
         if !self.is_method_enabled(method) {
             warn!(target: LOG_TARGET, "`{}` method called but it is not allowed. Allow it in the config file or start the node with a different set of CLI options", method);
-            return Some(Err(Status::permission_denied(format!(
+            return Err(Status::permission_denied(format!(
                 "`{}` method not made available",
                 method
-            ))));
+            )));
         }
-        None
+        Ok(())
     }
 }
 
@@ -201,9 +222,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNetworkDifficulty) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNetworkDifficulty)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -319,9 +338,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetMempoolTransactionsRequest>,
     ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetMempoolTransactions) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetMempoolTransactions)?;
         let report_error_flag = self.report_error_flag();
         let _request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
@@ -382,9 +399,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::ListHeaders) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::ListHeaders)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -555,9 +570,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
     ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlockTemplate) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNewBlockTemplate)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
@@ -619,9 +632,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlock) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNewBlock)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
@@ -631,10 +642,255 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument(format!("Malformed block template provided: {}", s)),
             )
         })?;
+        let algo = block_template.header.pow.pow_algo;
 
         let mut handler = self.node_service.clone();
 
         let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(message),
+                ));
+            },
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(obscure_error_if_true(report_error_flag, status));
+            },
+            Err(e) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(e.to_string()),
+                ))
+            },
+        };
+        let fees = new_block.body.get_total_fee().map_err(|_| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Invalid fees in block".to_string()),
+            )
+        })?;
+        let gen_hash = handler
+            .get_header(0)
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Tari genesis block not found".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari genesis block not found".to_string()),
+                )
+            })?
+            .hash()
+            .to_vec();
+        // construct response
+        let block_hash = new_block.hash().to_vec();
+        let mining_hash = match new_block.header.pow.pow_algo {
+            PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+        };
+        let block: Option<tari_rpc::Block> = Some(
+            new_block
+                .try_into()
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
+        );
+        let new_template = handler.get_new_block_template(algo, 0).await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get new block template: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
+
+        let pow = algo as i32;
+
+        let miner_data = tari_rpc::MinerData {
+            reward: new_template.reward.into(),
+            target_difficulty: new_template.target_difficulty.as_u64(),
+            total_fees: fees.as_u64(),
+            algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
+        };
+
+        let response = tari_rpc::GetNewBlockResult {
+            block_hash,
+            block,
+            merge_mining_hash: mining_hash,
+            tari_unique_id: gen_hash,
+            miner_data: Some(miner_data),
+        };
+        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        Ok(Response::new(response))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn get_new_block_template_with_coinbases(
+        &self,
+        request: Request<tari_rpc::GetNewBlockTemplateWithCoinbasesRequest>,
+    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
+        if !self.is_method_enabled(GrpcMethod::GetNewBlockTemplateWithCoinbases) {
+            return Err(Status::permission_denied(
+                "`GetNewBlockTemplateWithCoinbases` method not made available",
+            ));
+        }
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template with coinbases");
+        let report_error_flag = self.report_error_flag();
+        let request = request.into_inner();
+        let algo = request
+            .algo
+            .map(|algo| u64::try_from(algo.pow_algo))
+            .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("PoW algo not provided")))?
+            .map_err(|e| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Invalid PoW algo '{}'", e)),
+                )
+            })?;
+
+        let algo = PowAlgorithm::try_from(algo).map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Invalid PoW algo '{}'", e)),
+            )
+        })?;
+
+        let mut handler = self.node_service.clone();
+
+        let mut new_template = handler
+            .get_new_block_template(algo, request.max_weight)
+            .await
+            .map_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not get new block template: {}",
+                    e.to_string()
+                );
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+            })?;
+
+        let pow = algo as i32;
+
+        let miner_data = tari_rpc::MinerData {
+            reward: new_template.reward.into(),
+            target_difficulty: new_template.target_difficulty.as_u64(),
+            total_fees: new_template.total_fees.into(),
+            algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
+        };
+
+        let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+
+        // let validate the coinbase amounts;
+        let reward = self
+            .consensus_rules
+            .calculate_coinbase_and_fees(new_template.header.height, new_template.body.kernels())
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal("Could not calculate the amount of fees in the block".to_string()),
+                )
+            })?
+            .as_u64();
+        let mut total_shares = 0u64;
+        for coinbase in &coinbases {
+            total_shares += coinbase.value;
+        }
+        let mut remainder = reward - ((reward / total_shares) * total_shares);
+        for coinbase in &mut coinbases {
+            coinbase.value *= reward / total_shares;
+            if remainder > 0 {
+                coinbase.value += 1;
+                remainder -= 1;
+            }
+        }
+
+        let key_manager = create_memory_db_key_manager();
+        let height = new_template.header.height;
+        // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
+        let script_key_id = TariKeyId::default();
+
+        let mut total_excess = Commitment::default();
+        let mut total_nonce = PublicKey::default();
+        let mut private_keys = Vec::new();
+        let mut kernel_message = [0; 32];
+        let mut last_kernel = Default::default();
+        for coinbase in coinbases {
+            let address = TariAddress::from_hex(&coinbase.address)
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            let range_proof_type = if coinbase.revealed_value_proof {
+                RangeProofType::RevealedValue
+            } else {
+                RangeProofType::BulletProofPlus
+            };
+            let (_, coinbase_output, coinbase_kernel, wallet_output) = generate_coinbase_with_wallet_output(
+                0.into(),
+                coinbase.value.into(),
+                height,
+                &coinbase.coinbase_extra,
+                &key_manager,
+                &script_key_id,
+                &address,
+                coinbase.stealth_payment,
+                self.consensus_rules.consensus_constants(height),
+                range_proof_type,
+            )
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            new_template.body.add_output(coinbase_output);
+            let (new_private_nonce, pub_nonce) = key_manager
+                .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+                .await
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_nonce = &total_nonce + &pub_nonce;
+            total_excess = &total_excess + &coinbase_kernel.excess;
+            private_keys.push((wallet_output.spending_key_id, new_private_nonce));
+            kernel_message = TransactionKernel::build_kernel_signature_message(
+                &TransactionKernelVersion::get_current_version(),
+                coinbase_kernel.fee,
+                coinbase_kernel.lock_height,
+                &coinbase_kernel.features,
+                &None,
+            );
+            last_kernel = coinbase_kernel;
+        }
+        let mut kernel_signature = Signature::default();
+        for (spending_key_id, nonce) in private_keys {
+            kernel_signature = &kernel_signature +
+                &key_manager
+                    .get_partial_txo_kernel_signature(
+                        &spending_key_id,
+                        &nonce,
+                        &total_nonce,
+                        total_excess.as_public_key(),
+                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_message,
+                        &last_kernel.features,
+                        TxoStage::Output,
+                    )
+                    .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        }
+        let kernel_new = KernelBuilder::new()
+            .with_fee(0.into())
+            .with_features(last_kernel.features)
+            .with_lock_height(last_kernel.lock_height)
+            .with_excess(&total_excess)
+            .with_signature(kernel_signature)
+            .build()
+            .unwrap();
+
+        new_template.body.add_kernel(kernel_new);
+        new_template.body.sort();
+
+        let new_block = match handler.get_new_block(new_template).await {
             Ok(b) => b,
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
                 return Err(obscure_error_if_true(
@@ -691,6 +947,224 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             block,
             merge_mining_hash: mining_hash,
             tari_unique_id: gen_hash,
+            miner_data: Some(miner_data),
+        };
+        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        Ok(Response::new(response))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn get_new_block_with_coinbases(
+        &self,
+        request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
+    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
+        if !self.is_method_enabled(GrpcMethod::GetNewBlockWithCoinbases) {
+            return Err(Status::permission_denied(
+                "`GetNewBlockWithCoinbasesRequest` method not made available",
+            ));
+        }
+        let report_error_flag = self.report_error_flag();
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block with coinbases");
+        let mut block_template: NewBlockTemplate = request
+            .new_template
+            .ok_or(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Malformed block template provided".to_string()),
+            ))?
+            .try_into()
+            .map_err(|s| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Malformed block template provided: {}", s)),
+                )
+            })?;
+        let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+
+        let mut handler = self.node_service.clone();
+
+        // let validate the coinbase amounts;
+        let reward = self
+            .consensus_rules
+            .calculate_coinbase_and_fees(block_template.header.height, block_template.body.kernels())
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal("Could not calculate the amount of fees in the block".to_string()),
+                )
+            })?;
+        let mut amount = 0u64;
+        for coinbase in &coinbases {
+            amount += coinbase.value;
+        }
+
+        if amount != reward.as_u64() {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Malformed coinbase amounts".to_string()),
+            ));
+        }
+        let key_manager = create_memory_db_key_manager();
+        let height = block_template.header.height;
+        // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
+        let script_key_id = TariKeyId::default();
+
+        let mut total_excess = Commitment::default();
+        let mut total_nonce = PublicKey::default();
+        let mut private_keys = Vec::new();
+        let mut kernel_message = [0; 32];
+        let mut last_kernel = Default::default();
+        for coinbase in coinbases {
+            let address = TariAddress::from_hex(&coinbase.address)
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            let range_proof_type = if coinbase.revealed_value_proof {
+                RangeProofType::RevealedValue
+            } else {
+                RangeProofType::BulletProofPlus
+            };
+            let (_, coinbase_output, coinbase_kernel, wallet_output) = generate_coinbase_with_wallet_output(
+                0.into(),
+                coinbase.value.into(),
+                height,
+                &coinbase.coinbase_extra,
+                &key_manager,
+                &script_key_id,
+                &address,
+                coinbase.stealth_payment,
+                self.consensus_rules.consensus_constants(height),
+                range_proof_type,
+            )
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            block_template.body.add_output(coinbase_output);
+            let (new_private_nonce, pub_nonce) = key_manager
+                .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+                .await
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_nonce = &total_nonce + &pub_nonce;
+            total_excess = &total_excess + &coinbase_kernel.excess;
+            private_keys.push((wallet_output.spending_key_id, new_private_nonce));
+            kernel_message = TransactionKernel::build_kernel_signature_message(
+                &TransactionKernelVersion::get_current_version(),
+                coinbase_kernel.fee,
+                coinbase_kernel.lock_height,
+                &coinbase_kernel.features,
+                &None,
+            );
+            last_kernel = coinbase_kernel;
+        }
+        let mut kernel_signature = Signature::default();
+        for (spending_key_id, nonce) in private_keys {
+            kernel_signature = &kernel_signature +
+                &key_manager
+                    .get_partial_txo_kernel_signature(
+                        &spending_key_id,
+                        &nonce,
+                        &total_nonce,
+                        total_excess.as_public_key(),
+                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_message,
+                        &last_kernel.features,
+                        TxoStage::Output,
+                    )
+                    .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        }
+        let kernel_new = KernelBuilder::new()
+            .with_fee(0.into())
+            .with_features(last_kernel.features)
+            .with_lock_height(last_kernel.lock_height)
+            .with_excess(&total_excess)
+            .with_signature(kernel_signature)
+            .build()
+            .unwrap();
+
+        block_template.body.add_kernel(kernel_new);
+        block_template.body.sort();
+
+        let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(message),
+                ));
+            },
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(obscure_error_if_true(report_error_flag, status));
+            },
+            Err(e) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(e.to_string()),
+                ))
+            },
+        };
+        let fees = new_block.body.get_total_fee().map_err(|_| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Invalid fees in block".to_string()),
+            )
+        })?;
+        let algo = new_block.header.pow.pow_algo;
+        let gen_hash = handler
+            .get_header(0)
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Tari genesis block not found".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari genesis block not found".to_string()),
+                )
+            })?
+            .hash()
+            .to_vec();
+        // construct response
+        let block_hash = new_block.hash().to_vec();
+        let mining_hash = match new_block.header.pow.pow_algo {
+            PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+        };
+        let block: Option<tari_rpc::Block> = Some(
+            new_block
+                .try_into()
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
+        );
+
+        let new_template = handler.get_new_block_template(algo, 0).await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get new block template: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
+
+        let pow = algo as i32;
+
+        let miner_data = tari_rpc::MinerData {
+            reward: new_template.reward.into(),
+            target_difficulty: new_template.target_difficulty.as_u64(),
+            total_fees: fees.as_u64(),
+            algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
+        };
+
+        let response = tari_rpc::GetNewBlockResult {
+            block_hash,
+            block,
+            merge_mining_hash: mining_hash,
+            tari_unique_id: gen_hash,
+            miner_data: Some(miner_data),
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
@@ -700,9 +1174,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNewBlockBlob) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNewBlockBlob)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
@@ -785,9 +1257,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::Block>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitBlock) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SubmitBlock)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let block = Block::try_from(request).map_err(|e| {
@@ -821,9 +1291,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockBlobRequest>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitBlockBlob) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SubmitBlockBlob)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
         let request = request.into_inner();
@@ -864,9 +1332,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SubmitTransactionRequest>,
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SubmitTransaction) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SubmitTransaction)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let txn: Transaction = request
@@ -918,9 +1384,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::TransactionStateRequest>,
     ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::TransactionState) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::TransactionState)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let excess_sig: Signature = request
@@ -1007,9 +1471,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
     ) -> Result<Response<Self::GetPeersStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetPeers) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetPeers)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
 
@@ -1042,9 +1504,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlocks) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlocks)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -1113,9 +1573,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTipInfo) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetTipInfo)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
@@ -1143,9 +1601,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchKernelsRequest>,
     ) -> Result<Response<Self::SearchKernelsStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SearchKernels) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SearchKernels)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
@@ -1201,9 +1657,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchUtxosRequest>,
     ) -> Result<Response<Self::SearchUtxosStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::SearchUtxos) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::SearchUtxos)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
         let request = request.into_inner();
@@ -1259,9 +1713,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,
     ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::FetchMatchingUtxos) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::FetchMatchingUtxos)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
@@ -1330,9 +1782,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockTiming) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlockTiming)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         debug!(
@@ -1382,9 +1832,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockHeight>,
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetConstants) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetConstants)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
         debug!(target: LOG_TARGET, "Sending GetConstants response to client");
@@ -1410,9 +1858,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockSize) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlockSize)?;
         let report_error_flag = self.report_error_flag();
         get_block_group(
             self.node_service.clone(),
@@ -1427,9 +1873,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetBlockFees) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetBlockFees)?;
         let report_error_flag = self.report_error_flag();
         get_block_group(
             self.node_service.clone(),
@@ -1441,9 +1885,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetVersion) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetVersion)?;
         Ok(Response::new(consts::APP_VERSION.to_string().into()))
     }
 
@@ -1451,9 +1893,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::CheckForUpdates) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::CheckForUpdates)?;
         let mut resp = tari_rpc::SoftwareUpdate::default();
 
         if let Some(ref update) = *self.software_updater.update_notifier().borrow() {
@@ -1470,9 +1910,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTokensInCirculation) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetTokensInCirculation)?;
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
@@ -1530,9 +1968,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncProgressResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSyncProgress) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetSyncProgress)?;
         let state = self
             .state_machine_handle
             .get_status_info_watch()
@@ -1577,9 +2013,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSyncInfo) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetSyncInfo)?;
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
         let response = self
             .state_machine_handle
@@ -1607,9 +2041,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
     ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetHeaderByHash) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetHeaderByHash)?;
         let report_error_flag = self.report_error_flag();
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
         let mut node_service = self.node_service.clone();
@@ -1649,9 +2081,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::Identify) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::Identify)?;
         let identity = self.comms.node_identity_ref();
         Ok(Response::new(tari_rpc::NodeIdentity {
             public_key: identity.public_key().to_vec(),
@@ -1664,9 +2094,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetNetworkStatus) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetNetworkStatus)?;
         let report_error_flag = self.report_error_flag();
         let status = self
             .comms
@@ -1702,9 +2130,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::ListConnectedPeers) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::ListConnectedPeers)?;
         let report_error_flag = self.report_error_flag();
         let mut connectivity = self.comms.connectivity();
         let peer_manager = self.comms.peer_manager();
@@ -1740,9 +2166,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetMempoolStats) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetMempoolStats)?;
         let report_error_flag = self.report_error_flag();
         let mut mempool_handle = self.mempool_service.clone();
 
@@ -1764,9 +2188,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetShardKeyRequest>,
     ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetShardKey) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetShardKey)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
@@ -1794,9 +2216,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetActiveValidatorNodesRequest>,
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetActiveValidatorNodes) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetActiveValidatorNodes)?;
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
 
@@ -1853,9 +2273,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
     ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetTemplateRegistrations) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetTemplateRegistrations)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
@@ -1937,9 +2355,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::GetSideChainUtxosRequest>,
     ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
-        if let Some(value) = self.check_method_enabled(GrpcMethod::GetSideChainUtxos) {
-            return value;
-        }
+        self.check_method_enabled(GrpcMethod::GetSideChainUtxos)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");

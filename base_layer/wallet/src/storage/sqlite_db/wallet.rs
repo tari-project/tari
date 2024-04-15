@@ -954,9 +954,15 @@ impl ClientKeyValueSql {
 
 impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
-        [Self::CLIENT_KEY_VALUE, self.key.as_bytes(), field_name.as_bytes()]
-            .concat()
-            .to_vec()
+        // Because there are two variable-length inputs in the concatenation, we prepend the length of the first
+        [
+            Self::CLIENT_KEY_VALUE,
+            (self.key.len() as u64).to_le_bytes().as_bytes(),
+            self.key.as_bytes(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
     }
 
     #[allow(unused_assignments)]

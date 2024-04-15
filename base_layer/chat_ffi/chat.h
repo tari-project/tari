@@ -276,14 +276,14 @@ struct ChatByteVector *read_confirmation_message_id(struct Confirmation *confirm
                                                     int *error_out);
 
 /**
- * Get a c_longlong timestamp for the Confirmation
+ * Get a c_ulonglong timestamp for the Confirmation
  *
  * ## Arguments
  * `confirmation` - A pointer to the Confirmation
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_longlong` - A uint representation of time since epoch
+ * `c_ulonglong` - A uint representation of time since epoch. May return 0 on error
  *
  * # Safety
  * The ```confirmation``` When done with the Confirmation it should be destroyed
@@ -329,7 +329,7 @@ void add_chat_contact(struct ChatClient *client, struct TariAddress *address, in
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `status` - Returns an int representing of the online status
+ * `status` - Returns an c_uchar representing of the online status
  *            Online = 1,
  *            Offline = 2,
  *            NeverSeen = 3,
@@ -338,7 +338,9 @@ void add_chat_contact(struct ChatClient *client, struct TariAddress *address, in
  * # Safety
  * The ```address``` should be destroyed after use
  */
-int check_online_status(struct ChatClient *client, struct TariAddress *receiver, int *error_out);
+unsigned char check_online_status(struct ChatClient *client,
+                                  struct TariAddress *receiver,
+                                  int *error_out);
 
 /**
  * Returns a pointer to a TariAddress
@@ -385,14 +387,14 @@ unsigned char read_liveness_data_online_status(struct ContactsLivenessData *live
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_longlong` - A c_longlong rep of an enum for a contacts online status. May return -1 if an error
- * occurs, or 0 if the contact has never been seen
+ * `c_ulonglong` - A c_longlong rep of timestamp for a contacts last seen status.
+ * 0 if the contact has never been seen or an error occurs.
  *
  * ## Safety
  * `liveness` should be destroyed eventually
  */
-long long read_liveness_data_last_seen(struct ContactsLivenessData *liveness,
-                                       int *error_out);
+unsigned long long read_liveness_data_last_seen(struct ContactsLivenessData *liveness,
+                                                int *error_out);
 
 /**
  * Frees memory for a ContactsLivenessData
@@ -431,13 +433,13 @@ struct ConversationalistsVector *get_conversationalists(struct ChatClient *clien
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - The length of the vector. May return -1 if something goes wrong
+ * `c_uint` - The length of the vector. May return 0 if something goes wrong
  *
  * ## Safety
  * `conversationalists` should be destroyed eventually
  */
-int conversationalists_vector_len(struct ConversationalistsVector *conversationalists,
-                                  int *error_out);
+unsigned int conversationalists_vector_len(struct ConversationalistsVector *conversationalists,
+                                           int *error_out);
 
 /**
  * Reads the ConversationalistsVector and returns a pointer to a TariAddress at a given position
@@ -548,13 +550,12 @@ struct MessageMetadata *chat_metadata_get_at(struct Message *message,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_longlong` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+ * `c_uint` - The length of the metadata vector for a Message. May return 0 if something goes wrong
  *
  * ## Safety
  * `message` should be destroyed eventually
  */
-long long chat_message_metadata_len(struct Message *message,
-                                    int *error_out);
+unsigned int chat_message_metadata_len(struct Message *message, int *error_out);
 
 /**
  * Returns a pointer to a ChatByteVector representing the data of the Message
@@ -589,21 +590,21 @@ struct ChatByteVector *read_chat_message_body(struct Message *message, int *erro
 struct TariAddress *read_chat_message_address(struct Message *message, int *error_out);
 
 /**
- * Returns a c_int representation of the Direction enum
+ * Returns a c_uchar representation of the Direction enum
  *
  * ## Arguments
  * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - A c_int rep of the direction enum. May return -1 if anything goes wrong
+ * `c_uchar` - A c_uchar rep of the direction enum. May return 0 if anything goes wrong
  *     0 => Inbound
  *     1 => Outbound
  *
  * ## Safety
  * `message` should be destroyed eventually
  */
-int read_chat_message_direction(struct Message *message, int *error_out);
+unsigned char read_chat_message_direction(struct Message *message, int *error_out);
 
 /**
  * Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch
@@ -674,9 +675,7 @@ struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_
  *
  * ## Arguments
  * `message` - A pointer to a message
- * `metadata_type` - An c_uchar that maps to MessageMetadataType enum
- *     '0' -> Reply
- *     '1' -> TokenRequest
+ * `key` - A pointer to a byte vector containing bytes for the key field
  * `data` - A pointer to a byte vector containing bytes for the data field
  * `error_out` - Pointer to an int which will be modified
  *
@@ -687,7 +686,7 @@ struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_
  * `message` should be destroyed eventually
  */
 void add_chat_message_metadata(struct Message *message,
-                               unsigned char metadata_type,
+                               struct ChatByteVector *key,
                                struct ChatByteVector *data,
                                int *error_out);
 
@@ -699,14 +698,13 @@ void add_chat_message_metadata(struct Message *message,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
- *     '0' -> Reply
- *     '1' -> TokenRequest
+ * `*mut ChatByteVector` - A ptr to a ChatByteVector
  *
  * ## Safety
  * `msg_metadata` should be destroyed eventually
+ * the returned `ChatByteVector` should be destroyed eventually
  */
-int read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
+struct ChatByteVector *read_chat_metadata_key(struct MessageMetadata *msg_metadata, int *error_out);
 
 /**
  * Returns a ptr to a ByteVector
@@ -759,8 +757,8 @@ void destroy_chat_message_metadata(struct MessageMetadata *ptr);
  */
 struct MessageVector *get_chat_messages(struct ChatClient *client,
                                         struct TariAddress *address,
-                                        int limit,
-                                        int page,
+                                        unsigned int limit,
+                                        unsigned int page,
                                         int *error_out);
 
 /**
@@ -771,12 +769,12 @@ struct MessageVector *get_chat_messages(struct ChatClient *client,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+ * `c_uint` - The length of the metadata vector for a Message. May return 0 if something goes wrong
  *
  * ## Safety
  * `messages` should be destroyed eventually
  */
-int message_vector_len(struct MessageVector *messages, int *error_out);
+unsigned int message_vector_len(struct MessageVector *messages, int *error_out);
 
 /**
  * Reads the MessageVector and returns a Message at a given position
