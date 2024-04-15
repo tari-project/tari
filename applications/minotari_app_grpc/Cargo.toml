@@ -10,7 +10,7 @@ edition.workspace = true
 [dependencies]
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true }
-tari_core = { workspace = true }
+tari_core = { workspace = true, features = ["base_node"] }
 tari_crypto = { workspace = true }
 tari_script = { workspace = true }
 tari_utilities = { workspace = true }

@@ -20,7 +20,7 @@ tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 minotari_console_wallet = { workspace = true, features = ["grpc"] }
 tari_contacts = { workspace = true }
-tari_core = { workspace = true }
+tari_core = { workspace = true, features = ["base_node"] }
 minotari_merge_mining_proxy = { workspace = true }
 minotari_miner = { workspace = true }
 tari_p2p = { workspace = true }
