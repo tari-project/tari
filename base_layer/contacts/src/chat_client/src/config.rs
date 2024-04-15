@@ -26,7 +26,6 @@ use std::{
 };
 
 use config::Config;
-use minotari_app_utilities::consts;
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{serializers, CommonConfig, Network, StringList},
@@ -100,7 +99,7 @@ impl Default for ChatClientConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/chat_client"),
-            user_agent: format!("tari/chat_client/{}", consts::APP_VERSION_NUMBER),
+            user_agent: format!("tari/chat_client/{}", env!("CARGO_PKG_VERSION")),
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
                 ..Default::default()
@@ -163,7 +162,7 @@ impl ChatClientConfig {
             log_verbosity: Some(5), // Trace
             p2p: P2pConfig {
                 datastore_path: PathBuf::from("peer_db/chat_client"),
-                user_agent: format!("tari/chat_client/{}", consts::APP_VERSION_NUMBER),
+                user_agent: format!("tari/chat_client/{}", env!("CARGO_PKG_VERSION")),
                 dht: DhtConfig {
                     database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
                     network_discovery: NetworkDiscoveryConfig {

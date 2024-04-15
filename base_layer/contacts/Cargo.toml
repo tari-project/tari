@@ -3,7 +3,7 @@ name = "tari_contacts"
 authors = ["The Tari Development Community"]
 description = "Tari contacts library"
 license = "BSD-3-Clause"
-version = "1.0.0-dan.5"
+version.workspace = true
 edition = "2018"
 
 [dependencies]

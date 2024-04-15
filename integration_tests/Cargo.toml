@@ -3,7 +3,7 @@ name = "tari_integration_tests"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.35.1"
+version.workspace = true
 edition = "2018"
 
 [dependencies]

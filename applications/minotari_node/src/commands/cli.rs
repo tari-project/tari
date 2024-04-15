@@ -24,7 +24,6 @@ use std::io::stdout;
 
 use chrono::{Datelike, Utc};
 use crossterm::{execute, terminal::SetTitle};
-use minotari_app_utilities::consts;
 
 /// returns the top or bottom box line of the specified length
 fn box_line(length: usize, is_top: bool) -> String {
@@ -105,7 +104,7 @@ fn multiline_find_display_length(lines: &str) -> usize {
 
 /// Prints a pretty banner on the console as well as the list of available commands
 pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
-    let terminal_title = format!("Minotari Base Node - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Minotari Base Node - Version {}", env!("CARGO_PKG_VERSION"));
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }
@@ -164,13 +163,13 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     println!(
         "{}",
         box_data(
-            format!("Copyright 2019-{}. {}", Utc::now().year(), consts::APP_AUTHOR),
+            format!("Copyright 2019-{}. {}", Utc::now().year(), "The Tari Project"),
             target_line_length
         )
     );
     println!(
         "{}",
-        box_data(format!("Version {}", consts::APP_VERSION), target_line_length)
+        box_data(format!("Version {}", env!("CARGO_PKG_VERSION")), target_line_length)
     );
     println!("{}", box_separator(target_line_length));
     println!("{}", box_data("Commands".to_string(), target_line_length));

@@ -1,6 +1,6 @@
 [package]
 name = "minotari_ledger_wallet"
-version = "0.52.0-dan.5"
+version.workspace = true
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"

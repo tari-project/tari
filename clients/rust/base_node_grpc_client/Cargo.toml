@@ -1,6 +1,6 @@
 [package]
 name = "minotari_node_grpc_client"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Base node GRPC client"
 authors = ["The Tari Development Community"]

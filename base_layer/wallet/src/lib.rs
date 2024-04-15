@@ -45,11 +45,6 @@ use crate::{
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 
-mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
-}
-
 pub type WalletSqlite = Wallet<
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
