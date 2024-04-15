@@ -60,11 +60,6 @@ mod tari_address;
 
 const LOG_TARGET: &str = "chat_ffi";
 
-mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
-}
-
 pub struct ChatClient {
     client: Client,
     runtime: Runtime,
@@ -118,7 +113,7 @@ pub unsafe extern "C" fn create_chat_client(
     info!(
         target: LOG_TARGET,
         "Starting Tari Chat FFI version: {}",
-        consts::APP_VERSION
+        env!("CARGO_PKG_VERSION")
     );
 
     let mut bad_identity = |e| {
@@ -230,7 +225,7 @@ pub unsafe extern "C" fn sideload_chat_client(
     info!(
         target: LOG_TARGET,
         "Sideloading Tari Chat FFI version: {}",
-        consts::APP_VERSION
+        env!("CARGO_PKG_VERSION")
     );
 
     let runtime = match Runtime::new() {

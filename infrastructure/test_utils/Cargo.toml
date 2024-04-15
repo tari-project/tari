@@ -1,16 +1,16 @@
 [package]
 name = "tari_test_utils"
 description = "Utility functions used in Tari test functions"
-version = "1.0.0-dan.5"
+version.workspace = true
 authors = ["The Tari Development Community"]
-edition = "2018"
+edition.workspace = true
 license = "BSD-3-Clause"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = { path = "../shutdown", version = "1.0.0-dan.5" }
-tari_comms = { path = "../../comms/core", version = "1.0.0-dan.5" }
+tari_shutdown = { workspace = true }
+tari_comms = { workspace = true }
 
 futures = { version = "^0.3.1" }
 rand = "0.8"

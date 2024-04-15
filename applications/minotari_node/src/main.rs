@@ -73,7 +73,7 @@ use std::{process, sync::Arc};
 
 use clap::Parser;
 use log::*;
-use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
+use minotari_app_utilities::{identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
 use tari_comms::peer_manager::PeerFeatures;
@@ -118,7 +118,7 @@ fn main_inner() -> Result<(), ExitError> {
     info!(
         target: LOG_TARGET,
         "Starting Minotari Base Node version: {}",
-        consts::APP_VERSION
+        env!("CARGO_PKG_VERSION")
     );
 
     #[cfg(all(unix, feature = "libtor"))]

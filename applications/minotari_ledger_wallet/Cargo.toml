@@ -1,9 +1,9 @@
 [package]
 name = "minotari_ledger_wallet"
-version = "0.52.0-dan.5"
+version.workspace = true
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
-edition = "2021"
+edition.workspace = true
 
 
 [dependencies]
@@ -11,7 +11,7 @@ edition = "2021"
 nanos_sdk = { git = "https://github.com/LedgerHQ/ledger-nanos-sdk.git" }
 nanos_ui = { git = "https://github.com/LedgerHQ/ledger-nanos-ui.git", rev = "6a7c4a3eb41ee0b09c8fd4dcc5be4f3a1f5d7b45" }
 
-tari_crypto = { version = "0.18", default-features = false }
+tari_crypto = { workspace = true, default-features = false }
 
 embedded-alloc = "0.5.0"
 critical-section = { version = "1.1.1" }

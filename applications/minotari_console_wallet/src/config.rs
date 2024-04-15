@@ -23,7 +23,6 @@
 #![allow(dead_code, unused)]
 
 use config::Config;
-use minotari_app_utilities::consts;
 use minotari_wallet::WalletConfig;
 use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
@@ -45,7 +44,7 @@ impl ApplicationConfig {
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
         };
 
-        config.wallet.p2p.user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
+        config.wallet.p2p.user_agent = format!("tari/wallet/{}", env!("CARGO_PKG_VERSION"));
 
         config.wallet.set_base_path(config.common.base_path());
         Ok(config)

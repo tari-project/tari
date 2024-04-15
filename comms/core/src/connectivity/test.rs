@@ -432,7 +432,7 @@ async fn pool_management() {
 
     let events = collect_try_recv!(event_stream, take = 9, timeout = Duration::from_secs(10));
     for event in events {
-        unpack_enum!(ConnectivityEvent::PeerDisconnected(_) = event);
+        assert!(matches!(event, ConnectivityEvent::PeerDisconnected(_)));
     }
 
     assert_eq!(important_connection.handle_count(), 2);
@@ -448,7 +448,7 @@ async fn pool_management() {
     drop(important_connection);
 
     let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
-    unpack_enum!(ConnectivityEvent::PeerDisconnected(_) = events.remove(0));
+    assert!(matches!(events.remove(0), ConnectivityEvent::PeerDisconnected(_node)));
     let conns = connectivity.get_active_connections().await.unwrap();
     assert!(conns.is_empty());
 }

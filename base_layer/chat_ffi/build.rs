@@ -4,16 +4,10 @@
 use std::{env, path::PathBuf};
 
 use cbindgen::{Config, ExportConfig, Language, LineEndingStyle, ParseConfig, Style};
-use tari_common::build::StaticApplicationInfo;
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
-    // generate version info
-    let gen = StaticApplicationInfo::initialize().unwrap();
-    gen.write_consts_to_outdir("consts.rs").unwrap();
-
-    // let package_name = env::var("CARGO_PKG_NAME").unwrap();
     let output_file = PathBuf::from(&crate_dir).join("chat.h").display().to_string();
 
     let config = Config {

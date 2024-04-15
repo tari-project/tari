@@ -20,12 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common::build::StaticApplicationInfo;
 use tari_features::resolver::build_features;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     build_features();
-    let gen = StaticApplicationInfo::initialize()?;
-    gen.write_consts_to_outdir("consts.rs")?;
     Ok(())
 }

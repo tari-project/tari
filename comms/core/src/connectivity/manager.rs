@@ -784,8 +784,6 @@ impl ConnectivityManagerActor {
     #[allow(clippy::cast_possible_wrap)]
     #[cfg(feature = "metrics")]
     fn update_connectivity_metrics(&mut self) {
-        use std::convert::TryFrom;
-
         use super::metrics;
 
         let total = self.pool.count_connected() as i64;

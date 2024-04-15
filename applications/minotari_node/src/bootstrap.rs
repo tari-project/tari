@@ -28,7 +28,7 @@ use std::{
 };
 
 use log::*;
-use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
+use minotari_app_utilities::{identity_management, identity_management::load_from_json};
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -134,7 +134,7 @@ where B: BlockchainBackend + 'static
             ))
             .add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::BaseNode,
-                consts::APP_VERSION_NUMBER
+                env!("CARGO_PKG_VERSION")
                     .parse()
                     .expect("Unable to parse application version. Not valid semver"),
                 self.app_config.auto_update.clone(),

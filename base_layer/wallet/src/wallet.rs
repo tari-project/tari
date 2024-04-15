@@ -86,7 +86,6 @@ use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
-    consts,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -332,7 +331,7 @@ where
 
         // storing current network and version
         if let Err(e) = wallet_database
-            .set_last_network_and_version(config.network.to_string(), consts::APP_VERSION_NUMBER.to_string())
+            .set_last_network_and_version(config.network.to_string(), env!("CARGO_PKG_VERSION").to_string())
         {
             warn!("failed to store network and version: {:#?}", e);
         }

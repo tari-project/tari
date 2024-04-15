@@ -1,23 +1,23 @@
 [package]
 name = "tari_p2p"
-version = "1.0.0-dan.5"
+version.workspace = true
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-edition = "2018"
+edition.workspace = true
 
 [dependencies]
-tari_comms = { path = "../../comms/core", version = "1.0.0-dan.5" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-dan.5" }
-tari_common = { path = "../../common", version = "1.0.0-dan.5" }
-tari_crypto = { version = "0.20" }
-tari_service_framework = { path = "../service_framework", version = "1.0.0-dan.5" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-dan.5" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-dan.5" }
-tari_utilities = { version = "0.7" }
+tari_comms = { workspace = true }
+tari_comms_dht = { workspace = true }
+tari_common = { workspace = true }
+tari_crypto = { workspace = true }
+tari_service_framework = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_storage = { workspace = true }
+tari_utilities = { workspace = true }
 
 anyhow = "1.0.53"
 fs2 = "0.4.0"
@@ -39,14 +39,14 @@ trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"]
 webpki = "0.22"
 
 [dev-dependencies]
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_test_utils = { workspace = true }
 
 config = "0.14.0"
 clap = "3.2"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build"], version = "1.0.0-dan.5" }
+tari_common = { workspace = true, features = ["build"] }
 
 [features]
 test-mocks = []

@@ -6,8 +6,8 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.0.0-dan.5"
-edition = "2018"
+version.workspace = true
+edition.workspace = true
 
 [features]
 default = ["base_node"]
@@ -30,26 +30,26 @@ ledger = [
 metrics = ["tari_metrics"]
 
 [dependencies]
-tari_common = { path = "../../common", version = "1.0.0-dan.5" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-dan.5" }
-tari_comms = { path = "../../comms/core", version = "1.0.0-dan.5" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-dan.5" }
-tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-dan.5" }
-tari_crypto = { version = "0.20", features = ["borsh"] }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-dan.5" }
-tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.0.0-dan.5" }
-tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-dan.5" }
-tari_script = { path = "../../infrastructure/tari_script", version = "1.0.0-dan.5" }
-tari_service_framework = { path = "../service_framework", version = "1.0.0-dan.5" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-dan.5" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-dan.5" }
-tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.0.0-dan.5" }
-tari_utilities = { version = "0.7", features = ["borsh"] }
-tari_key_manager = { path = "../key_manager", features = [
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_comms = { workspace = true }
+tari_comms_dht = { workspace = true }
+tari_comms_rpc_macros = { workspace = true }
+tari_crypto = { workspace = true, features = ["borsh"] }
+tari_metrics = { workspace = true, optional = true }
+tari_mmr = { workspace = true, optional = true }
+tari_p2p = { workspace = true }
+tari_script = { workspace = true }
+tari_service_framework = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_storage = { workspace = true }
+tari_test_utils = { workspace = true }
+tari_utilities = { workspace = true, features = ["borsh"] }
+tari_key_manager = { workspace = true, features = [
     "key_manager_service",
-], version = "1.0.0-dan.5" }
-tari_common_sqlite = { path = "../../common_sqlite" }
-tari_hashing = { path = "../../hashing" }
+] }
+tari_common_sqlite = { workspace = true }
+tari_hashing = { workspace = true }
 
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
@@ -98,8 +98,8 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }
-tari_p2p = { path = "../../base_layer/p2p", features = ["test-mocks"] }
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_p2p = { workspace = true, features = ["test-mocks"] }
+tari_test_utils = { workspace = true }
 curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
@@ -110,8 +110,8 @@ toml = { version = "0.5" }
 quickcheck = "1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build"], version = "1.0.0-dan.5" }
-tari_features = { path = "../../common/tari_features", version = "1.0.0-dan.5" }
+tari_common = { workspace = true, features = ["build"] }
+tari_features = { workspace = true }
 
 [[bench]]
 name = "mempool"

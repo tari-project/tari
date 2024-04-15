@@ -116,7 +116,6 @@ mod tests {
         types::Signature,
     };
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
-    use tari_test_utils::unpack_enum;
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -147,7 +146,10 @@ mod tests {
         let err = validator
             .validate_peer(UnvalidatedPeerInfo::from_peer_limited_claims(peer.clone(), 5, 5), None)
             .unwrap_err();
-        unpack_enum!(DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. }) = err);
+        assert!(matches!(
+            err,
+            DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. })
+        ));
     }
 
     #[tokio::test]
@@ -161,6 +163,9 @@ mod tests {
         let err = validator
             .validate_peer(UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5), None)
             .unwrap_err();
-        unpack_enum!(DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses { .. }) = err);
+        assert!(matches!(
+            err,
+            DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses { .. })
+        ));
     }
 }

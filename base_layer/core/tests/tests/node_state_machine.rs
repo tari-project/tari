@@ -46,7 +46,6 @@ use tari_core::{
 };
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
 use tempfile::tempdir;
 use tokio::{
@@ -321,5 +320,5 @@ async fn test_event_channel() {
     assert_eq!(*event.unwrap(), StateEvent::Initialized);
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
-    unpack_enum!(StateEvent::FallenBehind(_) = &*event);
+    assert!(matches!(&*event, StateEvent::FallenBehind(_)));
 }

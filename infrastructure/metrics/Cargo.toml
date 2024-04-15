@@ -1,8 +1,8 @@
 [package]
 name = "tari_metrics"
 description = "Tari metrics"
-version = "1.0.0-dan.5"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"

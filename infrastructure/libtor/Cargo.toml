@@ -1,12 +1,12 @@
 [package]
 name = "tari_libtor"
-version = "1.0.0-dan.5"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_common = { path = "../../common" }
-tari_p2p = { path = "../../base_layer/p2p" }
+tari_common = { workspace = true }
+tari_p2p = { workspace = true }
 
 derivative = "2.2.0"
 log = "0.4.8"

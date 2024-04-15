@@ -187,11 +187,6 @@ mod ffi_basenode_state;
 mod output_manager_service_mock;
 mod tasks;
 
-mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
-}
-
 const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariTransportConfig = tari_p2p::TransportConfig;
@@ -5315,7 +5310,7 @@ pub unsafe extern "C" fn wallet_create(
     info!(
         target: LOG_TARGET,
         "Starting Tari Wallet FFI version: {}",
-        consts::APP_VERSION
+        env!("CARGO_PKG_VERSION")
     );
 
     let passphrase = if passphrase.is_null() {

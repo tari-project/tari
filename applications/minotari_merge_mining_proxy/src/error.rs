@@ -26,8 +26,8 @@ use std::io;
 
 use hex::FromHexError;
 use hyper::header::InvalidHeaderValue;
+use minotari_app_grpc::authentication::BasicAuthError;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
-use minotari_wallet_grpc_client::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{
     consensus::ConsensusBuilderError,

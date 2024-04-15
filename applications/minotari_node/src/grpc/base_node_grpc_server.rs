@@ -33,7 +33,6 @@ use minotari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
-use minotari_app_utilities::consts;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{Commitment, FixedHash, PublicKey, Signature},
@@ -1886,7 +1885,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
         self.check_method_enabled(GrpcMethod::GetVersion)?;
-        Ok(Response::new(consts::APP_VERSION.to_string().into()))
+        Ok(Response::new(env!("CARGO_PKG_VERSION").to_string().into()))
     }
 
     async fn check_for_updates(

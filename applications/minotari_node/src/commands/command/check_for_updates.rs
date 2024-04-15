@@ -23,7 +23,6 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_utilities::consts;
 
 use super::{CommandContext, HandleCommand};
 
@@ -41,7 +40,10 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     /// Check for updates
     pub async fn check_for_updates(&mut self) -> Result<(), Error> {
-        println!("Checking for updates (current version: {})...", consts::APP_VERSION);
+        println!(
+            "Checking for updates (current version: {})...",
+            env!("CARGO_PKG_VERSION")
+        );
         match self.software_updater.check_for_updates().await {
             Some(update) => {
                 println!(
