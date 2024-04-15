@@ -134,10 +134,9 @@ jobs:
           if [ -z "${{ inputs.version }}" ] ; then
             echo "Get tari version"
             TARI_SOURCE_ROOT="tari/"
-            VAPP=$(awk -F ' = ' \
-              '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' \
+            VAPP=$(awk -F ' = ' '$1 ~ /^version/ \
+              { gsub(/["]/, "", $2); printf("%s",$2) }' \
               "${TARI_SOURCE_ROOT}/applications/minotari_node/Cargo.toml")
-
             VBRANCH=$(git --git-dir ${TARI_SOURCE_ROOT}/.git branch --show-current)
             VSHA_SHORT=$(git --git-dir ${TARI_SOURCE_ROOT}/.git rev-parse --short HEAD)
             VERSION="v${VAPP}_${VBRANCH}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"

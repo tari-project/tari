@@ -130,7 +130,9 @@ jobs:
         run: |
           echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          TARI_VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
+          TARI_VERSION=$(awk -F ' = ' '$1 ~ /^version/ \
+            { gsub(/["]/, "", $2); printf("%s",$2) }' \
+            "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
           echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_ENV
           echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_OUTPUT
           if [[ "${{ matrix.builds.features }}" == "" ]]; then
