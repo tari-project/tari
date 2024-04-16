@@ -345,7 +345,7 @@ impl ConsensusConstants {
     }
 
     pub fn validator_node_registration_min_lock_height(&self, height: u64) -> u64 {
-        // This calculates the height of the block in which the VN is not valid anymore.
+        // This calculates the minimum height of the block for which the VN registration maturity must be valid for.
         self.epoch_to_block_height(VnEpoch(
             self.block_height_to_epoch(height).as_u64() + 1 + self.vn_validity_period_epochs.as_u64(),
         ))
