@@ -21,7 +21,7 @@
     "target": "riscv64gc-unknown-linux-gnu",
     "cross": true,
     "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
-    "build_enabled": true,
+    "build_enabled": false,
     "best-effort": true
   },
   {
@@ -29,14 +29,16 @@
     "runs-on": "macos-11",
     "rust": "stable",
     "target": "x86_64-apple-darwin",
-    "cross": false
+    "cross": false,
+    "build_enabled": false
   },
   {
     "name": "macos-arm64",
     "runs-on": "macos-14",
     "rust": "stable",
     "target": "aarch64-apple-darwin",
-    "cross": false
+    "cross": false,
+    "build_enabled": false
   },
   {
     "name": "windows-x64",
@@ -45,7 +47,8 @@
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
     "features": "safe",
-    "flags": "--workspace --exclude tari_libtor"
+    "flags": "--workspace --exclude tari_libtor",
+    "build_enabled": false
   },
   {
     "name": "windows-arm64",
