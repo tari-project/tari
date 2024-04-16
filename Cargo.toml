@@ -1,5 +1,5 @@
 [workspace.package]
-version = "1.0.0-dan.9"
+version = "1.0.0-dan.10"
 edition = "2021"
 
 [workspace]
