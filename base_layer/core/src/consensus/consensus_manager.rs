@@ -323,9 +323,8 @@ mod tests {
     use super::*;
     use crate::consensus::ConsensusConstantsBuilder;
 
-    #[test]
-    fn test_epoch_to_height_and_back() {
-        let manager = ConsensusManager::builder(Network::LocalNet)
+    fn create_manager() -> ConsensusManager {
+        ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_effective_height(0)
@@ -363,7 +362,12 @@ mod tests {
                     .build(),
             )
             .build()
-            .unwrap();
+            .unwrap()
+    }
+
+    #[test]
+    fn test_epoch_to_height_and_back() {
+        let manager = create_manager();
         assert_eq!(manager.block_height_to_epoch(99), VnEpoch(6)); // The next epoch should change at 105
         assert_eq!(manager.block_height_to_epoch(100), VnEpoch(7)); // But with the new length the epoch should change right away
         assert_eq!(manager.block_height_to_epoch(199), VnEpoch(23)); // The next epoch should change at 202
@@ -375,6 +379,16 @@ mod tests {
                 manager.block_height_to_epoch(manager.epoch_to_block_height(VnEpoch(epoch))),
                 VnEpoch(epoch)
             );
+        }
+    }
+
+    #[test]
+    fn test_epoch_is_non_decreasing() {
+        let manager = create_manager();
+        let mut epoch = manager.block_height_to_epoch(0).as_u64();
+        for height in 0..600 {
+            assert!(manager.block_height_to_epoch(height).as_u64() >= epoch);
+            epoch = manager.block_height_to_epoch(height).as_u64();
         }
     }
 }
