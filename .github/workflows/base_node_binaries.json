@@ -4,7 +4,8 @@
     "runs-on": "ubuntu-20.04",
     "rust": "nightly-2024-02-04",
     "target": "x86_64-unknown-linux-gnu",
-    "cross": false
+    "cross": false,
+    "build_metric": true
   },
   {
     "name": "linux-arm64",
@@ -12,7 +13,8 @@
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
     "cross": true,
-    "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests"
+    "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
+    "build_metric": true
   },
   {
     "name": "linux-riscv64",
@@ -22,7 +24,7 @@
     "cross": true,
     "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
     "build_enabled": true,
-    "best-effort": true
+    "best_effort": true
   },
   {
     "name": "macos-x86_64",
