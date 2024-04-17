@@ -93,6 +93,7 @@ pub(crate) struct DhtConnectivity {
     metrics_collector: MetricsCollectorHandle,
     cooldown_in_effect: Option<Instant>,
     shutdown_signal: ShutdownSignal,
+    first_round_completed: bool,
 }
 
 impl DhtConnectivity {
@@ -121,6 +122,7 @@ impl DhtConnectivity {
             dht_events,
             cooldown_in_effect: None,
             shutdown_signal,
+            first_round_completed: false,
         }
     }
 
@@ -289,7 +291,7 @@ impl DhtConnectivity {
         match event {
             DhtEvent::NetworkDiscoveryPeersAdded(info) => {
                 if info.num_new_peers > 0 {
-                    self.refresh_peer_pools().await?;
+                    self.refresh_peer_pools_with_initial_delay().await?;
                 }
             },
             _ => {},
@@ -323,7 +325,8 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    async fn refresh_peer_pools(&mut self) -> Result<(), DhtConnectivityError> {
+    async fn refresh_peer_pools_with_initial_delay(&mut self) -> Result<(), DhtConnectivityError> {
+        self.handle_initial_delay().await;
         info!(
             target: LOG_TARGET,
             "Reinitializing neighbour pool. (size={})",
@@ -334,6 +337,27 @@ impl DhtConnectivity {
         self.refresh_random_pool().await?;
 
         Ok(())
+    }
+
+    async fn request_many_dials_with_initial_delay<I: IntoIterator<Item = NodeId>>(
+        &mut self,
+        peers: I,
+    ) -> Result<(), DhtConnectivityError> {
+        self.handle_initial_delay().await;
+        self.connectivity.request_many_dials(peers).await?;
+        Ok(())
+    }
+
+    async fn handle_initial_delay(&mut self) {
+        if !self.first_round_completed {
+            self.first_round_completed = true;
+            tokio::time::sleep(self.config.network_discovery.initial_peer_sync_dalay).await;
+            debug!(
+                target: LOG_TARGET,
+                "Delayed {:.0?} before refreshing the neighbour pool for the first time",
+                self.config.network_discovery.initial_peer_sync_dalay
+            );
+        }
     }
 
     async fn refresh_neighbour_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
@@ -400,7 +424,7 @@ impl DhtConnectivity {
         });
 
         if !new_neighbours.is_empty() {
-            self.connectivity.request_many_dials(new_neighbours).await?;
+            self.request_many_dials_with_initial_delay(new_neighbours).await?;
         }
 
         self.redial_neighbours_as_required().await?;
@@ -427,7 +451,7 @@ impl DhtConnectivity {
                 "Redialling {} disconnected peer(s)",
                 to_redial.len()
             );
-            self.connectivity.request_many_dials(to_redial).await?;
+            self.request_many_dials_with_initial_delay(to_redial).await?;
         }
 
         Ok(())
@@ -482,7 +506,7 @@ impl DhtConnectivity {
         difference.iter().for_each(|peer| {
             self.remove_connection_handle(peer);
         });
-        self.connectivity.request_many_dials(random_peers).await?;
+        self.request_many_dials_with_initial_delay(random_peers).await?;
 
         self.random_pool_last_refresh = Some(Instant::now());
         Ok(())
@@ -589,10 +613,10 @@ impl DhtConnectivity {
                 debug!(target: LOG_TARGET, "Pool peer {} disconnected. Redialling...", node_id);
                 // Attempt to reestablish the lost connection to the pool peer. If reconnection fails,
                 // it is replaced with another peer (replace_pool_peer via PeerConnectFailed)
-                self.connectivity.request_many_dials([node_id]).await?;
+                self.request_many_dials_with_initial_delay([node_id]).await?;
             },
             ConnectivityStateOnline(n) => {
-                self.refresh_peer_pools().await?;
+                self.refresh_peer_pools_with_initial_delay().await?;
                 if self.config.auto_join && self.should_send_join() {
                     debug!(
                         target: LOG_TARGET,
@@ -608,7 +632,7 @@ impl DhtConnectivity {
             },
             ConnectivityStateOffline => {
                 debug!(target: LOG_TARGET, "Node is OFFLINE");
-                self.refresh_peer_pools().await?;
+                self.refresh_peer_pools_with_initial_delay().await?;
             },
             _ => {},
         }
@@ -637,7 +661,7 @@ impl DhtConnectivity {
                         self.random_pool.swap_remove(pos);
                     }
                     self.random_pool.push(new_peer.clone());
-                    self.connectivity.request_many_dials([new_peer]).await?;
+                    self.request_many_dials_with_initial_delay([new_peer]).await?;
                 },
                 None => {
                     debug!(
@@ -671,7 +695,7 @@ impl DhtConnectivity {
                         self.neighbours.remove(pos);
                     }
                     self.insert_neighbour(node_id.clone());
-                    self.connectivity.request_many_dials([node_id]).await?;
+                    self.request_many_dials_with_initial_delay([node_id]).await?;
                 },
                 None => {
                     info!(

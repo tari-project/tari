@@ -359,11 +359,12 @@ where
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
+        let latency = timer.elapsed();
 
         debug!(
             target: LOG_TARGET,
             "Noise socket upgrade completed in {:.2?} with public key '{}'",
-            timer.elapsed(),
+            latency,
             authenticated_public_key
         );
 
@@ -399,6 +400,7 @@ where
             known_peer,
             authenticated_public_key,
             &valid_peer_identity,
+            latency,
         );
 
         let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)

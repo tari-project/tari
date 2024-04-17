@@ -323,7 +323,7 @@ database_url = "data/wallet/dht.db"
 #network_discovery.enabled = true
 # A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
 # more "aggressive" strategy is employed. Default: 50
-#network_discovery.min_desired_peers = 50
+network_discovery.min_desired_peers = 8
 # The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
 #network_discovery.idle_period = 1_800 # 30 * 60
 #  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
@@ -334,6 +334,12 @@ database_url = "data/wallet/dht.db"
 # The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
 # Default: 5
 #network_discovery.max_sync_peers = 5
+# The maximum number of peers we allow per round of sync. (Default: 500)
+#max_peers_to_sync_per_round = 500
+# Initial refresh sync peers delay period if more than one peer needs to be synced, handy when a wallet needs to
+# give preference to its base node peer connection. (Default: 15)
+#[serde(with = "serializers::seconds")]
+#initial_peer_sync_dalay = 15
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60

@@ -12,27 +12,29 @@ use std::{
 };
 
 use chrono::{NaiveDateTime, Utc};
+use log::trace;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
 use crate::{peer_manager::PeerIdentityClaim, types::CommsPublicKey};
 
+const LOG_TARGET: &str = "comms::net_address::multiaddr_with_stats";
+
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;
-const HIGH_QUALITY_SCORE: i32 = 1000;
 
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct MultiaddrWithStats {
     address: Multiaddr,
     last_seen: Option<NaiveDateTime>,
     connection_attempts: u32,
-    avg_initial_dial_time: Duration,
+    avg_initial_dial_time: Option<Duration>,
     initial_dial_time_sample_count: u32,
-    avg_latency: Duration,
+    avg_latency: Option<Duration>,
     latency_sample_count: u32,
     last_attempted: Option<NaiveDateTime>,
     last_failed_reason: Option<String>,
-    quality_score: i32,
+    quality_score: Option<i32>,
     source: PeerAddressSource,
 }
 
@@ -43,13 +45,13 @@ impl MultiaddrWithStats {
             address,
             last_seen: None,
             connection_attempts: 0,
-            avg_initial_dial_time: Duration::from_secs(0),
+            avg_initial_dial_time: None,
             initial_dial_time_sample_count: 0,
-            avg_latency: Duration::from_millis(0),
+            avg_latency: None,
             latency_sample_count: 0,
             last_attempted: None,
             last_failed_reason: None,
-            quality_score: 0,
+            quality_score: None,
             source,
         };
         addr.update_quality_score();
@@ -58,6 +60,15 @@ impl MultiaddrWithStats {
 
     pub fn merge(&mut self, other: &Self) {
         if self.address == other.address {
+            trace!(
+                target: LOG_TARGET, "merge: '{}, {:?}, {:?}' and '{}, {:?}, {:?}'",
+                self.address.to_string(),
+                self.last_seen,
+                self.quality_score,
+                other.address.to_string(),
+                other.last_seen,
+                other.quality_score
+            );
             self.last_seen = cmp::max(other.last_seen, self.last_seen);
             self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
             match self.latency_sample_count.cmp(&other.latency_sample_count) {
@@ -122,9 +133,14 @@ impl MultiaddrWithStats {
     pub fn update_latency(&mut self, latency_measurement: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
 
-        self.avg_latency = ((self.avg_latency.saturating_mul(self.latency_sample_count))
+        self.avg_latency = Some(
+            ((self
+                .avg_latency
+                .unwrap_or_default()
+                .saturating_mul(self.latency_sample_count))
             .saturating_add(latency_measurement)) /
-            (self.latency_sample_count + 1);
+                (self.latency_sample_count + 1),
+        );
         if self.latency_sample_count < MAX_LATENCY_SAMPLE_COUNT {
             self.latency_sample_count += 1;
         }
@@ -135,9 +151,11 @@ impl MultiaddrWithStats {
     pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
 
-        self.avg_initial_dial_time = ((self.avg_initial_dial_time * self.initial_dial_time_sample_count) +
-            initial_dial_time) /
-            (self.initial_dial_time_sample_count + 1);
+        self.avg_initial_dial_time = Some(
+            ((self.avg_initial_dial_time.unwrap_or_default() * self.initial_dial_time_sample_count) +
+                initial_dial_time) /
+                (self.initial_dial_time_sample_count + 1),
+        );
         if self.initial_dial_time_sample_count < MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT {
             self.initial_dial_time_sample_count += 1;
         }
@@ -146,6 +164,10 @@ impl MultiaddrWithStats {
 
     /// Mark that a successful interaction occurred with this address
     pub fn mark_last_seen_now(&mut self) -> &mut Self {
+        trace!(
+            target: LOG_TARGET, "mark_last_seen_now: from {}, address '{}', previous {:?}",
+            self.source, self.address.to_string(), self.last_seen
+        );
         self.last_seen = Some(Utc::now().naive_utc());
         self.last_failed_reason = None;
         self.reset_connection_attempts();
@@ -184,27 +206,27 @@ impl MultiaddrWithStats {
         self.clone().address
     }
 
-    fn calculate_quality_score(&self) -> i32 {
+    fn calculate_quality_score(&self) -> Option<i32> {
         // If we have never seen or attempted the peer, we start with a high score to ensure that
         if self.last_seen.is_none() && self.last_attempted.is_none() {
-            return HIGH_QUALITY_SCORE;
+            return None;
         }
 
         let mut score_self = 0;
 
-        if self.avg_latency.as_millis() == 0 {
-            score_self += 100;
-        } else {
+        if let Some(val) = self.avg_latency {
             // explicitly truncate the latency to avoid casting problems
-            let avg_latency_millis = i32::try_from(self.avg_latency.as_millis()).unwrap_or(i32::MAX);
+            let avg_latency_millis = i32::try_from(val.as_millis()).unwrap_or(i32::MAX);
             score_self += cmp::max(0, 100i32.saturating_sub(avg_latency_millis / 100));
+        } else {
+            score_self += 100;
         }
 
         let last_seen_seconds: i32 = self
             .last_seen
             .map(|x| Utc::now().naive_utc() - x)
             .map(|x| x.num_seconds())
-            .unwrap_or(0)
+            .unwrap_or(i64::MAX / 2)
             .try_into()
             .unwrap_or(i32::MAX);
         score_self += cmp::max(0, 100i32.saturating_sub(last_seen_seconds));
@@ -213,7 +235,7 @@ impl MultiaddrWithStats {
             score_self -= 100;
         }
 
-        score_self
+        Some(score_self)
     }
 
     fn update_quality_score(&mut self) {
@@ -232,7 +254,7 @@ impl MultiaddrWithStats {
         self.connection_attempts
     }
 
-    pub fn avg_initial_dial_time(&self) -> Duration {
+    pub fn avg_initial_dial_time(&self) -> Option<Duration> {
         self.avg_initial_dial_time
     }
 
@@ -240,7 +262,7 @@ impl MultiaddrWithStats {
         self.initial_dial_time_sample_count
     }
 
-    pub fn avg_latency(&self) -> Duration {
+    pub fn avg_latency(&self) -> Option<Duration> {
         self.avg_latency
     }
 
@@ -256,7 +278,7 @@ impl MultiaddrWithStats {
         self.last_failed_reason.as_deref()
     }
 
-    pub fn quality_score(&self) -> i32 {
+    pub fn quality_score(&self) -> Option<i32> {
         self.quality_score
     }
 }
@@ -388,13 +410,13 @@ mod test {
         let latency_measurement3 = Duration::from_millis(60);
         let latency_measurement4 = Duration::from_millis(140);
         net_address_with_stats.update_latency(latency_measurement1);
-        assert_eq!(net_address_with_stats.avg_latency, latency_measurement1);
+        assert_eq!(net_address_with_stats.avg_latency.unwrap(), latency_measurement1);
         net_address_with_stats.update_latency(latency_measurement2);
-        assert_eq!(net_address_with_stats.avg_latency, Duration::from_millis(150));
+        assert_eq!(net_address_with_stats.avg_latency.unwrap(), Duration::from_millis(150));
         net_address_with_stats.update_latency(latency_measurement3);
-        assert_eq!(net_address_with_stats.avg_latency, Duration::from_millis(120));
+        assert_eq!(net_address_with_stats.avg_latency.unwrap(), Duration::from_millis(120));
         net_address_with_stats.update_latency(latency_measurement4);
-        assert_eq!(net_address_with_stats.avg_latency, Duration::from_millis(125));
+        assert_eq!(net_address_with_stats.avg_latency.unwrap(), Duration::from_millis(125));
     }
 
     #[test]
@@ -425,16 +447,16 @@ mod test {
     fn test_calculate_quality_score() {
         let address = "/ip4/123.0.0.123/tcp/8000".parse().unwrap();
         let mut address = MultiaddrWithStats::new(address, PeerAddressSource::Config);
-        assert_eq!(address.quality_score, 1000);
+        assert_eq!(address.quality_score, None);
         address.mark_last_seen_now();
-        assert!(address.quality_score > 100);
+        assert!(address.quality_score.unwrap() > 100);
         address.mark_failed_connection_attempt("Testing".to_string());
-        assert!(address.quality_score <= 100);
+        assert!(address.quality_score.unwrap() <= 100);
 
         let another_addr = "/ip4/1.0.0.1/tcp/8000".parse().unwrap();
         let another_addr = MultiaddrWithStats::new(another_addr, PeerAddressSource::Config);
-        assert_eq!(another_addr.quality_score, 1000);
+        assert_eq!(another_addr.quality_score, None);
 
-        assert_eq!(another_addr.cmp(&address), Ordering::Greater);
+        assert_eq!(another_addr.cmp(&address), Ordering::Less);
     }
 }

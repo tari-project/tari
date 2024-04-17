@@ -9,10 +9,14 @@ use std::{
 };
 
 use chrono::NaiveDateTime;
+use log::trace;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
 use crate::net_address::{multiaddr_with_stats::PeerAddressSource, MultiaddrWithStats};
+
+const LOG_TARGET: &str = "comms::net_address::multiaddresses_with_stats";
+
 const MAX_ADDRESSES: usize = 10;
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
@@ -178,15 +182,24 @@ impl MultiaddressesWithStats {
         }
     }
 
-    /// Mark all addresses as seen. Returns true if all addresses are contained in this instance, otherwise false
-    pub fn mark_all_addresses_as_last_seen_now(&mut self, addresses: &[Multiaddr]) -> bool {
+    /// Mark all addresses as seen with latency. Returns true if all addresses are contained in this instance, otherwise
+    /// false
+    pub fn mark_all_addresses_as_last_seen_now_with_latency(
+        &mut self,
+        addresses: &[Multiaddr],
+        latency_measurement: Duration,
+    ) -> bool {
         let mut all_exist = true;
         for address in addresses {
             match self.find_address_mut(address) {
                 Some(addr) => {
                     addr.mark_last_seen_now().mark_last_attempted_now();
+                    addr.update_latency(latency_measurement);
                 },
-                None => all_exist = false,
+                None => {
+                    trace!(target: LOG_TARGET, "Peer address '{}' not in claim, stats not updated", address);
+                    all_exist = false
+                },
             }
         }
         self.sort_addresses();
@@ -204,7 +217,10 @@ impl MultiaddressesWithStats {
                 self.sort_addresses();
                 true
             },
-            None => false,
+            None => {
+                trace!(target: LOG_TARGET, "Peer address '{}' not in claim, stats not updated", address);
+                false
+            },
         }
     }
 
@@ -238,7 +254,8 @@ impl MultiaddressesWithStats {
 
     /// Sort the addresses with the greatest quality score first
     fn sort_addresses(&mut self) {
-        self.addresses.sort_by_key(|addr| cmp::Reverse(addr.quality_score()));
+        self.addresses
+            .sort_by_key(|addr| cmp::Reverse(addr.quality_score().unwrap_or_default()));
         self.addresses.truncate(MAX_ADDRESSES)
     }
 }
@@ -354,15 +371,20 @@ mod test {
             .mark_last_attempted_now();
         assert_eq!(
             net_addresses.find_address_mut(&net_address1).unwrap().quality_score(),
-            200
+            Some(200)
         );
-        let other: MultiaddressesWithStats = MultiaddressesWithStats::from_addresses_with_source(
+        let address_12: MultiaddressesWithStats = MultiaddressesWithStats::from_addresses_with_source(
             vec![net_address12.clone()],
             &PeerAddressSource::Config,
         );
-        net_addresses.merge(&other);
-        assert!(!net_addresses.contains(&net_address1));
-        assert!(net_addresses.contains(&net_address12));
+        net_addresses.merge(&address_12);
+        println!("net_address12: {:?}", address_12.addresses[0]);
+        println!(
+            "net_address1:  {:?}",
+            net_addresses.find_address_mut(&net_address1).unwrap()
+        );
+        assert!(net_addresses.contains(&net_address1));
+        assert!(!net_addresses.contains(&net_address12));
     }
 
     #[test]
@@ -447,9 +469,9 @@ mod test {
         assert!(net_addresses.mark_failed_connection_attempt(&net_address3, "error".to_string()));
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1, "error".to_string()));
 
-        assert_eq!(net_addresses.addresses[0].connection_attempts(), 1);
+        assert_eq!(net_addresses.addresses[0].connection_attempts(), 2);
         assert_eq!(net_addresses.addresses[1].connection_attempts(), 1);
-        assert_eq!(net_addresses.addresses[2].connection_attempts(), 2);
+        assert_eq!(net_addresses.addresses[2].connection_attempts(), 1);
         net_addresses.reset_connection_attempts();
         assert_eq!(net_addresses.addresses[0].connection_attempts(), 0);
         assert_eq!(net_addresses.addresses[1].connection_attempts(), 0);

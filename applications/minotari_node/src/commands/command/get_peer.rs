@@ -88,7 +88,7 @@ impl CommandContext {
             println!("Addresses:");
             peer.addresses.addresses().iter().for_each(|a| {
                 println!(
-                    "- {} Score: {}  - Source: {} Latency: {:?} - Last Seen: {} - Last Failure:{}",
+                    "- {} Score: {:?}  - Source: {} Latency: {:?} - Last Seen: {} - Last Failure:{}",
                     a.address(),
                     a.quality_score(),
                     a.source(),
