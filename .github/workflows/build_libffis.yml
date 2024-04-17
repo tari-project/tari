@@ -362,6 +362,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [matrix-prep, builds, ios_assemble]
 
+    permissions:
+      contents: write
+
     steps:
       - name: Download all ffi libraries
         uses: actions/download-artifact@v4
