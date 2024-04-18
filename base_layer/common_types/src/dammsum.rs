@@ -46,7 +46,7 @@ pub enum ChecksumError {
 const COEFFICIENTS: [u8; 3] = [4, 3, 1];
 
 /// Compute the DammSum checksum for an array, each of whose elements are in the range `[0, 2^8)`
-pub fn compute_checksum(data: &Vec<u8>) -> u8 {
+pub fn compute_checksum(data: &[u8]) -> u8 {
     let mut mask = 1u8;
 
     // Compute the bitmask (if possible)
@@ -71,7 +71,7 @@ pub fn compute_checksum(data: &Vec<u8>) -> u8 {
 }
 
 /// Determine whether the array ends with a valid checksum
-pub fn validate_checksum(data: &Vec<u8>) -> Result<(), ChecksumError> {
+pub fn validate_checksum(data: &[u8]) -> Result<(), ChecksumError> {
     // Empty data is not allowed, nor data only consisting of a checksum
     if data.len() < 2 {
         return Err(ChecksumError::InputDataTooShort);
