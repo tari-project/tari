@@ -43,6 +43,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::connectivity";
+const CONNECTIVITY_WAIT: u64 = 5;
 
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -270,7 +271,7 @@ impl WalletConnectivityService {
                         self.config.base_node_monitor_max_refresh_interval.as_secs()
                     );
                     self.set_online_status(OnlineStatus::Offline);
-                    time::sleep(self.config.base_node_monitor_max_refresh_interval).await;
+                    time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     continue;
                 },
                 Err(e) => {
@@ -278,7 +279,7 @@ impl WalletConnectivityService {
                     if self.current_base_node().as_ref() == Some(&node_id) {
                         self.disconnect_base_node(node_id).await;
                         self.set_online_status(OnlineStatus::Offline);
-                        time::sleep(self.config.base_node_monitor_max_refresh_interval).await;
+                        time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     }
                     continue;
                 },
