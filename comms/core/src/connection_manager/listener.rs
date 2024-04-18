@@ -55,7 +55,7 @@ use crate::connection_manager::metrics;
 use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
-        liveness::LivenessSession,
+        self_liveness::SelfLivenessSession,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -221,7 +221,7 @@ where
         shutdown_signal: ShutdownSignal,
     ) {
         permit.fetch_sub(1, Ordering::SeqCst);
-        let liveness = LivenessSession::new(socket);
+        let liveness = SelfLivenessSession::new(socket);
         debug!(target: LOG_TARGET, "Started liveness session");
         tokio::spawn(async move {
             future::select(liveness.run(), shutdown_signal).await;
@@ -296,7 +296,7 @@ where
                     let _result = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
-                    if config.liveness_self_check_interval.is_some() ||
+                    if config.self_liveness_self_check_interval.is_some() ||
                         (liveness_session_count.load(Ordering::SeqCst) > 0 &&
                             Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist))
                     {

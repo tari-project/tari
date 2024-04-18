@@ -112,7 +112,7 @@ pub struct P2pConfig {
     pub listener_liveness_max_sessions: usize,
     /// If Some, enables periodic socket-level liveness checks
     #[serde(with = "serializers::optional_seconds")]
-    pub listener_liveness_check_interval: Option<Duration>,
+    pub listener_self_liveness_check_interval: Option<Duration>,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
     pub listener_liveness_allowlist_cidrs: StringList,
     /// User agent string for this node
@@ -146,7 +146,7 @@ impl Default for P2pConfig {
             },
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
-            listener_liveness_check_interval: None,
+            listener_self_liveness_check_interval: None,
             listener_liveness_allowlist_cidrs: StringList::default(),
             user_agent: String::new(),
             auxiliary_tcp_listener_address: None,

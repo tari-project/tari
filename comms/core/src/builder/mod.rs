@@ -125,7 +125,6 @@ pub struct CommsBuilder {
     hidden_service_ctl: Option<tor::HiddenServiceController>,
     connection_manager_config: ConnectionManagerConfig,
     connectivity_config: ConnectivityConfig,
-
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -288,8 +287,8 @@ impl CommsBuilder {
     }
 
     /// Enable and set interval for self-liveness checks, or None to disable it (default)
-    pub fn set_liveness_check(mut self, check_interval: Option<Duration>) -> Self {
-        self.connection_manager_config.liveness_self_check_interval = check_interval;
+    pub fn set_self_liveness_check(mut self, check_interval: Option<Duration>) -> Self {
+        self.connection_manager_config.self_liveness_self_check_interval = check_interval;
         self
     }
 

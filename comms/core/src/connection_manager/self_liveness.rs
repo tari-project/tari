@@ -40,14 +40,14 @@ use crate::{connection_manager::wire_mode::WireMode, transports::Transport};
 
 /// Max line length accepted by the liveness session.
 const MAX_LINE_LENGTH: usize = 50;
-const LOG_TARGET: &str = "comms::connection_manager::liveness";
+const LOG_TARGET: &str = "comms::connection_manager::self_liveness";
 
 /// Echo server for liveness checks
-pub struct LivenessSession<TSocket> {
+pub struct SelfLivenessSession<TSocket> {
     framed: Framed<TSocket, LinesCodec>,
 }
 
-impl<TSocket> LivenessSession<TSocket>
+impl<TSocket> SelfLivenessSession<TSocket>
 where TSocket: AsyncRead + AsyncWrite + Unpin
 {
     pub fn new(socket: TSocket) -> Self {
@@ -63,22 +63,22 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum LivenessStatus {
+pub enum SelfLivenessStatus {
     Disabled,
     Checking,
     Unreachable,
     Live(Duration),
 }
 
-pub struct LivenessCheck<TTransport> {
+pub struct SelfLivenessCheck<TTransport> {
     transport: TTransport,
     addresses: Vec<Multiaddr>,
     interval: Duration,
-    tx_watch: watch::Sender<LivenessStatus>,
+    tx_watch: watch::Sender<SelfLivenessStatus>,
     shutdown_signal: ShutdownSignal,
 }
 
-impl<TTransport> LivenessCheck<TTransport>
+impl<TTransport> SelfLivenessCheck<TTransport>
 where
     TTransport: Transport + Send + Sync + 'static,
     TTransport::Output: AsyncRead + AsyncWrite + Unpin + Send,
@@ -88,8 +88,8 @@ where
         addresses: Vec<Multiaddr>,
         interval: Duration,
         shutdown_signal: ShutdownSignal,
-    ) -> watch::Receiver<LivenessStatus> {
-        let (tx_watch, rx_watch) = watch::channel(LivenessStatus::Checking);
+    ) -> watch::Receiver<SelfLivenessStatus> {
+        let (tx_watch, rx_watch) = watch::channel(SelfLivenessStatus::Checking);
         let check = Self {
             transport,
             addresses,
@@ -120,36 +120,36 @@ where
         let mut current_address_idx = 0;
         loop {
             let timer = Instant::now();
-            let _ = self.tx_watch.send(LivenessStatus::Checking);
+            let _ = self.tx_watch.send(SelfLivenessStatus::Checking);
             let address = self.addresses[current_address_idx].clone();
             match self.transport.dial(&address).await {
                 Ok(mut socket) => {
                     debug!(
                         target: LOG_TARGET,
-                        "🔌 liveness dial ({}) took {:.2?}",
+                        "🔌 self liveness dial ({}) took {:.2?}",
                         address,
                         timer.elapsed()
                     );
                     if let Err(err) = socket.write(&[WireMode::Liveness.as_byte()]).await {
-                        warn!(target: LOG_TARGET, "🔌️ liveness failed to write byte: {}", err);
-                        self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                        warn!(target: LOG_TARGET, "🔌️ self liveness failed to write byte: {}", err);
+                        self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                         continue;
                     }
                     let mut framed = Framed::new(socket, LinesCodec::new_with_max_length(MAX_LINE_LENGTH));
                     loop {
                         match self.ping_pong(&mut framed).await {
                             Ok(Some(latency)) => {
-                                debug!(target: LOG_TARGET, "⚡️️ liveness check latency {:.2?}", latency);
-                                self.tx_watch.send_replace(LivenessStatus::Live(latency));
+                                debug!(target: LOG_TARGET, "⚡️️ self liveness check latency {:.2?}", latency);
+                                self.tx_watch.send_replace(SelfLivenessStatus::Live(latency));
                             },
                             Ok(None) => {
-                                info!(target: LOG_TARGET, "🔌️ liveness connection closed");
-                                self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                                info!(target: LOG_TARGET, "🔌️ self liveness connection closed");
+                                self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                                 break;
                             },
                             Err(err) => {
-                                warn!(target: LOG_TARGET, "🔌️ ping pong failed: {}", err);
-                                self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                                warn!(target: LOG_TARGET, "🔌️ self liveness ping pong failed: {}", err);
+                                self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                                 // let _ = framed.close().await;
                                 break;
                             },
@@ -160,10 +160,10 @@ where
                 },
                 Err(err) => {
                     current_address_idx = (current_address_idx + 1) % self.addresses.len();
-                    self.tx_watch.send_replace(LivenessStatus::Unreachable);
+                    self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                     warn!(
                         target: LOG_TARGET,
-                        "🔌️ Failed to dial public address {} for self check: {}", address, err
+                        "🔌️ Failed to dial own public address {} for self check: {}", address, err
                     );
                 },
             }
@@ -200,7 +200,7 @@ mod test {
     #[tokio::test]
     async fn echos() {
         let (inbound, outbound) = MemorySocket::new_pair();
-        let liveness = LivenessSession::new(inbound);
+        let liveness = SelfLivenessSession::new(inbound);
         let join_handle = tokio::spawn(liveness.run());
         let mut outbound = Framed::new(outbound, LinesCodec::new());
         for _ in 0..10usize {

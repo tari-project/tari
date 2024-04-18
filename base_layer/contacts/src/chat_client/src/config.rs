@@ -168,6 +168,7 @@ impl ChatClientConfig {
                     database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
                     network_discovery: NetworkDiscoveryConfig {
                         enabled: true,
+                        initial_peer_sync_delay: None,
                         ..NetworkDiscoveryConfig::default()
                     },
                     saf: SafConfig {

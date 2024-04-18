@@ -137,6 +137,7 @@ impl DhtConfig {
             network_discovery: NetworkDiscoveryConfig {
                 // If a test requires the peer probe they should explicitly enable it
                 enabled: false,
+                initial_peer_sync_delay: None,
                 ..Default::default()
             },
             peer_validator_config: PeerValidatorConfig {

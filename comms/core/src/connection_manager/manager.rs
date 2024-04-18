@@ -124,7 +124,7 @@ pub struct ConnectionManagerConfig {
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
     /// Interval to perform self-liveness ping-pong tests. Default: None/disabled
-    pub liveness_self_check_interval: Option<Duration>,
+    pub self_liveness_self_check_interval: Option<Duration>,
     /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
     /// Default: None (disabled)
     pub auxiliary_tcp_listener_address: Option<Multiaddr>,
@@ -147,7 +147,7 @@ impl Default for ConnectionManagerConfig {
             liveness_max_sessions: 1,
             time_to_first_byte: Duration::from_secs(6),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
-            liveness_self_check_interval: None,
+            self_liveness_self_check_interval: None,
             auxiliary_tcp_listener_address: None,
             peer_validation_config: PeerValidatorConfig::default(),
             noise_handshake_recv_timeout: Duration::from_secs(6),
@@ -229,7 +229,7 @@ where
             info!(target: LOG_TARGET, "Starting auxiliary listener on {}", addr);
             let aux_config = ConnectionManagerConfig {
                 // Disable liveness checks on the auxiliary listener
-                liveness_self_check_interval: None,
+                self_liveness_self_check_interval: None,
                 ..config.clone()
             };
             PeerListener::new(

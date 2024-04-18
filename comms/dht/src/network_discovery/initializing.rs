@@ -32,11 +32,15 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 #[derive(Debug)]
 pub(super) struct Initializing<'a> {
     context: &'a mut NetworkDiscoveryContext,
+    initial_peer_sync_delay: Option<Duration>,
 }
 
 impl<'a> Initializing<'a> {
-    pub fn new(context: &'a mut NetworkDiscoveryContext) -> Self {
-        Self { context }
+    pub fn new(context: &'a mut NetworkDiscoveryContext, initial_peer_sync_delay: Option<Duration>) -> Self {
+        Self {
+            context,
+            initial_peer_sync_delay,
+        }
     }
 
     pub async fn next_event(&mut self) -> StateEvent {
@@ -51,6 +55,13 @@ impl<'a> Initializing<'a> {
                     return err.into();
                 },
             }
+        }
+
+        // Initial discovery and refresh sync peers delay period, when a configured connection needs preference,
+        // usually needed for the wallet to connect to its own base node first.
+        if let Some(delay) = self.initial_peer_sync_delay {
+            tokio::time::sleep(delay).await;
+            debug!(target: LOG_TARGET, "Discovery starting after delayed for {:.0?}", delay);
         }
 
         debug!(target: LOG_TARGET, "Node is online. Starting network discovery");

@@ -198,7 +198,7 @@ event_channel_size = 3500
 # CIDR for addresses allowed to enter into liveness check mode on the listener.
 #listener_liveness_allowlist_cidrs = []
 # Enables periodic socket-level liveness checks. Default: Disabled
-# listener_liveness_check_interval = 15
+# listener_self_liveness_check_interval = 15
 
 # User agent string for this node
 #user_agent = ""
@@ -206,6 +206,8 @@ event_channel_size = 3500
 # The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
 # sessions.
 #rpc_max_simultaneous_sessions = 100
+# The maximum comms RPC sessions allowed per peer (default value = 10).
+#rpc_max_sessions_per_peer = 10
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
@@ -335,11 +337,9 @@ network_discovery.min_desired_peers = 8
 # Default: 5
 #network_discovery.max_sync_peers = 5
 # The maximum number of peers we allow per round of sync. (Default: 500)
-#max_peers_to_sync_per_round = 500
-# Initial refresh sync peers delay period if more than one peer needs to be synced, handy when a wallet needs to
-# give preference to its base node peer connection. (Default: 15)
-#[serde(with = "serializers::seconds")]
-#initial_peer_sync_dalay = 15
+#network_discovery.max_peers_to_sync_per_round = 500
+# Initial refresh sync peers delay period, when a configured connection needs preference. (Default: Disabled)
+network_discovery.initial_peer_sync_delay = 15
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60
