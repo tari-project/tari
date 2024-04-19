@@ -168,6 +168,15 @@ impl Peer {
             .and_then(|a| a.last_attempted())
     }
 
+    /// The last address used to connect to the peer
+    pub fn last_address_used(&self) -> Option<Multiaddr> {
+        self.addresses
+            .addresses()
+            .iter()
+            .max_by_key(|a| a.last_attempted())
+            .map(|a| a.address().clone())
+    }
+
     /// Returns true if the peer is marked as offline
     pub fn is_offline(&self) -> bool {
         self.addresses.offline_at().is_some()

@@ -282,6 +282,7 @@ impl DhtDiscoveryService {
     ) -> Result<T, DhtPeerValidatorError> {
         match result {
             Ok(peer) => Ok(peer),
+            Err(err @ DhtPeerValidatorError::NewAndExistingMismatch { .. }) => Err(err),
             Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
             Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
                 self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;

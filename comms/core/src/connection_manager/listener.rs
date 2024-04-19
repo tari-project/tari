@@ -55,7 +55,7 @@ use crate::connection_manager::metrics;
 use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
-        liveness::LivenessSession,
+        self_liveness::SelfLivenessSession,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -221,7 +221,7 @@ where
         shutdown_signal: ShutdownSignal,
     ) {
         permit.fetch_sub(1, Ordering::SeqCst);
-        let liveness = LivenessSession::new(socket);
+        let liveness = SelfLivenessSession::new(socket);
         debug!(target: LOG_TARGET, "Started liveness session");
         tokio::spawn(async move {
             future::select(liveness.run(), shutdown_signal).await;
@@ -296,7 +296,7 @@ where
                     let _result = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
-                    if config.liveness_self_check_interval.is_some() ||
+                    if config.self_liveness_self_check_interval.is_some() ||
                         (liveness_session_count.load(Ordering::SeqCst) > 0 &&
                             Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist))
                     {
@@ -359,11 +359,12 @@ where
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
+        let latency = timer.elapsed();
 
         debug!(
             target: LOG_TARGET,
             "Noise socket upgrade completed in {:.2?} with public key '{}'",
-            timer.elapsed(),
+            latency,
             authenticated_public_key
         );
 
@@ -399,6 +400,7 @@ where
             known_peer,
             authenticated_public_key,
             &valid_peer_identity,
+            latency,
         );
 
         let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)

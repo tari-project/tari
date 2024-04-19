@@ -357,6 +357,7 @@ async fn setup_base_node_services(
     let handles = StackBuilder::new(shutdown.to_signal())
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
+        .add_initializer(RegisterHandle::new(comms.peer_manager()))
         .add_initializer(LivenessInitializer::new(
             liveness_service_config,
             Arc::clone(&subscription_factory),

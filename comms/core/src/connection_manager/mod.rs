@@ -51,9 +51,9 @@ pub use error::{ConnectionManagerError, PeerConnectionError};
 mod peer_connection;
 pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
 
-mod liveness;
-pub(crate) use liveness::LivenessCheck;
-pub use liveness::LivenessStatus;
+mod self_liveness;
+pub(crate) use self_liveness::SelfLivenessCheck;
+pub use self_liveness::SelfLivenessStatus;
 
 mod wire_mode;
 

@@ -27,10 +27,11 @@ use tari_comms::{
     peer_validator,
     peer_validator::{find_most_recent_claim, PeerValidatorError},
 };
+use tari_utilities::hex::Hex;
 
 use crate::{rpc::UnvalidatedPeerInfo, DhtConfig};
 
-const _LOG_TARGET: &str = "dht::network_discovery::peer_validator";
+const LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 
 /// Validation errors for peers shared on the network
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +40,8 @@ pub enum DhtPeerValidatorError {
     ValidatorError(#[from] PeerValidatorError),
     #[error("Peer provided too many claims: expected max {max} but got {length}")]
     IdentityTooManyClaims { length: usize, max: usize },
+    #[error("Optional existing peer does not match new peer: existing '{existing}', new '{new}'")]
+    NewAndExistingMismatch { existing: String, new: String },
 }
 
 /// Validator for Peers
@@ -73,6 +76,19 @@ impl<'a> PeerValidator<'a> {
             });
         }
 
+        if let Some(existing) = &existing_peer {
+            if existing.public_key != new_peer.public_key {
+                return Err(DhtPeerValidatorError::NewAndExistingMismatch {
+                    existing: format!("BUG: '{}' / '{}'", existing.node_id, existing.public_key),
+                    new: format!(
+                        "BUG: '{}' / '{}'",
+                        NodeId::from_public_key(&new_peer.public_key),
+                        new_peer.public_key
+                    ),
+                });
+            }
+        }
+
         let most_recent_claim = find_most_recent_claim(&new_peer.claims).expect("new_peer.claims is not empty");
 
         let node_id = NodeId::from_public_key(&new_peer.public_key);
@@ -80,7 +96,7 @@ impl<'a> PeerValidator<'a> {
         let mut peer = existing_peer.unwrap_or_else(|| {
             Peer::new(
                 new_peer.public_key.clone(),
-                node_id,
+                node_id.clone(),
                 MultiaddressesWithStats::default(),
                 PeerFlags::default(),
                 most_recent_claim.features,
@@ -98,7 +114,13 @@ impl<'a> PeerValidator<'a> {
             peer.update_addresses(&claim.addresses, &PeerAddressSource::FromDiscovery {
                 peer_identity_claim: claim.clone(),
             });
-            peer.addresses.mark_all_addresses_as_last_seen_now(&claim.addresses);
+            trace!(
+                target: LOG_TARGET,
+                "Peer '{}' / '{}' added with address(es) from claim: {:?}",
+                node_id,
+                new_peer.public_key.to_hex(),
+                claim.addresses
+            );
         }
 
         Ok(peer)

@@ -131,7 +131,7 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,
@@ -4860,6 +4860,10 @@ pub unsafe extern "C" fn comms_config_create(
                         auto_request: true,
                         ..Default::default()
                     },
+                    network_discovery: NetworkDiscoveryConfig {
+                        initial_peer_sync_delay: Some(Duration::from_secs(25)),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
                 allow_test_addresses: true,
@@ -4868,7 +4872,7 @@ pub unsafe extern "C" fn comms_config_create(
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
-                listener_liveness_check_interval: None,
+                listener_self_liveness_check_interval: None,
             };
 
             Box::into_raw(Box::new(config))

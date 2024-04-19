@@ -154,7 +154,7 @@ async fn create_wallet(
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
-        listener_liveness_check_interval: None,
+        listener_self_liveness_check_interval: None,
     };
 
     let sql_database_path = comms_config
@@ -692,7 +692,7 @@ async fn test_import_utxo() {
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
-        listener_liveness_check_interval: None,
+        listener_self_liveness_check_interval: None,
     };
     let config = WalletConfig {
         p2p: comms_config,

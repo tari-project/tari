@@ -24,7 +24,6 @@ use std::{
     cmp,
     str::FromStr,
     sync::{Arc, RwLock},
-    time::Duration,
 };
 
 use log::*;
@@ -122,7 +121,6 @@ where B: BlockchainBackend + 'static
         let tor_identity = load_from_json(&base_node_config.tor_identity_file)
             .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
         p2p_config.transport.tor.identity = tor_identity;
-        p2p_config.listener_liveness_check_interval = Some(Duration::from_secs(15));
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(

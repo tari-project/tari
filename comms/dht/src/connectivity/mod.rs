@@ -149,7 +149,12 @@ impl DhtConnectivity {
     }
 
     pub async fn run(mut self, mut connectivity_events: ConnectivityEventRx) -> Result<(), DhtConnectivityError> {
-        debug!(target: LOG_TARGET, "DHT connectivity starting");
+        // Initial discovery and refresh sync peers delay period, when a configured connection needs preference,
+        // usually needed for the wallet to connect to its own base node first.
+        if let Some(delay) = self.config.network_discovery.initial_peer_sync_delay {
+            tokio::time::sleep(delay).await;
+            debug!(target: LOG_TARGET, "DHT connectivity starting after delayed for {:.0?}", delay);
+        }
         self.refresh_neighbour_pool().await?;
 
         let mut ticker = time::interval(self.config.connectivity.update_interval);

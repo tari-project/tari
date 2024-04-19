@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use minotari_app_utilities::consts;
-use tari_comms::connection_manager::LivenessStatus;
+use tari_comms::connection_manager::SelfLivenessStatus;
 use tokio::time;
 
 use super::{CommandContext, HandleCommand};
@@ -127,14 +127,14 @@ impl CommandContext {
         );
 
         match self.comms.liveness_status() {
-            LivenessStatus::Disabled => {},
-            LivenessStatus::Checking => {
+            SelfLivenessStatus::Disabled => {},
+            SelfLivenessStatus::Checking => {
                 status_line.add("⏳️️");
             },
-            LivenessStatus::Unreachable => {
+            SelfLivenessStatus::Unreachable => {
                 status_line.add("️🔌");
             },
-            LivenessStatus::Live(latency) => {
+            SelfLivenessStatus::Live(latency) => {
                 status_line.add(format!("⚡️ {:.2?}", latency));
             },
         }
