@@ -371,7 +371,7 @@ mod test {
             .mark_last_attempted_now();
         assert_eq!(
             net_addresses.find_address_mut(&net_address1).unwrap().quality_score(),
-            Some(200)
+            Some(1000)
         );
         let address_12: MultiaddressesWithStats = MultiaddressesWithStats::from_addresses_with_source(
             vec![net_address12.clone()],
