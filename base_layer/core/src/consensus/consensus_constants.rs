@@ -362,6 +362,8 @@ impl ConsensusConstants {
     }
 
     pub fn epoch_length(&self) -> u64 {
+        #[cfg(any(test, debug_assertions))]
+        assert_ne!(self.vn_epoch_length, 0, "Epoch length must be greater than 0");
         self.vn_epoch_length
     }
 
