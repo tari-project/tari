@@ -25,20 +25,33 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use chacha20poly1305::aead::OsRng;
+use minotari_ledger_wallet_comms::ledger_wallet::LedgerWallet;
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumString;
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
+use tari_utilities::ByteArray;
 
-#[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WalletType {
-    Software,
-    Ledger(usize),
+    Software(Vec<u8>, Vec<u8>), // Make them a priv and pub
+    Ledger(LedgerWallet),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::Software => write!(f, "Software"),
+            WalletType::Software(pk, _k) => write!(f, "Software({:?})", pk),
             WalletType::Ledger(account) => write!(f, "Ledger({account})"),
         }
+    }
+}
+
+impl Default for WalletType {
+    fn default() -> Self {
+        let k = RistrettoSecretKey::random(&mut OsRng);
+        WalletType::Software(RistrettoPublicKey::from_secret_key(&k).to_vec(), k.to_vec())
     }
 }

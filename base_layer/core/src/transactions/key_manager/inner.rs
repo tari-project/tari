@@ -23,11 +23,9 @@ use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
-#[cfg(feature = "ledger")]
-use ledger_transport::APDUCommand;
-#[cfg(feature = "ledger")]
-use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
+#[cfg(feature = "ledger")]
+use minotari_ledger_wallet_comms::{error::LedgerDeviceError, ledger_wallet::Instruction};
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
 use tari_common_types::{
@@ -61,7 +59,7 @@ use tari_key_manager::{
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::RwLock;
 
-const LOG_TARGET: &str = "key_manager::key_manager_service";
+const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 use crate::{
@@ -70,7 +68,6 @@ use crate::{
     transactions::{
         key_manager::{
             interface::{TransactionKeyManagerBranch, TxoStage},
-            LedgerDeviceError,
             TariKeyId,
         },
         tari_amount::MicroMinotari,
@@ -439,32 +436,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // -----------------------------------------------------------------------------------------------------------------
 
     pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
-        match (self.wallet_type, script_key_id) {
-            (WalletType::Software, _) | (WalletType::Ledger(_), TariKeyId::Imported { .. } | TariKeyId::Zero) => {
+        match (&self.wallet_type, script_key_id) {
+            (WalletType::Software(_, _), _) | (WalletType::Ledger(_), TariKeyId::Imported { .. } | TariKeyId::Zero) => {
                 self.get_private_key(script_key_id).await.map_err(|e| e.into())
             },
-            (WalletType::Ledger(account), TariKeyId::Managed { branch: _, index }) => {
+            (WalletType::Ledger(ledger), TariKeyId::Managed { branch: _, index }) => {
                 #[cfg(not(feature = "ledger"))]
                 return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
 
                 #[cfg(feature = "ledger")]
                 {
-                    let transport = TransportNativeHID::new(&HidApi::new().expect("Ledger not attached"))
-                        .map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
+                    let data = index.to_le_bytes().to_vec();
 
-                    let mut data = (account as u64).to_le_bytes().to_vec();
-                    data.extend_from_slice(&index.to_le_bytes()); // Static index. Fix this.
-                    let command = APDUCommand {
-                        cla: 0x80,
-                        ins: 0x03,
-                        p1: 0x00,
-                        p2: 0x00,
-                        data,
-                    };
-
-                    match transport.exchange(&command) {
+                    match ledger.build_command(Instruction::GetPrivateKey, data).execute() {
                         Ok(result) => {
+                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
                             if result.data().len() < 33 {
+                                debug!(target: LOG_TARGET, "result less than 33");
                                 return Err(LedgerDeviceError::Processing(format!(
                                     "'get_private_key' insufficient data - expected 33 got {} bytes ({:?})",
                                     result.data().len(),

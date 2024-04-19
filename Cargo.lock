@@ -3296,6 +3296,7 @@ dependencies = [
  "log4rs",
  "minotari_app_grpc",
  "minotari_app_utilities",
+ "minotari_ledger_wallet_comms",
  "minotari_wallet",
  "qrcode",
  "rand",
@@ -3332,6 +3333,20 @@ dependencies = [
  "url",
  "zeroize",
  "zxcvbn",
+]
+
+[[package]]
+name = "minotari_ledger_wallet_comms"
+version = "1.0.0-pre.11a"
+dependencies = [
+ "ledger-transport 0.10.0 (git+https://github.com/Zondax/ledger-rs?rev=20e2a20)",
+ "ledger-transport-hid",
+ "log",
+ "num-derive 0.3.3",
+ "num-traits",
+ "serde",
+ "tari_crypto",
+ "thiserror",
 ]
 
 [[package]]
@@ -6009,6 +6024,7 @@ dependencies = [
  "borsh",
  "chacha20poly1305",
  "digest 0.10.7",
+ "minotari_ledger_wallet_comms",
  "newtype-ops",
  "once_cell",
  "primitive-types",
@@ -6191,6 +6207,7 @@ dependencies = [
  "lmdb-zero",
  "log",
  "log-mdc",
+ "minotari_ledger_wallet_comms",
  "monero",
  "newtype-ops",
  "num-derive 0.3.3",

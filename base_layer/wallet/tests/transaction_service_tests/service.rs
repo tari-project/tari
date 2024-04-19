@@ -242,7 +242,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             kms_backend,
             cipher,
             factories.clone(),
-            WalletType::Software,
+            WalletType::default(),
         ))
         .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {

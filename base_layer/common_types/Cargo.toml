@@ -7,10 +7,10 @@ version = "1.0.0-pre.13"
 edition = "2018"
 
 [dependencies]
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.11a", optional = true }
 tari_crypto = { version = "0.20" }
 tari_utilities = { version = "0.7" }
 tari_common = {  path = "../../common", version = "1.0.0-pre.13" }
-
 
 chacha20poly1305 = "0.10.1"
 borsh = "1.2"
@@ -25,6 +25,9 @@ thiserror = "1.0.29"
 base64 = "0.21.0"
 blake2 = "0.10"
 primitive-types = { version = "0.12", features = ["serde"] }
+
+[features]
+ledger = ["minotari_ledger_wallet_comms"]
 
 [package.metadata.cargo-machete]
 ignored = ["strum", "strum_macros"] # this is so we can run cargo machete without getting false positive about macro dependancies

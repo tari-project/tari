@@ -23,6 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use minotari_ledger_wallet_comms::error::LedgerDeviceError;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
     errors::RangeProofError,
@@ -32,7 +33,7 @@ use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
 use thiserror::Error;
 
-use crate::transactions::{key_manager::LedgerDeviceError, transaction_components::EncryptedDataError};
+use crate::transactions::transaction_components::EncryptedDataError;
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]

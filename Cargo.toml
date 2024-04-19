@@ -30,6 +30,7 @@ members = [
     "applications/minotari_app_utilities",
     "applications/minotari_merge_mining_proxy",
     "applications/minotari_miner",
+    "applications/minotari_ledger_wallet/comms",
     "integration_tests",
     "hashing",
 ]

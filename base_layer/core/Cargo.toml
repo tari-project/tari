@@ -24,12 +24,14 @@ base_node = [
 base_node_proto = []
 benches = ["base_node"]
 ledger = [
+  "minotari_ledger_wallet_comms",
   "ledger-transport",
   "ledger-transport-hid"
 ]
 metrics = ["tari_metrics"]
 
 [dependencies]
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.11a", optional = true }
 tari_common = { path = "../../common", version = "1.0.0-pre.13" }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.13" }
 tari_comms = { path = "../../comms/core", version = "1.0.0-pre.13" }

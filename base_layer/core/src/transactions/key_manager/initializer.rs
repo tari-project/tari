@@ -80,7 +80,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
             self.master_seed.clone(),
             KeyManagerDatabase::new(backend),
             self.crypto_factories.clone(),
-            self.wallet_type,
+            self.wallet_type.clone(),
         )?;
         context.register_handle(key_manager);
 

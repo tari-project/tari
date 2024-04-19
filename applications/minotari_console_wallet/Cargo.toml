@@ -8,6 +8,7 @@ license = "BSD-3-Clause"
 [dependencies]
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.11a", optional = true }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
@@ -88,7 +89,7 @@ tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.13" 
 [features]
 default = ["libtor"]
 grpc = []
-ledger = ["ledger-transport-hid"]
+ledger = ["ledger-transport-hid", "minotari_ledger_wallet_comms"]
 libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]
