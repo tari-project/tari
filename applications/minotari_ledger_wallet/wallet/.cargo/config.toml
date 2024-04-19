@@ -6,7 +6,7 @@ target = "nanosplus"
 
 [unstable]
 avoid-dev-deps = true
-build-std = ["std", "alloc"]
+build-std = ["core", "std", "alloc"]
 build-std-features = ["compiler-builtins-mem"]
 host-config = true
 target-applies-to-host = true
