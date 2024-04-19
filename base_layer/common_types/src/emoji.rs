@@ -199,7 +199,10 @@ impl Display for EmojiId {
 mod test {
     use std::{iter, str::FromStr};
 
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey},
+        tari_utilities::ByteArray,
+    };
 
     use crate::{
         dammsum::compute_checksum,
@@ -260,6 +263,7 @@ mod test {
         // This byte representation does not represent a valid public key
         let mut bytes = vec![0u8; INTERNAL_SIZE];
         bytes[0] = 1;
+        assert!(PublicKey::from_canonical_bytes(&bytes).is_err());
 
         // Convert to an emoji string and manually add a valid checksum
         let emoji_set = emoji_set();
