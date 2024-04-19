@@ -4,7 +4,11 @@
 use alloc::format;
 
 use ledger_device_sdk::{ecc::make_bip32_path, io::Comm, ui::gadgets::SingleMessage};
-use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    tari_utilities::ByteArray,
+};
 
 use crate::{
     alloc::string::ToString,
@@ -13,26 +17,22 @@ use crate::{
     BIP32_COIN_TYPE,
 };
 
-pub fn handler_get_private_key(comm: &mut Comm) -> Result<(), AppSW> {
+const STATIC_INDEX: &str = "42";
+
+pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&data[0..8]);
     let account = u64_to_string(u64::from_le_bytes(account_bytes));
 
-    let mut address_index_bytes = [0u8; 8];
-    address_index_bytes.clone_from_slice(&data[8..16]);
-    let address_index = u64_to_string(u64::from_le_bytes(address_index_bytes));
-
     let mut bip32_path = "m/44'/".to_string();
     bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
     bip32_path.push_str(&"'/");
     bip32_path.push_str(&account);
     bip32_path.push_str(&"'/0/");
-    bip32_path.push_str(&address_index);
+    bip32_path.push_str(STATIC_INDEX);
     let path: [u32; 5] = make_bip32_path(bip32_path.as_bytes());
-
-    SingleMessage::new(&bip32_path).show_and_wait();
 
     let raw_key = match get_raw_key(&path) {
         Ok(val) => val,
@@ -42,8 +42,8 @@ pub fn handler_get_private_key(comm: &mut Comm) -> Result<(), AppSW> {
         },
     };
 
-    let k = match RistrettoSecretKey::from_uniform_bytes(&raw_key.as_ref()) {
-        Ok(val) => val,
+    let pk = match RistrettoSecretKey::from_uniform_bytes(&raw_key.as_ref()) {
+        Ok(k) => RistrettoPublicKey::from_secret_key(&k),
         Err(e) => {
             SingleMessage::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
@@ -56,7 +56,7 @@ pub fn handler_get_private_key(comm: &mut Comm) -> Result<(), AppSW> {
     };
 
     comm.append(&[1]); // version
-    comm.append(k.as_bytes());
+    comm.append(pk.as_bytes());
     comm.reply_ok();
 
     Ok(())

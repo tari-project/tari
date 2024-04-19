@@ -14,6 +14,7 @@ mod app_ui {
 }
 mod handlers {
     pub mod get_private_key;
+    pub mod get_public_key;
     pub mod get_version;
 }
 
@@ -21,7 +22,11 @@ use core::mem::MaybeUninit;
 
 use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
-use handlers::{get_private_key::handler_get_private_key, get_version::handler_get_version};
+use handlers::{
+    get_private_key::handler_get_private_key,
+    get_public_key::handler_get_public_key,
+    get_version::handler_get_version,
+};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use ledger_device_sdk::{
@@ -30,6 +35,9 @@ use ledger_device_sdk::{
 };
 
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
+
+static BIP32_COIN_TYPE: u32 = 535348;
+static CLA: u8 = 0x80;
 
 /// Allocator heap size
 const HEAP_SIZE: usize = 1024 * 26;
@@ -95,6 +103,7 @@ pub enum Instruction {
     GetVersion,
     GetAppName,
     GetPrivateKey,
+    GetPublicKey,
 }
 
 impl TryFrom<ApduHeader> for Instruction {
@@ -116,7 +125,8 @@ impl TryFrom<ApduHeader> for Instruction {
             (1, 0, 0) => Ok(Instruction::GetVersion),
             (2, 0, 0) => Ok(Instruction::GetAppName),
             (3, 0, 0) => Ok(Instruction::GetPrivateKey),
-            (3..=6, _, _) => Err(AppSW::WrongP1P2),
+            (4, 0, 0) => Ok(Instruction::GetPublicKey),
+            (3..=4, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -125,10 +135,10 @@ impl TryFrom<ApduHeader> for Instruction {
 #[no_mangle]
 extern "C" fn sample_main() {
     init();
-    // Create the communication manager, and configure it to accept only APDU from the 0xe0 class.
+    // Create the communication manager, and configure it to accept only APDU from the 0x80 class.
     // If any APDU with a wrong class value is received, comm will respond automatically with
     // BadCla status word.
-    let mut comm = Comm::new().set_expected_cla(0x80);
+    let mut comm = Comm::new().set_expected_cla(CLA);
 
     // Developer mode / pending review popup
     // must be cleared with user interaction
@@ -149,11 +159,12 @@ extern "C" fn sample_main() {
 
 fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<(), AppSW> {
     match ins {
+        Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {
             comm.append(env!("CARGO_PKG_NAME").as_bytes());
             Ok(())
         },
         Instruction::GetPrivateKey => handler_get_private_key(comm),
-        Instruction::GetVersion => handler_get_version(comm),
+        Instruction::GetPublicKey => handler_get_public_key(comm),
     }
 }
