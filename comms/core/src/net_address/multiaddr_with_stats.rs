@@ -148,6 +148,11 @@ impl MultiaddrWithStats {
         self.update_quality_score();
     }
 
+    #[cfg(test)]
+    fn get_averag_latency(&self) -> Option<Duration> {
+        self.avg_latency
+    }
+
     pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
 
@@ -206,22 +211,40 @@ impl MultiaddrWithStats {
         self.clone().address
     }
 
+    // The quality score is a measure of the reliability of the net address. It is calculated based on the following:
+    // - The maximum score is 'Some(1000)' points (seen within the last 1s and latency < 100ms).
+    // - The minimum score without any connection errors is 'Some(100)' points (seen >= 800s ago and latency >= 10s).
+    // - For any sort of connection error the score is 'Some(0)' points.
+    // - A score of `None` means it has not been tried.
     fn calculate_quality_score(&self) -> Option<i32> {
-        // If we have never seen or attempted the peer, we start with a high score to ensure that
         if self.last_seen.is_none() && self.last_attempted.is_none() {
             return None;
         }
 
-        let mut score_self = 0;
+        // The starting score
+        let mut score_self = 800;
 
+        // Latency score:
+        // - If there is no average yet, add '100' points
+        // - If the average latency is
+        //   - less than 100ms, add '100' points
+        //   - 100ms to 10,000ms', add '99' to '1' point on a sliding scale
+        //   - 10s or more, add '0' points
         if let Some(val) = self.avg_latency {
-            // explicitly truncate the latency to avoid casting problems
+            // Explicitly truncate the latency to avoid casting problems
             let avg_latency_millis = i32::try_from(val.as_millis()).unwrap_or(i32::MAX);
             score_self += cmp::max(0, 100i32.saturating_sub(avg_latency_millis / 100));
         } else {
             score_self += 100;
         }
 
+        // Last seen score:
+        // - If the last seen time is:
+        //   - 800s or more, subtract '700' points
+        //   - 799s to 101s, subtract '699' to '1' point on a sliding scale
+        //   - 100s, add or subtract nothing
+        //   - 99s to 1s, add '1' to '99' points on a sliding scale
+        //   - less than 1s, add '100' points
         let last_seen_seconds: i32 = self
             .last_seen
             .map(|x| Utc::now().naive_utc() - x)
@@ -229,10 +252,11 @@ impl MultiaddrWithStats {
             .unwrap_or(i64::MAX / 2)
             .try_into()
             .unwrap_or(i32::MAX);
-        score_self += cmp::max(0, 100i32.saturating_sub(last_seen_seconds));
+        score_self += cmp::max(-700, 100i32.saturating_sub(last_seen_seconds));
 
+        // Any failure to connect results in a score of '0' points
         if self.last_failed_reason.is_some() {
-            score_self -= 100;
+            score_self = 0;
         }
 
         Some(score_self)
@@ -445,13 +469,48 @@ mod test {
 
     #[test]
     fn test_calculate_quality_score() {
-        let address = "/ip4/123.0.0.123/tcp/8000".parse().unwrap();
-        let mut address = MultiaddrWithStats::new(address, PeerAddressSource::Config);
+        let address_raw: Multiaddr = "/ip4/123.0.0.123/tcp/8000".parse().unwrap();
+        let mut address = MultiaddrWithStats::new(address_raw.clone(), PeerAddressSource::Config);
         assert_eq!(address.quality_score, None);
+
         address.mark_last_seen_now();
-        assert!(address.quality_score.unwrap() > 100);
+        assert!(address.quality_score.unwrap() >= 990); // 1000 with a margin of 10s (10) delayed last seen
+
+        let mut address = MultiaddrWithStats::new(address_raw.clone(), PeerAddressSource::Config);
+        address.update_latency(Duration::from_millis(1000));
+        assert_eq!(address.get_averag_latency().unwrap(), Duration::from_millis(1000));
+        assert!(address.quality_score.unwrap() >= 980); // 990 with a margin of 10s (10) delayed last seen
+
+        let mut address = MultiaddrWithStats::new(address_raw.clone(), PeerAddressSource::Config);
+        address.update_latency(Duration::from_millis(1500));
+        address.update_latency(Duration::from_millis(2500));
+        address.update_latency(Duration::from_millis(3500));
+        assert_eq!(address.get_averag_latency().unwrap(), Duration::from_millis(2500));
+        assert!(address.quality_score.unwrap() >= 965); // 975 with a margin of 10s (10) delayed last seen
+
+        let mut address = MultiaddrWithStats::new(address_raw.clone(), PeerAddressSource::Config);
+        address.update_latency(Duration::from_millis(3500));
+        address.update_latency(Duration::from_millis(4500));
+        address.update_latency(Duration::from_millis(5500));
+        assert_eq!(address.get_averag_latency().unwrap(), Duration::from_millis(4500));
+        assert!(address.quality_score.unwrap() >= 945); // 955 with a margin of 10s (10) delayed last seen
+
+        let mut address = MultiaddrWithStats::new(address_raw.clone(), PeerAddressSource::Config);
+        address.update_latency(Duration::from_millis(5500));
+        address.update_latency(Duration::from_millis(6500));
+        address.update_latency(Duration::from_millis(7500));
+        assert_eq!(address.get_averag_latency().unwrap(), Duration::from_millis(6500));
+        assert!(address.quality_score.unwrap() >= 925); // 935 with a margin of 10s (10) delayed last seen
+
+        let mut address = MultiaddrWithStats::new(address_raw.clone(), PeerAddressSource::Config);
+        address.update_latency(Duration::from_millis(9000));
+        address.update_latency(Duration::from_millis(10000));
+        address.update_latency(Duration::from_millis(11000));
+        assert_eq!(address.get_averag_latency().unwrap(), Duration::from_millis(10000));
+        assert!(address.quality_score.unwrap() >= 890); // 900 with a margin of 10s (10) delayed last seen
+
         address.mark_failed_connection_attempt("Testing".to_string());
-        assert!(address.quality_score.unwrap() <= 100);
+        assert_eq!(address.quality_score.unwrap(), 0);
 
         let another_addr = "/ip4/1.0.0.1/tcp/8000".parse().unwrap();
         let another_addr = MultiaddrWithStats::new(another_addr, PeerAddressSource::Config);

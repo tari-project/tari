@@ -29,7 +29,7 @@ use tari_comms::{
     utils,
     PeerManager,
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::ByteArray;
 use tokio::{sync::mpsc, task};
 
 use crate::{
@@ -68,26 +68,8 @@ impl DhtRpcServiceImpl {
             let iter = peers
                 .into_iter()
                 .filter_map(|peer| {
-                    let mut peer_info =
+                    let peer_info =
                         UnvalidatedPeerInfo::from_peer_limited_claims(peer, max_claims, max_addresses_per_claim);
-
-                    // Filter out all identity claims with invalid signatures
-                    let count = peer_info.claims.len();
-                    let peer_public_key = peer_info.public_key.clone();
-                    peer_info.claims.retain(|claim| {
-                        claim
-                            .signature
-                            .is_valid(&peer_public_key, claim.features, claim.addresses.as_slice())
-                    });
-                    if count != peer_info.claims.len() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Peer `{}` provided {} claims but only {} were valid",
-                            peer_info.public_key.to_hex(),
-                            count,
-                            peer_info.claims.len()
-                        );
-                    }
 
                     if peer_info.claims.is_empty() {
                         None

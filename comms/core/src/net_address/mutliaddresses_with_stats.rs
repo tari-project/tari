@@ -378,11 +378,6 @@ mod test {
             &PeerAddressSource::Config,
         );
         net_addresses.merge(&address_12);
-        println!("net_address12: {:?}", address_12.addresses[0]);
-        println!(
-            "net_address1:  {:?}",
-            net_addresses.find_address_mut(&net_address1).unwrap()
-        );
         assert!(net_addresses.contains(&net_address1));
         assert!(!net_addresses.contains(&net_address12));
     }

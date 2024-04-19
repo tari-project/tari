@@ -79,11 +79,11 @@ impl<'a> PeerValidator<'a> {
         if let Some(existing) = &existing_peer {
             if existing.public_key != new_peer.public_key {
                 return Err(DhtPeerValidatorError::NewAndExistingMismatch {
-                    existing: format!("'{}' / '{}'", existing.node_id.to_hex(), existing.public_key.to_hex()),
+                    existing: format!("BUG: '{}' / '{}'", existing.node_id, existing.public_key),
                     new: format!(
-                        "'{}' / '{}'",
+                        "BUG: '{}' / '{}'",
                         NodeId::from_public_key(&new_peer.public_key),
-                        new_peer.public_key.to_hex()
+                        new_peer.public_key
                     ),
                 });
             }
@@ -92,12 +92,11 @@ impl<'a> PeerValidator<'a> {
         let most_recent_claim = find_most_recent_claim(&new_peer.claims).expect("new_peer.claims is not empty");
 
         let node_id = NodeId::from_public_key(&new_peer.public_key);
-        let node_id_hex = node_id.to_hex();
 
         let mut peer = existing_peer.unwrap_or_else(|| {
             Peer::new(
                 new_peer.public_key.clone(),
-                node_id,
+                node_id.clone(),
                 MultiaddressesWithStats::default(),
                 PeerFlags::default(),
                 most_recent_claim.features,
@@ -118,7 +117,7 @@ impl<'a> PeerValidator<'a> {
             trace!(
                 target: LOG_TARGET,
                 "Peer '{}' / '{}' added with address(es) from claim: {:?}",
-                node_id_hex,
+                node_id,
                 new_peer.public_key.to_hex(),
                 claim.addresses
             );

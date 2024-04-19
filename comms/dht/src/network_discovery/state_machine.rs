@@ -196,12 +196,7 @@ impl DhtNetworkDiscovery {
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {
         use State::{Discovering, Initializing, OnConnect, Ready, Waiting};
         match state {
-            Initializing => {
-                let initial_peer_sync_delay = self.config().network_discovery.initial_peer_sync_delay;
-                self::Initializing::new(&mut self.context, initial_peer_sync_delay)
-                    .next_event()
-                    .await
-            },
+            Initializing => self::Initializing::new(&mut self.context).next_event().await,
             Ready(ready) => ready.next_event().await,
             Discovering(discovering) => discovering.next_event().await,
             OnConnect(on_connect) => on_connect.next_event().await,
