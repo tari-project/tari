@@ -47,7 +47,7 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 
 /// Returns a CommsPublicKey from either a emoji id or a public key
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
-    EmojiId::try_from(key.trim().replace('|', "").as_str())
+    EmojiId::from_str(&key.trim().replace('|', ""))
         .map(|emoji_id| PublicKey::from(&emoji_id))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
@@ -79,7 +79,7 @@ impl FromStr for UniPublicKey {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(emoji_id) = EmojiId::try_from(key.trim().replace('|', "").as_str()) {
+        if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
             Ok(Self(PublicKey::from(&emoji_id)))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self(public_key))
@@ -116,7 +116,7 @@ impl FromStr for UniNodeId {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(emoji_id) = EmojiId::try_from(key.trim().replace('|', "").as_str()) {
+        if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
             Ok(Self::PublicKey(PublicKey::from(&emoji_id)))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self::PublicKey(public_key))

@@ -25,6 +25,7 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
     iter,
+    str::FromStr,
 };
 
 use once_cell::sync::Lazy;
@@ -127,18 +128,18 @@ impl EmojiId {
     }
 }
 
-impl TryFrom<&str> for EmojiId {
-    type Error = EmojiIdError;
+impl FromStr for EmojiId {
+    type Err = EmojiIdError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         // The string must be the correct size, including the checksum
-        if value.chars().count() != INTERNAL_SIZE + CHECKSUM_SIZE {
+        if s.chars().count() != INTERNAL_SIZE + CHECKSUM_SIZE {
             return Err(EmojiIdError::InvalidSize);
         }
 
         // Convert the emoji string to a byte array
         let mut bytes = Vec::<u8>::with_capacity(INTERNAL_SIZE + CHECKSUM_SIZE);
-        for c in value.chars() {
+        for c in s.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
                 bytes.push(*i);
             } else {
@@ -164,19 +165,13 @@ impl TryFrom<&str> for EmojiId {
 
 impl From<&PublicKey> for EmojiId {
     fn from(value: &PublicKey) -> Self {
-        Self(value.clone())
+        Self::from(value.clone())
     }
 }
 
-impl From<&EmojiId> for String {
-    fn from(value: &EmojiId) -> Self {
-        // Convert the public key to bytes and compute the checksum
-        let bytes = value.as_public_key().as_bytes();
-        bytes
-            .iter()
-            .chain(iter::once(&compute_checksum(bytes)))
-            .map(|b| EMOJI[*b as usize])
-            .collect::<String>()
+impl From<PublicKey> for EmojiId {
+    fn from(value: PublicKey) -> Self {
+        Self(value)
     }
 }
 
@@ -188,13 +183,21 @@ impl From<&EmojiId> for PublicKey {
 
 impl Display for EmojiId {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        fmt.write_str(&String::from(self))
+        // Convert the public key to bytes and compute the checksum
+        let bytes = self.as_public_key().as_bytes();
+        let emoji = bytes
+            .iter()
+            .chain(iter::once(&compute_checksum(bytes)))
+            .map(|b| EMOJI[*b as usize])
+            .collect::<String>();
+
+        fmt.write_str(&emoji)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, iter};
+    use std::{iter, str::FromStr};
 
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 
@@ -220,7 +223,7 @@ mod test {
         assert_eq!(emoji_string.chars().count(), INTERNAL_SIZE + CHECKSUM_SIZE);
 
         // Generate an emoji ID from the emoji string and ensure we recover it
-        let emoji_id_from_emoji_string = EmojiId::try_from(emoji_string.as_str()).unwrap();
+        let emoji_id_from_emoji_string = EmojiId::from_str(&emoji_string).unwrap();
         assert_eq!(emoji_id_from_emoji_string.to_string(), emoji_string);
 
         // Return to the original public key for good measure
@@ -232,7 +235,7 @@ mod test {
     fn invalid_size() {
         // This emoji string is too short to be a valid emoji ID
         let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒";
-        assert_eq!(EmojiId::try_from(emoji_string), Err(EmojiIdError::InvalidSize));
+        assert_eq!(EmojiId::from_str(emoji_string), Err(EmojiIdError::InvalidSize));
     }
 
     #[test]
@@ -240,7 +243,7 @@ mod test {
     fn invalid_emoji() {
         // This emoji string contains an invalid emoji character
         let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎅";
-        assert_eq!(EmojiId::try_from(emoji_string), Err(EmojiIdError::InvalidEmoji));
+        assert_eq!(EmojiId::from_str(emoji_string), Err(EmojiIdError::InvalidEmoji));
     }
 
     #[test]
@@ -248,7 +251,7 @@ mod test {
     fn invalid_checksum() {
         // This emoji string contains an invalid checksum
         let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎒";
-        assert_eq!(EmojiId::try_from(emoji_string), Err(EmojiIdError::InvalidChecksum));
+        assert_eq!(EmojiId::from_str(emoji_string), Err(EmojiIdError::InvalidChecksum));
     }
 
     #[test]
@@ -267,7 +270,7 @@ mod test {
             .collect::<String>();
 
         assert_eq!(
-            EmojiId::try_from(emoji_string.as_str()),
+            EmojiId::from_str(&emoji_string),
             Err(EmojiIdError::CannotRecoverPublicKey)
         );
     }
