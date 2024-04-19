@@ -1,0 +1,17 @@
+[package]
+name = "minotari_ledger_wallet_comms"
+version = "1.0.0-pre.11a"
+authors = ["The Tari Development Community"]
+license = "BSD-3-Clause"
+edition = "2021"
+
+[dependencies]
+tari_crypto = { version = "0.20.0", default-features = false }
+
+ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
+ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
+log = "0.4.20"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
+serde = { version = "1.0.106", features = ["derive"] }
+thiserror = "1.0.26"
