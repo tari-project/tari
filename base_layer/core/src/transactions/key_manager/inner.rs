@@ -23,6 +23,7 @@ use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
+use futures::AsyncReadExt;
 use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::{error::LedgerDeviceError, ledger_wallet::Instruction};
@@ -200,6 +201,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
             },
+            KeyId::Derived { branch, index } => {
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .read()
+                    .await;
+                Ok(km.derive_public_key(*index)?.key)
+            },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PublicKey::default()),
         }
@@ -214,10 +224,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let index = spend_key_id
             .managed_index()
             .ok_or(KeyManagerServiceError::KyeIdWithoutIndex)?;
-        self.db
-            .set_key_index(&TransactionKeyManagerBranch::ScriptKey.get_branch_key(), index)?;
-        let script_key_id = KeyId::Managed {
-            branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
+        let script_key_id = KeyId::Derived {
+            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
             index,
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
@@ -233,11 +241,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
         let index = match spend_key_id {
             KeyId::Managed { index, .. } => *index,
+            KeyId::Derived { index, .. } => return Ok(None),
             KeyId::Imported { .. } => return Ok(None),
             KeyId::Zero => return Ok(None),
         };
-        let script_key_id = KeyId::Managed {
-            branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
+        let script_key_id = KeyId::Derived {
+            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
             index,
         };
 
@@ -336,6 +345,19 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     .await;
                 let key = km.get_private_key(*index)?;
                 Ok(key)
+            },
+            KeyId::Derived { branch, index } => match self.wallet_type {
+                WalletType::Ledger(_) => panic!(),
+                WalletType::Software => {
+                    let km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                        .read()
+                        .await;
+                    let key = km.get_private_key(*index)?;
+                    Ok(key)
+                },
             },
             KeyId::Imported { key } => {
                 let pvt_key = self.db.get_imported_key(key)?;

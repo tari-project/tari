@@ -44,6 +44,10 @@ pub enum KeyId<PK> {
         branch: String,
         index: u64,
     },
+    Derived {
+        branch: String,
+        index: u64,
+    },
     Imported {
         key: PK,
     },
@@ -57,6 +61,7 @@ where PK: Clone
     pub fn managed_index(&self) -> Option<u64> {
         match self {
             KeyId::Managed { index, .. } => Some(*index),
+            KeyId::Derived { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -65,6 +70,7 @@ where PK: Clone
     pub fn managed_branch(&self) -> Option<String> {
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
+            KeyId::Derived { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -73,6 +79,7 @@ where PK: Clone
     pub fn imported(&self) -> Option<PK> {
         match self {
             KeyId::Managed { .. } => None,
+            KeyId::Derived { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
             KeyId::Zero => None,
         }
@@ -90,6 +97,7 @@ where PK: ByteArray
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
+            KeyId::Derived { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
             KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }

@@ -27,7 +27,7 @@ use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInterface};
+use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInterface, KeyId};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
@@ -729,10 +729,7 @@ pub async fn create_stx_protocol_internal(
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let (script_key_id, _) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-            .await
-            .unwrap();
+        let script_key_id = KeyId::Derived {branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(), index:spending_key.managed_index().unwrap() };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &schema.input_data {
             Some(data) => data.clone(),

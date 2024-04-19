@@ -31,6 +31,7 @@ use tari_core::transactions::{
 };
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
+use tari_key_manager::key_manager_service::KeyId;
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
@@ -193,10 +194,8 @@ where
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop) {
             // This is a nop, so we can just create a new key an create the input stack.
-            let (key, public_key) = self
-                .master_key_manager
-                .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-                .await?;
+            let key = KeyId::Derived {branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(), index:spending_key.managed_index().unwrap() };
+            let public_key = self.master_key_manager.get_public_key_at_key_id(&key).await?;
             (inputs!(public_key), key)
         } else {
             // This is a known script so lets fill in the details
@@ -275,15 +274,9 @@ where
                     found_index,
                 )
                 .await?;
-            self.master_key_manager
-                .update_current_key_index_if_higher(
-                    TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
-                    found_index,
-                )
-                .await?;
 
-            TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
+            TariKeyId::Derived {
+                branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                 index: found_index,
             }
         };

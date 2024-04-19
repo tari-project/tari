@@ -128,6 +128,15 @@ where
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
             },
+            KeyId::Derived { branch, index } => {
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .lock()
+                    .await;
+                Ok(km.derive_public_key(*index)?.key)
+            },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PK::default()),
         }
