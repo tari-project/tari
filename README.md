@@ -753,7 +753,7 @@ in JSON format:
 
 - Misc -> With `Donate`, type in your preference.
 
-- Result -> With `Config file`, copy or download, than save as `config.json`.
+- Result -> With `Config file`, copy or download, then save as `config.json`.
 
 Using the public stagenet wallet address above, the resulting configuration file should look like this:
 
