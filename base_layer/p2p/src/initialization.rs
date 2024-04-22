@@ -562,6 +562,11 @@ impl ServiceInitializer for P2pInitializer {
                 network_byte: self.network.as_byte(),
                 user_agent: self.user_agent.clone(),
             })
+            .with_minimize_connections(if self.config.dht.minimize_connections {
+                Some(self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes)
+            } else {
+                None
+            })
             .set_self_liveness_check(config.listener_self_liveness_check_interval);
 
         if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {

@@ -221,7 +221,7 @@ impl PeerConnectionMock {
                     reply_tx.send(Err(err)).unwrap();
                 },
             },
-            Disconnect(_, reply_tx) => {
+            Disconnect(_, reply_tx, _minimized) => {
                 self.receiver.close();
                 reply_tx.send(self.state.disconnect().await).unwrap();
             },

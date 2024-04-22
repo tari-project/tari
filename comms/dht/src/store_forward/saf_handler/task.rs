@@ -632,7 +632,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Err(err @ StoreAndForwardError::RequesterChannelClosed) |
             Err(err @ StoreAndForwardError::DhtOutboundError(_)) |
             Err(err @ StoreAndForwardError::StorageError(_)) |
-            Err(err @ StoreAndForwardError::PeerManagerError(_)) => {
+            Err(err @ StoreAndForwardError::PeerManagerError(_)) |
+            Err(err @ StoreAndForwardError::ConnectivityError(_)) => {
                 error!(target: LOG_TARGET, "Internal error: {}", err);
                 None
             },

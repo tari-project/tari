@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-//! Encrypted data using the the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
+//! Encrypted data using the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
 use std::mem::size_of;
 

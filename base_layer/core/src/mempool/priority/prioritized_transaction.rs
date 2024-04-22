@@ -35,7 +35,7 @@ use crate::transactions::{
 };
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
-/// excess_sig. The excess_sig is included to ensure the the priority key unique so it can be used with a BTreeMap.
+/// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
 /// Normally, duplicate keys will be overwritten in a BTreeMap.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct FeePriority(Vec<u8>);

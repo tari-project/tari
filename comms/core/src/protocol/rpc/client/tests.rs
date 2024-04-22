@@ -76,7 +76,10 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
 
 mod lazy_pool {
     use super::*;
-    use crate::protocol::rpc::client::pool::{LazyPool, RpcClientPoolError};
+    use crate::{
+        protocol::rpc::client::pool::{LazyPool, RpcClientPoolError},
+        Minimized,
+    };
 
     #[tokio::test]
     async fn it_connects_lazily() {
@@ -168,7 +171,7 @@ mod lazy_pool {
         let (mut peer_conn, _, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(peer_conn.clone(), 2, Default::default());
         let mut _conn1 = pool.get_least_used_or_connect().await.unwrap();
-        peer_conn.disconnect().await.unwrap();
+        peer_conn.disconnect(Minimized::No).await.unwrap();
         let err = pool.get_least_used_or_connect().await.unwrap_err();
         unpack_enum!(RpcClientPoolError::PeerConnectionDropped { .. } = err);
     }

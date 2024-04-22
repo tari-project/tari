@@ -26,7 +26,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use log::*;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
-    peer_manager::{NodeId, PeerFeatures},
+    peer_manager::{NodeDistance, NodeId, PeerFeatures},
     types::CommsPublicKey,
     PeerManager,
 };
@@ -203,6 +203,7 @@ pub struct StoreAndForwardService {
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
     connection_events: ConnectivityEventRx,
+    connectivity: ConnectivityRequester,
     outbound_requester: OutboundMessageRequester,
     request_rx: mpsc::Receiver<StoreAndForwardRequest>,
     shutdown_signal: ShutdownSignal,
@@ -211,6 +212,8 @@ pub struct StoreAndForwardService {
     saf_response_signal_rx: mpsc::Receiver<()>,
     event_publisher: DhtEventSender,
     local_state: SafLocalState,
+    ignore_saf_threshold: Option<usize>,
+    node_id: NodeId,
 }
 
 impl StoreAndForwardService {
@@ -234,6 +237,7 @@ impl StoreAndForwardService {
             dht_requester,
             request_rx,
             connection_events: connectivity.get_event_subscription(),
+            connectivity: connectivity.clone(),
             outbound_requester,
             shutdown_signal,
             num_received_saf_responses: Some(0),
@@ -241,6 +245,8 @@ impl StoreAndForwardService {
             saf_response_signal_rx,
             event_publisher,
             local_state: Default::default(),
+            ignore_saf_threshold: None,
+            node_id: Default::default(),
         }
     }
 
@@ -250,6 +256,21 @@ impl StoreAndForwardService {
     }
 
     async fn run(mut self) {
+        self.ignore_saf_threshold = self
+            .connectivity
+            .get_minimize_connections_threshold()
+            .await
+            .unwrap_or_else(|err| {
+                warn!(target: LOG_TARGET, "Failed to get the minimize connections threshold: {:?}", err);
+                None
+            });
+        self.node_id = self.connectivity.get_node_identity().await.map_or_else(
+            |err| {
+                warn!(target: LOG_TARGET, "Failed to get the node identity: {:?}", err);
+                NodeId::default()
+            },
+            |node_identity| node_identity.node_id().clone(),
+        );
         let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL);
         cleanup_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -370,9 +391,54 @@ impl StoreAndForwardService {
                     return Ok(());
                 }
 
-                // Whenever we connect to a peer, request SAF messages
-                let features = self.peer_manager.get_peer_features(conn.peer_node_id()).await?;
-                if features.contains(PeerFeatures::DHT_STORE_FORWARD) {
+                // Whenever we connect to a peer, request SAF messages based on the peer's features
+                // and the current connectivity state
+                let request_saf = {
+                    let features = self.peer_manager.get_peer_features(conn.peer_node_id()).await?;
+                    if !features.contains(PeerFeatures::DHT_STORE_FORWARD) {
+                        false
+                    } else if let Some(threshold) = self.ignore_saf_threshold {
+                        let active_connections = self.connectivity.get_active_connections().await?;
+                        let mut active_connections_with_distance = active_connections
+                            .into_iter()
+                            .map(|c| {
+                                let distance = self.node_id.distance(&c.peer_node_id().clone());
+                                (c, distance)
+                            })
+                            .collect::<Vec<_>>();
+                        active_connections_with_distance.sort_by(|a, b| a.1.cmp(&b.1));
+                        // TODO: Hansie remove this assert!
+                        for i in 1..active_connections_with_distance.len() - 1 {
+                            assert!(active_connections_with_distance[i].1 >= active_connections_with_distance[i - 1].1);
+                        }
+                        let saf_ignore_distance = active_connections_with_distance
+                            .get(threshold - 1)
+                            .map(|(_, distance)| distance)
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                active_connections_with_distance
+                                    .last()
+                                    .map(|(_, distance)| distance)
+                                    .cloned()
+                                    .unwrap_or(NodeDistance::max_distance())
+                            });
+
+                        let decision = self.node_id.distance(&conn.peer_node_id().clone()) <= saf_ignore_distance;
+                        trace!(
+                            target: LOG_TARGET,
+                            "Ignore SAF decision for peer: '{}', this node id: '{}', is closer: {}, will request SAF: {}, closer peers threshold: {}",
+                            conn.peer_node_id().short_str(),
+                            self.node_id.short_str(),
+                            decision,
+                            decision,
+                            threshold
+                        );
+                        decision
+                    } else {
+                        true
+                    }
+                };
+                if request_saf {
                     info!(
                         target: LOG_TARGET,
                         "Connected peer '{}' is a SAF node. Requesting stored messages.",

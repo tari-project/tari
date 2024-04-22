@@ -160,7 +160,7 @@ impl WalletGrpcServer {
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
         // If we don't have the chain metadata, we hope that VNReg consensus constants did not change - worst case, we
-        // spend more than we need to or the the transaction is rejected.
+        // spend more than we need to or the transaction is rejected.
         let height = self
             .wallet
             .db

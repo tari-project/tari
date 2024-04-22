@@ -58,6 +58,7 @@ use crate::{
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
+    Minimized,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
@@ -118,7 +119,7 @@ pub enum PeerConnectionRequest {
         reply_tx: oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
     },
     /// Disconnect all substreams and close the transport connection
-    Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>),
+    Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>, Minimized),
 }
 
 /// ID type for peer connections
@@ -276,20 +277,20 @@ impl PeerConnection {
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker
     /// is shut down (and the peer is already disconnected)
-    pub async fn disconnect(&mut self) -> Result<(), PeerConnectionError> {
+    pub async fn disconnect(&mut self, minimized: Minimized) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::Disconnect(false, reply_tx))
+            .send(PeerConnectionRequest::Disconnect(false, reply_tx, minimized))
             .await?;
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
-    pub(crate) async fn disconnect_silent(&mut self) -> Result<(), PeerConnectionError> {
+    pub(crate) async fn disconnect_silent(&mut self, minimized: Minimized) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.request_tx
-            .send(PeerConnectionRequest::Disconnect(true, reply_tx))
+            .send(PeerConnectionRequest::Disconnect(true, reply_tx, minimized))
             .await?;
         reply_rx
             .await
@@ -388,7 +389,7 @@ impl PeerConnectionActor {
             }
         }
 
-        if let Err(err) = self.disconnect(false).await {
+        if let Err(err) = self.disconnect(false, Minimized::No).await {
             warn!(
                 target: LOG_TARGET,
                 "[{}] Failed to politely close connection to peer '{}' because '{}'",
@@ -413,7 +414,7 @@ impl PeerConnectionActor {
                     "Reply oneshot closed when sending reply",
                 );
             },
-            Disconnect(silent, reply_tx) => {
+            Disconnect(silent, reply_tx, minimized) => {
                 debug!(
                     target: LOG_TARGET,
                     "[{}] Disconnect{}requested for {} connection to peer '{}'",
@@ -422,7 +423,7 @@ impl PeerConnectionActor {
                     self.direction,
                     self.peer_node_id.short_str()
                 );
-                let _result = reply_tx.send(self.disconnect(silent).await);
+                let _result = reply_tx.send(self.disconnect(silent, minimized).await);
             },
         }
     }
@@ -518,7 +519,7 @@ impl PeerConnectionActor {
     /// # Arguments
     ///
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
-    async fn disconnect(&mut self, silent: bool) -> Result<(), PeerConnectionError> {
+    async fn disconnect(&mut self, silent: bool, minimized: Minimized) -> Result<(), PeerConnectionError> {
         self.request_rx.close();
         match self.control.close().await {
             Err(yamux::ConnectionError::Closed) => {
@@ -536,6 +537,7 @@ impl PeerConnectionActor {
                     self.notify_event(ConnectionManagerEvent::PeerDisconnected(
                         self.id,
                         self.peer_node_id.clone(),
+                        minimized,
                     ))
                     .await;
                 }

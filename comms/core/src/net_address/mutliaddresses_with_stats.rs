@@ -467,9 +467,15 @@ mod test {
         assert_eq!(net_addresses.addresses[0].connection_attempts(), 2);
         assert_eq!(net_addresses.addresses[1].connection_attempts(), 1);
         assert_eq!(net_addresses.addresses[2].connection_attempts(), 1);
+        assert!(net_addresses.addresses[0].last_failed_reason().is_some());
+        assert!(net_addresses.addresses[1].last_failed_reason().is_some());
+        assert!(net_addresses.addresses[2].last_failed_reason().is_some());
         net_addresses.reset_connection_attempts();
         assert_eq!(net_addresses.addresses[0].connection_attempts(), 0);
         assert_eq!(net_addresses.addresses[1].connection_attempts(), 0);
         assert_eq!(net_addresses.addresses[2].connection_attempts(), 0);
+        assert!(net_addresses.addresses[0].last_failed_reason().is_none());
+        assert!(net_addresses.addresses[1].last_failed_reason().is_none());
+        assert!(net_addresses.addresses[2].last_failed_reason().is_none());
     }
 }

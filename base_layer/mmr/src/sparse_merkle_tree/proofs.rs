@@ -98,7 +98,7 @@ pub struct InclusionProof<H> {
 /// ```
 pub struct ExclusionProof<H> {
     siblings: Vec<NodeHash>,
-    // The terminal node of the tree proof, or `None` if the the node is `Empty`.
+    // The terminal node of the tree proof, or `None` if the node is `Empty`.
     leaf: Option<LeafNode<H>>,
     phantom: std::marker::PhantomData<H>,
 }

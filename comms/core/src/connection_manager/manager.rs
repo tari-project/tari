@@ -54,6 +54,7 @@ use crate::{
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
+    Minimized,
     PeerManager,
 };
 
@@ -67,7 +68,7 @@ const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 pub enum ConnectionManagerEvent {
     // Peer connection
     PeerConnected(Box<PeerConnection>),
-    PeerDisconnected(ConnectionId, NodeId),
+    PeerDisconnected(ConnectionId, NodeId, Minimized),
     PeerConnectFailed(NodeId, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
@@ -84,7 +85,9 @@ impl fmt::Display for ConnectionManagerEvent {
         use ConnectionManagerEvent::*;
         match self {
             PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
-            PeerDisconnected(id, node_id) => write!(f, "PeerDisconnected({}, {})", id, node_id.short_str()),
+            PeerDisconnected(id, node_id, minimized) => {
+                write!(f, "PeerDisconnected({}, {}, {:?})", id, node_id.short_str(), minimized)
+            },
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
             PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
             NewInboundSubstream(node_id, protocol, _) => write!(

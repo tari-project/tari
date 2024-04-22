@@ -1293,7 +1293,7 @@ where
         let uo_len = uo.len();
         trace!(
             target: LOG_TARGET,
-            "select_utxos profile - fetch_unspent_outputs_for_spending: {} outputs, {} ms (at {})",
+            "select_utxos profile - fetch_unspent_outputs_for_spending: {} outputs, {} ms (at {} ms)",
             uo_len,
             start_new.elapsed().as_millis(),
             start.elapsed().as_millis(),
@@ -1362,7 +1362,7 @@ where
         let enough_spendable = utxos_total_value > amount + fee_with_change;
         trace!(
             target: LOG_TARGET,
-            "select_utxos profile - final_selection: {} outputs from {}, {} ms (at {})",
+            "select_utxos profile - final_selection: {} outputs from {}, {} ms (at {} ms)",
             utxos.len(),
             uo_len,
             start_new.elapsed().as_millis(),

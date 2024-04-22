@@ -2407,7 +2407,7 @@ fn get_previous_timestamps<T: BlockchainBackend>(
     Ok(timestamps)
 }
 
-/// Gets all blocks ordered from the the block that connects (via prev_hash) to the main chain, to the orphan tip.
+/// Gets all blocks ordered from the block that connects (via prev_hash) to the main chain, to the orphan tip.
 #[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(
     db: &T,
