@@ -3,7 +3,7 @@ name = "minotari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.12"
+version = "1.0.0-rc.7"
 edition = "2018"
 
 [dependencies]
@@ -54,4 +54,4 @@ borsh = "1.2"
 [build-dependencies]
 cbindgen = "0.24.3"
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.12" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-rc.7" }

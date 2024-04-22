@@ -247,34 +247,34 @@ pub struct NewBlock {
     /// The block header.
     pub header: BlockHeader,
     /// Coinbase kernel of the block
-    pub coinbase_kernels: Vec<TransactionKernel>,
+    pub coinbase_kernel: TransactionKernel,
     /// Coinbase output of the block
-    pub coinbase_outputs: Vec<TransactionOutput>,
+    pub coinbase_output: TransactionOutput,
     /// The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
     pub kernel_excess_sigs: Vec<PrivateKey>,
 }
 
 impl From<&Block> for NewBlock {
     fn from(block: &Block) -> Self {
-        let coinbase_kernels = block
+        let coinbase_kernel = block
             .body
             .kernels()
-            .clone()
-            .into_iter()
-            .filter(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL))
-            .collect();
-        let coinbase_outputs = block
+            .iter()
+            .find(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL))
+            .cloned()
+            .expect("Invalid block given to NewBlock::from, no coinbase kernel");
+        let coinbase_output = block
             .body
             .outputs()
-            .clone()
-            .into_iter()
-            .filter(|o| o.features.output_type == OutputType::Coinbase)
-            .collect();
+            .iter()
+            .find(|o| o.features.output_type == OutputType::Coinbase)
+            .cloned()
+            .expect("Invalid block given to NewBlock::from, no coinbase output");
 
         Self {
             header: block.header.clone(),
-            coinbase_kernels,
-            coinbase_outputs,
+            coinbase_kernel,
+            coinbase_output,
             kernel_excess_sigs: block
                 .body
                 .kernels()
