@@ -1,6 +1,6 @@
 [package]
 name = "minotari_app_utilities"
-version = "1.0.0-pre.11a"
+version = "1.0.0-pre.12"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -26,7 +26,7 @@ tonic = "0.8.3"
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.11a" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.12" }
 
 [features]
 miner_input = ["minotari_app_grpc"]
