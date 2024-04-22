@@ -148,7 +148,7 @@ impl TariAddress {
         if bytes.len() != INTERNAL_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
-        let checksum = compute_checksum(&bytes[0..32].to_vec());
+        let checksum = compute_checksum(&bytes[0..32]);
         // if the network is a valid network number, we can assume that the checksum as valid
         let network =
             Network::try_from(checksum ^ bytes[32]).map_err(|_| TariAddressError::InvalidNetworkOrChecksum)?;
@@ -164,7 +164,7 @@ impl TariAddress {
     pub fn to_bytes(&self) -> [u8; INTERNAL_SIZE] {
         let mut buf = [0u8; INTERNAL_SIZE];
         buf[0..32].copy_from_slice(self.public_key.as_bytes());
-        let checksum = compute_checksum(&buf[0..32].to_vec());
+        let checksum = compute_checksum(&buf[0..32]);
         buf[32] = self.network.as_byte() ^ checksum;
         buf
     }
@@ -330,7 +330,7 @@ mod test {
     fn invalid_public_key() {
         let mut bytes = [0; 33].to_vec();
         bytes[0] = 1;
-        let checksum = compute_checksum(&bytes[0..32].to_vec());
+        let checksum = compute_checksum(&bytes[0..32]);
         bytes[32] = Network::Esmeralda.as_byte() ^ checksum;
         let emoji_string = bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>();
 
