@@ -180,7 +180,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .await
         .unwrap();
     let (script_key_id, public_script_key) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await
         .unwrap();
     let encrypted_data = key_manager

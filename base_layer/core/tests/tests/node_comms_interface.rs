@@ -304,7 +304,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .await
             .unwrap();
         let (script_key_id, _) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();

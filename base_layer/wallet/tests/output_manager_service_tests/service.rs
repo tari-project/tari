@@ -2178,7 +2178,7 @@ async fn scan_for_recovery_test() {
             .unwrap();
         let (script_key, public_script_key) = oms
             .key_manager_handle
-            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
         let amount = 1_000 * i as u64;

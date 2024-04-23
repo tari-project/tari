@@ -23,7 +23,6 @@ use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use futures::AsyncReadExt;
 use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::{error::LedgerDeviceError, ledger_wallet::Instruction};
@@ -45,6 +44,7 @@ use tari_crypto::{
         bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
         RistrettoComSig,
     },
+    signatures::CommitmentAndPublicKeySignature,
 };
 use tari_key_manager::{
     cipher_seed::CipherSeed,
@@ -201,14 +201,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
             },
-            KeyId::Derived { branch, index } => {
-                let km = self
-                    .key_managers
-                    .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                    .read()
-                    .await;
-                Ok(km.derive_public_key(*index)?.key)
+            KeyId::Derived { branch, index } => match &self.wallet_type {
+                WalletType::Software(k, pk) => Ok(pk.clone()),
+                WalletType::Ledger(ledger) => {
+                    #[cfg(not(feature = "ledger"))]
+                    return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
+
+                    #[cfg(feature = "ledger")]
+                    {
+                        match &ledger.pubkey {
+                            Some(pk) => Ok(pk.clone()),
+                            None => Err(KeyManagerServiceError::UnknownKeyBranch),
+                        }
+                    }
+                },
             },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PublicKey::default()),
@@ -346,18 +352,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let key = km.get_private_key(*index)?;
                 Ok(key)
             },
-            KeyId::Derived { branch, index } => match self.wallet_type {
+            KeyId::Derived { branch, index } => match &self.wallet_type {
                 WalletType::Ledger(_) => panic!(),
-                WalletType::Software => {
-                    let km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                        .read()
-                        .await;
-                    let key = km.get_private_key(*index)?;
-                    Ok(key)
-                },
+                WalletType::Software(k, pk) => Ok(k.clone()),
             },
             KeyId::Imported { key } => {
                 let pvt_key = self.db.get_imported_key(key)?;
@@ -457,41 +454,44 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
-        match (&self.wallet_type, script_key_id) {
-            (WalletType::Software(_, _), _) | (WalletType::Ledger(_), TariKeyId::Imported { .. } | TariKeyId::Zero) => {
-                self.get_private_key(script_key_id).await.map_err(|e| e.into())
-            },
-            (WalletType::Ledger(ledger), TariKeyId::Managed { branch: _, index }) => {
-                #[cfg(not(feature = "ledger"))]
-                return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
+    // pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
+    //    match (&self.wallet_type, script_key_id {
+    //        TariKeyId::Derived { branch, index } => {
+    //            match (&self.wallet_type) {
+    //                WalletType::Software(_, _) => self.get_private_key(script_key_id).await.map_err(|e| e.into()),
+    //                WalletType::Ledger(ledger) => {
+    //                    #[cfg(not(feature = "ledger"))]
+    //                    return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
 
-                #[cfg(feature = "ledger")]
-                {
-                    let data = index.to_le_bytes().to_vec();
+    //                    #[cfg(feature = "ledger")]
+    //                    {
+    //                        let data = index.to_le_bytes().to_vec();
 
-                    match ledger.build_command(Instruction::GetPrivateKey, data).execute() {
-                        Ok(result) => {
-                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                            if result.data().len() < 33 {
-                                debug!(target: LOG_TARGET, "result less than 33");
-                                return Err(LedgerDeviceError::Processing(format!(
-                                    "'get_private_key' insufficient data - expected 33 got {} bytes ({:?})",
-                                    result.data().len(),
-                                    result
-                                ))
-                                .into());
-                            }
-                            PrivateKey::from_canonical_bytes(&result.data()[1..33])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))
-                        },
-                        Err(e) => Err(LedgerDeviceError::Instruction(format!("GetPrivateKey: {}", e)).into()),
-                    }
-                }
-                // end script private key
-            },
-        }
-    }
+    //                        match ledger.build_command(Instruction::GetPrivateKey, data).execute() {
+    //                            Ok(result) => {
+    //                                debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(),
+    // result.data());                                if result.data().len() < 33 {
+    //                                    debug!(target: LOG_TARGET, "result less than 33");
+    //                                    return Err(LedgerDeviceError::Processing(format!(
+    //                                        "'get_private_key' insufficient data - expected 33 got {} bytes ({:?})",
+    //                                        result.data().len(),
+    //                                        result
+    //                                    ))
+    //                                    .into());
+    //                                }
+    //                                PrivateKey::from_canonical_bytes(&result.data()[1..33])
+    //                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))
+    //                            },
+    //                            Err(e) => Err(LedgerDeviceError::Instruction(format!("GetPrivateKey: {}", e)).into()),
+    //                        }
+    //                    }
+    //                    // end script private key
+    //                },
+    //            }
+    //        },
+    //        _ => {},
+    //    }
+    // }
 
     pub async fn get_script_signature(
         &self,
@@ -508,28 +508,47 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
         let commitment = self.get_commitment(spend_key_id, value).await?;
         let spend_private_key = self.get_private_key(spend_key_id).await?;
-        let script_private_key = self.get_script_private_key(script_key_id).await?;
 
         let challenge = TransactionInput::finalize_script_signature_challenge(
             txi_version,
             &ephemeral_commitment,
             &ephemeral_pubkey,
-            &PublicKey::from_secret_key(&script_private_key),
+            &self.get_public_key_at_key_id(script_key_id).await?,
             &commitment,
             script_message,
         );
 
-        let script_signature = ComAndPubSignature::sign(
-            value,
-            &spend_private_key,
-            &script_private_key,
-            &r_a,
-            &r_x,
-            &r_y,
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
-        Ok(script_signature)
+        match &self.wallet_type {
+            WalletType::Software(k, pk) => {
+                let script_private_key = self.get_private_key(script_key_id).await?;
+                let script_signature = ComAndPubSignature::sign(
+                    value,
+                    &spend_private_key,
+                    &script_private_key,
+                    &r_a,
+                    &r_x,
+                    &r_y,
+                    &challenge,
+                    &*self.crypto_factories.commitment,
+                )?;
+                Ok(script_signature)
+            },
+            WalletType::Ledger(ledger) => {
+                #[cfg(not(feature = "ledger"))]
+                {
+                    return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
+                }
+
+                #[cfg(feature = "ledger")]
+                {
+                    let data: Vec<u8> = vec![];
+                    match ledger.build_command(Instruction::GetScriptSignature, data).execute() {
+                        Ok(result) => Ok(CommitmentAndPublicKeySignature::default()), // Fix this
+                        Err(e) => Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into()),
+                    }
+                }
+            },
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------
