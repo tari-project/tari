@@ -74,6 +74,15 @@ impl<D: Deref<Target = [u8]>> Command<D> {
             .exchange(&self.inner)
             .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
     }
+
+    pub fn execute_with_transport(
+        &self,
+        transport: &TransportNativeHID,
+    ) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
+        transport
+            .exchange(&self.inner)
+            .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,5 +121,34 @@ impl LedgerWallet {
                 data: base_data,
             },
         }
+    }
+
+    pub fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
+        let num_chunks = data.len();
+        let mut more = 0;
+        let mut commands = vec![];
+
+        for (i, chunk) in data.iter().enumerate() {
+            if i + 1 == num_chunks {
+                more = 0;
+            } else {
+                more = 1;
+            }
+
+            let mut base_data = self.account_bytes();
+            base_data.extend_from_slice(&chunk);
+
+            commands.push(Command {
+                inner: APDUCommand {
+                    cla: WALLET_CLA,
+                    ins: instruction.as_byte(),
+                    p1: i as u8,
+                    p2: more,
+                    data: base_data,
+                },
+            });
+        }
+
+        commands
     }
 }
