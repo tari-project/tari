@@ -2,12 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-rc.8](https://github.com/tari-project/tari/compare/v1.0.0-rc.7...v1.0.0-rc.8) (2024-04-23)
+
+### Bug Fixes
+
+* Hot fix to remove breaking change of wallet type saved in db. 
+
 ## [1.0.0-rc.7](https://github.com/tari-project/tari/compare/v1.0.0-rc.6a...v1.0.0-rc.7) (2024-04-22)
 
 
 ### ⚠ BREAKING CHANGES
 
-* update new block proto to support multiple coinbases (#6266)
+* change grpc deny to allow (#6218)
 
 ### Features
 
@@ -27,7 +33,6 @@ All notable changes to this project will be documented in this file. See [standa
 * prevent mempool panic ([#6239](https://github.com/tari-project/tari/issues/6239)) ([5380e1f](https://github.com/tari-project/tari/commit/5380e1face2799f762145bfa238f1c719d831f2e))
 * remove template blocking call ([#6220](https://github.com/tari-project/tari/issues/6220)) ([01d79e0](https://github.com/tari-project/tari/commit/01d79e09aed7e3cf256b1f8a5caad391736ea78c))
 * show warning when GRPC method is disallowed ([#6246](https://github.com/tari-project/tari/issues/6246)) ([0019c11](https://github.com/tari-project/tari/commit/0019c1128db5dfaea1a63c2807b9c845d5e0ef09))
-* update new block proto to support multiple coinbases ([#6266](https://github.com/tari-project/tari/issues/6266)) ([f58ef12](https://github.com/tari-project/tari/commit/f58ef129177b653bf4b40d675b8977537a720235))
 
 
 ### Bug Fixes
@@ -37,6 +42,7 @@ All notable changes to this project will be documented in this file. See [standa
 * improve wallet connection response time ([#6286](https://github.com/tari-project/tari/issues/6286)) ([8f1eac6](https://github.com/tari-project/tari/commit/8f1eac60598f16a4839f594d50d8fc6fbf25e92d))
 * potential in panic message_vector_get_at ([#6233](https://github.com/tari-project/tari/issues/6233)) ([2867454](https://github.com/tari-project/tari/commit/2867454f7480edd6b23e1430efa9af57d6b43c61))
 * wallet ffi type incorrect ([#6290](https://github.com/tari-project/tari/issues/6290)) ([b5bda7c](https://github.com/tari-project/tari/commit/b5bda7ccffd569f627ed41cb65d060032a58510f))
+* change grpc deny to allow ([#6218](https://github.com/tari-project/tari/issues/6218)) ([7665067](https://github.com/tari-project/tari/commit/7665067ef99893fc0d33996f5acbaa8fa164e844))
 
 ## [1.0.0-rc.6a](https://github.com/tari-project/tari/compare/v1.0.0-rc.6...v1.0.0-rc.6a) (2024-03-12)
 
