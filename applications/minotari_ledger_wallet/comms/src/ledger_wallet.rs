@@ -45,6 +45,7 @@ pub enum Instruction {
     GetAppName = 0x02,
     GetPrivateKey = 0x03,
     GetPublicKey = 0x04,
+    GetScriptSignature = 0x05,
 }
 
 impl Instruction {
@@ -78,7 +79,7 @@ impl<D: Deref<Target = [u8]>> Command<D> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerWallet {
     account: u64,
-    pubkey: Option<RistrettoPublicKey>,
+    pub pubkey: Option<RistrettoPublicKey>,
 }
 
 impl Display for LedgerWallet {
