@@ -268,13 +268,13 @@ mod test {
     /// Test invalid size
     fn invalid_size() {
         // This emoji string is too short to be a valid emoji ID
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒";
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🦋🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidSize)
         );
         // This emoji string is too long to be a valid emoji ID
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎒🎒🎒🎒";
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🦋🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🎒🎒🎒🎒";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidSize)
@@ -285,7 +285,7 @@ mod test {
     /// Test invalid emoji
     fn invalid_emoji() {
         // This emoji string contains an invalid emoji character
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎅";
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🦋🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🎅";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidEmoji)
@@ -296,7 +296,7 @@ mod test {
     /// Test invalid checksum
     fn invalid_checksum() {
         // This emoji string contains an invalid checksum
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎒";
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🦋🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🎒";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidNetworkOrChecksum)
