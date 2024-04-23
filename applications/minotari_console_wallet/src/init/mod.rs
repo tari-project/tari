@@ -419,7 +419,7 @@ pub async fn init_wallet(
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
-    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
+    let wallet_type = WalletType::Software;
 
     let node_identity = match config.wallet.identity_file.as_ref() {
         Some(identity_file) => {
@@ -465,7 +465,7 @@ pub async fn init_wallet(
         key_manager_backend,
         shutdown_signal,
         master_seed,
-        wallet_type.unwrap(),
+        wallet_type,
     )
     .await
     .map_err(|e| match e {
