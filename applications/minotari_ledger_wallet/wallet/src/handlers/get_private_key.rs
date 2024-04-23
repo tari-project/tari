@@ -4,13 +4,14 @@
 use alloc::format;
 
 use ledger_device_sdk::{ecc::make_bip32_path, io::Comm, ui::gadgets::SingleMessage};
-use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
+use tari_crypto::tari_utilities::ByteArray;
 
 use crate::{
     alloc::string::ToString,
-    utils::{get_raw_key, u64_to_string},
+    utils::{get_key_from_uniform_bytes, get_raw_key, u64_to_string},
     AppSW,
     BIP32_COIN_TYPE,
+    RESPONSE_VERSION,
 };
 
 pub fn handler_get_private_key(comm: &mut Comm) -> Result<(), AppSW> {
@@ -42,20 +43,9 @@ pub fn handler_get_private_key(comm: &mut Comm) -> Result<(), AppSW> {
         },
     };
 
-    let k = match RistrettoSecretKey::from_uniform_bytes(&raw_key.as_ref()) {
-        Ok(val) => val,
-        Err(e) => {
-            SingleMessage::new(&format!(
-                "Err: key conversion {:?}. Length: {:?}",
-                e.to_string(),
-                &raw_key.len()
-            ))
-            .show();
-            return Err(AppSW::KeyDeriveFail);
-        },
-    };
+    let k = get_key_from_uniform_bytes(&raw_key.as_ref())?;
 
-    comm.append(&[1]); // version
+    comm.append(&[RESPONSE_VERSION]); // version
     comm.append(k.as_bytes());
     comm.reply_ok();
 

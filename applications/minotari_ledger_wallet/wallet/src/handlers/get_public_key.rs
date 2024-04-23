@@ -4,17 +4,14 @@
 use alloc::format;
 
 use ledger_device_sdk::{ecc::make_bip32_path, io::Comm, ui::gadgets::SingleMessage};
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    tari_utilities::ByteArray,
-};
+use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
 use crate::{
     alloc::string::ToString,
-    utils::{get_raw_key, u64_to_string},
+    utils::{get_key_from_uniform_bytes, get_raw_key, u64_to_string},
     AppSW,
     BIP32_COIN_TYPE,
+    RESPONSE_VERSION,
 };
 
 const STATIC_INDEX: &str = "42";
@@ -42,20 +39,12 @@ pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
         },
     };
 
-    let pk = match RistrettoSecretKey::from_uniform_bytes(&raw_key.as_ref()) {
+    let pk = match get_key_from_uniform_bytes(&raw_key.as_ref()) {
         Ok(k) => RistrettoPublicKey::from_secret_key(&k),
-        Err(e) => {
-            SingleMessage::new(&format!(
-                "Err: key conversion {:?}. Length: {:?}",
-                e.to_string(),
-                &raw_key.len()
-            ))
-            .show();
-            return Err(AppSW::KeyDeriveFail);
-        },
+        Err(e) => return Err(e),
     };
 
-    comm.append(&[1]); // version
+    comm.append(&[RESPONSE_VERSION]); // version
     comm.append(pk.as_bytes());
     comm.reply_ok();
 

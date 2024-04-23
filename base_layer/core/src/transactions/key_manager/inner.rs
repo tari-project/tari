@@ -19,11 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, ops::Shl};
+use std::{collections::HashMap, ops::Shl, thread, thread::sleep, time::Duration};
 
 use blake2::Blake2b;
 use digest::consts::U64;
 use log::*;
+use minotari_ledger_wallet_comms::ledger_wallet::get_transport;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::{error::LedgerDeviceError, ledger_wallet::Instruction};
 use rand::rngs::OsRng;
@@ -44,7 +45,6 @@ use tari_crypto::{
         bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
         RistrettoComSig,
     },
-    signatures::CommitmentAndPublicKeySignature,
 };
 use tari_key_manager::{
     cipher_seed::CipherSeed,
@@ -454,45 +454,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
-    // pub async fn get_script_private_key(&self, script_key_id: &TariKeyId) -> Result<PrivateKey, TransactionError> {
-    //    match (&self.wallet_type, script_key_id {
-    //        TariKeyId::Derived { branch, index } => {
-    //            match (&self.wallet_type) {
-    //                WalletType::Software(_, _) => self.get_private_key(script_key_id).await.map_err(|e| e.into()),
-    //                WalletType::Ledger(ledger) => {
-    //                    #[cfg(not(feature = "ledger"))]
-    //                    return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
-
-    //                    #[cfg(feature = "ledger")]
-    //                    {
-    //                        let data = index.to_le_bytes().to_vec();
-
-    //                        match ledger.build_command(Instruction::GetPrivateKey, data).execute() {
-    //                            Ok(result) => {
-    //                                debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(),
-    // result.data());                                if result.data().len() < 33 {
-    //                                    debug!(target: LOG_TARGET, "result less than 33");
-    //                                    return Err(LedgerDeviceError::Processing(format!(
-    //                                        "'get_private_key' insufficient data - expected 33 got {} bytes ({:?})",
-    //                                        result.data().len(),
-    //                                        result
-    //                                    ))
-    //                                    .into());
-    //                                }
-    //                                PrivateKey::from_canonical_bytes(&result.data()[1..33])
-    //                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))
-    //                            },
-    //                            Err(e) => Err(LedgerDeviceError::Instruction(format!("GetPrivateKey: {}", e)).into()),
-    //                        }
-    //                    }
-    //                    // end script private key
-    //                },
-    //            }
-    //        },
-    //        _ => {},
-    //    }
-    // }
-
     pub async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
@@ -541,11 +502,55 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 #[cfg(feature = "ledger")]
                 {
-                    let data: Vec<u8> = vec![];
-                    match ledger.build_command(Instruction::GetScriptSignature, data).execute() {
-                        Ok(result) => Ok(CommitmentAndPublicKeySignature::default()), // Fix this
-                        Err(e) => Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into()),
+                    let mut data: Vec<Vec<u8>> = vec![];
+                    data.push(value.as_bytes().to_vec());
+                    data.push(spend_private_key.as_bytes().to_vec());
+                    data.push(r_a.as_bytes().to_vec());
+                    data.push(r_x.as_bytes().to_vec());
+                    data.push(r_y.as_bytes().to_vec());
+                    data.push(challenge.to_vec());
+                    debug!(target: LOG_TARGET, "challenge: {:?} challenge size {:?}", challenge, challenge.len());
+
+                    let commands = ledger.chunk_command(Instruction::GetScriptSignature, data);
+                    let transport = get_transport()?;
+
+                    let mut result = None;
+                    for command in commands {
+                        match command.execute_with_transport(&transport) {
+                            Ok(r) => result = Some(r),
+                            Err(e) => {
+                                return Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into())
+                            },
+                        }
                     }
+
+                    if let Some(result) = result {
+                        if result.data().len() < 161 {
+                            debug!(target: LOG_TARGET, "result less than 161");
+                            return Err(LedgerDeviceError::Processing(format!(
+                                "'get_script_signature' insufficient data - expected 161 got {} bytes ({:?})",
+                                result.data().len(),
+                                result
+                            ))
+                            .into());
+                        }
+                        let data = result.data();
+                        debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                        return Ok(ComAndPubSignature::new(
+                            Commitment::from_canonical_bytes(&data[1..33])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PublicKey::from_canonical_bytes(&data[33..65])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[65..97])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[97..129])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[129..161])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                        ));
+                    }
+
+                    Err(LedgerDeviceError::Instruction("GetScriptSignature didn't end right".to_string()).into())
                 }
             },
         }

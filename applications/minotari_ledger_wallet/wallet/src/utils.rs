@@ -1,6 +1,8 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use alloc::format;
+
 use blake2::{Blake2b, Digest};
 use digest::consts::U64;
 use ledger_device_sdk::{
@@ -8,7 +10,13 @@ use ledger_device_sdk::{
     io::SyscallError,
     ui::gadgets::SingleMessage,
 };
-use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use tari_crypto::{
+    hash_domain,
+    hashing::DomainSeparatedHasher,
+    keys::SecretKey,
+    ristretto::RistrettoSecretKey,
+    tari_utilities::ByteArray,
+};
 use zeroize::Zeroizing;
 
 use crate::alloc::string::{String, ToString};
@@ -174,6 +182,38 @@ pub fn get_raw_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, SyscallError> {
             SingleMessage::new(&msg).show_and_wait();
             SingleMessage::new(&e).show_and_wait();
             Err(SyscallError::InvalidParameter.into())
+        },
+    }
+}
+
+pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, AppSW> {
+    match RistrettoSecretKey::from_uniform_bytes(bytes) {
+        Ok(val) => Ok(val),
+        Err(e) => {
+            SingleMessage::new(&format!(
+                "Err: key conversion {:?}. Length: {:?}",
+                e.to_string(),
+                &bytes.len()
+            ))
+            .show_and_wait();
+            SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
+            return Err(AppSW::KeyDeriveFail);
+        },
+    }
+}
+
+pub fn get_key_from_canonical_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, AppSW> {
+    match RistrettoSecretKey::from_canonical_bytes(bytes) {
+        Ok(val) => Ok(val),
+        Err(e) => {
+            SingleMessage::new(&format!(
+                "Err: key conversion {:?}. Length: {:?}",
+                e.to_string(),
+                &bytes.len()
+            ))
+            .show_and_wait();
+            SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
+            return Err(AppSW::KeyDeriveFail);
         },
     }
 }
