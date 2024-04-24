@@ -788,24 +788,25 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
 
         // let validate the coinbase amounts;
-        let reward = self
-            .consensus_rules
-            .calculate_coinbase_and_fees(new_template.header.height, new_template.body.kernels())
-            .map_err(|_| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::internal("Could not calculate the amount of fees in the block".to_string()),
-                )
-            })?
-            .as_u64() as u128;
+        let reward = u128::from(
+            self.consensus_rules
+                .calculate_coinbase_and_fees(new_template.header.height, new_template.body.kernels())
+                .map_err(|_| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal("Could not calculate the amount of fees in the block".to_string()),
+                    )
+                })?
+                .as_u64(),
+        );
         let mut total_shares = 0u128;
         for coinbase in &coinbases {
-            total_shares += coinbase.value as u128;
+            total_shares += u128::from(coinbase.value);
         }
         let mut cur_share_sum = 0u128;
         let mut prev_coinbase_value = 0u128;
         for coinbase in &mut coinbases {
-            cur_share_sum += coinbase.value as u128;
+            cur_share_sum += u128::from(coinbase.value);
             coinbase.value =
                 u64::try_from((cur_share_sum * reward) / total_shares - prev_coinbase_value).map_err(|_| {
                     obscure_error_if_true(
@@ -813,7 +814,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         Status::internal("Single coinbase fees exceeded u64".to_string()),
                     )
                 })?;
-            prev_coinbase_value = coinbase.value as u128;
+            prev_coinbase_value = u128::from(coinbase.value);
         }
 
         let key_manager = create_memory_db_key_manager();
