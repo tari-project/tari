@@ -69,7 +69,7 @@ use crate::{
     one_sided::diffie_hellman_stealth_domain_hasher,
     transactions::{
         key_manager::{
-            interface::{TransactionKeyManagerBranch, TxoStage},
+            interface::{TransactionKeyManagerBranch, TransactionKeyManagerLabel, TxoStage},
             TariKeyId,
         },
         tari_amount::MicroMinotari,
@@ -88,7 +88,6 @@ use crate::{
         CryptoFactories,
     },
 };
-use crate::transactions::key_manager::interface::{TransactionKeyManagerLabel};
 
 hash_domain!(
     KeyManagerHashingDomain,
@@ -233,10 +232,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    fn get_domain_hasher(label: &str)->Result<DomainSeparatedHasher<Blake2b<U64>, KeyManagerHashingDomain>,KeyManagerServiceError>{
-        let tx_label = label.parse::<TransactionKeyManagerLabel>().map_err(|e| KeyManagerServiceError::UnknownError(format!("Could not retrieve label for derived key: {}", e)))?;
-        match tx_label{
-            TransactionKeyManagerLabel::ScriptKey => {Ok(DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key"))},
+    fn get_domain_hasher(
+        label: &str,
+    ) -> Result<DomainSeparatedHasher<Blake2b<U64>, KeyManagerHashingDomain>, KeyManagerServiceError> {
+        let tx_label = label.parse::<TransactionKeyManagerLabel>().map_err(|e| {
+            KeyManagerServiceError::UnknownError(format!("Could not retrieve label for derived key: {}", e))
+        })?;
+        match tx_label {
+            TransactionKeyManagerLabel::ScriptKey => {
+                Ok(DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key"))
+            },
         }
     }
 
@@ -267,7 +272,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
         let index = match spend_key_id {
             KeyId::Managed { index, .. } => *index,
-            KeyId::Derived {  .. } => return Ok(None),
+            KeyId::Derived { .. } => return Ok(None),
             KeyId::Imported { .. } => return Ok(None),
             KeyId::Zero => return Ok(None),
         };
@@ -386,9 +391,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let hasher = Self::get_domain_hasher(label)?;
                     let hasher = hasher.chain(branch_key.as_bytes()).finalize();
                     let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                        KeyManagerServiceError::UnknownError(
-                                    format!("Invalid private key for {}", label),
-                                )
+                        KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", label))
                     })?;
                     let private_key = private_key + k;
                     Ok(private_key)
