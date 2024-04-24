@@ -15,6 +15,7 @@ mod app_ui {
 mod handlers {
     pub mod get_private_key;
     pub mod get_public_key;
+    pub mod get_script_offset;
     pub mod get_script_signature;
     pub mod get_version;
 }
@@ -26,6 +27,7 @@ use critical_section::RawRestoreState;
 use handlers::{
     get_private_key::handler_get_private_key,
     get_public_key::handler_get_public_key,
+    get_script_offset::handler_get_script_offset,
     get_script_signature::{handler_get_script_signature, SignerCtx},
     get_version::handler_get_version,
 };
@@ -104,6 +106,7 @@ pub enum Instruction {
     GetPrivateKey,
     GetPublicKey,
     GetScriptSignature { chunk: u8, more: bool },
+    GetScriptOffset,
 }
 
 const P2_SCRIPT_SIG_MORE: u8 = 0x01;
@@ -132,6 +135,7 @@ impl TryFrom<ApduHeader> for Instruction {
                 chunk: value.p1,
                 more: value.p2 == P2_SCRIPT_SIG_MORE,
             }),
+            (6, 0, 0) => Ok(Instruction::GetScriptOffset),
             (3..=4, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -176,5 +180,6 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, signer_ctx: &mut SignerCtx) ->
         Instruction::GetPrivateKey => handler_get_private_key(comm),
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetScriptSignature { chunk, more } => handler_get_script_signature(comm, chunk, more, signer_ctx),
+        Instruction::GetScriptOffset => handler_get_script_offset(comm),
     }
 }

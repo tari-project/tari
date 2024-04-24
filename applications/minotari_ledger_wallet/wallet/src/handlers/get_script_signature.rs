@@ -90,6 +90,7 @@ pub fn handler_get_script_signature(
         },
     };
 
+    // We offset 8 everytime because each independent payload contains the account
     let script_private_key = get_key_from_uniform_bytes(&raw_key.as_ref())?;
     let value = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
     let spend_private_key = get_key_from_canonical_bytes(&signer_ctx.payload[48..80])?;
@@ -125,5 +126,6 @@ pub fn handler_get_script_signature(
     comm.append(&script_signature.to_vec());
     comm.reply_ok();
 
+    signer_ctx.reset();
     Ok(())
 }

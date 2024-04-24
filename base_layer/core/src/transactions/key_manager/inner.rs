@@ -547,7 +547,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     data.push(r_x.as_bytes().to_vec());
                     data.push(r_y.as_bytes().to_vec());
                     data.push(challenge.to_vec());
-                    debug!(target: LOG_TARGET, "challenge: {:?} challenge size {:?}", challenge, challenge.len());
 
                     let commands = ledger.chunk_command(Instruction::GetScriptSignature, data);
                     let transport = get_transport()?;
@@ -588,7 +587,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         ));
                     }
 
-                    Err(LedgerDeviceError::Instruction("GetScriptSignature didn't end right".to_string()).into())
+                    Err(
+                        LedgerDeviceError::Instruction("GetScriptSignature failed to process correctly".to_string())
+                            .into(),
+                    )
                 }
             },
         }
