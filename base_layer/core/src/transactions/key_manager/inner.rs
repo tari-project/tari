@@ -520,22 +520,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             script_message,
         );
 
-        match &self.wallet_type {
-            WalletType::Software(k, pk) => {
-                let script_private_key = self.get_private_key(script_key_id).await?;
-                let script_signature = ComAndPubSignature::sign(
-                    value,
-                    &spend_private_key,
-                    &script_private_key,
-                    &r_a,
-                    &r_x,
-                    &r_y,
-                    &challenge,
-                    &*self.crypto_factories.commitment,
-                )?;
-                Ok(script_signature)
-            },
-            WalletType::Ledger(ledger) => {
+        match (&self.wallet_type, script_key_id) {
+            (WalletType::Ledger(ledger), KeyId::Derived { .. }) => {
                 #[cfg(not(feature = "ledger"))]
                 {
                     return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
@@ -595,6 +581,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .into(),
                     )
                 }
+            },
+            (_, _) => {
+                let script_private_key = self.get_private_key(script_key_id).await?;
+                let script_signature = ComAndPubSignature::sign(
+                    value,
+                    &spend_private_key,
+                    &script_private_key,
+                    &r_a,
+                    &r_x,
+                    &r_y,
+                    &challenge,
+                    &*self.crypto_factories.commitment,
+                )?;
+                Ok(script_signature)
             },
         }
     }
