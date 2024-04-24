@@ -797,18 +797,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal("Could not calculate the amount of fees in the block".to_string()),
                 )
             })?
-            .as_u64();
-        let mut total_shares = 0u64;
+            .as_u64() as u128;
+        let mut total_shares = 0u128;
         for coinbase in &coinbases {
-            total_shares += coinbase.value;
+            total_shares += coinbase.value as u128;
         }
-        let mut remainder = reward - ((reward / total_shares) * total_shares);
+        let mut cur_share_sum = 0u128;
+        let mut prev_coinbase_value = 0u128;
         for coinbase in &mut coinbases {
-            coinbase.value *= reward / total_shares;
-            if remainder > 0 {
-                coinbase.value += 1;
-                remainder -= 1;
-            }
+            cur_share_sum += coinbase.value as u128;
+            coinbase.value =
+                u64::try_from((cur_share_sum * reward) / total_shares - prev_coinbase_value).map_err(|_| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal("Single coinbase fees exceeded u64".to_string()),
+                    )
+                })?;
+            prev_coinbase_value = coinbase.value as u128;
         }
 
         let key_manager = create_memory_db_key_manager();

@@ -196,7 +196,7 @@ impl TransactionOutput {
                 }
             }
         } else {
-            "None".to_string()
+            format!("None({})", self.minimum_value_promise)
         }
     }
 
