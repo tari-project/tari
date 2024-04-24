@@ -21,10 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::collections::HashMap;
 
+use blake2::Blake2b;
+use digest::consts::U64;
 use futures::lock::Mutex;
 use log::*;
-use tari_crypto::keys::PublicKey;
-use tari_utilities::hex::Hex;
+use tari_crypto::{
+    hash_domain,
+    hashing::DomainSeparatedHasher,
+    keys::{PublicKey, SecretKey},
+};
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     cipher_seed::CipherSeed,
@@ -40,6 +46,8 @@ use crate::{
 
 const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
+
+hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
 
 pub struct KeyManagerInner<TBackend, PK: PublicKey> {
     key_managers: HashMap<String, Mutex<KeyManager<PK, KeyDigest>>>,
@@ -128,14 +136,25 @@ where
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
             },
-            KeyId::Derived { branch, index } => {
+            KeyId::Derived { branch, index, .. } => {
                 let km = self
                     .key_managers
                     .get(branch)
                     .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
                     .lock()
                     .await;
-                Ok(km.derive_public_key(*index)?.key)
+                let branch_key = km.get_private_key(*index)?;
+
+                let public_key = {
+                    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("Key manager derived key");
+                    let hasher = hasher.chain(branch_key.as_bytes()).finalize();
+                    let private_key = PK::K::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                        KeyManagerServiceError::UnknownError("Invalid private key for Key manager derived key".to_string()
+                        )
+                    })?;
+                    PK::from_secret_key(&private_key)
+                };
+                Ok(public_key)
             },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PK::default()),

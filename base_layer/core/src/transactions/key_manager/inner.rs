@@ -23,6 +23,7 @@ use std::{collections::HashMap, ops::Shl, thread, thread::sleep, time::Duration}
 
 use blake2::Blake2b;
 use digest::consts::U64;
+use futures::AsyncReadExt;
 use log::*;
 use minotari_ledger_wallet_comms::ledger_wallet::get_transport;
 #[cfg(feature = "ledger")]
@@ -87,6 +88,7 @@ use crate::{
         CryptoFactories,
     },
 };
+use crate::transactions::key_manager::interface::{TransactionKeyManagerLabel};
 
 hash_domain!(
     KeyManagerHashingDomain,
@@ -201,23 +203,40 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
             },
-            KeyId::Derived { branch, index } => match &self.wallet_type {
-                WalletType::Software(k, pk) => Ok(pk.clone()),
-                WalletType::Ledger(ledger) => {
-                    #[cfg(not(feature = "ledger"))]
-                    return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
-
-                    #[cfg(feature = "ledger")]
-                    {
-                        match &ledger.pubkey {
-                            Some(pk) => Ok(pk.clone()),
-                            None => Err(KeyManagerServiceError::UnknownKeyBranch),
-                        }
-                    }
-                },
+            KeyId::Derived { branch, label, index } => {
+                let public_alpha = match &self.wallet_type {
+                    WalletType::Software(_k, pk) => pk,
+                    WalletType::Ledger(ledger) => ledger.pubkey.as_ref().ok_or(KeyManagerServiceError::LedgerError(
+                        "Key manager set to use ledger, ledger alpha public key missing".to_string(),
+                    ))?,
+                };
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .read()
+                    .await;
+                let branch_key = km.get_private_key(*index)?;
+                let hasher = Self::get_domain_hasher(label)?;
+                let hasher = hasher.chain(branch_key.as_bytes()).finalize();
+                let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                    KeyManagerServiceError::UnknownError(
+                        "Invalid private key for sender offset private key".to_string(),
+                    )
+                })?;
+                let public_key = PublicKey::from_secret_key(&private_key);
+                let public_key = public_alpha + &public_key;
+                Ok(public_key)
             },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PublicKey::default()),
+        }
+    }
+
+    fn get_domain_hasher(label: &str)->Result<DomainSeparatedHasher<Blake2b<U64>, KeyManagerHashingDomain>,KeyManagerServiceError>{
+        let tx_label = label.parse::<TransactionKeyManagerLabel>().map_err(|e| KeyManagerServiceError::UnknownError(format!("Could not retrieve label for derived key: {}", e)))?;
+        match tx_label{
+            TransactionKeyManagerLabel::ScriptKey => {Ok(DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key"))},
         }
     }
 
@@ -232,6 +251,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .ok_or(KeyManagerServiceError::KyeIdWithoutIndex)?;
         let script_key_id = KeyId::Derived {
             branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
             index,
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
@@ -247,12 +267,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
         let index = match spend_key_id {
             KeyId::Managed { index, .. } => *index,
-            KeyId::Derived { index, .. } => return Ok(None),
+            KeyId::Derived {  .. } => return Ok(None),
             KeyId::Imported { .. } => return Ok(None),
             KeyId::Zero => return Ok(None),
         };
         let script_key_id = KeyId::Derived {
             branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
             index,
         };
 
@@ -352,9 +373,26 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let key = km.get_private_key(*index)?;
                 Ok(key)
             },
-            KeyId::Derived { branch, index } => match &self.wallet_type {
+            KeyId::Derived { branch, label, index } => match &self.wallet_type {
                 WalletType::Ledger(_) => panic!(),
-                WalletType::Software(k, pk) => Ok(k.clone()),
+                WalletType::Software(k, _pk) => {
+                    let km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                        .read()
+                        .await;
+                    let branch_key = km.get_private_key(*index)?;
+                    let hasher = Self::get_domain_hasher(label)?;
+                    let hasher = hasher.chain(branch_key.as_bytes()).finalize();
+                    let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                        KeyManagerServiceError::UnknownError(
+                                    format!("Invalid private key for {}", label),
+                                )
+                    })?;
+                    let private_key = private_key + k;
+                    Ok(private_key)
+                },
             },
             KeyId::Imported { key } => {
                 let pvt_key = self.db.get_imported_key(key)?;

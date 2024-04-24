@@ -29,9 +29,10 @@ use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{OutputType, TransactionError, TransactionOutput, WalletOutput},
 };
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
-use tari_key_manager::key_manager_service::KeyId;
+use tari_core::transactions::key_manager::TransactionKeyManagerLabel;
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
@@ -194,7 +195,11 @@ where
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop) {
             // This is a nop, so we can just create a new key an create the input stack.
-            let key = KeyId::Derived {branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(), index:spending_key.managed_index().unwrap() };
+            let key = KeyId::Derived {
+                branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+                index: spending_key.managed_index().unwrap(),
+            };
             let public_key = self.master_key_manager.get_public_key_at_key_id(&key).await?;
             (inputs!(public_key), key)
         } else {
@@ -277,6 +282,7 @@ where
 
             TariKeyId::Derived {
                 branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
                 index: found_index,
             }
         };

@@ -28,6 +28,7 @@ pub use interface::{
     SecretTransactionKeyManagerInterface,
     TariKeyId,
     TransactionKeyManagerBranch,
+    TransactionKeyManagerLabel,
     TransactionKeyManagerInterface,
     TxoStage,
 };

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::str::FromStr;
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
@@ -54,7 +55,6 @@ pub enum TxoStage {
 pub enum TransactionKeyManagerBranch {
     DataEncryption,
     Coinbase,
-    CoinbaseScript,
     CommitmentMask,
     Nonce,
     KernelNonce,
@@ -68,11 +68,37 @@ impl TransactionKeyManagerBranch {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
             TransactionKeyManagerBranch::Coinbase => "coinbase".to_string(),
-            TransactionKeyManagerBranch::CoinbaseScript => "coinbase script".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, EnumIter)]
+pub enum TransactionKeyManagerLabel {
+    ScriptKey
+}
+
+impl TransactionKeyManagerLabel {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(self) -> String {
+        match self {
+            TransactionKeyManagerLabel::ScriptKey => "script key".to_string(),
+        }
+    }
+}
+
+impl FromStr for TransactionKeyManagerLabel
+{
+    type Err = String;
+
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        match id{
+            "script key" => Ok(TransactionKeyManagerLabel::ScriptKey),
+            _ => Err("Unknown label".to_string()),
         }
     }
 }
