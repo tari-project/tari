@@ -22,6 +22,7 @@ use zeroize::Zeroizing;
 use crate::alloc::string::{String, ToString};
 
 hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
+hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
 
 use crate::AppSW;
 
@@ -216,4 +217,12 @@ pub fn get_key_from_canonical_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, 
             return Err(AppSW::KeyDeriveFail);
         },
     }
+}
+
+pub fn mask_a(alpha: RistrettoSecretKey, commitment: RistrettoSecretKey) -> Result<RistrettoSecretKey, AppSW> {
+    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key");
+    let hasher = hasher.chain(commitment.as_bytes()).finalize();
+    let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
+
+    Ok(private_key + alpha)
 }

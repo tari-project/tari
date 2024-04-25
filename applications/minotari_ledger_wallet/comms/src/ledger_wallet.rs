@@ -125,7 +125,7 @@ impl LedgerWallet {
 
     pub fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
         let num_chunks = data.len();
-        let mut more = 0;
+        let mut more;
         let mut commands = vec![];
 
         for (i, chunk) in data.iter().enumerate() {
@@ -136,7 +136,7 @@ impl LedgerWallet {
             }
 
             let mut base_data = self.account_bytes();
-            base_data.extend_from_slice(&chunk);
+            base_data.extend_from_slice(chunk);
 
             commands.push(Command {
                 inner: APDUCommand {

@@ -19,11 +19,10 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, ops::Shl, thread, thread::sleep, time::Duration};
+use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use futures::AsyncReadExt;
 use log::*;
 use minotari_ledger_wallet_comms::ledger_wallet::get_transport;
 #[cfg(feature = "ledger")]
@@ -521,7 +520,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         );
 
         match (&self.wallet_type, script_key_id) {
-            (WalletType::Ledger(ledger), KeyId::Derived { .. }) => {
+            (
+                WalletType::Ledger(ledger),
+                KeyId::Derived {
+                    branch,
+                    label: _,
+                    index,
+                },
+            ) => {
                 #[cfg(not(feature = "ledger"))]
                 {
                     return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
@@ -529,13 +535,25 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 #[cfg(feature = "ledger")]
                 {
-                    let mut data: Vec<Vec<u8>> = vec![];
-                    data.push(value.as_bytes().to_vec());
-                    data.push(spend_private_key.as_bytes().to_vec());
-                    data.push(r_a.as_bytes().to_vec());
-                    data.push(r_x.as_bytes().to_vec());
-                    data.push(r_y.as_bytes().to_vec());
-                    data.push(challenge.to_vec());
+                    let km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                        .read()
+                        .await;
+                    let branch_key = km
+                        .get_private_key(*index)
+                        .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
+
+                    let data: Vec<Vec<u8>> = vec![
+                        branch_key.as_bytes().to_vec(),
+                        value.as_bytes().to_vec(),
+                        spend_private_key.as_bytes().to_vec(),
+                        r_a.as_bytes().to_vec(),
+                        r_x.as_bytes().to_vec(),
+                        r_y.as_bytes().to_vec(),
+                        challenge.to_vec(),
+                    ];
 
                     let commands = ledger.chunk_command(Instruction::GetScriptSignature, data);
                     let transport = get_transport()?;

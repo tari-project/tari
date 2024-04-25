@@ -11,7 +11,7 @@ use tari_crypto::ristretto::{
 
 use crate::{
     alloc::string::ToString,
-    utils::{get_key_from_canonical_bytes, get_key_from_uniform_bytes, get_raw_key, u64_to_string},
+    utils::{get_key_from_canonical_bytes, get_key_from_uniform_bytes, get_raw_key, mask_a, u64_to_string},
     AppSW,
     BIP32_COIN_TYPE,
     RESPONSE_VERSION,
@@ -19,7 +19,7 @@ use crate::{
 
 const STATIC_INDEX: &str = "42";
 
-const MAX_TRANSACTION_LEN: usize = 272;
+const MAX_TRANSACTION_LEN: usize = 312;
 pub struct SignerCtx {
     payload: [u8; MAX_TRANSACTION_LEN],
     payload_len: usize,
@@ -80,8 +80,6 @@ pub fn handler_get_script_signature(
     bip32_path.push_str(STATIC_INDEX);
     let path: [u32; 5] = make_bip32_path(bip32_path.as_bytes());
 
-    SingleMessage::new(&bip32_path).show_and_wait();
-
     let raw_key = match get_raw_key(&path) {
         Ok(val) => val,
         Err(e) => {
@@ -91,17 +89,18 @@ pub fn handler_get_script_signature(
     };
 
     // We offset 8 everytime because each independent payload contains the account
-    let script_private_key = get_key_from_uniform_bytes(&raw_key.as_ref())?;
-    let value = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
-    let spend_private_key = get_key_from_canonical_bytes(&signer_ctx.payload[48..80])?;
-    let r_a = get_key_from_canonical_bytes(&signer_ctx.payload[88..120])?;
-    let r_x = get_key_from_canonical_bytes(&signer_ctx.payload[128..160])?;
-    let r_y = get_key_from_canonical_bytes(&signer_ctx.payload[168..200])?;
-    let challenge = &signer_ctx.payload[208..272];
+    let alpha = get_key_from_uniform_bytes(&raw_key.as_ref())?;
+    let commitment = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
+    let script_private_key = mask_a(alpha, commitment)?;
+
+    let value = get_key_from_canonical_bytes(&signer_ctx.payload[48..80])?;
+    let spend_private_key = get_key_from_canonical_bytes(&signer_ctx.payload[88..120])?;
+    let r_a = get_key_from_canonical_bytes(&signer_ctx.payload[128..160])?;
+    let r_x = get_key_from_canonical_bytes(&signer_ctx.payload[168..200])?;
+    let r_y = get_key_from_canonical_bytes(&signer_ctx.payload[208..240])?;
+    let challenge = &signer_ctx.payload[248..312];
 
     let factory = ExtendedPedersenCommitmentFactory::default();
-
-    SingleMessage::new(&"Signing...".to_string()).show();
 
     let script_signature = match RistrettoComAndPubSig::sign(
         &value,
@@ -119,8 +118,6 @@ pub fn handler_get_script_signature(
             return Err(AppSW::ScriptSignatureFail);
         },
     };
-
-    SingleMessage::new(&"Success!".to_string()).show_and_wait();
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
