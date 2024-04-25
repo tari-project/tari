@@ -6,7 +6,7 @@ use alloc::format;
 use blake2::{Blake2b, Digest};
 use digest::consts::U64;
 use ledger_device_sdk::{
-    ecc::{bip32_derive, CurvesId, CxError},
+    ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     io::SyscallError,
     ui::gadgets::SingleMessage,
 };
@@ -19,12 +19,14 @@ use tari_crypto::{
 };
 use zeroize::Zeroizing;
 
-use crate::alloc::string::{String, ToString};
+use crate::{
+    alloc::string::{String, ToString},
+    AppSW,
+    BIP32_COIN_TYPE,
+};
 
 hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
 hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
-
-use crate::AppSW;
 
 /// BIP32 path stored as an array of [`u32`].
 ///
@@ -225,4 +227,22 @@ pub fn mask_a(alpha: RistrettoSecretKey, commitment: RistrettoSecretKey) -> Resu
     let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
 
     Ok(private_key + alpha)
+}
+
+pub fn derive_from_bip32_key(account: String, index: String) -> Result<RistrettoSecretKey, AppSW> {
+    let mut bip32_path = "m/44'/".to_string();
+    bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
+    bip32_path.push_str(&"'/");
+    bip32_path.push_str(&account);
+    bip32_path.push_str(&"'/0/");
+    bip32_path.push_str(&index);
+    let path: [u32; 5] = make_bip32_path(bip32_path.as_bytes());
+
+    match get_raw_key(&path) {
+        Ok(val) => get_key_from_uniform_bytes(&val.as_ref()),
+        Err(e) => {
+            SingleMessage::new(&format!("Key error {:?}", e)).show_and_wait();
+            return Err(AppSW::KeyDeriveFail);
+        },
+    }
 }

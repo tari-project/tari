@@ -3,7 +3,7 @@
 
 use alloc::format;
 
-use ledger_device_sdk::{ecc::make_bip32_path, io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::ristretto::{
     pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
     RistrettoComAndPubSig,
@@ -11,9 +11,8 @@ use tari_crypto::ristretto::{
 
 use crate::{
     alloc::string::ToString,
-    utils::{get_key_from_canonical_bytes, get_key_from_uniform_bytes, get_raw_key, mask_a, u64_to_string},
+    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a, u64_to_string},
     AppSW,
-    BIP32_COIN_TYPE,
     RESPONSE_VERSION,
 };
 
@@ -72,24 +71,8 @@ pub fn handler_get_script_signature(
     account_bytes.clone_from_slice(&signer_ctx.payload[0..8]);
     let account = u64_to_string(u64::from_le_bytes(account_bytes));
 
-    let mut bip32_path = "m/44'/".to_string();
-    bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
-    bip32_path.push_str(&"'/");
-    bip32_path.push_str(&account);
-    bip32_path.push_str(&"'/0/");
-    bip32_path.push_str(STATIC_INDEX);
-    let path: [u32; 5] = make_bip32_path(bip32_path.as_bytes());
-
-    let raw_key = match get_raw_key(&path) {
-        Ok(val) => val,
-        Err(e) => {
-            SingleMessage::new(&format!("Key error {:?}", e)).show_and_wait();
-            return Err(AppSW::KeyDeriveFail);
-        },
-    };
-
     // We offset 8 everytime because each independent payload contains the account
-    let alpha = get_key_from_uniform_bytes(&raw_key.as_ref())?;
+    let alpha = derive_from_bip32_key(account, STATIC_INDEX.to_string())?;
     let commitment = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
     let script_private_key = mask_a(alpha, commitment)?;
 
