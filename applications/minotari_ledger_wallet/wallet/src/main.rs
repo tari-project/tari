@@ -13,7 +13,6 @@ mod app_ui {
     pub mod menu;
 }
 mod handlers {
-    pub mod get_private_key;
     pub mod get_public_key;
     pub mod get_script_offset;
     pub mod get_script_signature;
@@ -25,7 +24,6 @@ use core::mem::MaybeUninit;
 use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
-    get_private_key::handler_get_private_key,
     get_public_key::handler_get_public_key,
     get_script_offset::handler_get_script_offset,
     get_script_signature::{handler_get_script_signature, SignerCtx},
@@ -103,7 +101,6 @@ impl From<AppSW> for Reply {
 pub enum Instruction {
     GetVersion,
     GetAppName,
-    GetPrivateKey,
     GetPublicKey,
     GetScriptSignature { chunk: u8, more: bool },
     GetScriptOffset,
@@ -129,7 +126,6 @@ impl TryFrom<ApduHeader> for Instruction {
         match (value.ins, value.p1, value.p2) {
             (1, 0, 0) => Ok(Instruction::GetVersion),
             (2, 0, 0) => Ok(Instruction::GetAppName),
-            (3, 0, 0) => Ok(Instruction::GetPrivateKey),
             (4, 0, 0) => Ok(Instruction::GetPublicKey),
             (5, 0..=6, 0 | P2_SCRIPT_SIG_MORE) => Ok(Instruction::GetScriptSignature {
                 chunk: value.p1,
@@ -177,7 +173,6 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, signer_ctx: &mut SignerCtx) ->
             comm.append(env!("CARGO_PKG_NAME").as_bytes());
             Ok(())
         },
-        Instruction::GetPrivateKey => handler_get_private_key(comm),
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetScriptSignature { chunk, more } => handler_get_script_signature(comm, chunk, more, signer_ctx),
         Instruction::GetScriptOffset => handler_get_script_offset(comm),
