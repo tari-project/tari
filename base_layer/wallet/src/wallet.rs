@@ -772,7 +772,10 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
 
     match (db_wallet_type, wallet_type) {
         (None, None) => {
-            panic!("Something is very wrong, no wallet type was found in the DB, or provided (on first run)")
+            // this is most likely an older wallet pre ledger support, lets put it in software
+            let wallet_type = WalletType::Software;
+            db.set_wallet_type(wallet_type)?;
+            Ok(wallet_type)
         },
         (None, Some(t)) => {
             db.set_wallet_type(t)?;
