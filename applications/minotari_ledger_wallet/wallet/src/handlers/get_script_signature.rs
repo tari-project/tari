@@ -44,13 +44,18 @@ pub fn handler_get_script_signature(
     comm: &mut Comm,
     chunk: u8,
     more: bool,
-    signer_ctx: &mut SignerCtx,
+    signer_ctx: &mut ScriptSignatureCtx,
 ) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
     if chunk == 0 {
         // Reset transaction context
         signer_ctx.reset();
+
+        // Set the account for the transaction
+        let mut account_bytes = [0u8; 8];
+        account_bytes.clone_from_slice(&signer_ctx.payload[0..8]);
+        signer_ctx.account = u64::from_le_bytes(account_bytes);
     }
 
     if signer_ctx.payload_len + data.len() > MAX_TRANSACTION_LEN {
@@ -66,22 +71,16 @@ pub fn handler_get_script_signature(
         return Ok(());
     }
 
-    // Derive private key
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&signer_ctx.payload[0..8]);
-    let account = u64_to_string(u64::from_le_bytes(account_bytes));
-
-    // We offset 8 everytime because each independent payload contains the account
-    let alpha = derive_from_bip32_key(account, STATIC_INDEX.to_string())?;
+    let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_INDEX)?;
     let commitment = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
     let script_private_key = mask_a(alpha, commitment)?;
 
-    let value = get_key_from_canonical_bytes(&signer_ctx.payload[48..80])?;
-    let spend_private_key = get_key_from_canonical_bytes(&signer_ctx.payload[88..120])?;
-    let r_a = get_key_from_canonical_bytes(&signer_ctx.payload[128..160])?;
-    let r_x = get_key_from_canonical_bytes(&signer_ctx.payload[168..200])?;
-    let r_y = get_key_from_canonical_bytes(&signer_ctx.payload[208..240])?;
-    let challenge = &signer_ctx.payload[248..312];
+    let value = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
+    let spend_private_key = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;
+    let r_a = get_key_from_canonical_bytes(&signer_ctx.payload[104..136])?;
+    let r_x = get_key_from_canonical_bytes(&signer_ctx.payload[136..168])?;
+    let r_y = get_key_from_canonical_bytes(&signer_ctx.payload[168..200])?;
+    let challenge = &signer_ctx.payload[200..264];
 
     let factory = ExtendedPedersenCommitmentFactory::default();
 

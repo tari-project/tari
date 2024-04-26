@@ -135,7 +135,11 @@ impl LedgerWallet {
                 more = 1;
             }
 
-            let mut base_data = self.account_bytes();
+            // Prepend the account on the first payload
+            let mut base_data = vec![];
+            if i == 0 {
+                base_data.extend_from_slice(&self.account_bytes());
+            }
             base_data.extend_from_slice(chunk);
 
             commands.push(Command {
