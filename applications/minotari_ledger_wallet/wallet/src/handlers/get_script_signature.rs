@@ -11,25 +11,27 @@ use tari_crypto::ristretto::{
 
 use crate::{
     alloc::string::ToString,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a, u64_to_string},
+    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a},
     AppSW,
     RESPONSE_VERSION,
 };
 
-const STATIC_INDEX: &str = "42";
+const STATIC_INDEX: u64 = 42;
 
 const MAX_TRANSACTION_LEN: usize = 312;
-pub struct SignerCtx {
+pub struct ScriptSignatureCtx {
     payload: [u8; MAX_TRANSACTION_LEN],
     payload_len: usize,
+    account: u64,
 }
 
 // Implement constructor for TxInfo with default values
-impl SignerCtx {
+impl ScriptSignatureCtx {
     pub fn new() -> Self {
         Self {
             payload: [0u8; MAX_TRANSACTION_LEN],
             payload_len: 0,
+            account: 0,
         }
     }
 
@@ -37,6 +39,7 @@ impl SignerCtx {
     fn reset(&mut self) {
         self.payload = [0u8; MAX_TRANSACTION_LEN];
         self.payload_len = 0;
+        self.account = 0;
     }
 }
 
@@ -104,6 +107,8 @@ pub fn handler_get_script_signature(
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
     comm.reply_ok();
+
+    SingleMessage::new(&format!("Finished Signature!")).show_and_wait();
 
     signer_ctx.reset();
     Ok(())

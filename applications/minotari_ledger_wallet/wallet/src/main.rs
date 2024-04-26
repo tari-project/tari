@@ -25,8 +25,8 @@ use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
     get_public_key::handler_get_public_key,
-    get_script_offset::handler_get_script_offset,
-    get_script_signature::{handler_get_script_signature, SignerCtx},
+    get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
+    get_script_signature::{handler_get_script_signature, ScriptSignatureCtx},
     get_version::handler_get_version,
 };
 #[cfg(feature = "pending_review_screen")]
@@ -152,13 +152,14 @@ extern "C" fn sample_main() {
     display_pending_review(&mut comm);
 
     // This is long lived over the span the ledger app is open, across multiple interactions
-    let mut signer_ctx = SignerCtx::new();
+    let mut signer_ctx = ScriptSignatureCtx::new();
+    let mut offset_ctx = ScriptOffsetCtx::new();
 
     loop {
         // Wait for either a specific button push to exit the app
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins, &mut signer_ctx) {
+            match handle_apdu(&mut comm, ins, &mut signer_ctx, &mut offset_ctx) {
                 Ok(()) => comm.reply_ok(),
                 Err(sw) => comm.reply(sw),
             }
@@ -166,7 +167,12 @@ extern "C" fn sample_main() {
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction, signer_ctx: &mut SignerCtx) -> Result<(), AppSW> {
+fn handle_apdu(
+    comm: &mut Comm,
+    ins: Instruction,
+    signer_ctx: &mut ScriptSignatureCtx,
+    offset_ctx: &mut ScriptOffsetCtx,
+) -> Result<(), AppSW> {
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {

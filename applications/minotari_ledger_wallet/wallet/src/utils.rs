@@ -229,7 +229,10 @@ pub fn mask_a(alpha: RistrettoSecretKey, commitment: RistrettoSecretKey) -> Resu
     Ok(private_key + alpha)
 }
 
-pub fn derive_from_bip32_key(account: String, index: String) -> Result<RistrettoSecretKey, AppSW> {
+pub fn derive_from_bip32_key(u64_account: u64, u64_index: u64) -> Result<RistrettoSecretKey, AppSW> {
+    let account = u64_to_string(u64_account);
+    let index = u64_to_string(u64_index);
+
     let mut bip32_path = "m/44'/".to_string();
     bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
     bip32_path.push_str(&"'/");
