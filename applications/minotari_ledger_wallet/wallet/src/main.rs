@@ -103,10 +103,10 @@ pub enum Instruction {
     GetAppName,
     GetPublicKey,
     GetScriptSignature { chunk: u8, more: bool },
-    GetScriptOffset,
+    GetScriptOffset { chunk: u8, more: bool },
 }
 
-const P2_SCRIPT_SIG_MORE: u8 = 0x01;
+const P2_MORE: u8 = 0x01;
 
 impl TryFrom<ApduHeader> for Instruction {
     type Error = AppSW;
@@ -127,11 +127,14 @@ impl TryFrom<ApduHeader> for Instruction {
             (1, 0, 0) => Ok(Instruction::GetVersion),
             (2, 0, 0) => Ok(Instruction::GetAppName),
             (4, 0, 0) => Ok(Instruction::GetPublicKey),
-            (5, 0..=6, 0 | P2_SCRIPT_SIG_MORE) => Ok(Instruction::GetScriptSignature {
+            (5, 0..=6, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
                 chunk: value.p1,
-                more: value.p2 == P2_SCRIPT_SIG_MORE,
+                more: value.p2 == P2_MORE,
             }),
-            (6, 0, 0) => Ok(Instruction::GetScriptOffset),
+            (6, 0..=6, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+                chunk: value.p1,
+                more: value.p2 == P2_MORE,
+            }),
             (3..=4, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -181,6 +184,6 @@ fn handle_apdu(
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetScriptSignature { chunk, more } => handler_get_script_signature(comm, chunk, more, signer_ctx),
-        Instruction::GetScriptOffset => handler_get_script_offset(comm),
+        Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
     }
 }

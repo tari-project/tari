@@ -696,10 +696,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     label: _,
                     index,
                 } => {
-                    // Early exit
                     if let WalletType::Software(_, _) = self.wallet_type {
-                        // If this happens we actually expect a panic, so pushing to the array is
-                        // pointless but ya never know eh?
                         managed_script_keys.push(self.get_private_key(script_key_id).await?);
                         continue;
                     }
@@ -724,9 +721,29 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         match &self.wallet_type {
             WalletType::Ledger(ledger) => {
-                let data: Vec<Vec<u8>> = vec![
-                    //branch_key.as_bytes().to_vec(),
-                ];
+                let num_script_keys = managed_script_keys.len() as u64;
+                let num_commitments = derived_key_commitments.len() as u64;
+                let num_offset_key = sender_offset_keys.len() as u64;
+
+                let mut instructions = num_offset_key.to_le_bytes().to_vec();
+                instructions.clone_from_slice(&num_script_keys.to_le_bytes());
+                instructions.clone_from_slice(&num_commitments.to_le_bytes());
+
+                let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
+                for sender_offset_key in sender_offset_keys {
+                    data.push(sender_offset_key.to_vec());
+                }
+                for managed_script_key in managed_script_keys {
+                    // Managed keys will just be the key in the payload
+                    data.push(managed_script_key.to_vec());
+                }
+                for (derived_key_commitment, index) in derived_key_commitments {
+                    // Derived keys will have the commitment and their index in the payload
+                    let mut derived = derived_key_commitment.to_vec();
+                    derived.copy_from_slice(&index.to_le_bytes());
+
+                    data.push(derived);
+                }
 
                 let commands = ledger.chunk_command(Instruction::GetScriptOffset, data);
                 let transport = get_transport()?;
@@ -735,9 +752,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 for command in commands {
                     match command.execute_with_transport(&transport) {
                         Ok(r) => result = Some(r),
-                        Err(e) => {
-                            return Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into())
-                        },
+                        Err(e) => return Err(LedgerDeviceError::Instruction(format!("GetScriptOffset: {}", e)).into()),
                     }
                 }
 
@@ -757,9 +772,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()));
                 }
 
-                Err(LedgerDeviceError::Instruction("GetScriptSignature failed to process correctly".to_string()).into())
+                Err(LedgerDeviceError::Instruction("GetScriptOffset failed to process correctly".to_string()).into())
             },
-            WalletType::Software(_p, _pk) => {
+            WalletType::Software(_, _) => {
                 let mut total_sender_offset_private_key = PrivateKey::default();
                 for sender_offset_key_id in sender_offset_keys {
                     total_sender_offset_private_key = total_sender_offset_private_key + sender_offset_key_id;
