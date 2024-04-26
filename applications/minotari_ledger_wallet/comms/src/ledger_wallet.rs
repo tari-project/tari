@@ -43,9 +43,9 @@ const WALLET_CLA: u8 = 0x80;
 pub enum Instruction {
     GetVersion = 0x01,
     GetAppName = 0x02,
-    GetPrivateKey = 0x03,
     GetPublicKey = 0x04,
     GetScriptSignature = 0x05,
+    GetScriptOffset = 0x06,
 }
 
 impl Instruction {

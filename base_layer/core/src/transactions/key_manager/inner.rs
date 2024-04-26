@@ -682,17 +682,96 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
-        let mut total_sender_offset_private_key = PrivateKey::default();
-        for sender_offset_key_id in sender_offset_key_ids {
-            total_sender_offset_private_key =
-                total_sender_offset_private_key + self.get_private_key(sender_offset_key_id).await?;
+        let mut sender_offset_keys = vec![];
+        for script_key_id in sender_offset_key_ids {
+            sender_offset_keys.push(self.get_private_key(script_key_id).await?);
         }
-        let mut total_script_private_key = PrivateKey::default();
+
+        let mut managed_script_keys: Vec<PrivateKey> = vec![];
+        let mut derived_key_commitments = vec![];
         for script_key_id in script_key_ids {
-            total_script_private_key = total_script_private_key + self.get_private_key(script_key_id).await?;
+            match script_key_id {
+                KeyId::Derived {
+                    branch,
+                    label: _,
+                    index,
+                } => {
+                    // Early exit
+                    if let WalletType::Software(_, _) = self.wallet_type {
+                        // If this happens we actually expect a panic, so pushing to the array is
+                        // pointless but ya never know eh?
+                        managed_script_keys.push(self.get_private_key(script_key_id).await?);
+                        continue;
+                    }
+
+                    let km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                        .read()
+                        .await;
+                    let branch_key = km
+                        .get_private_key(*index)
+                        .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
+                    derived_key_commitments.push((branch_key, index));
+                },
+                KeyId::Imported { .. } | KeyId::Managed { .. } | KeyId::Zero => {
+                    managed_script_keys.push(self.get_private_key(script_key_id).await?)
+                },
+            }
+            managed_script_keys.push(self.get_private_key(script_key_id).await?);
         }
-        let script_offset = total_script_private_key - total_sender_offset_private_key;
-        Ok(script_offset)
+
+        match &self.wallet_type {
+            WalletType::Ledger(ledger) => {
+                let data: Vec<Vec<u8>> = vec![
+                    //branch_key.as_bytes().to_vec(),
+                ];
+
+                let commands = ledger.chunk_command(Instruction::GetScriptOffset, data);
+                let transport = get_transport()?;
+
+                let mut result = None;
+                for command in commands {
+                    match command.execute_with_transport(&transport) {
+                        Ok(r) => result = Some(r),
+                        Err(e) => {
+                            return Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into())
+                        },
+                    }
+                }
+
+                if let Some(result) = result {
+                    if result.data().len() < 33 {
+                        debug!(target: LOG_TARGET, "result less than 33");
+                        return Err(LedgerDeviceError::Processing(format!(
+                            "'get_script_offset' insufficient data - expected 33 got {} bytes ({:?})",
+                            result.data().len(),
+                            result
+                        ))
+                        .into());
+                    }
+                    let data = result.data();
+                    debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                    return PrivateKey::from_canonical_bytes(&data[1..33])
+                        .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()));
+                }
+
+                Err(LedgerDeviceError::Instruction("GetScriptSignature failed to process correctly".to_string()).into())
+            },
+            WalletType::Software(_p, _pk) => {
+                let mut total_sender_offset_private_key = PrivateKey::default();
+                for sender_offset_key_id in sender_offset_keys {
+                    total_sender_offset_private_key = total_sender_offset_private_key + sender_offset_key_id;
+                }
+                let mut total_script_private_key = PrivateKey::default();
+                for script_key_id in managed_script_keys {
+                    total_script_private_key = total_script_private_key + script_key_id;
+                }
+                let script_offset = total_script_private_key - total_sender_offset_private_key;
+                Ok(script_offset)
+            },
+        }
     }
 
     async fn get_metadata_signature_ephemeral_private_key_pair(
