@@ -50,25 +50,26 @@ use crate::{
 /// # Example
 ///
 /// ```
+/// use std::str::FromStr;
 /// use tari_common_types::emoji::EmojiId;
 ///
 /// // Construct an emoji ID from an emoji string (this can fail)
 /// let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🦋🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🥊";
-/// let emoji_id_from_emoji_string = EmojiId::from_emoji_string(emoji_string);
+/// let emoji_id_from_emoji_string = EmojiId::from_str(emoji_string);
 /// assert!(emoji_id_from_emoji_string.is_ok());
 ///
 /// // Get the public key
-/// let public_key = emoji_id_from_emoji_string.unwrap().to_public_key();
+/// let public_key = emoji_id_from_emoji_string.unwrap().as_public_key().clone();
 ///
 /// // Reconstruct the emoji ID from the public key (this cannot fail)
-/// let emoji_id_from_public_key = EmojiId::from_public_key(&public_key);
+/// let emoji_id_from_public_key = EmojiId::from(&public_key);
 ///
 /// // An emoji ID is deterministic
-/// assert_eq!(emoji_id_from_public_key.to_emoji_string(), emoji_string);
+/// assert_eq!(emoji_id_from_public_key.to_string(), emoji_string);
 ///
 /// // Oh no! We swapped the first two emoji characters by mistake, so this should fail
 /// let invalid_emoji_string = "🦀🌴🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🦋🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🥊";
-/// assert!(EmojiId::from_emoji_string(invalid_emoji_string).is_err());
+/// assert!(EmojiId::from_str(invalid_emoji_string).is_err());
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct EmojiId(PublicKey);
