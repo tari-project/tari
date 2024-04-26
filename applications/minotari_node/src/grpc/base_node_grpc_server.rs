@@ -807,13 +807,21 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut prev_coinbase_value = 0u128;
         for coinbase in &mut coinbases {
             cur_share_sum += u128::from(coinbase.value);
-            coinbase.value =
-                u64::try_from((cur_share_sum * reward) / total_shares - prev_coinbase_value).map_err(|_| {
-                    obscure_error_if_true(
+            coinbase.value = u64::try_from(
+                (cur_share_sum.saturating_mul(reward))
+                    .checked_div(total_shares)
+                    .ok_or(obscure_error_if_true(
                         report_error_flag,
-                        Status::internal("Single coinbase fees exceeded u64".to_string()),
-                    )
-                })?;
+                        Status::internal("total shares are zero".to_string()),
+                    ))? -
+                    prev_coinbase_value,
+            )
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal("Single coinbase fees exceeded u64".to_string()),
+                )
+            })?;
             prev_coinbase_value = u128::from(coinbase.value);
         }
 
