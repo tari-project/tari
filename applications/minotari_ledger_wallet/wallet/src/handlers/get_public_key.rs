@@ -4,9 +4,7 @@
 use ledger_device_sdk::io::Comm;
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
-use crate::{utils::derive_from_bip32_key, AppSW, RESPONSE_VERSION};
-
-const STATIC_INDEX: u64 = 42;
+use crate::{utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION, STATIC_ALPHA_INDEX};
 
 pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
@@ -15,7 +13,7 @@ pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     account_bytes.clone_from_slice(&data[0..8]);
     let account = u64::from_le_bytes(account_bytes);
 
-    let pk = match derive_from_bip32_key(account, STATIC_INDEX) {
+    let pk = match derive_from_bip32_key(account, STATIC_ALPHA_INDEX, KeyType::Alpha) {
         Ok(k) => RistrettoPublicKey::from_secret_key(&k),
         Err(e) => return Err(e),
     };

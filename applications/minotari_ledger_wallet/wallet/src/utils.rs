@@ -22,6 +22,7 @@ use zeroize::Zeroizing;
 use crate::{
     alloc::string::{String, ToString},
     AppSW,
+    KeyType,
     BIP32_COIN_TYPE,
 };
 
@@ -229,9 +230,14 @@ pub fn mask_a(alpha: RistrettoSecretKey, commitment: RistrettoSecretKey) -> Resu
     Ok(private_key + alpha)
 }
 
-pub fn derive_from_bip32_key(u64_account: u64, u64_index: u64) -> Result<RistrettoSecretKey, AppSW> {
+pub fn derive_from_bip32_key(
+    u64_account: u64,
+    u64_index: u64,
+    u64_key_type: KeyType,
+) -> Result<RistrettoSecretKey, AppSW> {
     let account = u64_to_string(u64_account);
     let index = u64_to_string(u64_index);
+    let key_type = u64_to_string(u64_key_type.to_byte() as u64);
 
     let mut bip32_path = "m/44'/".to_string();
     bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
@@ -239,7 +245,9 @@ pub fn derive_from_bip32_key(u64_account: u64, u64_index: u64) -> Result<Ristret
     bip32_path.push_str(&account);
     bip32_path.push_str(&"'/0/");
     bip32_path.push_str(&index);
-    let path: [u32; 5] = make_bip32_path(bip32_path.as_bytes());
+    bip32_path.push_str(&"'/");
+    bip32_path.push_str(&key_type);
+    let path: [u32; 6] = make_bip32_path(bip32_path.as_bytes());
 
     match get_raw_key(&path) {
         Ok(val) => get_key_from_uniform_bytes(&val.as_ref()),

@@ -843,11 +843,13 @@ pub fn prompt_wallet_type(
                     print!("Scanning for connected Ledger hardware device... ");
                     match get_transport() {
                         Ok(hid) => {
-                            drop(hid); // Need to release it before we reuse it.
                             println!("Device found.");
                             let account = prompt_ledger_account().expect("An account value");
                             let ledger = LedgerWallet::new(account, None);
-                            match ledger.build_command(Instruction::GetPublicKey, vec![]).execute() {
+                            match ledger
+                                .build_command(Instruction::GetPublicKey, vec![])
+                                .execute_with_transport(&hid)
+                            {
                                 Ok(result) => {
                                     debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
                                     if result.data().len() < 33 {

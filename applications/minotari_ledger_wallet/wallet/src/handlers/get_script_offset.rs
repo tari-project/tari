@@ -8,15 +8,16 @@ use crate::{
     alloc::string::ToString,
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a},
     AppSW,
+    KeyType,
     RESPONSE_VERSION,
+    STATIC_ALPHA_INDEX,
 };
 
 pub struct ScriptOffsetCtx {
     total_sender_offset_private_key: RistrettoSecretKey,
     total_script_private_key: RistrettoSecretKey,
     account: u64,
-    total_offset_keys: u64,
-    total_script_keys: u64,
+    total_offset_indexes: u64,
     total_commitment_keys: u64,
 }
 
@@ -27,8 +28,7 @@ impl ScriptOffsetCtx {
             total_sender_offset_private_key: RistrettoSecretKey::default(),
             total_script_private_key: RistrettoSecretKey::default(),
             account: 0,
-            total_offset_keys: 0,
-            total_script_keys: 0,
+            total_offset_indexes: 0,
             total_commitment_keys: 0,
         }
     }
@@ -38,8 +38,7 @@ impl ScriptOffsetCtx {
         self.total_sender_offset_private_key = RistrettoSecretKey::default();
         self.total_script_private_key = RistrettoSecretKey::default();
         self.account = 0;
-        self.total_offset_keys = 0;
-        self.total_script_keys = 0;
+        self.total_offset_indexes = 0;
         self.total_commitment_keys = 0;
     }
 }
@@ -51,11 +50,7 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) {
 
     let mut total_offset_keys = [0u8; 8];
     total_offset_keys.clone_from_slice(&data[24..32]);
-    offset_ctx.total_offset_keys = u64::from_le_bytes(total_offset_keys);
-
-    let mut total_script_keys = [0u8; 8];
-    total_script_keys.clone_from_slice(&data[8..16]);
-    offset_ctx.total_script_keys = u64::from_le_bytes(total_script_keys);
+    offset_ctx.total_offset_indexes = u64::from_le_bytes(total_offset_keys);
 
     let mut total_commitment_keys = [0u8; 8];
     total_commitment_keys.clone_from_slice(&data[16..24]);
@@ -75,22 +70,26 @@ pub fn handler_get_script_offset(
         read_instructions(offset_ctx, data);
     }
 
-    if (1..offset_ctx.total_offset_keys).contains(&(chunk as u64)) {
+    if chunk == 1 {
+        // The sum of managed private keys
         let k = get_key_from_canonical_bytes(&data[0..32])?;
-        offset_ctx.total_sender_offset_private_key = &offset_ctx.total_sender_offset_private_key + &k;
+        offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + k;
     }
 
-    if (offset_ctx.total_offset_keys..offset_ctx.total_script_keys).contains(&(chunk as u64)) {
-        let k = get_key_from_canonical_bytes(&data[0..32])?;
-        offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + &k;
-    }
-
-    if (offset_ctx.total_script_keys..offset_ctx.total_commitment_keys).contains(&(chunk as u64)) {
+    let payload_offset = 2;
+    let end_offset_indexes = payload_offset + offset_ctx.total_offset_indexes;
+    if (payload_offset..end_offset_indexes).contains(&(chunk as u64)) {
         let mut index_bytes = [0u8; 8];
-        index_bytes.clone_from_slice(&data[32..40]);
+        index_bytes.clone_from_slice(&data[0..8]);
         let index = u64::from_le_bytes(index_bytes);
 
-        let alpha = derive_from_bip32_key(offset_ctx.account, index)?;
+        let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::ScriptOffset)?;
+        offset_ctx.total_offset_indexes = &offset_ctx.total_offset_indexes + &offset;
+    }
+
+    let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
+    if (end_offset_indexes..end_commitment_keys).contains(&(chunk as u64)) {
+        let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
         let commitment = get_key_from_canonical_bytes(&data[0..32])?;
         let k = mask_a(alpha, commitment)?;
 

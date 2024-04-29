@@ -13,10 +13,10 @@ use crate::{
     alloc::string::ToString,
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a},
     AppSW,
+    KeyType,
     RESPONSE_VERSION,
+    STATIC_ALPHA_INDEX,
 };
-
-const STATIC_INDEX: u64 = 42;
 
 const MAX_TRANSACTION_LEN: usize = 312;
 pub struct ScriptSignatureCtx {
@@ -74,7 +74,7 @@ pub fn handler_get_script_signature(
         return Ok(());
     }
 
-    let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_INDEX)?;
+    let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
     let commitment = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
     let script_private_key = mask_a(alpha, commitment)?;
 

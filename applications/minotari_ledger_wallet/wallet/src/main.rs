@@ -107,6 +107,25 @@ pub enum Instruction {
 }
 
 const P2_MORE: u8 = 0x01;
+const STATIC_ALPHA_INDEX: u64 = 42;
+
+pub enum KeyType {
+    Alpha,
+    Nonce,
+    Recovery,
+    ScriptOffset,
+}
+
+impl KeyType {
+    fn to_byte(&self) -> u8 {
+        match self {
+            Self::Alpha => 1,
+            Self::Nonce => 2,
+            Self::Recovery => 3,
+            Self::ScriptOffset => 4,
+        }
+    }
+}
 
 impl TryFrom<ApduHeader> for Instruction {
     type Error = AppSW;

@@ -682,22 +682,22 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
-        let mut sender_offset_keys = vec![];
-        for script_key_id in sender_offset_key_ids {
-            sender_offset_keys.push(self.get_private_key(script_key_id).await?);
-        }
-
-        let mut managed_script_keys: Vec<PrivateKey> = vec![];
+        debug!(target: LOG_TARGET, "BRIAN HERE");
+        let mut total_script_private_key = PrivateKey::default();
         let mut derived_key_commitments = vec![];
         for script_key_id in script_key_ids {
             match script_key_id {
+                KeyId::Imported { .. } | KeyId::Managed { .. } | KeyId::Zero => {
+                    total_script_private_key = total_script_private_key + self.get_private_key(script_key_id).await?
+                },
                 KeyId::Derived {
                     branch,
                     label: _,
                     index,
                 } => {
                     if let WalletType::Software(_, _) = self.wallet_type {
-                        managed_script_keys.push(self.get_private_key(script_key_id).await?);
+                        total_script_private_key =
+                            total_script_private_key + self.get_private_key(script_key_id).await?;
                         continue;
                     }
 
@@ -710,39 +710,54 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let branch_key = km
                         .get_private_key(*index)
                         .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
-                    derived_key_commitments.push((branch_key, index));
-                },
-                KeyId::Imported { .. } | KeyId::Managed { .. } | KeyId::Zero => {
-                    managed_script_keys.push(self.get_private_key(script_key_id).await?)
+                    derived_key_commitments.push(branch_key);
                 },
             }
-            managed_script_keys.push(self.get_private_key(script_key_id).await?);
         }
 
         match &self.wallet_type {
+            WalletType::Software(_, _) => {
+                debug!(target: LOG_TARGET, "SOFTWARE WALLET");
+                let mut total_sender_offset_private_key = PrivateKey::default();
+                for sender_offset_key_id in sender_offset_key_ids {
+                    total_sender_offset_private_key =
+                        total_sender_offset_private_key + self.get_private_key(sender_offset_key_id).await?;
+                }
+                let script_offset = total_script_private_key - total_sender_offset_private_key;
+                Ok(script_offset)
+            },
             WalletType::Ledger(ledger) => {
-                let num_script_keys = managed_script_keys.len() as u64;
+                debug!(target: LOG_TARGET, "HARDWARE WALLET");
+                let mut sender_offset_indexes = vec![];
+                for sender_offset_key_id in sender_offset_key_ids {
+                    match sender_offset_key_id {
+                        TariKeyId::Managed { branch: _, index } |
+                        TariKeyId::Derived {
+                            branch: _,
+                            label: _,
+                            index,
+                        } => {
+                            sender_offset_indexes.push(index);
+                        },
+                        TariKeyId::Imported { .. } | TariKeyId::Zero => {},
+                    }
+                }
+
                 let num_commitments = derived_key_commitments.len() as u64;
-                let num_offset_key = sender_offset_keys.len() as u64;
+                let num_offset_key = sender_offset_indexes.len() as u64;
 
                 let mut instructions = num_offset_key.to_le_bytes().to_vec();
-                instructions.clone_from_slice(&num_script_keys.to_le_bytes());
                 instructions.clone_from_slice(&num_commitments.to_le_bytes());
 
                 let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
-                for sender_offset_key in sender_offset_keys {
-                    data.push(sender_offset_key.to_vec());
-                }
-                for managed_script_key in managed_script_keys {
-                    // Managed keys will just be the key in the payload
-                    data.push(managed_script_key.to_vec());
-                }
-                for (derived_key_commitment, index) in derived_key_commitments {
-                    // Derived keys will have the commitment and their index in the payload
-                    let mut derived = derived_key_commitment.to_vec();
-                    derived.copy_from_slice(&index.to_le_bytes());
+                data.push(total_script_private_key.to_vec());
 
-                    data.push(derived);
+                for sender_offset_index in sender_offset_indexes {
+                    data.push(sender_offset_index.to_le_bytes().to_vec());
+                }
+
+                for derived_key_commitment in derived_key_commitments {
+                    data.push(derived_key_commitment.to_vec());
                 }
 
                 let commands = ledger.chunk_command(Instruction::GetScriptOffset, data);
@@ -773,18 +788,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 }
 
                 Err(LedgerDeviceError::Instruction("GetScriptOffset failed to process correctly".to_string()).into())
-            },
-            WalletType::Software(_, _) => {
-                let mut total_sender_offset_private_key = PrivateKey::default();
-                for sender_offset_key_id in sender_offset_keys {
-                    total_sender_offset_private_key = total_sender_offset_private_key + sender_offset_key_id;
-                }
-                let mut total_script_private_key = PrivateKey::default();
-                for script_key_id in managed_script_keys {
-                    total_script_private_key = total_script_private_key + script_key_id;
-                }
-                let script_offset = total_script_private_key - total_sender_offset_private_key;
-                Ok(script_offset)
             },
         }
     }
