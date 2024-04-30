@@ -48,14 +48,23 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) {
     account_bytes.clone_from_slice(&data[0..8]);
     offset_ctx.account = u64::from_le_bytes(account_bytes);
 
-    let mut total_offset_keys = [0u8; 8];
-    total_offset_keys.clone_from_slice(&data[24..32]);
-    offset_ctx.total_offset_indexes = u64::from_le_bytes(total_offset_keys);
+    if data.len() < 15 {
+        offset_ctx.total_offset_indexes = 0;
+    } else {
+        let mut total_offset_keys = [0u8; 8];
+        total_offset_keys.clone_from_slice(&data[8..16]);
+        offset_ctx.total_offset_indexes = u64::from_le_bytes(total_offset_keys);
+    }
 
-    let mut total_commitment_keys = [0u8; 8];
-    total_commitment_keys.clone_from_slice(&data[16..24]);
-    offset_ctx.total_commitment_keys = u64::from_le_bytes(total_commitment_keys);
+    if data.len() < 23 {
+        offset_ctx.total_commitment_keys = 0;
+    } else {
+        let mut total_commitment_keys = [0u8; 8];
+        total_commitment_keys.clone_from_slice(&data[16..24]);
+        offset_ctx.total_commitment_keys = u64::from_le_bytes(total_commitment_keys);
+    }
 }
+
 pub fn handler_get_script_offset(
     comm: &mut Comm,
     chunk: u8,
@@ -68,12 +77,14 @@ pub fn handler_get_script_offset(
         // Reset offset context
         offset_ctx.reset();
         read_instructions(offset_ctx, data);
+        return Ok(());
     }
 
     if chunk == 1 {
         // The sum of managed private keys
         let k = get_key_from_canonical_bytes(&data[0..32])?;
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + k;
+        return Ok(());
     }
 
     let payload_offset = 2;
@@ -84,7 +95,8 @@ pub fn handler_get_script_offset(
         let index = u64::from_le_bytes(index_bytes);
 
         let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::ScriptOffset)?;
-        offset_ctx.total_offset_indexes = &offset_ctx.total_offset_indexes + &offset;
+        offset_ctx.total_sender_offset_private_key = &offset_ctx.total_sender_offset_private_key + &offset;
+        return Ok(());
     }
 
     let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
@@ -94,6 +106,7 @@ pub fn handler_get_script_offset(
         let k = mask_a(alpha, commitment)?;
 
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + &k;
+        return Ok(());
     }
 
     if more {
@@ -104,10 +117,8 @@ pub fn handler_get_script_offset(
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
+    offset_ctx.reset();
     comm.reply_ok();
 
-    SingleMessage::new(&"Finished Offset!".to_string()).show_and_wait();
-
-    offset_ctx.reset();
     Ok(())
 }

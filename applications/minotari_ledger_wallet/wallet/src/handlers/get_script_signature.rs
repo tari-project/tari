@@ -106,10 +106,8 @@ pub fn handler_get_script_signature(
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_signature.to_vec());
+    signer_ctx.reset();
     comm.reply_ok();
 
-    SingleMessage::new(&format!("Finished Signature!")).show_and_wait();
-
-    signer_ctx.reset();
     Ok(())
 }

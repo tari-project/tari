@@ -682,7 +682,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
-        debug!(target: LOG_TARGET, "BRIAN HERE");
         let mut total_script_private_key = PrivateKey::default();
         let mut derived_key_commitments = vec![];
         for script_key_id in script_key_ids {
@@ -717,7 +716,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         match &self.wallet_type {
             WalletType::Software(_, _) => {
-                debug!(target: LOG_TARGET, "SOFTWARE WALLET");
                 let mut total_sender_offset_private_key = PrivateKey::default();
                 for sender_offset_key_id in sender_offset_key_ids {
                     total_sender_offset_private_key =
@@ -727,7 +725,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(script_offset)
             },
             WalletType::Ledger(ledger) => {
-                debug!(target: LOG_TARGET, "HARDWARE WALLET");
                 let mut sender_offset_indexes = vec![];
                 for sender_offset_key_id in sender_offset_key_ids {
                     match sender_offset_key_id {

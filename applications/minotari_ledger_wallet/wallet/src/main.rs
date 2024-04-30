@@ -146,11 +146,11 @@ impl TryFrom<ApduHeader> for Instruction {
             (1, 0, 0) => Ok(Instruction::GetVersion),
             (2, 0, 0) => Ok(Instruction::GetAppName),
             (4, 0, 0) => Ok(Instruction::GetPublicKey),
-            (5, 0..=6, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
+            (5, 0..=250, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (6, 0..=6, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+            (6, 0..=250, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
