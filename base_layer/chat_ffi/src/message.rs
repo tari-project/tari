@@ -332,6 +332,31 @@ pub unsafe extern "C" fn read_chat_message_stored_at(message: *mut Message, erro
     (*message).stored_at as c_ulonglong
 }
 
+/// Returns a c_ulonglong representation of the sent at timestamp as seconds since epoch
+///
+/// ## Arguments
+/// `message` - A pointer to a Message
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `c_ulonglong` - The stored_at timestamp, seconds since epoch. Returns 0 if message is null.
+///
+/// ## Safety
+/// `message` should be destroyed eventually
+#[no_mangle]
+pub unsafe extern "C" fn read_chat_message_sent_at(message: *mut Message, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    (*message).sent_at as c_ulonglong
+}
+
 /// Returns a c_ulonglong representation of the delivery confirmation timestamp as seconds since epoch
 ///
 /// ## Arguments
