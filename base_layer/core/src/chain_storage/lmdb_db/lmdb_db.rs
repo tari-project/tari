@@ -1647,12 +1647,6 @@ impl LMDBDatabase {
         output_hash: &[u8],
     ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch output: {} Found ({})",
-                to_hex(output_hash),
-                key.to_hex()
-            );
             match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)? {
                 Some(TransactionOutputRowData {
                     output: o,
@@ -1670,11 +1664,6 @@ impl LMDBDatabase {
                 _ => Ok(None),
             }
         } else {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch output: {} NOT found in index",
-                to_hex(output_hash)
-            );
             Ok(None)
         }
     }
@@ -1685,12 +1674,6 @@ impl LMDBDatabase {
         output_hash: &[u8],
     ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch input: {} Found ({})",
-                to_hex(output_hash),
-                key.to_hex()
-            );
             match lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)? {
                 Some(TransactionInputRowData {
                     input: i,
@@ -1708,11 +1691,6 @@ impl LMDBDatabase {
                 _ => Ok(None),
             }
         } else {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch input: {} NOT found in index",
-                to_hex(output_hash)
-            );
             Ok(None)
         }
     }
