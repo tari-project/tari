@@ -274,9 +274,9 @@ where B: BlockchainBackend
         } else {
             // lets load the smt into memory
             let mut smt = blockchain_db.smt_write_access()?;
-            info!(target: LOG_TARGET, "Loading SMT into memory from stored db");
+            warn!(target: LOG_TARGET, "Loading SMT into memory from stored db");
             *smt = blockchain_db.db_write_access()?.calculate_tip_smt()?;
-            info!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
+            warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
         }
         if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
