@@ -89,7 +89,7 @@ pub struct PeerListener<TTransport> {
 impl<TTransport> PeerListener<TTransport>
 where
     TTransport: Transport + Clone + Send + Sync + 'static,
-    TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
 {
     pub fn new(
         config: ConnectionManagerConfig,
