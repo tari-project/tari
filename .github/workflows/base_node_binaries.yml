@@ -60,7 +60,7 @@ jobs:
           #
           # build only single target image
           # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
-          # matrix_selection=$( jq -c '.[] | select( ."name" | contains("linux") )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."name" | contains("macos") )' ${{ env.matrix-json-file }} )
           #
           # build select target images - build_enabled
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
@@ -317,7 +317,7 @@ jobs:
       - name: Copy binaries to folder for archiving
         shell: bash
         run: |
-          set -xo pipefail
+          # set -xo pipefail
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
           BINFILE="${TBN_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
@@ -462,36 +462,24 @@ jobs:
             --sign "Developer ID Installer: ${MACOS_INSTALLER_ID}" \
             "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
           echo -e "Submitting to Apple...\n\n"
-          xcrun altool --notarize-app \
-            --primary-bundle-id "${{ env.TBN_BUNDLE_ID_BASE }}.pkg.${TBN_BUNDLE_ID_VALID_NAME}" \
-            --username "${MACOS_NOTARIZE_USERNAME}" --password "${MACOS_NOTARIZE_PASSWORD}" \
-            --asc-provider "${MACOS_ASC_PROVIDER}" \
-            --file "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg" &> notarisation.result
-          requestUUID=`grep RequestUUID notarisation.result | cut -d" " -f 3`
-          echo ${requestUUID}
-          if [[ ${requestUUID} == "" ]]; then
-            echo "could not upload for notarization"
+          xcrun notarytool submit \
+            "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg" \
+            --apple-id "${MACOS_NOTARIZE_USERNAME}" \
+            --password ${MACOS_NOTARIZE_PASSWORD} \
+            --team-id ${MACOS_ASC_PROVIDER} \
+            --verbose --wait 2>&1 | tee -a notarisation.result
+          # Maybe use line from with "Processing complete"?
+          requestUUID=$(tail -n5 notarisation.result | grep "id:" | cut -d" " -f 4)
+          requestSTATUS=$(tail -n5 notarisation.result | grep "\ \ status:" | cut -d" " -f 4)
+          if [[ ${requestUUID} == "" ]] || [[ ${requestSTATUS} != "Accepted" ]]; then
+            echo "## status: ${requestSTATUS} - could not notarize - ${requestUUID} - ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
             exit 1
           else
             echo "Notarization RequestUUID: ${requestUUID}"
-          fi
-          echo -e "\n\nChecking result of notarisation..."
-          request_status="in progress"
-          while [[ "${request_status}" == "in progress" ]]; do
-            echo -n "waiting... "
-            sleep 10
-            request_status=$(xcrun altool --notarization-info ${requestUUID} --username "${MACOS_NOTARIZE_USERNAME}" --password "${MACOS_NOTARIZE_PASSWORD}" 2>&1)
-            echo "${request_status}"
-            request_status=$(echo "${request_status}" | awk -F ': ' '/Status:/ { print $2; }' )
-            echo "${request_status}"
-          done
-          echo "${request_status}"
-          if [[ ${request_status} != "success" ]]; then
-            echo "## could not notarize - ${request_status} - ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
-            exit 1
-          else
-            echo -e "\nStapling package...${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg\n"
-            xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
+            echo -e "\nStapling package...\
+              ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg\n"
+            xcrun stapler staple -v \
+              "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
           fi
           cd ${distDirPKG}
           echo "Compute pkg shasum"
