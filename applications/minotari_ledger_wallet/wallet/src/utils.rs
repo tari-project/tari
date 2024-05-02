@@ -14,13 +14,14 @@ use tari_crypto::{
     hash_domain,
     hashing::DomainSeparatedHasher,
     keys::SecretKey,
-    ristretto::RistrettoSecretKey,
+    ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
     tari_utilities::ByteArray,
 };
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::{String, ToString},
+    hashing::DomainSeparatedConsensusHasher,
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,
@@ -28,6 +29,7 @@ use crate::{
 
 hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
 hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
+hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
 
 /// BIP32 path stored as an array of [`u32`].
 ///
@@ -201,13 +203,13 @@ pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, Ap
             ))
             .show_and_wait();
             SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
-            return Err(AppSW::KeyDeriveFail);
+            return Err(AppSW::KeyDeriveFromUniform);
         },
     }
 }
 
-pub fn get_key_from_canonical_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, AppSW> {
-    match RistrettoSecretKey::from_canonical_bytes(bytes) {
+pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, AppSW> {
+    match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
             SingleMessage::new(&format!(
@@ -217,7 +219,7 @@ pub fn get_key_from_canonical_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, 
             ))
             .show_and_wait();
             SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
-            return Err(AppSW::KeyDeriveFail);
+            return Err(AppSW::KeyDeriveFromCanonical);
         },
     }
 }
@@ -256,4 +258,23 @@ pub fn derive_from_bip32_key(
             return Err(AppSW::KeyDeriveFail);
         },
     }
+}
+
+pub fn finalize_metadata_signature_challenge(
+    _version: u64,
+    network: u64,
+    sender_offset_public_key: &RistrettoPublicKey,
+    ephemeral_commitment: &PedersenCommitment,
+    ephemeral_pubkey: &RistrettoPublicKey,
+    commitment: &PedersenCommitment,
+    message: &[u8; 32],
+) -> [u8; 64] {
+    DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature", network)
+        .chain(&ephemeral_pubkey)
+        .chain(&ephemeral_commitment)
+        .chain(&sender_offset_public_key)
+        .chain(&commitment)
+        .chain(&message)
+        .finalize()
+        .into()
 }

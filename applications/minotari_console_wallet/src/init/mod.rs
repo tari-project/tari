@@ -845,7 +845,7 @@ pub fn prompt_wallet_type(
                         Ok(hid) => {
                             println!("Device found.");
                             let account = prompt_ledger_account().expect("An account value");
-                            let ledger = LedgerWallet::new(account, None);
+                            let ledger = LedgerWallet::new(account, wallet_config.network, None);
                             match ledger
                                 .build_command(Instruction::GetPublicKey, vec![])
                                 .execute_with_transport(&hid)
@@ -866,7 +866,7 @@ pub fn prompt_wallet_type(
                                         Err(e) => panic!("{}", e),
                                     };
 
-                                    let ledger = LedgerWallet::new(account, Some(key));
+                                    let ledger = LedgerWallet::new(account, wallet_config.network, Some(key));
                                     Some(WalletType::Ledger(ledger))
                                 },
                                 Err(e) => panic!("{}", e),

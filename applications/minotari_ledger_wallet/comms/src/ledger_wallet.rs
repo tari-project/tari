@@ -31,6 +31,7 @@ use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::Network;
 use tari_crypto::ristretto::RistrettoPublicKey;
 
 use crate::error::LedgerDeviceError;
@@ -43,9 +44,10 @@ const WALLET_CLA: u8 = 0x80;
 pub enum Instruction {
     GetVersion = 0x01,
     GetAppName = 0x02,
-    GetPublicKey = 0x04,
-    GetScriptSignature = 0x05,
-    GetScriptOffset = 0x06,
+    GetPublicKey = 0x03,
+    GetScriptSignature = 0x04,
+    GetScriptOffset = 0x05,
+    GetMetadataSignature = 0x06,
 }
 
 impl Instruction {
@@ -89,6 +91,7 @@ impl<D: Deref<Target = [u8]>> Command<D> {
 pub struct LedgerWallet {
     account: u64,
     pub pubkey: Option<RistrettoPublicKey>,
+    network: Network,
 }
 
 impl Display for LedgerWallet {
@@ -100,8 +103,12 @@ impl Display for LedgerWallet {
 }
 
 impl LedgerWallet {
-    pub fn new(account: u64, pubkey: Option<RistrettoPublicKey>) -> Self {
-        Self { account, pubkey }
+    pub fn new(account: u64, network: Network, pubkey: Option<RistrettoPublicKey>) -> Self {
+        Self {
+            account,
+            pubkey,
+            network,
+        }
     }
 
     pub fn account_bytes(&self) -> Vec<u8> {

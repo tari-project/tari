@@ -7,12 +7,14 @@
 
 extern crate alloc;
 
+mod hashing;
 mod utils;
 
 mod app_ui {
     pub mod menu;
 }
 mod handlers {
+    pub mod get_metadata_signature;
     pub mod get_public_key;
     pub mod get_script_offset;
     pub mod get_script_signature;
@@ -24,6 +26,7 @@ use core::mem::MaybeUninit;
 use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
+    get_metadata_signature::handler_get_metadata_signature,
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::{handler_get_script_signature, ScriptSignatureCtx},
@@ -40,7 +43,6 @@ ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
 static CLA: u8 = 0x80;
-
 static RESPONSE_VERSION: u8 = 1;
 
 /// Allocator heap size
@@ -87,7 +89,10 @@ pub enum AppSW {
     ClaNotSupported = 0x6E00,
     ScriptSignatureFail = 0xB001,
     KeyDeriveFail = 0xB009,
+    KeyDeriveFromCanonical = 0xB010,
+    KeyDeriveFromUniform = 0xB011,
     VersionParsingFail = 0xB00A,
+    TooManyPayloads = 0xB002,
     WrongApduLength = StatusWords::BadLen as u16,
 }
 
@@ -104,16 +109,19 @@ pub enum Instruction {
     GetPublicKey,
     GetScriptSignature { chunk: u8, more: bool },
     GetScriptOffset { chunk: u8, more: bool },
+    GetMetadataSignature,
 }
 
 const P2_MORE: u8 = 0x01;
 const STATIC_ALPHA_INDEX: u64 = 42;
+const MAX_PAYLOADS: u8 = 250;
 
 pub enum KeyType {
     Alpha,
     Nonce,
     Recovery,
     ScriptOffset,
+    SenderOffset,
 }
 
 impl KeyType {
@@ -123,6 +131,7 @@ impl KeyType {
             Self::Nonce => 2,
             Self::Recovery => 3,
             Self::ScriptOffset => 4,
+            Self::SenderOffset => 5,
         }
     }
 }
@@ -145,16 +154,17 @@ impl TryFrom<ApduHeader> for Instruction {
         match (value.ins, value.p1, value.p2) {
             (1, 0, 0) => Ok(Instruction::GetVersion),
             (2, 0, 0) => Ok(Instruction::GetAppName),
-            (4, 0, 0) => Ok(Instruction::GetPublicKey),
-            (5, 0..=250, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
+            (3, 0, 0) => Ok(Instruction::GetPublicKey),
+            (4, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (6, 0..=250, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+            (5, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (3..=4, _, _) => Err(AppSW::WrongP1P2),
+            (6, 0, 0) => Ok(Instruction::GetMetadataSignature),
+            (4..=5, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -204,5 +214,6 @@ fn handle_apdu(
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetScriptSignature { chunk, more } => handler_get_script_signature(comm, chunk, more, signer_ctx),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
+        Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),
     }
 }

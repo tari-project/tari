@@ -1,11 +1,10 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::io::Comm;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
 
 use crate::{
-    alloc::string::ToString,
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a},
     AppSW,
     KeyType,
@@ -82,7 +81,7 @@ pub fn handler_get_script_offset(
 
     if chunk == 1 {
         // The sum of managed private keys
-        let k = get_key_from_canonical_bytes(&data[0..32])?;
+        let k: RistrettoSecretKey = get_key_from_canonical_bytes(&data[0..32])?;
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + k;
         return Ok(());
     }

@@ -7,6 +7,7 @@ use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::ristretto::{
     pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
     RistrettoComAndPubSig,
+    RistrettoSecretKey,
 };
 
 use crate::{
@@ -75,11 +76,11 @@ pub fn handler_get_script_signature(
     }
 
     let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
-    let commitment = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
+    let commitment: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
     let script_private_key = mask_a(alpha, commitment)?;
 
-    let value = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
-    let spend_private_key = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;
+    let value: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
+    let spend_private_key: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;
     let r_a = get_key_from_canonical_bytes(&signer_ctx.payload[104..136])?;
     let r_x = get_key_from_canonical_bytes(&signer_ctx.payload[136..168])?;
     let r_y = get_key_from_canonical_bytes(&signer_ctx.payload[168..200])?;

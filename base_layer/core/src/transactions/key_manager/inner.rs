@@ -48,6 +48,7 @@ use tari_crypto::{
 };
 use tari_key_manager::{
     cipher_seed::CipherSeed,
+    error::KeyManagerError,
     key_manager::KeyManager,
     key_manager_service::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
@@ -880,6 +881,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
+        // Use the pubkey, but generate the nonce on ledger
         let (ephemeral_private_nonce_id, ephemeral_pubkey) = self
             .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await?;
@@ -960,31 +962,89 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-        let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
-        let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?;
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        match &self.wallet_type {
+            WalletType::Software(_, _) => {
+                let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
+                let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
+                let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
+                let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
 
-        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
-            txo_version,
-            &sender_offset_public_key,
-            ephemeral_commitment,
-            &ephemeral_pubkey,
-            commitment,
-            metadata_signature_message,
-        );
+                let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+                    txo_version,
+                    &sender_offset_public_key,
+                    ephemeral_commitment,
+                    &ephemeral_pubkey,
+                    commitment,
+                    metadata_signature_message,
+                );
 
-        let metadata_signature = ComAndPubSignature::sign(
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            &sender_offset_private_key,
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            &ephemeral_private_key,
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
-        Ok(metadata_signature)
+                let metadata_signature = ComAndPubSignature::sign(
+                    &PrivateKey::default(),
+                    &PrivateKey::default(),
+                    &sender_offset_private_key,
+                    &PrivateKey::default(),
+                    &PrivateKey::default(),
+                    &ephemeral_private_key,
+                    &challenge,
+                    &*self.crypto_factories.commitment,
+                )?;
+                Ok(metadata_signature)
+            },
+            WalletType::Ledger(ledger) => {
+                let ephemeral_private_nonce_index =
+                    ephemeral_private_nonce_id
+                        .managed_index()
+                        .ok_or(TransactionError::KeyManagerError(
+                            KeyManagerError::InvalidKeyID.to_string(),
+                        ))?;
+                let sender_offset_key_index =
+                    sender_offset_key_id
+                        .managed_index()
+                        .ok_or(TransactionError::KeyManagerError(
+                            KeyManagerError::InvalidKeyID.to_string(),
+                        ))?;
+
+                let mut data = (txo_version.as_u8() as u64).to_le_bytes().to_vec();
+                data.extend_from_slice(&(txo_version.as_u8() as u64).to_le_bytes());
+                data.extend_from_slice(&ephemeral_private_nonce_index.to_le_bytes());
+                data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+                data.extend_from_slice(&commitment.to_vec());
+                data.extend_from_slice(&ephemeral_commitment.to_vec());
+                data.extend_from_slice(&metadata_signature_message.to_vec());
+
+                let command = ledger.build_command(Instruction::GetMetadataSignature, data);
+                let transport = get_transport()?;
+
+                match command.execute_with_transport(&transport) {
+                    Ok(result) => {
+                        if result.data().len() < 161 {
+                            debug!(target: LOG_TARGET, "result less than 161");
+                            return Err(LedgerDeviceError::Processing(format!(
+                                "'get_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
+                                result.data().len(),
+                                result
+                            ))
+                            .into());
+                        }
+                        let data = result.data();
+                        debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                        Ok(ComAndPubSignature::new(
+                            Commitment::from_canonical_bytes(&data[1..33])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PublicKey::from_canonical_bytes(&data[33..65])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[65..97])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[97..129])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[129..161])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                        ))
+                    },
+                    Err(e) => Err(LedgerDeviceError::Instruction(format!("GetMetadataSignature: {}", e)).into()),
+                }
+            },
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------
