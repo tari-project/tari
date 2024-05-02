@@ -7,13 +7,13 @@ edition = "2021"
 
 [dependencies]
 blake2 = { version = "0.10", default-features = false  }
-borsh = { version = "0.10", default-features = false }
+borsh = { version = "1.2", default-features = false }
 critical-section = { version = "1.1.1" }
 digest = { version = "0.10", default-features = false }
 embedded-alloc = "0.5.0"
 include_gif = "1.0.1"
 ledger_device_sdk = "1.7.1"
-tari_crypto = { version = "0.20.0", default-features = false }
+tari_crypto = { version = "0.20.0", default-features = false, features = ["borsh"]}
 zeroize = { version = "1" , default-features = false }
 
 # once_cell defined here just to lock the version. Other dependencies may try to go to 1.19 which is incompatabile with

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 tari_crypto = { version = "0.20.0", default-features = false }
+tari_common = { path = "../../../common", version = "1.0.0-pre.12" }
 
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }

@@ -3345,6 +3345,7 @@ dependencies = [
  "num-derive 0.3.3",
  "num-traits",
  "serde",
+ "tari_common",
  "tari_crypto",
  "thiserror",
 ]
