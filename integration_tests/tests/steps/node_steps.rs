@@ -851,19 +851,19 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
     }
     assert_eq!(coinbase_kernel_count, 1);
     assert_eq!(coinbase_utxo_count, 2);
-    let mut num_6154272109 = 0;
-    let mut num_12308544218 = 0;
+    let mut num_6154266699 = 0;
+    let mut num_12308533399 = 0;
     for output in body.outputs() {
-        if output.minimum_value_promise.as_u64() == 6154272109 {
-            num_6154272109 += 1;
+        if output.minimum_value_promise.as_u64() == 6154266699 {
+            num_6154266699 += 1;
         }
-        if output.minimum_value_promise.as_u64() == 12308544218 {
-            num_12308544218 += 1;
+        if output.minimum_value_promise.as_u64() == 12308533399 {
+            num_12308533399 += 1;
         }
     }
 
-    assert_eq!(num_6154272109, 1);
-    assert_eq!(num_12308544218, 1);
+    assert_eq!(num_6154266699, 1);
+    assert_eq!(num_12308533399, 1);
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
