@@ -23,6 +23,7 @@ use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
+use futures::AsyncReadExt;
 use log::*;
 use minotari_ledger_wallet_comms::ledger_wallet::get_transport;
 #[cfg(feature = "ledger")]
@@ -194,13 +195,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
-                let km = self
-                    .key_managers
-                    .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                    .read()
-                    .await;
-                Ok(km.derive_public_key(*index)?.key)
+                match branch{
+                    "LedgerNonde" => {}
+                    _ => {let km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                        .read()
+                        .await;
+                        Ok(km.derive_public_key(*index)?.key)}
+                }
+
             },
             KeyId::Derived { branch, label, index } => {
                 let public_alpha = match &self.wallet_type {
@@ -883,7 +888,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
         // Use the pubkey, but generate the nonce on ledger
         let (ephemeral_private_nonce_id, ephemeral_pubkey) = self
-            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(&TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key())
             .await?;
         let receiver_partial_metadata_signature = self
             .get_receiver_partial_metadata_signature(

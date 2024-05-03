@@ -55,6 +55,7 @@ pub enum TxoStage {
 pub enum TransactionKeyManagerBranch {
     DataEncryption,
     Coinbase,
+    MetadataEphemiralNonce,
     CommitmentMask,
     Nonce,
     KernelNonce,

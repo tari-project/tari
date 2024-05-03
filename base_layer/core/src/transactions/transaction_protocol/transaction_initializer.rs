@@ -153,7 +153,7 @@ where KM: TransactionKeyManagerInterface
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (recipient_ephemeral_public_key_nonce, _) = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key())
             .await?;
         let (recipient_sender_offset_key_id, _) = self
             .key_manager
