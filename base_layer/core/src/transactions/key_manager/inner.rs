@@ -194,7 +194,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => match (
-                branch == &TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key(),
+                branch == &TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key() ||
+                    branch == &TransactionKeyManagerBranch::SenderOffset.get_branch_key(),
                 &self.wallet_type,
             ) {
                 (true, WalletType::Ledger(ledger)) => {

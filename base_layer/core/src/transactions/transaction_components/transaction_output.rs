@@ -31,6 +31,7 @@ use std::{
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
+use log::debug;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -318,6 +319,9 @@ impl TransactionOutput {
             &self.encrypted_data,
             self.minimum_value_promise,
         );
+
+        debug!(target: "c::brian::test", "BRIAN HERE: {:?}", challenge);
+
         if !self.metadata_signature.verify_challenge(
             &self.commitment,
             &self.sender_offset_public_key,
