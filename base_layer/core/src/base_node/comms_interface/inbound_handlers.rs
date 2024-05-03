@@ -258,7 +258,7 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
                 let last_seen_hash = self.mempool.get_last_seen_hash().await?;
-                if best_block_header.hash() != &last_seen_hash {
+                if last_seen_hash != FixedHash::default() && best_block_header.hash() != &last_seen_hash {
                     warn!(
                         target: LOG_TARGET,
                         "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'.",

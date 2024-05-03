@@ -272,12 +272,13 @@ impl MempoolStorage {
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         self.insert_txs(removed_txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        if let Some(height) = new_blocks
+        if let Some((height, hash)) = new_blocks
             .last()
             .or_else(|| removed_blocks.first())
-            .map(|block| block.header.height)
+            .map(|block| (block.header.height, block.header.hash()))
         {
             self.last_seen_height = height;
+            self.last_seen_hash = hash;
         }
         Ok(())
     }
