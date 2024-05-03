@@ -12,7 +12,7 @@ use tari_crypto::ristretto::{
 
 use crate::{
     alloc::string::ToString,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -76,8 +76,8 @@ pub fn handler_get_script_signature(
     }
 
     let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
-    let commitment: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
-    let script_private_key = mask_a(alpha, commitment)?;
+    let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
+    let script_private_key = alpha_hasher(alpha, blinding_factor)?;
 
     let value: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
     let spend_private_key: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;

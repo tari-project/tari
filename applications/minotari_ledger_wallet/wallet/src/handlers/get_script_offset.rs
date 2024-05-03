@@ -101,8 +101,8 @@ pub fn handler_get_script_offset(
     let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
     if (end_offset_indexes..end_commitment_keys).contains(&(chunk as u64)) {
         let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
-        let commitment = get_key_from_canonical_bytes(&data[0..32])?;
-        let k = mask_a(alpha, commitment)?;
+        let blinding_factor = get_key_from_canonical_bytes(&data[0..32])?;
+        let k = alpha_hasher(alpha, blinding_factor)?;
 
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + &k;
         return Ok(());

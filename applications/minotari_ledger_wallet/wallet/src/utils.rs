@@ -224,9 +224,12 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     }
 }
 
-pub fn mask_a(alpha: RistrettoSecretKey, commitment: RistrettoSecretKey) -> Result<RistrettoSecretKey, AppSW> {
+pub fn alpha_hasher(
+    alpha: RistrettoSecretKey,
+    blinding_factor: RistrettoSecretKey,
+) -> Result<RistrettoSecretKey, AppSW> {
     let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key");
-    let hasher = hasher.chain(commitment.as_bytes()).finalize();
+    let hasher = hasher.chain(blinding_factor.as_bytes()).finalize();
     let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
 
     Ok(private_key + alpha)
