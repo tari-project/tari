@@ -44,10 +44,11 @@ const WALLET_CLA: u8 = 0x80;
 pub enum Instruction {
     GetVersion = 0x01,
     GetAppName = 0x02,
-    GetPublicKey = 0x03,
-    GetScriptSignature = 0x04,
-    GetScriptOffset = 0x05,
-    GetMetadataSignature = 0x06,
+    GetPublicAlpha = 0x03,
+    GetPublicKey = 0x04,
+    GetScriptSignature = 0x05,
+    GetScriptOffset = 0x06,
+    GetMetadataSignature = 0x07,
 }
 
 impl Instruction {
@@ -91,7 +92,7 @@ impl<D: Deref<Target = [u8]>> Command<D> {
 pub struct LedgerWallet {
     account: u64,
     pub pubkey: Option<RistrettoPublicKey>,
-    network: Network,
+    pub network: Network,
 }
 
 impl Display for LedgerWallet {

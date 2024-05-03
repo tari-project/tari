@@ -54,7 +54,10 @@ use tari_common::{
     },
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::{types::PrivateKey, wallet_types::WalletType};
+use tari_common_types::{
+    types::{PrivateKey, PublicKey},
+    wallet_types::WalletType,
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerQuery},
@@ -65,7 +68,7 @@ use tari_core::{
     consensus::ConsensusManager,
     transactions::{transaction_components::TransactionError, CryptoFactories},
 };
-use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
@@ -847,7 +850,7 @@ pub fn prompt_wallet_type(
                             let account = prompt_ledger_account().expect("An account value");
                             let ledger = LedgerWallet::new(account, wallet_config.network, None);
                             match ledger
-                                .build_command(Instruction::GetPublicKey, vec![])
+                                .build_command(Instruction::GetPublicAlpha, vec![])
                                 .execute_with_transport(&hid)
                             {
                                 Ok(result) => {
@@ -861,7 +864,7 @@ pub fn prompt_wallet_type(
                                         );
                                     }
 
-                                    let key = match RistrettoPublicKey::from_canonical_bytes(&result.data()[1..33]) {
+                                    let key = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
                                         Ok(k) => k,
                                         Err(e) => panic!("{}", e),
                                     };

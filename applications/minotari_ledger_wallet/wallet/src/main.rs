@@ -15,6 +15,7 @@ mod app_ui {
 }
 mod handlers {
     pub mod get_metadata_signature;
+    pub mod get_public_alpha;
     pub mod get_public_key;
     pub mod get_script_offset;
     pub mod get_script_signature;
@@ -27,6 +28,7 @@ use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
     get_metadata_signature::handler_get_metadata_signature,
+    get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::{handler_get_script_signature, ScriptSignatureCtx},
@@ -107,6 +109,7 @@ pub enum Instruction {
     GetVersion,
     GetAppName,
     GetPublicKey,
+    GetPublicAlpha,
     GetScriptSignature { chunk: u8, more: bool },
     GetScriptOffset { chunk: u8, more: bool },
     GetMetadataSignature,
@@ -120,7 +123,6 @@ pub enum KeyType {
     Alpha,
     Nonce,
     Recovery,
-    ScriptOffset,
     SenderOffset,
 }
 
@@ -130,8 +132,7 @@ impl KeyType {
             Self::Alpha => 1,
             Self::Nonce => 2,
             Self::Recovery => 3,
-            Self::ScriptOffset => 4,
-            Self::SenderOffset => 5,
+            Self::SenderOffset => 4,
         }
     }
 }
@@ -154,17 +155,18 @@ impl TryFrom<ApduHeader> for Instruction {
         match (value.ins, value.p1, value.p2) {
             (1, 0, 0) => Ok(Instruction::GetVersion),
             (2, 0, 0) => Ok(Instruction::GetAppName),
-            (3, 0, 0) => Ok(Instruction::GetPublicKey),
-            (4, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
+            (3, 0, 0) => Ok(Instruction::GetPublicAlpha),
+            (4, 0, 0) => Ok(Instruction::GetPublicKey),
+            (5, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (5, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+            (6, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (6, 0, 0) => Ok(Instruction::GetMetadataSignature),
-            (4..=5, _, _) => Err(AppSW::WrongP1P2),
+            (7, 0, 0) => Ok(Instruction::GetMetadataSignature),
+            (5..=6, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -212,6 +214,7 @@ fn handle_apdu(
             Ok(())
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),
+        Instruction::GetPublicAlpha => handler_get_public_alpha(comm),
         Instruction::GetScriptSignature { chunk, more } => handler_get_script_signature(comm, chunk, more, signer_ctx),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
         Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),

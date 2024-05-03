@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::str::FromStr;
+
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
@@ -71,6 +72,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::Coinbase => "coinbase".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
+            TransactionKeyManagerBranch::MetadataEphemiralNonce => "metadata ephemiral nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
         }
@@ -79,7 +81,7 @@ impl TransactionKeyManagerBranch {
 
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerLabel {
-    ScriptKey
+    ScriptKey,
 }
 
 impl TransactionKeyManagerLabel {
@@ -92,12 +94,11 @@ impl TransactionKeyManagerLabel {
     }
 }
 
-impl FromStr for TransactionKeyManagerLabel
-{
+impl FromStr for TransactionKeyManagerLabel {
     type Err = String;
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
-        match id{
+        match id {
             "script key" => Ok(TransactionKeyManagerLabel::ScriptKey),
             _ => Err("Unknown label".to_string()),
         }

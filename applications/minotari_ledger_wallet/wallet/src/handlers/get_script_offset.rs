@@ -5,7 +5,7 @@ use ledger_device_sdk::io::Comm;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
 
 use crate::{
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, mask_a},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -93,7 +93,7 @@ pub fn handler_get_script_offset(
         index_bytes.clone_from_slice(&data[0..8]);
         let index = u64::from_le_bytes(index_bytes);
 
-        let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::ScriptOffset)?;
+        let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::SenderOffset)?;
         offset_ctx.total_sender_offset_private_key = &offset_ctx.total_sender_offset_private_key + &offset;
         return Ok(());
     }

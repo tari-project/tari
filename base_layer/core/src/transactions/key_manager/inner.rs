@@ -23,7 +23,6 @@ use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use futures::AsyncReadExt;
 use log::*;
 use minotari_ledger_wallet_comms::ledger_wallet::get_transport;
 #[cfg(feature = "ledger")]
@@ -194,18 +193,36 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
-            KeyId::Managed { branch, index } => {
-                match branch{
-                    "LedgerNonde" => {}
-                    _ => {let km = self
+            KeyId::Managed { branch, index } => match (
+                branch == &TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key(),
+                &self.wallet_type,
+            ) {
+                (true, WalletType::Ledger(ledger)) => {
+                    let transport = get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+                    let command = ledger.build_command(Instruction::GetPublicKey, index.to_le_bytes().to_vec());
+
+                    match command.execute_with_transport(&transport) {
+                        Ok(result) => {
+                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                            if result.data().len() < 33 {
+                                debug!(target: LOG_TARGET, "result less than 33");
+                            }
+
+                            PublicKey::from_canonical_bytes(&result.data()[1..33])
+                                .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))
+                        },
+                        Err(e) => Err(KeyManagerServiceError::LedgerError(e.to_string())),
+                    }
+                },
+                (_, _) => {
+                    let km = self
                         .key_managers
                         .get(branch)
                         .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
                         .read()
                         .await;
-                        Ok(km.derive_public_key(*index)?.key)}
-                }
-
+                    Ok(km.derive_public_key(*index)?.key)
+                },
             },
             KeyId::Derived { branch, label, index } => {
                 let public_alpha = match &self.wallet_type {
@@ -1009,7 +1026,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             KeyManagerError::InvalidKeyID.to_string(),
                         ))?;
 
-                let mut data = (txo_version.as_u8() as u64).to_le_bytes().to_vec();
+                let mut data = (ledger.network.as_byte() as u64).to_le_bytes().to_vec();
                 data.extend_from_slice(&(txo_version.as_u8() as u64).to_le_bytes());
                 data.extend_from_slice(&ephemeral_private_nonce_index.to_le_bytes());
                 data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
