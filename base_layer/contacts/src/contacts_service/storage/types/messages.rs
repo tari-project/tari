@@ -46,6 +46,7 @@ pub struct MessagesSqlInsert {
     pub body: Vec<u8>,
     pub metadata: Vec<u8>,
     pub stored_at: NaiveDateTime,
+    pub sent_at: NaiveDateTime,
     pub direction: i32,
 }
 
@@ -58,6 +59,7 @@ pub struct MessagesSql {
     pub body: Vec<u8>,
     pub metadata: Vec<u8>,
     pub stored_at: NaiveDateTime,
+    pub sent_at: NaiveDateTime,
     pub delivery_confirmation_at: Option<NaiveDateTime>,
     pub read_confirmation_at: Option<NaiveDateTime>,
     pub direction: i32,
@@ -145,6 +147,7 @@ impl TryFrom<MessagesSql> for Message {
                 u8::try_from(o.direction).map_err(|_| ContactsServiceStorageError::ConversionError)?,
             )
             .ok_or(ContactsServiceStorageError::ConversionError)?,
+            sent_at: o.sent_at.timestamp() as u64,
             stored_at: o.stored_at.timestamp() as u64,
             delivery_confirmation_at: Some(o.stored_at.timestamp() as u64),
             read_confirmation_at: Some(o.stored_at.timestamp() as u64),
@@ -168,7 +171,10 @@ impl TryFrom<Message> for MessagesSqlInsert {
             message_id: o.message_id,
             body: o.body,
             metadata: metadata.into_bytes().to_vec(),
-            stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0).unwrap(),
+            stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0)
+                .ok_or(ContactsServiceStorageError::ConversionError)?,
+            sent_at: NaiveDateTime::from_timestamp_opt(o.sent_at as i64, 0)
+                .ok_or(ContactsServiceStorageError::ConversionError)?,
             direction: i32::from(o.direction.as_byte()),
         })
     }

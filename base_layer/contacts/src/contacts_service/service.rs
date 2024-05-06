@@ -299,6 +299,7 @@ where T: ContactsBackend + 'static
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
+                message.sent_at = Utc::now().naive_utc().timestamp() as u64;
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
 
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
