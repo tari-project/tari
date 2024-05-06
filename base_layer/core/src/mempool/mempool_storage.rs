@@ -23,7 +23,7 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -57,6 +57,7 @@ pub struct MempoolStorage {
     validator: Box<dyn TransactionValidator>,
     rules: ConsensusManager,
     last_seen_height: u64,
+    pub(crate) last_seen_hash: FixedHash,
 }
 
 impl MempoolStorage {
@@ -68,6 +69,7 @@ impl MempoolStorage {
             validator,
             rules,
             last_seen_height: 0,
+            last_seen_hash: Default::default(),
         }
     }
 
@@ -220,6 +222,7 @@ impl MempoolStorage {
         self.reorg_pool.compact();
 
         self.last_seen_height = published_block.header.height;
+        self.last_seen_hash = published_block.header.hash();
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         match self.stats() {
             Ok(stats) => debug!(target: LOG_TARGET, "{}", stats),
@@ -269,12 +272,13 @@ impl MempoolStorage {
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         self.insert_txs(removed_txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        if let Some(height) = new_blocks
+        if let Some((height, hash)) = new_blocks
             .last()
             .or_else(|| removed_blocks.first())
-            .map(|block| block.header.height)
+            .map(|block| (block.header.height, block.header.hash()))
         {
             self.last_seen_height = height;
+            self.last_seen_hash = hash;
         }
         Ok(())
     }

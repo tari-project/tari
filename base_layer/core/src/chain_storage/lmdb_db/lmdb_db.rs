@@ -2063,13 +2063,11 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_output_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        debug!(target: LOG_TARGET, "Fetch input: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_input_in_txn(&txn, output_hash.as_slice())
     }

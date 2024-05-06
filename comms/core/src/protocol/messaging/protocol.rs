@@ -351,6 +351,7 @@ impl MessagingProtocol {
             inbound_message_tx,
             messaging_events_tx,
             self.enable_message_received_event,
+            self.shutdown_signal.clone(),
         );
         let handle = tokio::spawn(inbound_messaging.run(substream));
         self.active_inbound.insert(peer, handle);
