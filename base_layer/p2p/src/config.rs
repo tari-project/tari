@@ -115,8 +115,6 @@ pub struct P2pConfig {
     pub listener_self_liveness_check_interval: Option<Duration>,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
     pub listener_liveness_allowlist_cidrs: StringList,
-    /// User agent string for this node
-    pub user_agent: String,
     /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
     /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
     /// Default: None
@@ -148,7 +146,6 @@ impl Default for P2pConfig {
             listener_liveness_max_sessions: 0,
             listener_self_liveness_check_interval: None,
             listener_liveness_allowlist_cidrs: StringList::default(),
-            user_agent: String::new(),
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,

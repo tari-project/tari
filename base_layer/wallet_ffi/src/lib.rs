@@ -4869,7 +4869,6 @@ pub unsafe extern "C" fn comms_config_create(
                 allow_test_addresses: true,
                 listener_liveness_allowlist_cidrs: StringList::new(),
                 listener_liveness_max_sessions: 0,
-                user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
                 listener_self_liveness_check_interval: None,
@@ -5521,6 +5520,7 @@ pub unsafe extern "C" fn wallet_create(
         },
     };
 
+    let user_agent = format!("tari/wallet_ffi/{}", env!("CARGO_PKG_VERSION"));
     let w = runtime.block_on(Wallet::start(
         wallet_config,
         peer_seeds,
@@ -5537,6 +5537,7 @@ pub unsafe extern "C" fn wallet_create(
         shutdown.to_signal(),
         master_seed,
         WalletType::Software,
+        user_agent,
     ));
 
     match w {

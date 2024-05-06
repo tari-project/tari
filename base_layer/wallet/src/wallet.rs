@@ -167,6 +167,7 @@ where
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
         wallet_type: WalletType,
+        user_agent: String,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
@@ -189,6 +190,7 @@ where
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
+                user_agent,
                 peer_seeds,
                 config.network,
                 node_identity.clone(),

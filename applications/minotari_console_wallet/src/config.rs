@@ -45,8 +45,6 @@ impl ApplicationConfig {
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
         };
 
-        config.wallet.p2p.user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
-
         config.wallet.set_base_path(config.common.base_path());
         Ok(config)
     }

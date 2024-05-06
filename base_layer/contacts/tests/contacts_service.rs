@@ -93,16 +93,17 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-contacts-service".to_string(),
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
         listener_self_liveness_check_interval: None,
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
+    let user_agent = format!("tari/tests/{}", env!("CARGO_PKG_VERSION"));
     let fut = StackBuilder::new(shutdown.to_signal())
         .add_initializer(P2pInitializer::new(
             comms_config,
+            user_agent,
             PeerSeedsConfig::default(),
             Network::LocalNet,
             node_identity.clone(),

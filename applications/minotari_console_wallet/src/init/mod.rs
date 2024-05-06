@@ -27,7 +27,7 @@ use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 #[cfg(feature = "ledger")]
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
-use minotari_app_utilities::identity_management::setup_node_identity;
+use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -449,7 +449,7 @@ pub async fn init_wallet(
     let factories = CryptoFactories::default();
 
     let now = Instant::now();
-
+    let user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
     let mut wallet = Wallet::start(
         wallet_config,
         config.peer_seeds.clone(),
@@ -466,6 +466,7 @@ pub async fn init_wallet(
         shutdown_signal,
         master_seed,
         wallet_type.unwrap(),
+        user_agent,
     )
     .await
     .map_err(|e| match e {

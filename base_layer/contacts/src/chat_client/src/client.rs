@@ -58,6 +58,7 @@ pub trait ChatClient {
 
 pub struct Client {
     pub config: ApplicationConfig,
+    pub user_agent: String,
     pub contacts: Option<ContactsServiceHandle>,
     pub identity: Arc<NodeIdentity>,
     pub shutdown: Shutdown,
@@ -80,16 +81,17 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub fn new(identity: Arc<NodeIdentity>, config: ApplicationConfig) -> Self {
+    pub fn new(identity: Arc<NodeIdentity>, config: ApplicationConfig, user_agent: String) -> Self {
         Self {
             config,
+            user_agent,
             contacts: None,
             identity,
             shutdown: Shutdown::new(),
         }
     }
 
-    pub fn sideload(config: ApplicationConfig, contacts: ContactsServiceHandle) -> Self {
+    pub fn sideload(config: ApplicationConfig, contacts: ContactsServiceHandle, user_agent: String) -> Self {
         // Create a placeholder ID. It won't be written or used when sideloaded.
         let identity = Arc::new(NodeIdentity::random(
             &mut OsRng,
@@ -99,6 +101,7 @@ impl Client {
 
         Self {
             config,
+            user_agent,
             contacts: Some(contacts),
             identity,
             shutdown: Shutdown::new(),
@@ -112,9 +115,14 @@ impl Client {
         if self.contacts.is_none() {
             let signal = self.shutdown.to_signal();
 
-            let (contacts, comms_node) = networking::start(self.identity.clone(), self.config.clone(), signal)
-                .await
-                .map_err(|e| Error::InitializationError(e.to_string()))?;
+            let (contacts, comms_node) = networking::start(
+                self.identity.clone(),
+                self.config.clone(),
+                signal,
+                self.user_agent.clone(),
+            )
+            .await
+            .map_err(|e| Error::InitializationError(e.to_string()))?;
 
             if !self.config.peer_seeds.peer_seeds.is_empty() {
                 loop {
