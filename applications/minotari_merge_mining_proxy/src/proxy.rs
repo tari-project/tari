@@ -858,15 +858,24 @@ impl InnerService {
                     return Ok(monerod_resp.map(|json| json.to_string().into()));
                 }
 
-                let response = self.get_proxy_response(request, monerod_resp).await?;
-                debug!(
-                    "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
-                    method_name,
-                    monerod_status,
-                    response.status(),
-                    start.elapsed().as_millis()
-                );
-                Ok(response)
+                match self.get_proxy_response(request, monerod_resp).await {
+                    Ok(response) => {
+                        debug!(
+                            "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
+                            method_name,
+                            monerod_status,
+                            response.status(),
+                            start.elapsed().as_millis()
+                        );
+                        Ok(response)
+                    },
+                    Err(e) => {
+                        // Monero Server encountered a problem processing the request, reset the current monerod server
+                        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
+                        *lock = None;
+                        Err(e)
+                    },
+                }
             },
             Err(e) => {
                 // Monero Server encountered a problem processing the request, reset the current monerod server
