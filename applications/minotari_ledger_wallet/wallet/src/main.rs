@@ -119,20 +119,24 @@ const P2_MORE: u8 = 0x01;
 const STATIC_ALPHA_INDEX: u64 = 42;
 const MAX_PAYLOADS: u8 = 250;
 
+#[repr(u8)]
 pub enum KeyType {
-    Alpha,
-    Nonce,
-    Recovery,
-    SenderOffset,
+    Alpha = 0x01,
+    Nonce = 0x02,
+    Recovery = 0x03,
+    SenderOffset = 0x04,
 }
 
 impl KeyType {
-    fn to_byte(&self) -> u8 {
-        match self {
-            Self::Alpha => 1,
-            Self::Nonce => 2,
-            Self::Recovery => 3,
-            Self::SenderOffset => 4,
+    pub fn as_byte(self) -> u8 {
+        self as u8
+    }
+
+    fn from_branch_key(n: u64) -> Self {
+        match n {
+            1 => Self::Alpha,
+            6 => Self::SenderOffset,
+            5 | 2 | _ => Self::Nonce,
         }
     }
 }

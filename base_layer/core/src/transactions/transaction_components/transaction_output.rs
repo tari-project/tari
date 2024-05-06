@@ -34,6 +34,7 @@ use digest::consts::{U32, U64};
 use log::debug;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::Network;
 use tari_common_types::types::{
     ComAndPubSignature,
     Commitment,
@@ -54,6 +55,7 @@ use tari_crypto::{
 };
 use tari_hashing::TransactionHashDomain;
 use tari_script::TariScript;
+use tari_utilities::ByteArray;
 
 use super::TransactionOutputVersion;
 use crate::{
@@ -320,7 +322,7 @@ impl TransactionOutput {
             self.minimum_value_promise,
         );
 
-        debug!(target: "c::brian::test", "BRIAN HERE: {:?}", challenge);
+        debug!(target: "c::brian::test", "challenge: {:?}", &challenge);
 
         if !self.metadata_signature.verify_challenge(
             &self.commitment,
@@ -408,6 +410,20 @@ impl TransactionOutput {
             encrypted_data,
             &minimum_value_promise,
         );
+
+        debug!(target: "c::brian::test", "version: {:?}", &version);
+        debug!(target: "c::brian::test", "network: {:?}", &Network::LocalNet.as_byte());
+        debug!(target: "c::brian::test", "sender_offset_public_key: {:?}", &sender_offset_public_key);
+        debug!(target: "c::brian::test", "sender_offset_public_key: {:?}", &sender_offset_public_key.to_vec());
+        debug!(target: "c::brian::test", "ephemeral_commitment: {:?}", &ephemeral_commitment.as_public_key());
+        debug!(target: "c::brian::test", "ephemeral_commitment: {:?}", &ephemeral_commitment.to_vec());
+        debug!(target: "c::brian::test", "ephemeral_pubkey: {:?}", &ephemeral_pubkey);
+        debug!(target: "c::brian::test", "ephemeral_pubkey: {:?}", &ephemeral_pubkey.to_vec());
+        debug!(target: "c::brian::test", "commitment: {:?}", &commitment.as_public_key());
+        debug!(target: "c::brian::test", "commitment: {:?}", &commitment.to_vec());
+        debug!(target: "c::brian::test", "message: {:?}", &message.to_hex());
+        debug!(target: "c::brian::test", "message: {:?}", &message.to_vec());
+
         TransactionOutput::finalize_metadata_signature_challenge(
             version,
             sender_offset_public_key,

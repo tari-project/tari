@@ -52,15 +52,16 @@ pub enum TxoStage {
     Output,
 }
 
+#[repr(u8)]
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
-    DataEncryption,
-    Coinbase,
-    MetadataEphemiralNonce,
-    CommitmentMask,
-    Nonce,
-    KernelNonce,
-    SenderOffset,
+    DataEncryption = 0x00,
+    Coinbase = 0x01,
+    MetadataEphemiralNonce = 0x02,
+    CommitmentMask = 0x03,
+    Nonce = 0x04,
+    KernelNonce = 0x05,
+    SenderOffset = 0x06,
 }
 
 impl TransactionKeyManagerBranch {
@@ -76,6 +77,22 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
         }
+    }
+
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "data encryption" => TransactionKeyManagerBranch::DataEncryption,
+            "coinbase" => TransactionKeyManagerBranch::Coinbase,
+            "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
+            "metadata ephemiral nonce" => TransactionKeyManagerBranch::MetadataEphemiralNonce,
+            "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
+            "sender offset" => TransactionKeyManagerBranch::SenderOffset,
+            "nonce" | _ => TransactionKeyManagerBranch::Nonce,
+        }
+    }
+
+    pub fn as_byte(self) -> u8 {
+        self as u8
     }
 }
 

@@ -200,7 +200,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             ) {
                 (true, WalletType::Ledger(ledger)) => {
                     let transport = get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                    let command = ledger.build_command(Instruction::GetPublicKey, index.to_le_bytes().to_vec());
+                    let mut data = index.to_le_bytes().to_vec();
+                    let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
+                    data.extend_from_slice(&(branch_u8 as u64).to_le_bytes());
+                    let command = ledger.build_command(Instruction::GetPublicKey, data);
 
                     match command.execute_with_transport(&transport) {
                         Ok(result) => {

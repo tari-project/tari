@@ -16,7 +16,7 @@ impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
 where D: Default
 {
     pub fn new(label: &'static str, network: u64) -> Self {
-        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network));
+        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network as u8));
         Self { hasher }
     }
 

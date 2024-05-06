@@ -12,6 +12,7 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
+    tari_utilities::ByteArray,
 };
 
 use crate::{
@@ -88,9 +89,6 @@ pub fn handler_get_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&metadata_signature.to_vec());
-    comm.append(&[255, 255, 255, 0, 0, 0, 255]);
-    comm.append(&challenge.to_vec());
-    comm.append(&[255, 255, 255, 0, 0, 0, 255]);
     comm.reply_ok();
 
     Ok(())

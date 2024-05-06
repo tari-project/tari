@@ -8,7 +8,7 @@ use digest::consts::U64;
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     io::SyscallError,
-    ui::gadgets::SingleMessage,
+    ui::gadgets::{MessageScroller, SingleMessage},
 };
 use tari_crypto::{
     hash_domain,
@@ -242,7 +242,7 @@ pub fn derive_from_bip32_key(
 ) -> Result<RistrettoSecretKey, AppSW> {
     let account = u64_to_string(u64_account);
     let index = u64_to_string(u64_index);
-    let key_type = u64_to_string(u64_key_type.to_byte() as u64);
+    let key_type = u64_to_string(u64_key_type.as_byte() as u64);
 
     let mut bip32_path = "m/44'/".to_string();
     bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
@@ -272,12 +272,21 @@ pub fn finalize_metadata_signature_challenge(
     commitment: &PedersenCommitment,
     message: &[u8; 32],
 ) -> [u8; 64] {
-    DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature", network)
-        .chain(&ephemeral_pubkey)
-        .chain(&ephemeral_commitment)
-        .chain(&sender_offset_public_key)
-        .chain(&commitment)
-        .chain(&message)
-        .finalize()
-        .into()
+    let network_str = u64_to_string(network);
+    MessageScroller::new(&network_str).event_loop();
+    MessageScroller::new(&sender_offset_public_key.to_string()).event_loop();
+    MessageScroller::new(&ephemeral_commitment.as_public_key().to_string()).event_loop();
+    MessageScroller::new(&ephemeral_pubkey.to_string()).event_loop();
+    MessageScroller::new(&commitment.as_public_key().to_string()).event_loop();
+
+    let challenge =
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature", network)
+            .chain(ephemeral_pubkey)
+            .chain(ephemeral_commitment)
+            .chain(sender_offset_public_key)
+            .chain(commitment)
+            .chain(&message)
+            .finalize();
+
+    challenge.into()
 }
