@@ -57,7 +57,7 @@ pub enum TxoStage {
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
     Coinbase = 0x01,
-    MetadataEphemiralNonce = 0x02,
+    MetadataEphemeralNonce = 0x02,
     CommitmentMask = 0x03,
     Nonce = 0x04,
     KernelNonce = 0x05,
@@ -73,7 +73,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::Coinbase => "coinbase".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
-            TransactionKeyManagerBranch::MetadataEphemiralNonce => "metadata ephemiral nonce".to_string(),
+            TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
         }
@@ -84,7 +84,7 @@ impl TransactionKeyManagerBranch {
             "data encryption" => TransactionKeyManagerBranch::DataEncryption,
             "coinbase" => TransactionKeyManagerBranch::Coinbase,
             "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
-            "metadata ephemiral nonce" => TransactionKeyManagerBranch::MetadataEphemiralNonce,
+            "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
             "sender offset" => TransactionKeyManagerBranch::SenderOffset,
             "nonce" | _ => TransactionKeyManagerBranch::Nonce,

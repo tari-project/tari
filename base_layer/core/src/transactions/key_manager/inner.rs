@@ -194,7 +194,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => match (
-                branch == &TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key() ||
+                branch == &TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key() ||
                     branch == &TransactionKeyManagerBranch::SenderOffset.get_branch_key(),
                 &self.wallet_type,
             ) {
@@ -909,7 +909,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
         // Use the pubkey, but generate the nonce on ledger
         let (ephemeral_private_nonce_id, ephemeral_pubkey) = self
-            .get_next_key(&TransactionKeyManagerBranch::MetadataEphemiralNonce.get_branch_key())
+            .get_next_key(&TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
         let receiver_partial_metadata_signature = self
             .get_receiver_partial_metadata_signature(
