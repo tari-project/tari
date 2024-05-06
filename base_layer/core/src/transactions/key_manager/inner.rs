@@ -171,14 +171,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await;
         self.db.increment_key_index(branch)?;
         let index = km.increment_key_index(1);
-        let key = km.derive_public_key(index)?.key;
-        Ok((
-            KeyId::Managed {
-                branch: branch.to_string(),
-                index,
-            },
-            key,
-        ))
+        let key_id = KeyId::Managed {
+            branch: branch.to_string(),
+            index,
+        };
+        let key = self.get_public_key_at_key_id(&key_id).await?;
+        Ok((key_id, key))
     }
 
     pub async fn get_static_key(&self, branch: &str) -> Result<TariKeyId, KeyManagerServiceError> {
