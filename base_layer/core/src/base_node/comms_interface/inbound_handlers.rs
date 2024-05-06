@@ -257,6 +257,15 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
+                let last_seen_hash = self.mempool.get_last_seen_hash().await?;
+                if last_seen_hash != FixedHash::default() && best_block_header.hash() != &last_seen_hash {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'.",
+                        last_seen_hash, best_block_header.hash()
+                    );
+                    return Err(CommsInterfaceError::InternalError("Mempool out of sync".to_string()));
+                }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
@@ -988,6 +997,10 @@ where B: BlockchainBackend + 'static
         );
         debug!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
         Ok(target)
+    }
+
+    pub async fn get_last_seen_hash(&self) -> Result<FixedHash, CommsInterfaceError> {
+        self.mempool.get_last_seen_hash().await.map_err(|e| e.into())
     }
 }
 
