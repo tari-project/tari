@@ -36,7 +36,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_utilities::{hidden::Hidden, safe_array::SafeArray, SafePassword};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
     error::KeyManagerError,
@@ -51,6 +51,7 @@ use crate::{
 };
 
 // The version should be incremented for any breaking change to the format
+// NOTE: Only the most recent version is supported!
 // History:
 // 0: initial version
 // 1: fixed incorrect key derivation and birthday genesis
@@ -116,13 +117,12 @@ pub const CIPHER_SEED_CHECKSUM_BYTES: usize = 4;
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize)]
-#[zeroize(drop)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
     entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
-    salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]>,
+    salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES],
 }
 
 // This is a separate type to make the linter happy
@@ -137,10 +137,10 @@ impl CipherSeed {
         let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
         let days = SystemTime::now()
             .duration_since(birthday_genesis_date)
-            .unwrap()
+            .unwrap_or_default() // default to the epoch on error
             .as_secs() /
             SECONDS_PER_DAY;
-        let birthday = u16::try_from(days).unwrap_or(0u16);
+        let birthday = u16::try_from(days).unwrap_or(0u16); // default to the epoch on error
         CipherSeed::new_with_birthday(birthday)
     }
 
@@ -150,7 +150,7 @@ impl CipherSeed {
         const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
         let millis = js_sys::Date::now() as u64;
         let days = millis / MILLISECONDS_PER_DAY;
-        let birthday = u16::try_from(days).unwrap_or(0u16);
+        let birthday = u16::try_from(days).unwrap_or(0u16); // default to the epoch on error
         CipherSeed::new_with_birthday(birthday)
     }
 
@@ -158,7 +158,7 @@ impl CipherSeed {
     fn new_with_birthday(birthday: u16) -> Self {
         let mut entropy = Box::new([0u8; CIPHER_SEED_ENTROPY_BYTES]);
         OsRng.fill_bytes(entropy.as_mut());
-        let mut salt = Box::new([0u8; CIPHER_SEED_MAIN_SALT_BYTES]);
+        let mut salt = [0u8; CIPHER_SEED_MAIN_SALT_BYTES];
         OsRng.fill_bytes(salt.as_mut());
 
         Self {
@@ -256,9 +256,8 @@ impl CipherSeed {
             SafePassword::from_str(DEFAULT_CIPHER_SEED_PASSPHRASE)
                 .expect("Failed to parse default cipher seed passphrase to SafePassword")
         });
-        let salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]> = encrypted_seed
+        let salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES] = encrypted_seed
             .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES)
-            .into_boxed_slice()
             .try_into()
             .map_err(|_| KeyManagerError::InvalidData)?;
         let (encryption_key, mac_key) = Self::derive_keys(&passphrase, salt.as_ref())?;
@@ -312,7 +311,9 @@ impl CipherSeed {
             Key::from_slice(encryption_key.reveal()),
             Nonce::from_slice(encryption_nonce),
         );
-        cipher.apply_keystream(data);
+        cipher
+            .try_apply_keystream(data)
+            .map_err(|_| KeyManagerError::CryptographicError("Unable to apply stream cipher".to_string()))?;
 
         Ok(())
     }
