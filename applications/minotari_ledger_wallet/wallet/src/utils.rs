@@ -244,6 +244,11 @@ pub fn derive_from_bip32_key(
     let index = u64_to_string(u64_index);
     let key_type = u64_to_string(u64_key_type.as_byte() as u64);
 
+    // MessageScroller::new(&"derive").event_loop();
+    // MessageScroller::new(&account).event_loop();
+    // MessageScroller::new(&index).event_loop();
+    // MessageScroller::new(&key_type).event_loop();
+
     let mut bip32_path = "m/44'/".to_string();
     bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
     bip32_path.push_str(&"'/");
@@ -272,12 +277,12 @@ pub fn finalize_metadata_signature_challenge(
     commitment: &PedersenCommitment,
     message: &[u8; 32],
 ) -> [u8; 64] {
-    let network_str = u64_to_string(network);
-    MessageScroller::new(&network_str).event_loop();
-    MessageScroller::new(&sender_offset_public_key.to_string()).event_loop();
-    MessageScroller::new(&ephemeral_commitment.as_public_key().to_string()).event_loop();
-    MessageScroller::new(&ephemeral_pubkey.to_string()).event_loop();
-    MessageScroller::new(&commitment.as_public_key().to_string()).event_loop();
+    // let network_str = u64_to_string(network);
+    // MessageScroller::new(&network_str).event_loop();
+    // MessageScroller::new(&sender_offset_public_key.to_string()).event_loop();
+    // MessageScroller::new(&ephemeral_commitment.as_public_key().to_string()).event_loop();
+    // MessageScroller::new(&ephemeral_pubkey.to_string()).event_loop();
+    // MessageScroller::new(&commitment.as_public_key().to_string()).event_loop();
 
     let challenge =
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature", network)

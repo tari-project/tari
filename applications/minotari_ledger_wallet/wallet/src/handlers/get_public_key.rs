@@ -1,15 +1,10 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::io::Comm;
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
-use crate::{
-    utils::{derive_from_bip32_key, u64_to_string},
-    AppSW,
-    KeyType,
-    RESPONSE_VERSION,
-};
+use crate::{utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION};
 
 pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
@@ -26,10 +21,6 @@ pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     key_bytes.clone_from_slice(&data[16..24]);
     let key_int = u64::from_le_bytes(key_bytes);
     let key = KeyType::from_branch_key(key_int);
-    let second_key = KeyType::from_branch_key(key_int);
-
-    let what_key = u64_to_string(second_key.as_byte() as u64);
-    SingleMessage::new(&what_key).show_and_wait();
 
     let pk = match derive_from_bip32_key(account, index, key) {
         Ok(k) => RistrettoPublicKey::from_secret_key(&k),

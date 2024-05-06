@@ -163,14 +163,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     pub async fn get_next_key(&self, branch: &str) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
-        let mut km = self
-            .key_managers
-            .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .write()
-            .await;
-        self.db.increment_key_index(branch)?;
-        let index = km.increment_key_index(1);
+        let index = {
+            let mut km = self
+                .key_managers
+                .get(branch)
+                .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                .write()
+                .await;
+            self.db.increment_key_index(branch)?;
+            km.increment_key_index(1)
+        };
         let key_id = KeyId::Managed {
             branch: branch.to_string(),
             index,
@@ -543,6 +545,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             &commitment,
             script_message,
         );
+
+        debug!(target: "c::brian::test", "before sending");
+        debug!(target: "c::brian::test", "ephemeral_commitment: {:?}", &ephemeral_commitment.as_public_key());
+        debug!(target: "c::brian::test", "ephemeral_pubkey: {:?}", &ephemeral_pubkey.to_string());
+        debug!(target: "c::brian::test", "script_public_key: {:?}", &&self.get_public_key_at_key_id(script_key_id).await?.to_string());
+        debug!(target: "c::brian::test", "commitment: {:?}", &commitment.to_hex());
+        debug!(target: "c::brian::test", "challenge: {:?}", &challenge);
 
         match (&self.wallet_type, script_key_id) {
             (

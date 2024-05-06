@@ -31,12 +31,14 @@ use std::{
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
+use log::debug;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_hashing::TransactionHashDomain;
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
+use tari_utilities::ByteArray;
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
@@ -383,6 +385,17 @@ impl TransactionInput {
                     script_public_key,
                     commitment,
                 );
+
+                debug!(target: "c::brian::test", "version: {:?}", &self.version);
+                debug!(target: "c::brian::test", "script_signature.ephemeral_commitment: {:?}", &self.script_signature.ephemeral_commitment().as_public_key());
+                debug!(target: "c::brian::test", "script_signature.ephemeral_commitment: {:?}", &self.script_signature.ephemeral_commitment().to_vec());
+                debug!(target: "c::brian::test", "script_signature.ephemeral_pubkey: {:?}", &self.script_signature.ephemeral_pubkey());
+                debug!(target: "c::brian::test", "script_signature.ephemeral_pubkey: {:?}", &self.script_signature.ephemeral_pubkey().to_vec());
+                debug!(target: "c::brian::test", "script_public_key: {:?}", &script_public_key);
+                debug!(target: "c::brian::test", "script_public_key: {:?}", &script_public_key.to_vec());
+                debug!(target: "c::brian::test", "commitment: {:?}", &script_public_key.to_vec());
+                debug!(target: "c::brian::test", "challenge: {:?}", &challenge);
+
                 if self.script_signature.verify_challenge(
                     commitment,
                     script_public_key,

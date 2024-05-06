@@ -12,7 +12,6 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
-    tari_utilities::ByteArray,
 };
 
 use crate::{
