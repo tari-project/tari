@@ -122,9 +122,11 @@ where B: BlockchainBackend + 'static
             .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
         p2p_config.transport.tor.identity = tor_identity;
 
+        let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
+                user_agent,
                 peer_seeds.clone(),
                 base_node_config.network,
                 self.node_identity.clone(),

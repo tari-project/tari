@@ -150,9 +150,6 @@ track_reorgs = true
 # Enables periodic socket-level liveness checks. Default: Disabled
 listener_self_liveness_check_interval = 15
 
-# User agent string for this node
-#user_agent = ""
-
 # The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
 # sessions.
 #rpc_max_simultaneous_sessions = 100

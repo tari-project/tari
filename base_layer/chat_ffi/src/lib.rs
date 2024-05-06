@@ -147,8 +147,8 @@ pub unsafe extern "C" fn create_chat_client(
             return ptr::null_mut();
         },
     };
-
-    let mut client = Client::new(identity, (*config).clone());
+    let user_agent = format!("tari/chat_ffi/{}", env!("CARGO_PKG_VERSION"));
+    let mut client = Client::new(identity, (*config).clone(), user_agent);
 
     if let Ok(()) = runtime.block_on(client.initialize()) {
         let contacts_handler = match client.contacts.clone() {
@@ -247,8 +247,8 @@ pub unsafe extern "C" fn sideload_chat_client(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-
-    let mut client = Client::sideload((*config).clone(), (*contacts_handle).clone());
+    let user_agent = format!("tari/chat_ffi/{}", env!("CARGO_PKG_VERSION"));
+    let mut client = Client::sideload((*config).clone(), (*contacts_handle).clone(), user_agent);
     if let Ok(()) = runtime.block_on(client.initialize()) {
         let mut callback_handler = CallbackHandler::new(
             (*contacts_handle).clone(),

@@ -61,8 +61,8 @@ pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: Path
         .map(|p| p.to_short_string())
         .collect::<Vec<String>>()
         .into();
-
-    let mut client = Client::new(identity, config);
+    let user_agent = format!("tari/integration_tests/{}", env!("CARGO_PKG_VERSION"));
+    let mut client = Client::new(identity, config, user_agent);
 
     client.initialize().await.expect("the chat client to spawn");
     client
