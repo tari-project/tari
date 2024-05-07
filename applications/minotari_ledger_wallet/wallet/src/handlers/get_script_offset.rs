@@ -1,11 +1,17 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use ledger_device_sdk::io::Comm;
-use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
+use ledger_device_sdk::{
+    io::Comm,
+    ui::gadgets::{MessageScroller, SingleMessage},
+};
+use tari_crypto::{
+    ristretto::RistrettoSecretKey,
+    tari_utilities::{hex::Hex, ByteArray},
+};
 
 use crate::{
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, u64_to_string},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -47,7 +53,7 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) {
     account_bytes.clone_from_slice(&data[0..8]);
     offset_ctx.account = u64::from_le_bytes(account_bytes);
 
-    if data.len() < 15 {
+    if data.len() < 16 {
         offset_ctx.total_offset_indexes = 0;
     } else {
         let mut total_offset_keys = [0u8; 8];
@@ -55,7 +61,7 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) {
         offset_ctx.total_offset_indexes = u64::from_le_bytes(total_offset_keys);
     }
 
-    if data.len() < 23 {
+    if data.len() < 24 {
         offset_ctx.total_commitment_keys = 0;
     } else {
         let mut total_commitment_keys = [0u8; 8];
@@ -95,7 +101,6 @@ pub fn handler_get_script_offset(
 
         let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::SenderOffset)?;
         offset_ctx.total_sender_offset_private_key = &offset_ctx.total_sender_offset_private_key + &offset;
-        return Ok(());
     }
 
     let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
@@ -105,7 +110,6 @@ pub fn handler_get_script_offset(
         let k = alpha_hasher(alpha, blinding_factor)?;
 
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + &k;
-        return Ok(());
     }
 
     if more {

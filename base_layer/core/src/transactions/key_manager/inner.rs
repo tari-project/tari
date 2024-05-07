@@ -786,17 +786,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let num_commitments = derived_key_commitments.len() as u64;
                 let num_offset_key = sender_offset_indexes.len() as u64;
 
+                debug!(target: "c::brian::test", "num_offset_key {:?}", num_offset_key);
+                debug!(target: "c::brian::test", "num_commitments {:?}", num_commitments);
+
                 let mut instructions = num_offset_key.to_le_bytes().to_vec();
-                instructions.clone_from_slice(&num_commitments.to_le_bytes());
+                instructions.extend_from_slice(&num_commitments.to_le_bytes());
 
                 let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
                 data.push(total_script_private_key.to_vec());
+                debug!(target: "c::brian::test", "total script private key {:?}", total_script_private_key.to_hex());
 
                 for sender_offset_index in sender_offset_indexes {
+                    debug!(target: "c::brian::test", "offset index {:?}", sender_offset_index);
                     data.push(sender_offset_index.to_le_bytes().to_vec());
                 }
 
                 for derived_key_commitment in derived_key_commitments {
+                    debug!(target: "c::brian::test", "commitments {:?}", derived_key_commitment.to_hex());
                     data.push(derived_key_commitment.to_vec());
                 }
 
