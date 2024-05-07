@@ -20,7 +20,7 @@ use tari_crypto::{
 
 use crate::{
     alloc::string::ToString,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, u64_to_string},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, special_hash, u64_to_string},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -93,6 +93,8 @@ pub fn handler_get_script_signature(
 
     MessageScroller::new(&alpha_pk.to_string()).event_loop();
     MessageScroller::new(&pk.to_string()).event_loop();
+    MessageScroller::new(&(&pk + alpha_pk).to_string()).event_loop();
+    special_hash();
 
     let value: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
     let spend_private_key: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;

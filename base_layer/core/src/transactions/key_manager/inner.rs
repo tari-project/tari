@@ -90,7 +90,7 @@ use crate::{
 };
 
 hash_domain!(
-    KeyManagerHashingDomain,
+    KeyManagerTransactionsHashDomain,
     "com.tari.base_layer.core.transactions.key_manager",
     1
 );
@@ -260,14 +260,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     fn get_domain_hasher(
         label: &str,
-    ) -> Result<DomainSeparatedHasher<Blake2b<U64>, KeyManagerHashingDomain>, KeyManagerServiceError> {
+    ) -> Result<DomainSeparatedHasher<Blake2b<U64>, KeyManagerTransactionsHashDomain>, KeyManagerServiceError> {
         let tx_label = label.parse::<TransactionKeyManagerLabel>().map_err(|e| {
             KeyManagerServiceError::UnknownError(format!("Could not retrieve label for derived key: {}", e))
         })?;
         match tx_label {
-            TransactionKeyManagerLabel::ScriptKey => {
-                Ok(DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key"))
-            },
+            TransactionKeyManagerLabel::ScriptKey => Ok(DomainSeparatedHasher::<
+                Blake2b<U64>,
+                KeyManagerTransactionsHashDomain,
+            >::new_with_label("script key")),
         }
     }
 
@@ -553,6 +554,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         debug!(target: "c::brian::test", "commitment: {:?}", &commitment.to_hex());
         debug!(target: "c::brian::test", "challenge: {:?}", &challenge);
 
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+        let hasher = hasher.chain("test input".as_bytes()).finalize();
+        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).unwrap();
+        debug!(target: "c::brian::test", "hasher k: {:?}", &private_key.to_hex());
+        let public_key = PublicKey::from_secret_key(&private_key);
+        debug!(target: "c::brian::test", "hasher pk: {:?}", &public_key.to_string());
+
         match (&self.wallet_type, script_key_id) {
             (
                 WalletType::Ledger(ledger),
@@ -833,7 +842,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
         let nonce_a = match range_proof_type {
             RangeProofType::BulletProofPlus => {
-                let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
+                let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     "metadata_signature_ephemeral_nonce_a",
                 );
                 let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
@@ -844,7 +853,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
         }?;
 
-        let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
+        let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             "metadata_signature_ephemeral_nonce_b",
         );
         let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
@@ -1089,8 +1098,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         spend_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
-        let hasher =
-            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
+        let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+            "kernel_excess_offset",
+        );
         let spending_private_key = self.get_private_key(spend_key_id).await?;
         let nonce_private_key = self.get_private_key(nonce_id).await?;
         let key_hash = hasher

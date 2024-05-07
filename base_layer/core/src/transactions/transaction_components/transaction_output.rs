@@ -423,6 +423,17 @@ impl TransactionOutput {
         debug!(target: "c::brian::test", "commitment: {:?}", &commitment.to_vec());
         debug!(target: "c::brian::test", "message: {:?}", &message.to_hex());
         debug!(target: "c::brian::test", "message: {:?}", &message.to_vec());
+        let label = "metadata_signature";
+        let input = [1u8; 64];
+
+        // Generate a mainnet hash
+        let hash_mainnet = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new_with_network(
+            label,
+            Network::LocalNet,
+        )
+        .chain(&input)
+        .finalize();
+        debug!(target: "c::brian::test", "hash_mainnet: {:?}", &hash_mainnet);
 
         TransactionOutput::finalize_metadata_signature_challenge(
             version,

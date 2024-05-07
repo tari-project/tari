@@ -13,9 +13,9 @@ use ledger_device_sdk::{
 use tari_crypto::{
     hash_domain,
     hashing::DomainSeparatedHasher,
-    keys::SecretKey,
+    keys::{PublicKey, SecretKey},
     ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
-    tari_utilities::ByteArray,
+    tari_utilities::{hex::Hex, ByteArray},
 };
 use zeroize::Zeroizing;
 
@@ -28,7 +28,11 @@ use crate::{
 };
 
 hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
-hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
+hash_domain!(
+    KeyManagerTransactionsHashDomain,
+    "com.tari.base_layer.core.transactions.key_manager",
+    1
+);
 hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
 
 /// BIP32 path stored as an array of [`u32`].
@@ -228,7 +232,7 @@ pub fn alpha_hasher(
     alpha: RistrettoSecretKey,
     blinding_factor: RistrettoSecretKey,
 ) -> Result<RistrettoSecretKey, AppSW> {
-    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("script key");
+    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
     let hasher = hasher.chain(blinding_factor.as_bytes()).finalize();
     let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
 
@@ -294,4 +298,14 @@ pub fn finalize_metadata_signature_challenge(
             .finalize();
 
     challenge.into()
+}
+
+pub fn special_hash() {
+    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+    let hasher = hasher.chain("test input".as_bytes()).finalize();
+    let private_key = RistrettoSecretKey::from_uniform_bytes(hasher.as_ref()).unwrap();
+    MessageScroller::new(&private_key.to_hex()).event_loop();
+    let public_key = RistrettoPublicKey::from_secret_key(&private_key);
+
+    MessageScroller::new(&public_key.to_string()).event_loop();
 }
