@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.13](https://github.com/tari-project/tari/compare/v1.0.0-pre.12...v1.0.0-pre.13) (2024-05-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove user agent config option (#6320)
+* update emojis to match yat emojis (#6288)
+
+### Features
+
+* add check to verify mempool state ([#6316](https://github.com/tari-project/tari/issues/6316)) ([925d29a](https://github.com/tari-project/tari/commit/925d29a20cf3e9e1dc7d32b512e2113c70b110fb))
+* add sent at timestamp to chat messages ([#6314](https://github.com/tari-project/tari/issues/6314)) ([4adcb26](https://github.com/tari-project/tari/commit/4adcb26544e897ade7c02b5d9d1e432b1ae69df5))
+* esmeralda testnet reset ([#6311](https://github.com/tari-project/tari/issues/6311)) ([b7b0ea3](https://github.com/tari-project/tari/commit/b7b0ea3b0c25638fc3e0addb0d2f7f0979545ed2))
+* remove user agent config option ([#6320](https://github.com/tari-project/tari/issues/6320)) ([6b21e05](https://github.com/tari-project/tari/commit/6b21e0592412c632db774e0f1292f302f91cd3c9))
+* update emojis to match yat emojis ([#6288](https://github.com/tari-project/tari/issues/6288)) ([cf579f5](https://github.com/tari-project/tari/commit/cf579f527c31912c0a1105fa3b51aa2b63c29407))
+* updates the emoji ID API to be more idiomatic ([#6287](https://github.com/tari-project/tari/issues/6287)) ([f538714](https://github.com/tari-project/tari/commit/f538714801f6ab61f20a297c8714385a27e1aca2))
+
+
+### Bug Fixes
+
+* change mmproxy to select new monerod on error ([#6321](https://github.com/tari-project/tari/issues/6321)) ([2a9250b](https://github.com/tari-project/tari/commit/2a9250b91a1134df675203ea5c7c43deb2abdc61))
+* **comms/core:** upgrade to yamux 0.13 ([#6317](https://github.com/tari-project/tari/issues/6317)) ([1b5e217](https://github.com/tari-project/tari/commit/1b5e21757cfc99e8876c3a4c6dc20c85e886bb72))
+* potential overflow of coinbase calc ([#6306](https://github.com/tari-project/tari/issues/6306)) ([030d389](https://github.com/tari-project/tari/commit/030d389768f6e79a1e2319eb13d44ccb4392be55))
+* reload old wallets ([#6308](https://github.com/tari-project/tari/issues/6308)) ([4cc082d](https://github.com/tari-project/tari/commit/4cc082debdfc0e284a92b57f318165a04d61ce07))
+
 ## [1.0.0-pre.12](https://github.com/tari-project/tari/compare/v1.0.0-pre.11a...v1.0.0-pre.12) (2024-04-22)
 
 
