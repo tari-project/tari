@@ -95,6 +95,7 @@ jobs:
     outputs:
       TARI_NETWORK_DIR: ${{ steps.set-tari-network.outputs.TARI_NETWORK_DIR }}
       TARI_VERSION: ${{ steps.set-tari-vars.outputs.TARI_VERSION }}
+      VSHA_SHORT: ${{ steps.set-tari-vars.outputs.VSHA_SHORT }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix-prep.outputs.matrix) }}
@@ -130,7 +131,9 @@ jobs:
         shell: bash
         run: |
           echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
-          echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          VSHA_SHORT=$(git rev-parse --short HEAD)
+          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
+          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_OUTPUT
           TARI_VERSION=$(awk -F ' = ' '$1 ~ /^version/ \
             { gsub(/["]/, "", $2); printf("%s",$2) }' \
             "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
@@ -573,6 +576,99 @@ jobs:
         with:
           name: ${{ env.TS_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TS_DIST }}-diag-utils/*.zip*"
+
+  macOS-universal-assemble:
+    name: macOS universal assemble
+    needs: builds
+
+    env:
+      TARI_VERSION: ${{ needs.builds.outputs.TARI_VERSION }}
+      VSHA_SHORT: ${{ needs.builds.outputs.VSHA_SHORT }}
+      SHARUN: "shasum --algorithm 256"
+
+    continue-on-error: true
+
+    runs-on: macos-14
+
+    steps:
+      - name: Download macOS binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: osxuni
+          # macos - x86_64 / arm64
+          pattern: ${{ env.TS_FILENAME }}_archive-macos-*
+          merge-multiple: true
+
+      - name: Set environment variables for macOS universal
+        shell: bash
+        run: |
+          BINFN="${TS_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}"
+          echo "BINFN=${BINFN}" >> $GITHUB_ENV
+
+      - name: Verify checksums and extract
+        shell: bash
+        working-directory: osxuni
+        run: |
+          ls -alhtR
+          ${SHARUN} --ignore-missing --check \
+            "${{ env.BINFN }}-macos-x86_64.zip.sha256"
+          ${SHARUN} --ignore-missing --check \
+            "${{ env.BINFN }}-macos-arm64.zip.sha256"
+          ls -alhtR
+          mkdir macos-universal macos-x86_64 macos-arm64
+          cd macos-x86_64
+          7z e "../${{ env.BINFN }}-macos-x86_64.zip"
+          cd ../macos-arm64
+          7z e "../${{ env.BINFN }}-macos-arm64.zip"
+
+      - name: Assemble macOS universal binaries
+        shell: bash
+        working-directory: osxuni
+        run: |
+          ls -alhtR
+          ARRAY_FILES=( $(echo ${TS_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
+          for FILE in "${ARRAY_FILES[@]}"; do
+            echo "processing binary file - ${FILE}"
+            lipo -create -output macos-universal/${FILE} \
+              macos-x86_64/${FILE} \
+              macos-arm64/${FILE}
+          done
+          ARRAY_LIBS=( $(echo ${TS_LIBRARIES} | tr ', ' '\n') )
+          for FILE in "${ARRAY_LIBS[@]}"; do
+            echo "processing library file - lib${FILE}.dylib"
+            lipo -create -output macos-universal/lib${FILE}.dylib \
+              macos-x86_64/lib${FILE}.dylib \
+              macos-arm64/lib${FILE}.dylib
+          done
+          ls -alhtR macos-universal
+
+      - name: Archive and Checksum Binaries
+        shell: bash
+        working-directory: osxuni/macos-universal
+        run: |
+          set -xo pipefail
+          BINFILE="${BINFN}-macos-universal"
+          echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
+          echo "Archive ${BINFILE} into ${BINFILE}.zip"
+          echo "Compute files shasum into ${BINFILE}.sha256"
+          ${SHARUN} * >> "${BINFILE}.sha256"
+          echo "Show the shasum"
+          cat "${BINFILE}.sha256"
+          echo "Checksum verification for files is "
+          ${SHARUN} --check "${BINFILE}.sha256"
+          7z a "${BINFILE}.zip" *
+          echo "Compute archive shasum into ${BINFILE}.zip.sha256"
+          ${SHARUN} "${BINFILE}.zip" >> "${BINFILE}.zip.sha256"
+          echo "Show the shasum from ${BINFILE}.zip.sha256"
+          cat "${BINFILE}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${BINFILE}.zip.sha256"
+
+      - name: Artifact upload for Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TS_FILENAME }}_archive-macos-universal
+          path: "${{ github.workspace }}/osxuni/macos-universal/${{ env.BINFILE }}.zip*"
 
   create-release:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
