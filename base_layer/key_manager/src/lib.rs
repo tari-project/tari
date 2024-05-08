@@ -4,11 +4,7 @@
 use std::str::FromStr;
 
 use cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
-use digest::Digest;
-use tari_crypto::{
-    hash_domain,
-    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
-};
+use tari_crypto::hash_domain;
 use tari_utilities::{hidden::Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::Zeroize;
 
@@ -34,12 +30,6 @@ const LABEL_ARGON_ENCODING: &str = "argon2_encoding";
 const LABEL_CHACHA20_ENCODING: &str = "chacha20_encoding";
 const LABEL_MAC_GENERATION: &str = "mac_generation";
 const LABEL_DERIVE_KEY: &str = "derive_key";
-
-pub(crate) fn mac_domain_hasher<D: Digest + LengthExtensionAttackResistant>(
-    label: &'static str,
-) -> DomainSeparatedHasher<D, KeyManagerDomain> {
-    DomainSeparatedHasher::<D, KeyManagerDomain>::new_with_label(label)
-}
 
 hidden_type!(CipherSeedEncryptionKey, SafeArray<u8, CIPHER_SEED_ENCRYPTION_KEY_BYTES>);
 hidden_type!(CipherSeedMacKey, SafeArray< u8, CIPHER_SEED_MAC_KEY_BYTES>);

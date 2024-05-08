@@ -26,13 +26,13 @@ use derivative::Derivative;
 use digest::{consts::U64, typenum::IsEqual, Digest};
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
-    hashing::LengthExtensionAttackResistant,
+    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
     keys::{PublicKey, SecretKey},
     tari_utilities::byte_array::ByteArrayError,
 };
 use zeroize::Zeroize;
 
-use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
+use crate::{cipher_seed::CipherSeed, KeyManagerDomain, LABEL_DERIVE_KEY};
 
 #[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
@@ -102,7 +102,7 @@ where
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
         // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
         // input
-        let derive_key = mac_domain_hasher::<D>(LABEL_DERIVE_KEY)
+        let derive_key = DomainSeparatedHasher::<D, KeyManagerDomain>::new_with_label(LABEL_DERIVE_KEY)
             .chain(self.seed.entropy())
             .chain(self.branch_seed.as_bytes())
             .chain(key_index.to_le_bytes())

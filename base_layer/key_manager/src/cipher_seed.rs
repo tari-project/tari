@@ -35,15 +35,16 @@ use digest::consts::U32;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
+use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_utilities::{hidden::Hidden, safe_array::SafeArray, SafePassword};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
     error::KeyManagerError,
-    mac_domain_hasher,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
     CipherSeedEncryptionKey,
     CipherSeedMacKey,
+    KeyManagerDomain,
     SeedWords,
     LABEL_ARGON_ENCODING,
     LABEL_CHACHA20_ENCODING,
@@ -301,9 +302,10 @@ impl CipherSeed {
         salt: &[u8],
     ) -> Result<(), KeyManagerError> {
         // The ChaCha20 nonce is derived from the main salt
-        let encryption_nonce = mac_domain_hasher::<Blake2b<U32>>(LABEL_CHACHA20_ENCODING)
-            .chain(salt)
-            .finalize();
+        let encryption_nonce =
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(LABEL_CHACHA20_ENCODING)
+                .chain(salt)
+                .finalize();
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
         // Encrypt/decrypt the data
@@ -347,21 +349,23 @@ impl CipherSeed {
             return Err(KeyManagerError::InvalidData);
         }
 
-        Ok(mac_domain_hasher::<Blake2b<U32>>(LABEL_MAC_GENERATION)
-            .chain(birthday)
-            .chain(entropy)
-            .chain([cipher_seed_version])
-            .chain(salt)
-            .chain(mac_key.reveal())
-            .finalize()
-            .as_ref()[..CIPHER_SEED_MAC_BYTES]
-            .to_vec())
+        Ok(
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(LABEL_MAC_GENERATION)
+                .chain(birthday)
+                .chain(entropy)
+                .chain([cipher_seed_version])
+                .chain(salt)
+                .chain(mac_key.reveal())
+                .finalize()
+                .as_ref()[..CIPHER_SEED_MAC_BYTES]
+                .to_vec(),
+        )
     }
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
     fn derive_keys(passphrase: &SafePassword, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
-        let argon2_salt = mac_domain_hasher::<Blake2b<U32>>(LABEL_ARGON_ENCODING)
+        let argon2_salt = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(LABEL_ARGON_ENCODING)
             .chain(salt)
             .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
