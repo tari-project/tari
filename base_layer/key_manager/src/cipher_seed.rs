@@ -46,9 +46,9 @@ use crate::{
     CipherSeedMacKey,
     KeyManagerDomain,
     SeedWords,
-    LABEL_ARGON_ENCODING,
-    LABEL_CHACHA20_ENCODING,
-    LABEL_MAC_GENERATION,
+    HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE,
+    HASHER_LABEL_CIPHER_SEED_MAC,
+    HASHER_LABEL_CIPHER_SEED_PBKDF_SALT,
 };
 
 // The version should be incremented for any breaking change to the format
@@ -56,7 +56,8 @@ use crate::{
 // History:
 // 0: initial version
 // 1: fixed incorrect key derivation and birthday genesis
-const CIPHER_SEED_VERSION: u8 = 1u8;
+// 2: updated hasher domain labels and MAC input ordering
+const CIPHER_SEED_VERSION: u8 = 2u8;
 
 pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1640995200; // seconds to 2022-01-01 00:00:00 UTC
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED"; // the default passphrase if none is supplied
@@ -181,9 +182,9 @@ impl CipherSeed {
 
         // Generate the MAC
         let mac = Self::generate_mac(
+            CIPHER_SEED_VERSION,
             &self.birthday.to_le_bytes(),
             self.entropy.as_ref(),
-            CIPHER_SEED_VERSION,
             self.salt.as_ref(),
             &mac_key,
         )?;
@@ -280,7 +281,7 @@ impl CipherSeed {
         let birthday = u16::from_le_bytes(birthday_bytes);
 
         // Generate the MAC
-        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.reveal(), version, salt.as_ref(), &mac_key)?;
+        let expected_mac = Self::generate_mac(version, &birthday_bytes, entropy.reveal(), salt.as_ref(), &mac_key)?;
 
         // Verify the MAC in constant time to avoid leaking data
         if mac.ct_eq(&expected_mac).into() {
@@ -302,10 +303,11 @@ impl CipherSeed {
         salt: &[u8],
     ) -> Result<(), KeyManagerError> {
         // The ChaCha20 nonce is derived from the main salt
-        let encryption_nonce =
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(LABEL_CHACHA20_ENCODING)
-                .chain(salt)
-                .finalize();
+        let encryption_nonce = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(
+            HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE,
+        )
+        .chain(salt)
+        .finalize();
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
         // Encrypt/decrypt the data
@@ -332,9 +334,9 @@ impl CipherSeed {
 
     /// Generate a MAC using Blake2b
     fn generate_mac(
+        version: u8,
         birthday: &[u8],
         entropy: &[u8],
-        cipher_seed_version: u8,
         salt: &[u8],
         mac_key: &CipherSeedMacKey,
     ) -> Result<Vec<u8>, KeyManagerError> {
@@ -350,10 +352,10 @@ impl CipherSeed {
         }
 
         Ok(
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(LABEL_MAC_GENERATION)
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(HASHER_LABEL_CIPHER_SEED_MAC)
+                .chain([version])
                 .chain(birthday)
                 .chain(entropy)
-                .chain([cipher_seed_version])
                 .chain(salt)
                 .chain(mac_key.reveal())
                 .finalize()
@@ -365,9 +367,11 @@ impl CipherSeed {
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
     fn derive_keys(passphrase: &SafePassword, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
-        let argon2_salt = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(LABEL_ARGON_ENCODING)
-            .chain(salt)
-            .finalize();
+        let argon2_salt = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(
+            HASHER_LABEL_CIPHER_SEED_PBKDF_SALT,
+        )
+        .chain(salt)
+        .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
 
         // Run Argon2 with enough output to accommodate both keys, so we only run it once

@@ -26,10 +26,10 @@ pub mod schema;
 
 hash_domain!(KeyManagerDomain, "com.tari.base_layer.key_manager", 1);
 
-const LABEL_ARGON_ENCODING: &str = "argon2_encoding";
-const LABEL_CHACHA20_ENCODING: &str = "chacha20_encoding";
-const LABEL_MAC_GENERATION: &str = "mac_generation";
-const LABEL_DERIVE_KEY: &str = "derive_key";
+const HASHER_LABEL_CIPHER_SEED_PBKDF_SALT: &str = "cipher_seed_pbkdf_salt";
+const HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE: &str = "cipher_seed_encryption_nonce";
+const HASHER_LABEL_CIPHER_SEED_MAC: &str = "cipher_seed_mac";
+const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
 
 hidden_type!(CipherSeedEncryptionKey, SafeArray<u8, CIPHER_SEED_ENCRYPTION_KEY_BYTES>);
 hidden_type!(CipherSeedMacKey, SafeArray< u8, CIPHER_SEED_MAC_KEY_BYTES>);
