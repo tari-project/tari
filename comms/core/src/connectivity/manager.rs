@@ -501,9 +501,10 @@ impl ConnectivityManagerActor {
 
     fn clean_connection_pool(&mut self) {
         let cleared_states = self.pool.filter_drain(|state| {
-            state.status() == ConnectionStatus::Failed ||
-                state.status() == ConnectionStatus::Disconnected(Minimized::Yes) ||
-                state.status() == ConnectionStatus::Disconnected(Minimized::No)
+            matches!(
+                state.status(),
+                ConnectionStatus::Failed | ConnectionStatus::Disconnected(_)
+            )
         });
 
         if !cleared_states.is_empty() {

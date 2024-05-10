@@ -407,10 +407,6 @@ impl StoreAndForwardService {
                             })
                             .collect::<Vec<_>>();
                         active_connections_with_distance.sort_by(|a, b| a.1.cmp(&b.1));
-                        // TODO: Hansie remove this assert!
-                        for i in 1..active_connections_with_distance.len() - 1 {
-                            assert!(active_connections_with_distance[i].1 >= active_connections_with_distance[i - 1].1);
-                        }
                         let saf_ignore_distance = active_connections_with_distance
                             .get(threshold - 1)
                             .map(|(_, distance)| distance)

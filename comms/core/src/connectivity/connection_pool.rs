@@ -237,10 +237,7 @@ impl ConnectionPool {
     }
 
     pub fn count_disconnected(&self) -> usize {
-        self.count_filtered(|c| {
-            c.status() == ConnectionStatus::Disconnected(Minimized::Yes) ||
-                c.status() == ConnectionStatus::Disconnected(Minimized::No)
-        })
+        self.count_filtered(|c| matches!(c.status(), ConnectionStatus::Disconnected(_)))
     }
 
     pub fn count_entries(&self) -> usize {
