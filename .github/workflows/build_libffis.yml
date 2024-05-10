@@ -247,9 +247,8 @@ jobs:
       - name: Download iOS libffiss for ${{ matrix.libffis }}
         uses: actions/download-artifact@v4
         with:
-          # wildcard downloads not supported yet ( minotari_*_ffi-ios-* )
-          # name: ${{ matrix.libffis }}-ios
           path: libffiss
+          pattern: lib${{ matrix.libffis }}-ios-*
 
       - name: Verify checksums
         shell: bash
