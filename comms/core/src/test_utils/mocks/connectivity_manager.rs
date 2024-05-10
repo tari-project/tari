@@ -293,6 +293,11 @@ impl ConnectivityManagerMock {
                     .await;
             },
             WaitStarted(reply) => reply.send(()).unwrap(),
+            GetNodeIdentity(_) => unimplemented!(),
+            GetAllowList(reply) => {
+                let _result = reply.send(vec![]);
+            },
+            GetMinimizeConnectionsThreshold(_) => unimplemented!(),
         }
     }
 }

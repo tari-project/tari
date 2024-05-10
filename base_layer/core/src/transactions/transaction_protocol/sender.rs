@@ -472,7 +472,7 @@ impl SenderTransactionProtocol {
         Ok((public_nonce, public_excess))
     }
 
-    /// Add partial signatures, add the the recipient info to sender state and move to the Finalizing state
+    /// Add partial signatures, add the recipient info to sender state and move to the Finalizing state
     pub async fn add_single_recipient_info<KM: TransactionKeyManagerInterface>(
         &mut self,
         mut rec: RecipientSignedMessage,

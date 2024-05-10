@@ -189,7 +189,7 @@ listener_self_liveness_check_interval = 15
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
 # better privacy
 #tor.proxy_bypass_for_outbound_tcp = false
-# If set, instructs tor to forward traffic the the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
+# If set, instructs tor to forward traffic the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
 #tor.forward_address =
 # If set, the listener will bind to this address instead of the forward_address. You need to make sure that this listener is connectable from the forward_address.
 #tor.listener_address_override =
@@ -213,7 +213,9 @@ database_url = "data/base_node/dht.db"
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
 #num_neighbouring_nodes = 8
 # Number of random peers to include. Default: 4
-#num_random_nodes=  4
+#num_random_nodes = 4
+# Connections above the configured number of neighbouring and random nodes will be removed (default: false)
+#minimize_connections = false
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
 # Send to this many peers when using the propagate strategy. Default: 4

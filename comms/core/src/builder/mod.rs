@@ -70,6 +70,7 @@ use crate::{
 /// # #[tokio::main]
 /// # async fn main() {
 /// use std::env::temp_dir;
+/// use tari_comms::connectivity::ConnectivityConfig;
 ///
 /// use tari_storage::{
 ///     lmdb_store::{LMDBBuilder, LMDBConfig},
@@ -126,6 +127,7 @@ pub struct CommsBuilder {
     connection_manager_config: ConnectionManagerConfig,
     connectivity_config: ConnectivityConfig,
     shutdown_signal: Option<ShutdownSignal>,
+    maintain_n_closest_connections_only: Option<usize>,
 }
 
 impl Default for CommsBuilder {
@@ -139,6 +141,7 @@ impl Default for CommsBuilder {
             connection_manager_config: ConnectionManagerConfig::default(),
             connectivity_config: ConnectivityConfig::default(),
             shutdown_signal: None,
+            maintain_n_closest_connections_only: None,
         }
     }
 }
@@ -289,6 +292,17 @@ impl CommsBuilder {
     /// Enable and set interval for self-liveness checks, or None to disable it (default)
     pub fn set_self_liveness_check(mut self, check_interval: Option<Duration>) -> Self {
         self.connection_manager_config.self_liveness_self_check_interval = check_interval;
+        self
+    }
+
+    /// The closest number of peer connections to maintain; connections above the threshold will be removed
+    pub fn with_minimize_connections(mut self, connections: Option<usize>) -> Self {
+        self.maintain_n_closest_connections_only = connections;
+        self.connectivity_config.maintain_n_closest_connections_only = connections;
+        if let Some(val) = connections {
+            self.connectivity_config.reaper_min_connection_threshold = val;
+        }
+        self.connectivity_config.connection_pool_refresh_interval = Duration::from_secs(180);
         self
     }
 

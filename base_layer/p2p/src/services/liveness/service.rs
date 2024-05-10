@@ -28,6 +28,7 @@ use tari_comms::{
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
     types::CommsPublicKey,
+    Minimized,
     PeerManager,
 };
 use tari_comms_dht::{
@@ -360,7 +361,7 @@ where
                     target: LOG_TARGET,
                     "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
                 );
-                conn.disconnect().await?;
+                conn.disconnect(Minimized::No).await?;
             }
         }
         self.state.clear_failed_pings();

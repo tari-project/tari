@@ -208,6 +208,11 @@ impl Peer {
         self.addresses.last_seen()
     }
 
+    /// Provides info about the failure status of all addresses
+    pub fn all_addresses_failed(&self) -> bool {
+        self.addresses.iter().all(|a| a.last_failed_reason().is_some())
+    }
+
     /// Provides that length of time since the last successful interaction with the peer
     pub fn last_seen_since(&self) -> Option<Duration> {
         self.last_seen()

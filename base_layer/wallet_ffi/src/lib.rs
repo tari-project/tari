@@ -27,7 +27,7 @@
 //!    becoming a `CompletedTransaction` with the `Completed` status. This means that the transaction has been
 //!    negotiated between the parties and is now ready to be broadcast to the Base Layer. The funds are still encumbered
 //!    as pending because the transaction has not been mined yet.
-//! 3. The finalized `CompletedTransaction` will be sent back to the the receiver so that they have a copy.
+//! 3. The finalized `CompletedTransaction` will be sent back to the receiver so that they have a copy.
 //! 4. The wallet will broadcast the `CompletedTransaction` to a Base Node to be added to the mempool. Its status will
 //!    move from `Completed` to `Broadcast`.
 //! 5. Wait until the transaction is mined. The `CompleteTransaction` status will then move from `Broadcast` to `Mined`
@@ -131,7 +131,13 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
+use tari_comms_dht::{
+    store_forward::SafConfig,
+    DbConnectionUrl,
+    DhtConfig,
+    DhtConnectivityConfig,
+    NetworkDiscoveryConfig,
+};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,
@@ -818,7 +824,7 @@ pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
 ///
 /// # Safety
 /// None
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_uint, error_out: *mut c_int) -> c_uchar {
@@ -1778,7 +1784,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_length(
 ///
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_at(
@@ -2884,7 +2890,7 @@ pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_
 ///
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_at(
@@ -3185,7 +3191,7 @@ pub unsafe extern "C" fn completed_transactions_get_length(
 /// # Safety
 /// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
 /// prevent a memory leak
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_at(
@@ -3278,7 +3284,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
 /// # Safety
 /// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
 /// TariPendingOutboundTransaction to prevent a memory leak
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_at(
@@ -3370,7 +3376,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
 /// # Safety
 /// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
 /// TariPendingOutboundTransaction to prevent a memory leak
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_at(
@@ -4851,6 +4857,9 @@ pub unsafe extern "C" fn comms_config_create(
                 max_concurrent_inbound_tasks: 25,
                 max_concurrent_outbound_tasks: 50,
                 dht: DhtConfig {
+                    num_neighbouring_nodes: 5,
+                    num_random_nodes: 1,
+                    minimize_connections: true,
                     discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                     database_url: DbConnectionUrl::File(dht_database_path),
                     auto_join: true,
@@ -4861,7 +4870,13 @@ pub unsafe extern "C" fn comms_config_create(
                         ..Default::default()
                     },
                     network_discovery: NetworkDiscoveryConfig {
+                        min_desired_peers: 16,
                         initial_peer_sync_delay: Some(Duration::from_secs(25)),
+                        ..Default::default()
+                    },
+                    connectivity: DhtConnectivityConfig {
+                        update_interval: Duration::from_secs(5 * 60),
+                        minimum_desired_tcpv4_node_ratio: 0.0,
                         ..Default::default()
                     },
                     ..Default::default()

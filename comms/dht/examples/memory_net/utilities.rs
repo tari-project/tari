@@ -631,8 +631,13 @@ fn connection_manager_logger(
                     println!("'{}' connected to '{}'", node_name, get_name(conn.peer_node_id()),);
                 },
             },
-            PeerDisconnected(_, node_id) => {
-                println!("'{}' disconnected from '{}'", get_name(node_id), node_name);
+            PeerDisconnected(_, node_id, minimized) => {
+                println!(
+                    "'{}' disconnected from '{}', {:?}",
+                    get_name(node_id),
+                    node_name,
+                    minimized
+                );
             },
             PeerConnectFailed(node_id, err) => {
                 println!(

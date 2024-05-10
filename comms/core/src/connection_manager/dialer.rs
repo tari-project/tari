@@ -491,7 +491,11 @@ where
         config: &ConnectionManagerConfig,
     ) -> (DialState, DialResult<TTransport::Output>) {
         // Container for dial
-        let mut dial_state = Some(dial_state);
+        let mut dial_state = {
+            let mut temp_state = dial_state;
+            temp_state.peer_mut().addresses.reset_connection_attempts();
+            Some(temp_state)
+        };
         let mut transport = Some(transport);
 
         loop {
@@ -539,7 +543,7 @@ where
         }
     }
 
-    /// Attempts to dial a peer sequentially on all addresses.
+    /// Attempts to dial a peer sequentially on all addresses; if connections are to be minimized only.
     /// Returns ownership of the given `DialState` and a success or failure result for the dial,
     /// or None if the dial was cancelled inflight
     async fn dial_peer(
@@ -552,6 +556,18 @@ where
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
         let addresses = dial_state.peer().addresses.clone().into_vec();
+        if addresses.is_empty() {
+            let node_id_hex = dial_state.peer().node_id.clone().to_hex();
+            debug!(
+                target: LOG_TARGET,
+                "No more contactable addresses for peer '{}'",
+                node_id_hex
+            );
+            return (
+                dial_state,
+                Err(ConnectionManagerError::NoContactableAddressesForPeer(node_id_hex)),
+            );
+        }
         let cancel_signal = dial_state.get_cancel_signal();
         for address in addresses {
             debug!(
@@ -598,7 +614,7 @@ where
 
                 let noise_upgrade_time = timer.elapsed();
                 debug!(
-                    "Dial - upgraded noise: {} on address: {} on tcp after: {}",
+                    "Dial - upgraded noise: {} on address: {} on tcp after: {} ms",
                     node_id.short_str(),
                     moved_address,
                     timer.elapsed().as_millis()

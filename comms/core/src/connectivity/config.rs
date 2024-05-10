@@ -49,6 +49,9 @@ pub struct ConnectivityConfig {
     /// next connection attempt.
     /// Default: 24 hours
     pub expire_peer_last_seen_duration: Duration,
+    /// The closest number of peer connections to maintain; connections above the threshold will be removed
+    /// (default: disabled)
+    pub maintain_n_closest_connections_only: Option<usize>,
 }
 
 impl Default for ConnectivityConfig {
@@ -62,6 +65,7 @@ impl Default for ConnectivityConfig {
             max_failures_mark_offline: 1,
             connection_tie_break_linger: Duration::from_secs(2),
             expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
+            maintain_n_closest_connections_only: None,
         }
     }
 }

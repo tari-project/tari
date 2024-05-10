@@ -183,6 +183,7 @@ impl MultiaddrWithStats {
     /// Reset the connection attempts on this net address for a later session of retries
     pub fn reset_connection_attempts(&mut self) {
         self.connection_attempts = 0;
+        self.last_failed_reason = None;
     }
 
     /// Mark that a connection could not be established with this net address

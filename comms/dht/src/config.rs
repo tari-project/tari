@@ -50,6 +50,9 @@ pub struct DhtConfig {
     /// Number of random peers to include
     /// Default: 4
     pub num_random_nodes: usize,
+    /// Connections above the configured number of neighbouring and random nodes will be removed
+    /// (default: false)
+    pub minimize_connections: bool,
     /// Send to this many peers when using the broadcast strategy
     /// Default: 8
     pub broadcast_factor: usize,
@@ -169,6 +172,7 @@ impl Default for DhtConfig {
             protocol_version: DhtProtocolVersion::latest(),
             num_neighbouring_nodes: 8,
             num_random_nodes: 4,
+            minimize_connections: false,
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,

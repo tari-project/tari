@@ -55,6 +55,7 @@ use crate::{
     },
     peer_manager::NodeId,
     utils::datetime::format_duration,
+    Minimized,
     NodeIdentity,
     PeerConnection,
     PeerManager,
@@ -226,7 +227,7 @@ impl ConnectivityManagerActor {
                 let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "handle_dial_peer");
                 span.follows_from(tracing_id);
-                self.handle_dial_peer(node_id, reply_tx).instrument(span).await;
+                self.handle_dial_peer(node_id.clone(), reply_tx).instrument(span).await;
             },
             SelectConnections(selection, reply) => {
                 let _result = reply.send(self.select_connections(selection).await);
@@ -255,6 +256,10 @@ impl ConnectivityManagerActor {
                 let states = self.pool.all().into_iter().cloned().collect();
                 let _result = reply.send(states);
             },
+            GetMinimizeConnectionsThreshold(reply) => {
+                let minimize_connections_threshold = self.config.maintain_n_closest_connections_only;
+                let _result = reply.send(minimize_connections_threshold);
+            },
             BanPeer(node_id, duration, reason) => {
                 if self.allow_list.contains(&node_id) {
                     info!(
@@ -269,13 +274,17 @@ impl ConnectivityManagerActor {
             },
             AddPeerToAllowList(node_id) => {
                 if !self.allow_list.contains(&node_id) {
-                    self.allow_list.push(node_id)
+                    self.allow_list.push(node_id.clone());
                 }
             },
             RemovePeerFromAllowList(node_id) => {
                 if let Some(index) = self.allow_list.iter().position(|x| *x == node_id) {
                     self.allow_list.remove(index);
                 }
+            },
+            GetAllowList(reply) => {
+                let allow_list = self.allow_list.clone();
+                let _result = reply.send(allow_list);
             },
             GetActiveConnections(reply) => {
                 let _result = reply.send(
@@ -285,6 +294,10 @@ impl ConnectivityManagerActor {
                         .cloned()
                         .collect(),
                 );
+            },
+            GetNodeIdentity(reply) => {
+                let identity = self.node_identity.as_ref();
+                let _result = reply.send(identity.clone());
             },
         }
     }
@@ -352,7 +365,7 @@ impl ConnectivityManagerActor {
                 if !conn.is_connected() {
                     continue;
                 }
-                match conn.disconnect_silent().await {
+                match conn.disconnect_silent(Minimized::No).await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());
                     },
@@ -369,7 +382,7 @@ impl ConnectivityManagerActor {
         }
 
         for node_id in node_ids {
-            self.publish_event(ConnectivityEvent::PeerDisconnected(node_id));
+            self.publish_event(ConnectivityEvent::PeerDisconnected(node_id, Minimized::No));
         }
     }
 
@@ -389,9 +402,65 @@ impl ConnectivityManagerActor {
         if self.config.is_connection_reaping_enabled {
             self.reap_inactive_connections().await;
         }
+        if let Some(threshold) = self.config.maintain_n_closest_connections_only {
+            self.maintain_n_closest_peer_connections_only(threshold).await;
+        }
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
+    }
+
+    async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize) {
+        // Select all active peer connections (that are communication nodes)
+        let mut connections = match self
+            .select_connections(ConnectivitySelection::closest_to(
+                self.node_identity.node_id().clone(),
+                self.pool.count_connected_nodes(),
+                vec![],
+            ))
+            .await
+        {
+            Ok(peers) => peers,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Connectivity error trying to maintain {} closest peers ({:?})",
+                    threshold,
+                    e
+                );
+                return;
+            },
+        };
+        let num_connections = connections.len();
+
+        // Remove peers that are on the allow list
+        connections.retain(|conn| !self.allow_list.contains(conn.peer_node_id()));
+        debug!(
+            target: LOG_TARGET,
+            "minimize_connections: Filtered peers: {}, Handles: {}",
+            connections.len(),
+            num_connections,
+        );
+
+        // Disconnect all remaining peers above the threshold
+        for conn in connections.iter_mut().skip(threshold) {
+            debug!(
+                target: LOG_TARGET,
+                "minimize_connections: Disconnecting '{}' because the node is not among the {} closest peers",
+                conn.peer_node_id(),
+                threshold
+            );
+            if let Err(err) = conn.disconnect(Minimized::Yes).await {
+                // Already disconnected
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' already disconnected. Error: {:?}",
+                    conn.peer_node_id().short_str(),
+                    err
+                );
+            }
+            self.pool.remove(conn.peer_node_id());
+        }
     }
 
     async fn reap_inactive_connections(&mut self) {
@@ -418,7 +487,7 @@ impl ConnectivityManagerActor {
                 conn.peer_node_id().short_str(),
                 conn.handle_count()
             );
-            if let Err(err) = conn.disconnect().await {
+            if let Err(err) = conn.disconnect(Minimized::Yes).await {
                 // Already disconnected
                 debug!(
                     target: LOG_TARGET,
@@ -432,7 +501,10 @@ impl ConnectivityManagerActor {
 
     fn clean_connection_pool(&mut self) {
         let cleared_states = self.pool.filter_drain(|state| {
-            state.status() == ConnectionStatus::Failed || state.status() == ConnectionStatus::Disconnected
+            matches!(
+                state.status(),
+                ConnectionStatus::Failed | ConnectionStatus::Disconnected(_)
+            )
         });
 
         if !cleared_states.is_empty() {
@@ -560,7 +632,7 @@ impl ConnectivityManagerActor {
                     TieBreak::UseNew | TieBreak::None => {},
                 }
             },
-            PeerDisconnected(id, node_id) => {
+            PeerDisconnected(id, node_id, _minimized) => {
                 if let Some(conn) = self.pool.get_connection(node_id) {
                     if conn.id() != *id {
                         debug!(
@@ -586,7 +658,7 @@ impl ConnectivityManagerActor {
         }
 
         let (node_id, mut new_status, connection) = match event {
-            PeerDisconnected(_, node_id) => (node_id, ConnectionStatus::Disconnected, None),
+            PeerDisconnected(_, node_id, minimized) => (node_id, ConnectionStatus::Disconnected(*minimized), None),
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),
 
             PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
@@ -632,7 +704,7 @@ impl ConnectivityManagerActor {
 
         use ConnectionStatus::{Connected, Disconnected, Failed};
         match (old_status, new_status) {
-            (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
+            (_, Connected) => match self.pool.get_connection_mut(&node_id).cloned() {
                 Some(conn) => {
                     self.mark_connection_success(conn.peer_node_id().clone());
                     self.publish_event(ConnectivityEvent::PeerConnected(conn.into()));
@@ -642,11 +714,14 @@ impl ConnectivityManagerActor {
                      ConnectionPool::get_connection is Some"
                 ),
             },
-            (Connected, Disconnected) => {
-                self.publish_event(ConnectivityEvent::PeerDisconnected(node_id));
+            (Connected, Disconnected(..)) => {
+                self.publish_event(ConnectivityEvent::PeerDisconnected(node_id, match new_status {
+                    ConnectionStatus::Disconnected(reason) => reason,
+                    _ => Minimized::No,
+                }));
             },
             // Was not connected so don't broadcast event
-            (_, Disconnected) => {},
+            (_, Disconnected(..)) => {},
             (_, Failed) => {
                 self.publish_event(ConnectivityEvent::PeerConnectFailed(node_id));
             },
@@ -692,7 +767,7 @@ impl ConnectivityManagerActor {
                         existing_conn.direction(),
                     );
 
-                    let _result = existing_conn.disconnect_silent().await;
+                    let _result = existing_conn.disconnect_silent(Minimized::Yes).await;
                     self.pool.remove(existing_conn.peer_node_id());
                     TieBreak::UseNew
                 } else {
@@ -708,7 +783,7 @@ impl ConnectivityManagerActor {
                         existing_conn.direction(),
                     );
 
-                    let _result = new_conn.clone().disconnect_silent().await;
+                    let _result = new_conn.clone().disconnect_silent(Minimized::Yes).await;
                     TieBreak::KeepExisting
                 }
             },
@@ -887,7 +962,7 @@ impl ConnectivityManagerActor {
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
-            conn.disconnect().await?;
+            conn.disconnect(Minimized::Yes).await?;
             let status = self.pool.get_connection_status(node_id);
             debug!(
                 target: LOG_TARGET,
@@ -903,7 +978,7 @@ impl ConnectivityManagerActor {
             let status = self.pool.get_connection_status(node_id);
             if matches!(
                 status,
-                ConnectionStatus::NotConnected | ConnectionStatus::Failed | ConnectionStatus::Disconnected
+                ConnectionStatus::NotConnected | ConnectionStatus::Failed | ConnectionStatus::Disconnected(_)
             ) {
                 to_remove.push(node_id.clone());
             }

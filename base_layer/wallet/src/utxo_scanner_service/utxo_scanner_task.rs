@@ -38,6 +38,7 @@ use tari_comms::{
     protocol::rpc::RpcClientLease,
     traits::OrOptional,
     types::CommsPublicKey,
+    Minimized,
     PeerConnection,
 };
 use tari_core::{
@@ -193,7 +194,7 @@ where
                 });
 
                 if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
-                    if connection.clone().disconnect().await.is_ok() {
+                    if connection.clone().disconnect(Minimized::No).await.is_ok() {
                         debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
                     }
                 }
