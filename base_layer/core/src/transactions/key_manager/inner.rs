@@ -24,9 +24,11 @@ use std::{collections::HashMap, ops::Shl};
 use blake2::Blake2b;
 use digest::consts::U64;
 use log::*;
-use minotari_ledger_wallet_comms::ledger_wallet::get_transport;
 #[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::{error::LedgerDeviceError, ledger_wallet::Instruction};
+use minotari_ledger_wallet_comms::{
+    error::LedgerDeviceError,
+    ledger_wallet::{get_transport, Instruction},
+};
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
 use tari_common_types::{
@@ -46,9 +48,10 @@ use tari_crypto::{
         RistrettoComSig,
     },
 };
+#[cfg(feature = "ledger")]
+use tari_key_manager::error::KeyManagerError;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    error::KeyManagerError,
     key_manager::KeyManager,
     key_manager_service::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
@@ -198,24 +201,40 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     branch == &TransactionKeyManagerBranch::SenderOffset.get_branch_key(),
                 &self.wallet_type,
             ) {
+                #[allow(unused_variables)] // This is to avoid the code blocks where ledger isn't used
                 (true, WalletType::Ledger(ledger)) => {
-                    let transport = get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                    let mut data = index.to_le_bytes().to_vec();
-                    let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
-                    data.extend_from_slice(&(branch_u8 as u64).to_le_bytes());
-                    let command = ledger.build_command(Instruction::GetPublicKey, data);
+                    #[cfg(not(feature = "ledger"))]
+                    {
+                        let km = self
+                            .key_managers
+                            .get(branch)
+                            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                            .read()
+                            .await;
+                        Ok(km.derive_public_key(*index)?.key)
+                    }
 
-                    match command.execute_with_transport(&transport) {
-                        Ok(result) => {
-                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                            if result.data().len() < 33 {
-                                debug!(target: LOG_TARGET, "result less than 33");
-                            }
+                    #[cfg(feature = "ledger")]
+                    {
+                        let transport =
+                            get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+                        let mut data = index.to_le_bytes().to_vec();
+                        let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
+                        data.extend_from_slice(&u64::from(branch_u8).to_le_bytes());
+                        let command = ledger.build_command(Instruction::GetPublicKey, data);
 
-                            PublicKey::from_canonical_bytes(&result.data()[1..33])
-                                .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))
-                        },
-                        Err(e) => Err(KeyManagerServiceError::LedgerError(e.to_string())),
+                        match command.execute_with_transport(&transport) {
+                            Ok(result) => {
+                                debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                                if result.data().len() < 33 {
+                                    debug!(target: LOG_TARGET, "result less than 33");
+                                }
+
+                                PublicKey::from_canonical_bytes(&result.data()[1..33])
+                                    .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))
+                            },
+                            Err(e) => Err(KeyManagerServiceError::LedgerError(e.to_string())),
+                        }
                     }
                 },
                 (_, _) => {
@@ -522,6 +541,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
+    #[allow(clippy::too_many_lines)]
     pub async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
@@ -547,6 +567,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             script_message,
         );
 
+        #[allow(unused_variables)] // When ledger isn't enabled
         match (&self.wallet_type, script_key_id) {
             (
                 WalletType::Ledger(ledger),
@@ -558,7 +579,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             ) => {
                 #[cfg(not(feature = "ledger"))]
                 {
-                    return Err(TransactionError::LedgerDeviceError(LedgerDeviceError::NotSupported));
+                    Err(TransactionError::LedgerNotSupported)
                 }
 
                 #[cfg(feature = "ledger")]
@@ -705,6 +726,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
@@ -752,73 +774,81 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let script_offset = total_script_private_key - total_sender_offset_private_key;
                 Ok(script_offset)
             },
+            #[allow(unused_variables)]
             WalletType::Ledger(ledger) => {
-                let mut sender_offset_indexes = vec![];
-                for sender_offset_key_id in sender_offset_key_ids {
-                    match sender_offset_key_id {
-                        TariKeyId::Managed { branch: _, index } |
-                        TariKeyId::Derived {
-                            branch: _,
-                            label: _,
-                            index,
-                        } => {
-                            sender_offset_indexes.push(index);
-                        },
-                        TariKeyId::Imported { .. } | TariKeyId::Zero => {},
+                #[cfg(not(feature = "ledger"))]
+                {
+                    Err(TransactionError::LedgerNotSupported)
+                }
+
+                #[cfg(feature = "ledger")]
+                {
+                    let mut sender_offset_indexes = vec![];
+                    for sender_offset_key_id in sender_offset_key_ids {
+                        match sender_offset_key_id {
+                            TariKeyId::Managed { branch: _, index } |
+                            TariKeyId::Derived {
+                                branch: _,
+                                label: _,
+                                index,
+                            } => {
+                                sender_offset_indexes.push(index);
+                            },
+                            TariKeyId::Imported { .. } | TariKeyId::Zero => {},
+                        }
                     }
-                }
 
-                let num_commitments = derived_key_commitments.len() as u64;
-                let num_offset_key = sender_offset_indexes.len() as u64;
+                    let num_commitments = derived_key_commitments.len() as u64;
+                    let num_offset_key = sender_offset_indexes.len() as u64;
 
-                debug!(target: "c::brian::test", "num_offset_key {:?}", num_offset_key);
-                debug!(target: "c::brian::test", "num_commitments {:?}", num_commitments);
+                    let mut instructions = num_offset_key.to_le_bytes().to_vec();
+                    instructions.extend_from_slice(&num_commitments.to_le_bytes());
 
-                let mut instructions = num_offset_key.to_le_bytes().to_vec();
-                instructions.extend_from_slice(&num_commitments.to_le_bytes());
+                    let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
+                    data.push(total_script_private_key.to_vec());
 
-                let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
-                data.push(total_script_private_key.to_vec());
-                debug!(target: "c::brian::test", "total script private key {:?}", total_script_private_key.to_hex());
-
-                for sender_offset_index in sender_offset_indexes {
-                    debug!(target: "c::brian::test", "offset index {:?}", sender_offset_index);
-                    data.push(sender_offset_index.to_le_bytes().to_vec());
-                }
-
-                for derived_key_commitment in derived_key_commitments {
-                    debug!(target: "c::brian::test", "commitments {:?}", derived_key_commitment.to_hex());
-                    data.push(derived_key_commitment.to_vec());
-                }
-
-                let commands = ledger.chunk_command(Instruction::GetScriptOffset, data);
-                let transport = get_transport()?;
-
-                let mut result = None;
-                for command in commands {
-                    match command.execute_with_transport(&transport) {
-                        Ok(r) => result = Some(r),
-                        Err(e) => return Err(LedgerDeviceError::Instruction(format!("GetScriptOffset: {}", e)).into()),
+                    for sender_offset_index in sender_offset_indexes {
+                        data.push(sender_offset_index.to_le_bytes().to_vec());
                     }
-                }
 
-                if let Some(result) = result {
-                    if result.data().len() < 33 {
-                        debug!(target: LOG_TARGET, "result less than 33");
-                        return Err(LedgerDeviceError::Processing(format!(
-                            "'get_script_offset' insufficient data - expected 33 got {} bytes ({:?})",
-                            result.data().len(),
-                            result
-                        ))
-                        .into());
+                    for derived_key_commitment in derived_key_commitments {
+                        data.push(derived_key_commitment.to_vec());
                     }
-                    let data = result.data();
-                    debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                    return PrivateKey::from_canonical_bytes(&data[1..33])
-                        .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()));
-                }
 
-                Err(LedgerDeviceError::Instruction("GetScriptOffset failed to process correctly".to_string()).into())
+                    let commands = ledger.chunk_command(Instruction::GetScriptOffset, data);
+                    let transport = get_transport()?;
+
+                    let mut result = None;
+                    for command in commands {
+                        match command.execute_with_transport(&transport) {
+                            Ok(r) => result = Some(r),
+                            Err(e) => {
+                                return Err(LedgerDeviceError::Instruction(format!("GetScriptOffset: {}", e)).into())
+                            },
+                        }
+                    }
+
+                    if let Some(result) = result {
+                        if result.data().len() < 33 {
+                            debug!(target: LOG_TARGET, "result less than 33");
+                            return Err(LedgerDeviceError::Processing(format!(
+                                "'get_script_offset' insufficient data - expected 33 got {} bytes ({:?})",
+                                result.data().len(),
+                                result
+                            ))
+                            .into());
+                        }
+                        let data = result.data();
+                        debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                        return PrivateKey::from_canonical_bytes(&data[1..33])
+                            .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()));
+                    }
+
+                    Err(
+                        LedgerDeviceError::Instruction("GetScriptOffset failed to process correctly".to_string())
+                            .into(),
+                    )
+                }
             },
         }
     }
@@ -1023,58 +1053,67 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 )?;
                 Ok(metadata_signature)
             },
+            #[allow(unused_variables)]
             WalletType::Ledger(ledger) => {
-                let ephemeral_private_nonce_index =
-                    ephemeral_private_nonce_id
-                        .managed_index()
-                        .ok_or(TransactionError::KeyManagerError(
-                            KeyManagerError::InvalidKeyID.to_string(),
-                        ))?;
-                let sender_offset_key_index =
-                    sender_offset_key_id
-                        .managed_index()
-                        .ok_or(TransactionError::KeyManagerError(
-                            KeyManagerError::InvalidKeyID.to_string(),
-                        ))?;
+                #[cfg(not(feature = "ledger"))]
+                {
+                    Err(TransactionError::LedgerNotSupported)
+                }
 
-                let mut data = (ledger.network.as_byte() as u64).to_le_bytes().to_vec();
-                data.extend_from_slice(&(txo_version.as_u8() as u64).to_le_bytes());
-                data.extend_from_slice(&ephemeral_private_nonce_index.to_le_bytes());
-                data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
-                data.extend_from_slice(&commitment.to_vec());
-                data.extend_from_slice(&ephemeral_commitment.to_vec());
-                data.extend_from_slice(&metadata_signature_message.to_vec());
+                #[cfg(feature = "ledger")]
+                {
+                    let ephemeral_private_nonce_index =
+                        ephemeral_private_nonce_id
+                            .managed_index()
+                            .ok_or(TransactionError::KeyManagerError(
+                                KeyManagerError::InvalidKeyID.to_string(),
+                            ))?;
+                    let sender_offset_key_index =
+                        sender_offset_key_id
+                            .managed_index()
+                            .ok_or(TransactionError::KeyManagerError(
+                                KeyManagerError::InvalidKeyID.to_string(),
+                            ))?;
 
-                let command = ledger.build_command(Instruction::GetMetadataSignature, data);
-                let transport = get_transport()?;
+                    let mut data = u64::from(ledger.network.as_byte()).to_le_bytes().to_vec();
+                    data.extend_from_slice(&u64::from(txo_version.as_u8()).to_le_bytes());
+                    data.extend_from_slice(&ephemeral_private_nonce_index.to_le_bytes());
+                    data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+                    data.extend_from_slice(&commitment.to_vec());
+                    data.extend_from_slice(&ephemeral_commitment.to_vec());
+                    data.extend_from_slice(&metadata_signature_message.to_vec());
 
-                match command.execute_with_transport(&transport) {
-                    Ok(result) => {
-                        if result.data().len() < 161 {
-                            debug!(target: LOG_TARGET, "result less than 161");
-                            return Err(LedgerDeviceError::Processing(format!(
-                                "'get_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
-                                result.data().len(),
-                                result
+                    let command = ledger.build_command(Instruction::GetMetadataSignature, data);
+                    let transport = get_transport()?;
+
+                    match command.execute_with_transport(&transport) {
+                        Ok(result) => {
+                            if result.data().len() < 161 {
+                                debug!(target: LOG_TARGET, "result less than 161");
+                                return Err(LedgerDeviceError::Processing(format!(
+                                    "'get_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
+                                    result.data().len(),
+                                    result
+                                ))
+                                .into());
+                            }
+                            let data = result.data();
+                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                            Ok(ComAndPubSignature::new(
+                                Commitment::from_canonical_bytes(&data[1..33])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PublicKey::from_canonical_bytes(&data[33..65])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PrivateKey::from_canonical_bytes(&data[65..97])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PrivateKey::from_canonical_bytes(&data[97..129])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PrivateKey::from_canonical_bytes(&data[129..161])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
                             ))
-                            .into());
-                        }
-                        let data = result.data();
-                        debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                        Ok(ComAndPubSignature::new(
-                            Commitment::from_canonical_bytes(&data[1..33])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PublicKey::from_canonical_bytes(&data[33..65])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PrivateKey::from_canonical_bytes(&data[65..97])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PrivateKey::from_canonical_bytes(&data[97..129])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PrivateKey::from_canonical_bytes(&data[129..161])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                        ))
-                    },
-                    Err(e) => Err(LedgerDeviceError::Instruction(format!("GetMetadataSignature: {}", e)).into()),
+                        },
+                        Err(e) => Err(LedgerDeviceError::Instruction(format!("GetMetadataSignature: {}", e)).into()),
+                    }
                 }
             },
         }

@@ -34,7 +34,7 @@ use crate::types::{PrivateKey, PublicKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WalletType {
-    Software(PrivateKey, PublicKey), // Make them a priv and pub
+    Software(PrivateKey, PublicKey),
     Ledger(LedgerWallet),
 }
 

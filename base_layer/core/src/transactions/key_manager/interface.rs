@@ -87,7 +87,8 @@ impl TransactionKeyManagerBranch {
             "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
             "sender offset" => TransactionKeyManagerBranch::SenderOffset,
-            "nonce" | _ => TransactionKeyManagerBranch::Nonce,
+            "nonce" => TransactionKeyManagerBranch::Nonce,
+            _ => TransactionKeyManagerBranch::Nonce,
         }
     }
 

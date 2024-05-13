@@ -146,10 +146,13 @@ where
                 let branch_key = km.get_private_key(*index)?;
 
                 let public_key = {
-                    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("Key manager derived key");
+                    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
+                        "Key manager derived key",
+                    );
                     let hasher = hasher.chain(branch_key.as_bytes()).finalize();
                     let private_key = PK::K::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                        KeyManagerServiceError::UnknownError("Invalid private key for Key manager derived key".to_string()
+                        KeyManagerServiceError::UnknownError(
+                            "Invalid private key for Key manager derived key".to_string(),
                         )
                     })?;
                     PK::from_secret_key(&private_key)

@@ -838,7 +838,7 @@ pub fn prompt_wallet_type(
     match boot_mode {
         WalletBoot::New => {
             #[cfg(not(feature = "ledger"))]
-            return Some(WalletType::Software);
+            return Some(WalletType::default());
 
             #[cfg(feature = "ledger")]
             {

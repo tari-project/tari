@@ -23,6 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+#[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::error::LedgerDeviceError;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
@@ -74,8 +75,11 @@ pub enum TransactionError {
     KeyManagerError(String),
     #[error("EncryptedData error: {0}")]
     EncryptedDataError(String),
+    #[cfg(feature = "ledger")]
     #[error("Ledger device error: {0}")]
     LedgerDeviceError(#[from] LedgerDeviceError),
+    #[error("Ledger is not supported")]
+    LedgerNotSupported,
     #[error("Transaction has a zero weight, not possible")]
     ZeroWeight,
 }

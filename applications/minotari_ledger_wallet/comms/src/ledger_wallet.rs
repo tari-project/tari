@@ -154,7 +154,7 @@ impl LedgerWallet {
                 inner: APDUCommand {
                     cla: WALLET_CLA,
                     ins: instruction.as_byte(),
-                    p1: i as u8,
+                    p1: u8::try_from(i).unwrap_or(0),
                     p2: more,
                     data: base_data,
                 },

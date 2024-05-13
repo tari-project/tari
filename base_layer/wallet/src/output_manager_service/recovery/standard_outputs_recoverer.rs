@@ -25,14 +25,13 @@ use std::time::Instant;
 use log::*;
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
     tari_amount::MicroMinotari,
     transaction_components::{OutputType, TransactionError, TransactionOutput, WalletOutput},
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
-use tari_core::transactions::key_manager::TransactionKeyManagerLabel;
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},

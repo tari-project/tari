@@ -140,7 +140,7 @@ where PK: ByteArray
                     Ok(KeyId::Imported { key })
                 },
                 ZERO_KEY_BRANCH => Ok(KeyId::Zero),
-                DERIVED_KEY_BRANCH =>{
+                DERIVED_KEY_BRANCH => {
                     if parts.len() != 4 {
                         return Err("Wrong format".to_string());
                     }
@@ -152,7 +152,7 @@ where PK: ByteArray
                         label: parts[2].into(),
                         index,
                     })
-                }
+                },
                 _ => Err("Wrong format".to_string()),
             },
         }
