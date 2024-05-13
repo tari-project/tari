@@ -3341,7 +3341,6 @@ version = "1.0.0-pre.11a"
 dependencies = [
  "ledger-transport 0.10.0 (git+https://github.com/Zondax/ledger-rs?rev=20e2a20)",
  "ledger-transport-hid",
- "log",
  "num-derive 0.3.3",
  "num-traits",
  "serde",

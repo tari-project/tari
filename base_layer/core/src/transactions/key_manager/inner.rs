@@ -547,21 +547,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             script_message,
         );
 
-        debug!(target: "c::brian::test", "before sending");
-        debug!(target: "c::brian::test", "ephemeral_commitment: {:?}", &ephemeral_commitment.as_public_key());
-        debug!(target: "c::brian::test", "ephemeral_pubkey: {:?}", &ephemeral_pubkey.to_string());
-        debug!(target: "c::brian::test", "script_public_key: {:?}", &&self.get_public_key_at_key_id(script_key_id).await?.to_string());
-        debug!(target: "c::brian::test", "commitment: {:?}", &commitment.to_hex());
-        debug!(target: "c::brian::test", "challenge: {:?}", &challenge);
-
-        let hasher =
-            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-        let hasher = hasher.chain("test input".as_bytes()).finalize();
-        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).unwrap();
-        debug!(target: "c::brian::test", "hasher k: {:?}", &private_key.to_hex());
-        let public_key = PublicKey::from_secret_key(&private_key);
-        debug!(target: "c::brian::test", "hasher pk: {:?}", &public_key.to_string());
-
         match (&self.wallet_type, script_key_id) {
             (
                 WalletType::Ledger(ledger),
