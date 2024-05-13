@@ -1009,7 +1009,7 @@ mod test {
         let extra_field_after_tag = ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).unwrap();
         assert_eq!(
             &format!(
-                "ExtraField([MergeMining(Some(0), 0x{}), \
+                "ExtraField([MergeMining(0, 0x{}), \
                  TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, 58, 168, \
                  109, 46, 133, 127, 7])])",
                 hex::encode(hash)
