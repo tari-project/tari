@@ -901,7 +901,7 @@ mod test {
         // like trying to sneek it in. Later on, when we call `verify_header(&block_header)`, it should fail.
         let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra).unwrap();
         let hash = monero::Hash::from_slice(hash.as_ref());
-        extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
+        extra_field.0.insert(0, SubField::MergeMining(VarInt(0), hash));
         block.miner_tx.prefix.extra = extra_field.into();
 
         // Trying to extract the Tari hash will fail because there are more than one merge mining tag
@@ -1267,7 +1267,7 @@ mod test {
         assert!(res.is_err());
         let field = res.unwrap_err();
         let mm_tag = SubField::MergeMining(
-            Some(VarInt(0)),
+            VarInt(0),
             Hash::from_slice(
                 hex::decode("9505c642ae2771f344caddde740ad1c238f7fc17f81c2c515b2cd6d3f2030c46")
                     .unwrap()
