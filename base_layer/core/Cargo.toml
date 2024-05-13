@@ -71,7 +71,7 @@ ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
-monero = { version = "0.20.0", features = ["serde-crate"], optional = true }
+monero = { version = "0.21.0", features = ["serde-crate"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"
 num-derive = "0.3.3"

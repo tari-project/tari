@@ -117,7 +117,7 @@ pub fn verify_header(
     let mut is_found = false;
     let mut already_seen_mmfield = false;
     for item in extra_field.0 {
-        if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
+        if let SubField::MergeMining(depth, merge_mining_hash) = item {
             if already_seen_mmfield {
                 return Err(MergeMineError::ValidationError(
                     "More than one merge mining tag found in coinbase".to_string(),
@@ -327,7 +327,7 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
 
     // Adding more than one merge mining tag is not allowed
     for item in &extra_field.0 {
-        if let SubField::MergeMining(Some(_), _) = item {
+        if let SubField::MergeMining(_, _) = item {
             return Err(MergeMineError::ValidationError(
                 "More than one merge mining tag in coinbase not allowed".to_string(),
             ));
@@ -348,7 +348,7 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
         };
         mt_params.to_varint()
     };
-    extra_field.0.insert(0, SubField::MergeMining(Some(encoded), hash));
+    extra_field.0.insert(0, SubField::MergeMining(encoded, hash));
     debug!(target: LOG_TARGET, "Inserted extra field: {:?}", extra_field);
 
     block.miner_tx.prefix.extra = extra_field.into();
