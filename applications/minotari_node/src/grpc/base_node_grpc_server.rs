@@ -235,10 +235,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (start_height, end_height) = get_heights(&request, handler.clone())
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
-        let num_requested = end_height.checked_sub(start_height).ok_or(obscure_error_if_true(
-            report_error_flag,
-            Status::invalid_argument("Start height is more than end height"),
-        ))?;
+        let num_requested = end_height.checked_sub(start_height).ok_or_else(|| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Start height is more than end height"),
+            )
+        })?;
         if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
             return Err(obscure_error_if_true(
                 report_error_flag,
@@ -810,10 +812,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             coinbase.value = u64::try_from(
                 (cur_share_sum.saturating_mul(reward))
                     .checked_div(total_shares)
-                    .ok_or(obscure_error_if_true(
-                        report_error_flag,
-                        Status::internal("total shares are zero".to_string()),
-                    ))? -
+                    .ok_or_else(|| {
+                        obscure_error_if_true(report_error_flag, Status::internal("total shares are zero".to_string()))
+                    })? -
                     prev_coinbase_value,
             )
             .map_err(|_| {
@@ -981,10 +982,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block with coinbases");
         let mut block_template: NewBlockTemplate = request
             .new_template
-            .ok_or(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Malformed block template provided".to_string()),
-            ))?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Malformed block template provided".to_string()),
+                )
+            })?
             .try_into()
             .map_err(|s| {
                 obscure_error_if_true(

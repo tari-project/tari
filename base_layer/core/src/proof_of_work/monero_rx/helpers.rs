@@ -162,18 +162,18 @@ fn check_aux_chains(
         }
     }
     let merkle_tree_params = MerkleTreeParameters::from_varint(merge_mining_params);
-    if merkle_tree_params.number_of_chains == 0 {
+    if merkle_tree_params.number_of_chains() == 0 {
         return false;
     }
     let hash_position = U256::from_little_endian(
         &Sha256::new()
             .chain_update(tari_genesis_block_hash)
-            .chain_update(merkle_tree_params.aux_nonce.to_le_bytes())
+            .chain_update(merkle_tree_params.aux_nonce().to_le_bytes())
             .chain_update((109_u8).to_le_bytes())
             .finalize(),
     )
     .low_u32() %
-        u32::from(merkle_tree_params.number_of_chains);
+        u32::from(merkle_tree_params.number_of_chains());
     let (merkle_root, pos) = monero_data.aux_chain_merkle_proof.calculate_root_with_pos(&t_hash);
     if hash_position != pos {
         return false;
@@ -342,10 +342,7 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
     let encoded = if aux_chain_count == 1 {
         VarInt(0)
     } else {
-        let mt_params = MerkleTreeParameters {
-            number_of_chains: aux_chain_count,
-            aux_nonce,
-        };
+        let mt_params = MerkleTreeParameters::new(aux_chain_count, aux_nonce)?;
         mt_params.to_varint()
     };
     extra_field.0.insert(0, SubField::MergeMining(encoded, hash));
