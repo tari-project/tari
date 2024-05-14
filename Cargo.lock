@@ -6201,8 +6201,6 @@ dependencies = [
  "futures 0.3.29",
  "hex",
  "integer-encoding",
- "ledger-transport 0.10.0 (git+https://github.com/Zondax/ledger-rs?rev=20e2a20)",
- "ledger-transport-hid",
  "libsqlite3-sys",
  "lmdb-zero",
  "log",

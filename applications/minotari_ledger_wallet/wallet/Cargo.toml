@@ -21,6 +21,9 @@ zeroize = { version = "1" , default-features = false }
 # target mismatches.
 once_cell = { version = "=1.18.0", default-features = false }
 
+[package.metadata.cargo-machete]
+ignored = ["once_cell"]
+
 [profile.release]
 opt-level = 's'
 lto = "fat" # same as `true`
