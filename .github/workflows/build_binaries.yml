@@ -591,6 +591,9 @@ jobs:
     runs-on: macos-14
 
     steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
       - name: Download macOS binaries
         uses: actions/download-artifact@v4
         with:
@@ -604,6 +607,11 @@ jobs:
         run: |
           BINFN="${TS_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}"
           echo "BINFN=${BINFN}" >> $GITHUB_ENV
+
+      - name: Install macOS dependencies
+        shell: bash
+        run: |
+          brew install coreutils
 
       - name: Verify checksums and extract
         shell: bash
@@ -642,11 +650,103 @@ jobs:
           done
           ls -alhtR macos-universal
 
-      - name: Archive and Checksum Binaries
+      - name: Build the macOS universal pkg
+        continue-on-error: true
+        env:
+          MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
+          MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
+          MACOS_APPLICATION_CERT: ${{ secrets.MACOS_APPLICATION_CERT }}
+          MACOS_APPLICATION_PASS: ${{ secrets.MACOS_APPLICATION_PASS }}
+          MACOS_INSTALLER_ID: ${{ secrets.MACOS_INSTALLER_ID }}
+          MACOS_INSTALLER_CERT: ${{ secrets.MACOS_INSTALLER_CERT }}
+          MACOS_INSTALLER_PASS: ${{ secrets.MACOS_INSTALLER_PASS }}
+          MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
+          MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
+          MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
+        run: |
+          echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
+          echo $MACOS_INSTALLER_CERT | base64 --decode > installer.p12
+          security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain -P $MACOS_INSTALLER_PASS -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
+          OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
+          cd buildtools
+          # export target_release="target/${{ matrix.builds.target }}/release"
+          # matrix.builds.target=macos-universal
+          # matrix.builds.name=macos-universal
+          export target_release="osxuni/macos-universal"
+          mkdir -p "${{ runner.temp }}/osxpkg"
+          export tarball_parent="${{ runner.temp }}/osxpkg"
+          export tarball_source="${{ env.TARI_NETWORK_DIR }}"
+          ./create_osx_install_zip.sh unused nozip
+          ARRAY_FILES=( $(echo ${TS_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
+          for FILE in "${ARRAY_FILES[@]}"; do
+            codesign --options runtime --force --verify --verbose --timestamp ${OSX_CODESIGN_EXTRAS} \
+              --prefix "${{ env.TS_BUNDLE_ID_BASE }}.${{ env.TS_FILENAME }}." \
+              --sign "Developer ID Application: $MACOS_APPLICATION_ID" \
+              "${{ runner.temp }}/osxpkg/${{ env.TARI_NETWORK_DIR }}/runtime/$FILE"
+            codesign --verify --deep --display --verbose=4 \
+              "${{ runner.temp }}/osxpkg/${{ env.TARI_NETWORK_DIR }}/runtime/$FILE"
+            cp -vf "${{ runner.temp }}/osxpkg/${{ env.TARI_NETWORK_DIR }}/runtime/$FILE" \
+              "${{ github.workspace }}/osxuni/macos-universal/"
+          done
+          distDirPKG=$(mktemp -d -t ${{ env.TS_FILENAME }})
+          echo "${distDirPKG}"
+          echo "distDirPKG=${distDirPKG}" >> $GITHUB_ENV
+          TS_Temp=${{ env.TS_FILENAME }}
+          TS_BUNDLE_ID_VALID_NAME=$(echo "${TS_Temp//_/-}")
+          TS_ARCH=universal
+          pkgbuild --root "${{ runner.temp }}/osxpkg/${{ env.TARI_NETWORK_DIR }}" \
+            --identifier "${{ env.TS_BUNDLE_ID_BASE }}.pkg.${TS_BUNDLE_ID_VALID_NAME}" \
+            --version "${TARI_VERSION}" \
+            --install-location "/tmp/tari" \
+            --scripts "${{ runner.temp }}/osxpkg/${{ env.TARI_NETWORK_DIR }}/scripts" \
+            --sign "Developer ID Installer: ${MACOS_INSTALLER_ID}" \
+            "${distDirPKG}/${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg"
+          echo -e "Submitting to Apple...\n\n"
+          xcrun notarytool submit \
+            "${distDirPKG}/${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg" \
+            --apple-id "${MACOS_NOTARIZE_USERNAME}" \
+            --password ${MACOS_NOTARIZE_PASSWORD} \
+            --team-id ${MACOS_ASC_PROVIDER} \
+            --verbose --wait 2>&1 | tee -a notarisation.result
+          # Maybe use line from with "Processing complete"?
+          requestUUID=$(tail -n5 notarisation.result | grep "id:" | cut -d" " -f 4)
+          requestSTATUS=$(tail -n5 notarisation.result | grep "\ \ status:" | cut -d" " -f 4)
+          if [[ ${requestUUID} == "" ]] || [[ ${requestSTATUS} != "Accepted" ]]; then
+            echo "## status: ${requestSTATUS} - could not notarize - ${requestUUID} - ${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg"
+            exit 1
+          else
+            echo "Notarization RequestUUID: ${requestUUID}"
+            echo -e "\nStapling package...\
+              ${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg\n"
+            xcrun stapler staple -v \
+              "${distDirPKG}/${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg"
+          fi
+          cd ${distDirPKG}
+          echo "Compute pkg shasum"
+          ${SHARUN} "${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg" \
+            >> "${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg.sha256"
+          cat "${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg.sha256"
+          echo "Checksum verification for pkg is "
+          ${SHARUN} --check "${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg.sha256"
+
+      - name: Artifact upload for macOS universal pkg
+        if: startsWith(runner.os,'macOS')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg
+          path: "${{ env.distDirPKG }}/${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}*.pkg*"
+
+      - name: Archive and Checksum macOS universal Binaries
         shell: bash
         working-directory: osxuni/macos-universal
         run: |
-          set -xo pipefail
+          # set -xo pipefail
           BINFILE="${BINFN}-macos-universal"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Archive ${BINFILE} into ${BINFILE}.zip"
