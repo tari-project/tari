@@ -24,7 +24,11 @@ use tari_utilities::hex::HexError;
 
 use crate::{
     common::{BanPeriod, BanReason},
-    proof_of_work::{randomx_factory::RandomXVMFactoryError, DifficultyError},
+    proof_of_work::{
+        monero_rx::merkle_tree_parameters::MerkleTreeParametersError,
+        randomx_factory::RandomXVMFactoryError,
+        DifficultyError,
+    },
 };
 
 /// Errors that can occur when merging Monero PoW data with Tari PoW data
@@ -50,6 +54,8 @@ pub enum MergeMineError {
     DifficultyError(#[from] DifficultyError),
     #[error("Cannot mine with 0 aux chains")]
     ZeroAuxChains,
+    #[error("Merkle Tree Parameters error: {0}")]
+    MerkleTreeParamsError(#[from] MerkleTreeParametersError),
 }
 
 impl MergeMineError {
@@ -66,7 +72,9 @@ impl MergeMineError {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
-            MergeMineError::RandomXVMFactoryError(_) | MergeMineError::ZeroAuxChains => None,
+            MergeMineError::RandomXVMFactoryError(_) |
+            MergeMineError::ZeroAuxChains |
+            MergeMineError::MerkleTreeParamsError(_) => None,
         }
     }
 }
