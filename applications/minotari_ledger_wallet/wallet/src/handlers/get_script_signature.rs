@@ -1,26 +1,18 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::{format, str::from_utf8};
+use alloc::format;
 
-use ledger_device_sdk::{
-    io::Comm,
-    ui::gadgets::{MessageScroller, SingleMessage},
-};
-use tari_crypto::{
-    keys::PublicKey,
-    ristretto::{
-        pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
-        RistrettoComAndPubSig,
-        RistrettoPublicKey,
-        RistrettoSecretKey,
-    },
-    tari_utilities::{hex::Hex, ByteArray},
+use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use tari_crypto::ristretto::{
+    pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
+    RistrettoComAndPubSig,
+    RistrettoSecretKey,
 };
 
 use crate::{
     alloc::string::ToString,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, special_hash, u64_to_string},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -82,19 +74,10 @@ pub fn handler_get_script_signature(
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&signer_ctx.payload[0..8]);
     signer_ctx.account = u64::from_le_bytes(account_bytes);
-    MessageScroller::new(&u64_to_string(signer_ctx.account)).event_loop();
 
     let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
     let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
-    let alpha_pk = RistrettoPublicKey::from_secret_key(&alpha);
     let script_private_key = alpha_hasher(alpha, blinding_factor)?;
-
-    let pk = RistrettoPublicKey::from_secret_key(&script_private_key);
-
-    MessageScroller::new(&alpha_pk.to_string()).event_loop();
-    MessageScroller::new(&pk.to_string()).event_loop();
-    MessageScroller::new(&(&pk + alpha_pk).to_string()).event_loop();
-    special_hash();
 
     let value: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
     let spend_private_key: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;

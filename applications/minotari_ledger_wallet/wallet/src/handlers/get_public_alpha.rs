@@ -1,17 +1,10 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use ledger_device_sdk::{io::Comm, ui::gadgets::MessageScroller};
+use ledger_device_sdk::io::Comm;
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
-use crate::{
-    alloc::string::ToString,
-    utils::derive_from_bip32_key,
-    AppSW,
-    KeyType,
-    RESPONSE_VERSION,
-    STATIC_ALPHA_INDEX,
-};
+use crate::{utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION, STATIC_ALPHA_INDEX};
 
 pub fn handler_get_public_alpha(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
@@ -24,8 +17,6 @@ pub fn handler_get_public_alpha(comm: &mut Comm) -> Result<(), AppSW> {
         Ok(k) => RistrettoPublicKey::from_secret_key(&k),
         Err(e) => return Err(e),
     };
-
-    MessageScroller::new(&pk.to_string()).event_loop();
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(pk.as_bytes());

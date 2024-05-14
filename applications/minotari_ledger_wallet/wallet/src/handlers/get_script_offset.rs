@@ -1,17 +1,11 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use ledger_device_sdk::{
-    io::Comm,
-    ui::gadgets::{MessageScroller, SingleMessage},
-};
-use tari_crypto::{
-    ristretto::RistrettoSecretKey,
-    tari_utilities::{hex::Hex, ByteArray},
-};
+use ledger_device_sdk::io::Comm;
+use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
 
 use crate::{
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, u64_to_string},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -89,11 +83,13 @@ pub fn handler_get_script_offset(
         // The sum of managed private keys
         let k: RistrettoSecretKey = get_key_from_canonical_bytes(&data[0..32])?;
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + k;
+
         return Ok(());
     }
 
     let payload_offset = 2;
     let end_offset_indexes = payload_offset + offset_ctx.total_offset_indexes;
+
     if (payload_offset..end_offset_indexes).contains(&(chunk as u64)) {
         let mut index_bytes = [0u8; 8];
         index_bytes.clone_from_slice(&data[0..8]);
@@ -104,11 +100,12 @@ pub fn handler_get_script_offset(
     }
 
     let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
+
     if (end_offset_indexes..end_commitment_keys).contains(&(chunk as u64)) {
         let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
-        let blinding_factor = get_key_from_canonical_bytes(&data[0..32])?;
-        let k = alpha_hasher(alpha, blinding_factor)?;
+        let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes(&data[0..32])?;
 
+        let k = alpha_hasher(alpha, blinding_factor)?;
         offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + &k;
     }
 
