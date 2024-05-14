@@ -40,6 +40,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
+            encrypted_data::PaymentId,
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -384,7 +385,7 @@ where KM: TransactionKeyManagerInterface
 
                         let encrypted_data = self
                             .key_manager
-                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64())
+                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), PaymentId::Zero)
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -428,6 +429,7 @@ where KM: TransactionKeyManagerInterface
                             covenant,
                             encrypted_data,
                             minimum_value_promise,
+                            PaymentId::Zero,
                             &self.key_manager,
                         )
                         .await

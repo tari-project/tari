@@ -33,7 +33,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-        transaction_components::{TransactionKernel, TransactionOutput},
+        transaction_components::{encrypted_data::PaymentId, TransactionKernel, TransactionOutput},
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -338,6 +338,7 @@ impl BlockTemplateProtocol<'_> {
             self.config.stealth_payment,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
+            PaymentId::Zero,
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

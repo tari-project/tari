@@ -27,7 +27,13 @@ use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
     tari_amount::MicroMinotari,
-    transaction_components::{OutputType, TransactionError, TransactionOutput, WalletOutput},
+    transaction_components::{
+        encrypted_data::PaymentId,
+        OutputType,
+        TransactionError,
+        TransactionOutput,
+        WalletOutput,
+    },
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
@@ -81,7 +87,7 @@ where
                 continue;
             }
 
-            let (spending_key, committed_value) = match self.attempt_output_recovery(&output).await? {
+            let (spending_key, committed_value, payment_id) = match self.attempt_output_recovery(&output).await? {
                 Some(recovered) => recovered,
                 None => continue,
             };
@@ -109,6 +115,7 @@ where
                 output.encrypted_data,
                 output.minimum_value_promise,
                 output.proof.clone(),
+                payment_id,
             );
 
             rewound_outputs.push((uo, known_script_index.is_some(), hash));
@@ -234,7 +241,7 @@ where
     async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroMinotari)>, OutputManagerError> {
+    ) -> Result<Option<(TariKeyId, MicroMinotari, PaymentId)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self.db.fetch_by_commitment(output.commitment().clone()) {
@@ -242,14 +249,15 @@ where
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value) = match self.master_key_manager.try_output_key_recovery(output, None).await {
-            Ok(value) => value,
-            // Key manager errors here are actual errors and should not be suppressed.
-            Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
-            Err(_) => return Ok(None),
-        };
+        let (key, committed_value, payment_id) =
+            match self.master_key_manager.try_output_key_recovery(output, None).await {
+                Ok(value) => value,
+                // Key manager errors here are actual errors and should not be suppressed.
+                Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
+                Err(_) => return Ok(None),
+            };
 
-        Ok(Some((key, committed_value)))
+        Ok(Some((key, committed_value, payment_id)))
     }
 
     /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify

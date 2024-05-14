@@ -40,7 +40,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch},
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{RangeProofType, TransactionError},
+        transaction_components::{encrypted_data::PaymentId, RangeProofType, TransactionError},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -248,7 +248,11 @@ async fn it_allows_multiple_coinbases() {
         .with_script_key_id(TariKeyId::default())
         .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
         .with_range_proof_type(RangeProofType::RevealedValue)
-        .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
+        .build_with_reward(
+            blockchain.rules().consensus_constants(1),
+            coinbase.value,
+            PaymentId::Zero,
+        )
         .await
         .unwrap();
 

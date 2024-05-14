@@ -143,7 +143,14 @@ use tari_core::{
     consensus::ConsensusManager,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            UnblindedOutput,
+        },
         CryptoFactories,
     },
 };
@@ -1562,7 +1569,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
     let encrypted_data = if encrypted_data.is_null() {
         TariEncryptedOpenings::default()
     } else {
-        *encrypted_data
+        (*encrypted_data).clone()
     };
 
     let unblinded_output = UnblindedOutput::new_current_version(
@@ -6660,6 +6667,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     one_sided: bool,
+    payment_id: c_ulonglong,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -6715,6 +6723,11 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     if one_sided {
+        let payment_id = match payment_id {
+            0 => PaymentId::Zero,
+            x if x <= u64::from(u32::MAX) => PaymentId::U32(x.try_into().expect("number should fit into u32")),
+            x => PaymentId::U64(x.try_into().expect("number should fit into u64")),
+        };
         match (*wallet).runtime.block_on(
             (*wallet)
                 .wallet
@@ -6726,6 +6739,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     OutputFeatures::default(),
                     MicroMinotari::from(fee_per_gram),
                     message_string,
+                    payment_id,
                 ),
         ) {
             Ok(tx_id) => tx_id.as_u64(),
@@ -9339,7 +9353,7 @@ mod test {
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroMinotari::from(123456);
             let encrypted_data =
-                TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
+                TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key, PaymentId::Zero).unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
 
             let encrypted_data_1 = Box::into_raw(Box::new(encrypted_data));

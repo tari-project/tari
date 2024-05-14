@@ -85,6 +85,7 @@ use tokio::{
     task,
     time::sleep,
 };
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
@@ -2191,7 +2192,7 @@ async fn scan_for_recovery_test() {
         let features = OutputFeatures::default();
         let encrypted_data = oms
             .key_manager_handle
-            .encrypt_data_for_recovery(&spending_key_result, None, amount)
+            .encrypt_data_for_recovery(&spending_key_result, None, amount, PaymentId::Zero)
             .await
             .unwrap();
 
@@ -2208,6 +2209,7 @@ async fn scan_for_recovery_test() {
             Covenant::new(),
             encrypted_data,
             MicroMinotari::zero(),
+            PaymentId::Zero,
             &oms.key_manager_handle,
         )
         .await

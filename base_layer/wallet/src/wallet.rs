@@ -56,7 +56,7 @@ use tari_core::{
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
-        transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
+        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -550,25 +550,23 @@ where
         source_address: TariAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
+        let value = unblinded_output.value;
+        let wallet_output = unblinded_output
+            .to_wallet_output(&self.key_manager_service, PaymentId::Zero)
+            .await?;
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
-                unblinded_output.value,
+                value,
                 source_address,
                 message,
                 ImportStatus::Imported,
                 None,
                 None,
                 None,
-                unblinded_output
-                    .clone()
-                    .to_wallet_output(&self.key_manager_service)
-                    .await?
-                    .to_transaction_output(&self.key_manager_service)
-                    .await?,
+                wallet_output.to_transaction_output(&self.key_manager_service).await?,
             )
             .await?;
-        let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service).await?;
         // As non-rewindable
         self.output_manager_service
             .add_unvalidated_output(tx_id, wallet_output.clone(), None)

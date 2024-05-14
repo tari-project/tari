@@ -168,6 +168,7 @@ use tokio::{
     task,
     time::sleep,
 };
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
@@ -1534,7 +1535,7 @@ async fn single_transaction_burn_tari() {
                 .try_output_key_recovery(output, Some(&recovery_key_id))
                 .await
             {
-                Ok((spending_key_id, value)) => {
+                Ok((spending_key_id, value, _)) => {
                     assert_eq!(value, burn_value);
                     assert_eq!(spending_key_id, spending_key_id_from_reciprocal_claim_public_key)
                 },
@@ -1630,6 +1631,7 @@ async fn send_one_sided_transaction_to_other() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
+            PaymentId::Zero,
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1926,6 +1928,7 @@ async fn recover_stealth_one_sided_transaction() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
+            PaymentId::Zero,
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -2162,6 +2165,7 @@ async fn send_one_sided_transaction_to_self() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
+            PaymentId::Zero,
         )
         .await
     {

@@ -30,6 +30,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::PaymentId,
             EncryptedData,
             OutputFeatures,
             TransactionError,
@@ -58,6 +59,7 @@ pub struct WalletOutputBuilder {
     encrypted_data: EncryptedData,
     custom_recovery_key_id: Option<TariKeyId>,
     minimum_value_promise: MicroMinotari,
+    payment_id: PaymentId,
 }
 
 #[allow(dead_code)]
@@ -79,6 +81,7 @@ impl WalletOutputBuilder {
             encrypted_data: EncryptedData::default(),
             custom_recovery_key_id: None,
             minimum_value_promise: MicroMinotari::zero(),
+            payment_id: PaymentId::Zero,
         }
     }
 
@@ -111,9 +114,15 @@ impl WalletOutputBuilder {
         mut self,
         key_manager: &KM,
         custom_recovery_key_id: Option<&TariKeyId>,
+        payment_id: PaymentId,
     ) -> Result<Self, TransactionError> {
         self.encrypted_data = key_manager
-            .encrypt_data_for_recovery(&self.spending_key_id, custom_recovery_key_id, self.value.as_u64())
+            .encrypt_data_for_recovery(
+                &self.spending_key_id,
+                custom_recovery_key_id,
+                self.value.as_u64(),
+                payment_id,
+            )
             .await?;
         Ok(self)
     }
@@ -217,6 +226,7 @@ impl WalletOutputBuilder {
             self.covenant,
             self.encrypted_data,
             self.minimum_value_promise,
+            self.payment_id,
             key_manager,
         )
         .await?;
@@ -249,7 +259,7 @@ mod test {
         let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
-            .encrypt_data_for_recovery(&key_manager, None)
+            .encrypt_data_for_recovery(&key_manager, None, PaymentId::Zero)
             .await
             .unwrap()
             .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
@@ -264,7 +274,7 @@ mod test {
                     .await
                     .unwrap());
 
-                let (recovered_key_id, recovered_value) =
+                let (recovered_key_id, recovered_value, _) =
                     key_manager.try_output_key_recovery(&output, None).await.unwrap();
                 assert_eq!(recovered_key_id, spending_key_id);
                 assert_eq!(recovered_value, value);
@@ -289,7 +299,7 @@ mod test {
         let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
-            .encrypt_data_for_recovery(&key_manager, None)
+            .encrypt_data_for_recovery(&key_manager, None, PaymentId::Zero)
             .await
             .unwrap()
             .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)

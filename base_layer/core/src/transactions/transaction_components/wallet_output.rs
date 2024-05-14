@@ -41,6 +41,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
+            encrypted_data::PaymentId,
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             EncryptedData,
@@ -71,6 +72,7 @@ pub struct WalletOutput {
     pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroMinotari,
     pub rangeproof: Option<RangeProof>,
+    pub payment_id: PaymentId,
 }
 
 impl WalletOutput {
@@ -91,6 +93,7 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        payment_id: PaymentId,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
@@ -116,6 +119,7 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            payment_id,
             rangeproof,
         })
     }
@@ -136,6 +140,7 @@ impl WalletOutput {
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
         rangeproof: Option<RangeProof>,
+        payment_id: PaymentId,
     ) -> Self {
         Self {
             version,
@@ -152,6 +157,7 @@ impl WalletOutput {
             encrypted_data,
             minimum_value_promise,
             rangeproof,
+            payment_id,
         }
     }
 
@@ -169,6 +175,7 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        payment_id: PaymentId,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         Self::new(
@@ -185,6 +192,7 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            payment_id,
             key_manager,
         )
         .await
@@ -221,7 +229,7 @@ impl WalletOutput {
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
                 covenant: self.covenant.clone(),
                 version: self.version,
-                encrypted_data: self.encrypted_data,
+                encrypted_data: self.encrypted_data.clone(),
                 metadata_signature: self.metadata_signature.clone(),
                 rangeproof_hash,
                 minimum_value_promise: self.minimum_value_promise,
@@ -268,7 +276,7 @@ impl WalletOutput {
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
-            self.encrypted_data,
+            self.encrypted_data.clone(),
             self.minimum_value_promise,
         );
 

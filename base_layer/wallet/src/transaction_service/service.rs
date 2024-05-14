@@ -57,6 +57,7 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::PaymentId,
             CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
@@ -629,6 +630,7 @@ where
                 output_features,
                 fee_per_gram,
                 message,
+                payment_id,
             } => self
                 .send_one_sided_transaction(
                     destination,
@@ -637,6 +639,7 @@ where
                     *output_features,
                     fee_per_gram,
                     message,
+                    payment_id,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -648,6 +651,7 @@ where
                 output_features,
                 fee_per_gram,
                 message,
+                payment_id,
             } => self
                 .send_one_sided_to_stealth_address_transaction(
                     destination,
@@ -656,6 +660,7 @@ where
                     *output_features,
                     fee_per_gram,
                     message,
+                    payment_id,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -1214,7 +1219,11 @@ where
                     .clone(),
             )
             .with_script(script)
-            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
+            .encrypt_data_for_recovery(
+                &self.resources.transaction_key_manager_service,
+                Some(&encryption_key),
+                PaymentId::Zero,
+            )
             .await?
             .with_input_data(ExecutionStack::default())
             .with_covenant(covenant)
@@ -1317,6 +1326,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         script: TariScript,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1416,7 +1426,11 @@ where
                     .clone(),
             )
             .with_script(script)
-            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
+            .encrypt_data_for_recovery(
+                &self.resources.transaction_key_manager_service,
+                Some(&encryption_key),
+                payment_id,
+            )
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(
                 self.resources.wallet_identity.node_identity.secret_key()
@@ -1510,6 +1524,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         message: String,
+        payment_id: PaymentId,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1533,6 +1548,7 @@ where
             message,
             transaction_broadcast_join_handles,
             one_sided_payment_script(&dest_pubkey),
+            payment_id,
         )
         .await
     }
@@ -1647,7 +1663,11 @@ where
                     .clone(),
             )
             .with_script(script!(Nop))
-            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&recovery_key_id))
+            .encrypt_data_for_recovery(
+                &self.resources.transaction_key_manager_service,
+                Some(&recovery_key_id),
+                PaymentId::Zero,
+            )
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(
                 self.resources.wallet_identity.node_identity.secret_key()
@@ -1837,6 +1857,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         message: String,
+        payment_id: PaymentId,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1873,6 +1894,7 @@ where
             message,
             transaction_broadcast_join_handles,
             stealth_payment_script(&nonce_public_key, &script_spending_key),
+            payment_id,
         )
         .await
     }

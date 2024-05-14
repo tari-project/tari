@@ -62,6 +62,7 @@ use tari_core::{
             TxoStage,
         },
         transaction_components::{
+            encrypted_data::PaymentId,
             KernelBuilder,
             RangeProofType,
             Transaction,
@@ -855,6 +856,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
+                PaymentId::Zero,
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
@@ -1049,6 +1051,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
+                PaymentId::Zero,
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;

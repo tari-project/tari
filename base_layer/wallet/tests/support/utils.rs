@@ -28,6 +28,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
+            encrypted_data::PaymentId,
             OutputFeatures,
             RangeProofType,
             TransactionOutput,
@@ -74,7 +75,12 @@ pub async fn create_wallet_output_from_sender_data(
         .await
         .unwrap();
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&test_params.spend_key_id, None, sender_data.amount.as_u64())
+        .encrypt_data_for_recovery(
+            &test_params.spend_key_id,
+            None,
+            sender_data.amount.as_u64(),
+            PaymentId::Zero,
+        )
         .await
         .unwrap();
     let mut utxo = WalletOutput::new(
@@ -91,6 +97,7 @@ pub async fn create_wallet_output_from_sender_data(
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
+        PaymentId::Zero,
         key_manager,
     )
     .await

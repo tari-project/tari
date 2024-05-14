@@ -29,6 +29,7 @@ pub struct SendTab {
     send_input_mode: SendInputMode,
     show_contacts: bool,
     to_field: String,
+    payment_id_field: String,
     amount_field: String,
     fee_field: String,
     message_field: String,
@@ -49,6 +50,7 @@ impl SendTab {
             send_input_mode: SendInputMode::None,
             show_contacts: false,
             to_field: String::new(),
+            payment_id_field: String::new(),
             amount_field: String::new(),
             fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
             message_field: String::new(),
@@ -104,6 +106,9 @@ impl SendTab {
                 Span::raw(" field, "),
                 Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to select a contact."),
+                Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to edit "),
+                Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
             ]),
             Spans::from(vec![
                 Span::raw("Press "),
@@ -167,6 +172,14 @@ impl SendTab {
             .block(Block::default().borders(Borders::ALL).title("(M)essage:"));
         f.render_widget(message_input, vert_chunks[3]);
 
+        let payment_id_input = Paragraph::new(self.payment_id_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::PaymentId => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(P)ayment-id:"));
+        f.render_widget(payment_id_input, vert_chunks[4]);
+
         match self.send_input_mode {
             SendInputMode::None => (),
             SendInputMode::To => f.set_cursor(
@@ -196,6 +209,12 @@ impl SendTab {
                 vert_chunks[3].x + self.message_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
                 vert_chunks[3].y + 1,
+            ),
+            SendInputMode::PaymentId => f.set_cursor(
+                // Put cursor past the end of the input text
+                vert_chunks[4].x + self.payment_id_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                vert_chunks[4].y + 1,
             ),
         }
     }
@@ -275,6 +294,7 @@ impl SendTab {
                                         UtxoSelectionCriteria::default(),
                                         fee_per_gram,
                                         self.message_field.clone(),
+                                        self.payment_id_field.clone(),
                                         tx,
                                     )) {
                                         Err(e) => {
@@ -294,6 +314,7 @@ impl SendTab {
                                             UtxoSelectionCriteria::default(),
                                             fee_per_gram,
                                             self.message_field.clone(),
+                                            self.payment_id_field.clone(),
                                             tx,
                                         ),
                                     ) {
@@ -332,6 +353,7 @@ impl SendTab {
                                 self.selected_unique_id = None;
                                 self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
                                 self.message_field = "".to_string();
+                                self.payment_id_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);
                             }
@@ -389,6 +411,13 @@ impl SendTab {
                     '\n' => self.send_input_mode = SendInputMode::None,
                     c => {
                         self.message_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::PaymentId => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        self.payment_id_field.push(c);
                         return KeyHandled::Handled;
                     },
                 },
@@ -579,6 +608,7 @@ impl<B: Backend> Component<B> for SendTab {
             },
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
+            'p' => self.send_input_mode = SendInputMode::PaymentId,
             's' | 'o' | 'x' => {
                 if self.to_field.is_empty() {
                     self.error_message =
@@ -651,6 +681,9 @@ impl<B: Backend> Component<B> for SendTab {
             SendInputMode::Message => {
                 let _ = self.message_field.pop();
             },
+            SendInputMode::PaymentId => {
+                let _ = self.payment_id_field.pop();
+            },
             SendInputMode::None => {},
         }
     }
@@ -663,6 +696,7 @@ pub enum SendInputMode {
     Amount,
     Message,
     Fee,
+    PaymentId,
 }
 
 #[derive(PartialEq, Debug)]

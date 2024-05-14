@@ -117,6 +117,7 @@ diesel::table! {
         minimum_value_promise -> BigInt,
         source -> Integer,
         last_validation_timestamp -> Nullable<Timestamp>,
+        payment_id -> Nullable<Binary>,
     }
 }
 

@@ -120,6 +120,7 @@ message PaymentRecipient {
         ONE_SIDED_TO_STEALTH_ADDRESS = 2;
     }
     PaymentType payment_type = 5;
+    string payment_id = 6;
 }
 
 message TransferResponse {

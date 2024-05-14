@@ -30,7 +30,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::WalletOutput,
+    transaction_components::{encrypted_data::PaymentId, WalletOutput},
 };
 use tari_script::{ExecutionStack, TariScript};
 
@@ -56,6 +56,7 @@ pub struct DbWalletOutput {
     pub source: OutputSource,
     pub received_in_tx_id: Option<TxId>,
     pub spent_in_tx_id: Option<TxId>,
+    pub payment_id: PaymentId,
 }
 
 impl DbWalletOutput {
@@ -68,6 +69,7 @@ impl DbWalletOutput {
         spent_in_tx_id: Option<TxId>,
     ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let tx_output = output.to_transaction_output(key_manager).await?;
+        let payment_id = output.payment_id;
         Ok(DbWalletOutput {
             hash: tx_output.hash(),
             commitment: tx_output.commitment,
@@ -82,6 +84,7 @@ impl DbWalletOutput {
             source,
             received_in_tx_id,
             spent_in_tx_id,
+            payment_id,
         })
     }
 }

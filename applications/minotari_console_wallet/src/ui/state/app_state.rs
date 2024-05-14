@@ -57,7 +57,7 @@ use tari_comms::{
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
-    transaction_components::{OutputFeatures, TemplateType, TransactionError},
+    transaction_components::{encrypted_data::PaymentId, OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
@@ -337,6 +337,7 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
+        payment_id_hex: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -346,6 +347,9 @@ impl AppState {
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
         let output_features = OutputFeatures { ..Default::default() };
+        let payment_id_bytes: Vec<u8> = from_hex(&payment_id_hex)
+            .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
+        let payment_id = PaymentId::from_bytes(&payment_id_bytes).map_err(|_| UiError::PaymentIdParseError)?;
 
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
@@ -356,6 +360,7 @@ impl AppState {
             output_features,
             message,
             fee_per_gram,
+            payment_id,
             tx_service_handle,
             result_tx,
         ));
@@ -370,6 +375,7 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
+        payment_id_hex: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -378,6 +384,9 @@ impl AppState {
             Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
+        let payment_id_bytes: Vec<u8> = from_hex(&payment_id_hex)
+            .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
+        let payment_id = PaymentId::from_bytes(&payment_id_bytes).map_err(|_| UiError::PaymentIdParseError)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -390,6 +399,7 @@ impl AppState {
             output_features,
             message,
             fee_per_gram,
+            payment_id,
             tx_service_handle,
             result_tx,
         ));

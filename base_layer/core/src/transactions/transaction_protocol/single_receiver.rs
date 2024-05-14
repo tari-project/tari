@@ -153,6 +153,7 @@ mod test {
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
+                encrypted_data::PaymentId,
                 EncryptedData,
                 OutputFeatures,
                 TransactionKernel,
@@ -189,6 +190,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Zero,
             &key_manager,
         )
         .await
@@ -229,6 +231,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Zero,
             &key_manager,
         )
         .await
@@ -305,6 +308,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Zero,
             &key_manager,
         )
         .await

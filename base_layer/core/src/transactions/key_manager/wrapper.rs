@@ -51,6 +51,7 @@ use crate::transactions::{
     },
     tari_amount::MicroMinotari,
     transaction_components::{
+        encrypted_data::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,
@@ -351,11 +352,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         spend_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
+        payment_id: PaymentId,
     ) -> Result<EncryptedData, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .encrypt_data_for_recovery(spend_key_id, custom_recovery_key_id, value)
+            .encrypt_data_for_recovery(spend_key_id, custom_recovery_key_id, value, payment_id)
             .await
     }
 
@@ -363,7 +365,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari), TransactionError> {
+    ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
