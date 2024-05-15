@@ -9,6 +9,7 @@ use tari_crypto::ristretto::{
     RistrettoComAndPubSig,
     RistrettoSecretKey,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
@@ -76,14 +77,20 @@ pub fn handler_get_script_signature(
     signer_ctx.account = u64::from_le_bytes(account_bytes);
 
     let alpha = derive_from_bip32_key(signer_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
-    let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[8..40])?;
+    let blinding_factor: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&signer_ctx.payload[8..40])?.into();
     let script_private_key = alpha_hasher(alpha, blinding_factor)?;
 
-    let value: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[40..72])?;
-    let spend_private_key: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[72..104])?;
-    let r_a: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[104..136])?;
-    let r_x: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[136..168])?;
-    let r_y: RistrettoSecretKey = get_key_from_canonical_bytes(&signer_ctx.payload[168..200])?;
+    let value: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&signer_ctx.payload[40..72])?.into();
+    let spend_private_key: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&signer_ctx.payload[72..104])?.into();
+    let r_a: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&signer_ctx.payload[104..136])?.into();
+    let r_x: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&signer_ctx.payload[136..168])?.into();
+    let r_y: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&signer_ctx.payload[168..200])?.into();
     let challenge = &signer_ctx.payload[200..264];
 
     let factory = ExtendedPedersenCommitmentFactory::default();

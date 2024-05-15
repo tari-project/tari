@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::format;
+use core::ops::Deref;
 
 use blake2::{Blake2b, Digest};
 use digest::consts::U64;
@@ -196,9 +197,9 @@ pub fn get_raw_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, SyscallError> {
     }
 }
 
-pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<RistrettoSecretKey, AppSW> {
+pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
     match RistrettoSecretKey::from_uniform_bytes(bytes) {
-        Ok(val) => Ok(val),
+        Ok(val) => Ok(Zeroizing::new(val)),
         Err(e) => {
             SingleMessage::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
@@ -229,21 +230,21 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
 }
 
 pub fn alpha_hasher(
-    alpha: RistrettoSecretKey,
-    blinding_factor: RistrettoSecretKey,
-) -> Result<RistrettoSecretKey, AppSW> {
+    alpha: Zeroizing<RistrettoSecretKey>,
+    blinding_factor: Zeroizing<RistrettoSecretKey>,
+) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
     let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
     let hasher = hasher.chain(blinding_factor.as_bytes()).finalize();
     let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
 
-    Ok(private_key + alpha)
+    Ok(Zeroizing::new(private_key.deref() + alpha.deref()))
 }
 
 pub fn derive_from_bip32_key(
     u64_account: u64,
     u64_index: u64,
     u64_key_type: KeyType,
-) -> Result<RistrettoSecretKey, AppSW> {
+) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
     let account = u64_to_string(u64_account);
     let index = u64_to_string(u64_index);
     let key_type = u64_to_string(u64_key_type.as_byte() as u64);

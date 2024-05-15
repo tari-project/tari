@@ -1,8 +1,11 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use core::ops::Deref;
+
 use ledger_device_sdk::io::Comm;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
+use zeroize::Zeroizing;
 
 use crate::{
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
@@ -13,8 +16,8 @@ use crate::{
 };
 
 pub struct ScriptOffsetCtx {
-    total_sender_offset_private_key: RistrettoSecretKey,
-    total_script_private_key: RistrettoSecretKey,
+    total_sender_offset_private_key: Zeroizing<RistrettoSecretKey>,
+    total_script_private_key: Zeroizing<RistrettoSecretKey>,
     account: u64,
     total_offset_indexes: u64,
     total_commitment_keys: u64,
@@ -24,8 +27,8 @@ pub struct ScriptOffsetCtx {
 impl ScriptOffsetCtx {
     pub fn new() -> Self {
         Self {
-            total_sender_offset_private_key: RistrettoSecretKey::default(),
-            total_script_private_key: RistrettoSecretKey::default(),
+            total_sender_offset_private_key: Zeroizing::new(RistrettoSecretKey::default()),
+            total_script_private_key: Zeroizing::new(RistrettoSecretKey::default()),
             account: 0,
             total_offset_indexes: 0,
             total_commitment_keys: 0,
@@ -34,8 +37,8 @@ impl ScriptOffsetCtx {
 
     // Implement reset for TxInfo
     fn reset(&mut self) {
-        self.total_sender_offset_private_key = RistrettoSecretKey::default();
-        self.total_script_private_key = RistrettoSecretKey::default();
+        self.total_sender_offset_private_key = Zeroizing::new(RistrettoSecretKey::default());
+        self.total_script_private_key = Zeroizing::new(RistrettoSecretKey::default());
         self.account = 0;
         self.total_offset_indexes = 0;
         self.total_commitment_keys = 0;
@@ -81,8 +84,8 @@ pub fn handler_get_script_offset(
 
     if chunk == 1 {
         // The sum of managed private keys
-        let k: RistrettoSecretKey = get_key_from_canonical_bytes(&data[0..32])?;
-        offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + k;
+        let k: Zeroizing<RistrettoSecretKey> = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+        offset_ctx.total_script_private_key = Zeroizing::new(offset_ctx.total_script_private_key.deref() + k.deref());
 
         return Ok(());
     }
@@ -96,24 +99,28 @@ pub fn handler_get_script_offset(
         let index = u64::from_le_bytes(index_bytes);
 
         let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::SenderOffset)?;
-        offset_ctx.total_sender_offset_private_key = &offset_ctx.total_sender_offset_private_key + &offset;
+        offset_ctx.total_sender_offset_private_key =
+            Zeroizing::new(offset_ctx.total_sender_offset_private_key.deref() + offset.deref());
     }
 
     let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
 
     if (end_offset_indexes..end_commitment_keys).contains(&(chunk as u64)) {
         let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
-        let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes(&data[0..32])?;
+        let blinding_factor: Zeroizing<RistrettoSecretKey> =
+            get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
         let k = alpha_hasher(alpha, blinding_factor)?;
-        offset_ctx.total_script_private_key = &offset_ctx.total_script_private_key + &k;
+        offset_ctx.total_script_private_key = Zeroizing::new(offset_ctx.total_script_private_key.deref() + k.deref());
     }
 
     if more {
         return Ok(());
     }
 
-    let script_offset = &offset_ctx.total_script_private_key - &offset_ctx.total_sender_offset_private_key;
+    let script_offset = Zeroizing::new(
+        offset_ctx.total_script_private_key.deref() - offset_ctx.total_sender_offset_private_key.deref(),
+    );
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
