@@ -46,6 +46,7 @@ use tari_core::{
             MemoryDbKeyManager,
             TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
+            TransactionKeyManagerLabel,
         },
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
@@ -63,7 +64,7 @@ use tari_core::{
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
     OutputSmt,
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -303,10 +304,13 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let (script_key_id, _) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-            .await
-            .unwrap();
+
+        let script_key_id = KeyId::Derived {
+            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+            index: spending_key.managed_index().unwrap(),
+        };
+
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &txn_schema.input_data {
             Some(data) => data.clone(),
