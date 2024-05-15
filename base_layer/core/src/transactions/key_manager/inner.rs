@@ -740,23 +740,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     branch,
                     label: _,
                     index,
-                } => {
-                    if let WalletType::Software(_, _) = self.wallet_type {
+                } => match &self.wallet_type {
+                    WalletType::Software(_, _) => {
                         total_script_private_key =
                             total_script_private_key + self.get_private_key(script_key_id).await?;
-                        continue;
-                    }
-
-                    let km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                        .read()
-                        .await;
-                    let branch_key = km
-                        .get_private_key(*index)
-                        .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
-                    derived_key_commitments.push(branch_key);
+                    },
+                    WalletType::Ledger(_) => {
+                        let km = self
+                            .key_managers
+                            .get(branch)
+                            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                            .read()
+                            .await;
+                        let branch_key = km
+                            .get_private_key(*index)
+                            .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
+                        derived_key_commitments.push(branch_key);
+                    },
                 },
             }
         }
