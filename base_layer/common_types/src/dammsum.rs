@@ -42,6 +42,10 @@ pub enum ChecksumError {
     InvalidChecksum,
 }
 
+/// The number of bytes used for the checksum
+/// This is included for applications that need to know it for encodings
+pub const CHECKSUM_BYTES: usize = 1;
+
 // Fixed for a dictionary size of `2^8 == 256`
 const COEFFICIENTS: [u8; 3] = [4, 3, 1];
 
@@ -71,7 +75,8 @@ pub fn compute_checksum(data: &[u8]) -> u8 {
 }
 
 /// Determine whether the array ends with a valid checksum
-pub fn validate_checksum(data: &[u8]) -> Result<(), ChecksumError> {
+/// If it is valid, returns the underlying data slice (without the checksum)
+pub fn validate_checksum(data: &[u8]) -> Result<&[u8], ChecksumError> {
     // Empty data is not allowed, nor data only consisting of a checksum
     if data.len() < 2 {
         return Err(ChecksumError::InputDataTooShort);
@@ -79,7 +84,7 @@ pub fn validate_checksum(data: &[u8]) -> Result<(), ChecksumError> {
 
     // It's sufficient to check the entire array against a zero checksum
     match compute_checksum(data) {
-        0u8 => Ok(()),
+        0u8 => Ok(&data[..data.len() - 1]),
         _ => Err(ChecksumError::InvalidChecksum),
     }
 }
@@ -97,13 +102,14 @@ mod test {
 
         // Generate random data
         let mut rng = rand::thread_rng();
-        let mut data: Vec<u8> = (0..SIZE).map(|_| rng.gen::<u8>()).collect();
+        let data: Vec<u8> = (0..SIZE).map(|_| rng.gen::<u8>()).collect();
 
         // Compute and append the checksum
-        data.push(compute_checksum(&data));
+        let mut data_with_checksum = data.clone();
+        data_with_checksum.push(compute_checksum(&data));
 
-        // Validate
-        assert!(validate_checksum(&data).is_ok());
+        // Validate and ensure we get the same data back
+        assert_eq!(validate_checksum(&data_with_checksum).unwrap(), data);
     }
 
     #[test]
