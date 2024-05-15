@@ -174,7 +174,9 @@ fn check_aux_chains(
     )
     .low_u32() %
         u32::from(merkle_tree_params.number_of_chains());
-    let (merkle_root, pos) = monero_data.aux_chain_merkle_proof.calculate_root_with_pos(&t_hash);
+    let (merkle_root, pos) = monero_data
+        .aux_chain_merkle_proof
+        .calculate_root_with_pos(&t_hash, merkle_tree_params.number_of_chains());
     if hash_position != pos {
         return false;
     }
