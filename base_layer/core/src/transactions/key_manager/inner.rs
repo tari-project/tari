@@ -196,56 +196,53 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
-            KeyId::Managed { branch, index } => match (
-                branch == &TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key() ||
-                    branch == &TransactionKeyManagerBranch::SenderOffset.get_branch_key(),
-                &self.wallet_type,
-            ) {
-                #[allow(unused_variables)] // This is to avoid the code blocks where ledger isn't used
-                (true, WalletType::Ledger(ledger)) => {
-                    #[cfg(not(feature = "ledger"))]
+            KeyId::Managed { branch, index } => {
+                // If we have the unique case of being a ledger wallet, and the key is a Managed EphemeralNonce, or
+                // SenderOffset than we fetch from the ledger, all other keys are fetched below.
+                #[allow(unused_variables)]
+                if let WalletType::Ledger(ledger) = &self.wallet_type {
+                    if branch == &TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key() ||
+                        branch == &TransactionKeyManagerBranch::SenderOffset.get_branch_key()
                     {
-                        let km = self
-                            .key_managers
-                            .get(branch)
-                            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                            .read()
-                            .await;
-                        Ok(km.derive_public_key(*index)?.key)
-                    }
+                        #[cfg(not(feature = "ledger"))]
+                        {
+                            return Err(KeyManagerServiceError::LedgerError(
+                                "Ledger is not supported".to_string(),
+                            ));
+                        }
 
-                    #[cfg(feature = "ledger")]
-                    {
-                        let transport =
-                            get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                        let mut data = index.to_le_bytes().to_vec();
-                        let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
-                        data.extend_from_slice(&u64::from(branch_u8).to_le_bytes());
-                        let command = ledger.build_command(Instruction::GetPublicKey, data);
+                        #[cfg(feature = "ledger")]
+                        {
+                            let transport =
+                                get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+                            let mut data = index.to_le_bytes().to_vec();
+                            let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
+                            data.extend_from_slice(&u64::from(branch_u8).to_le_bytes());
+                            let command = ledger.build_command(Instruction::GetPublicKey, data);
 
-                        match command.execute_with_transport(&transport) {
-                            Ok(result) => {
-                                debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                                if result.data().len() < 33 {
-                                    debug!(target: LOG_TARGET, "result less than 33");
-                                }
+                            match command.execute_with_transport(&transport) {
+                                Ok(result) => {
+                                    debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                                    if result.data().len() < 33 {
+                                        debug!(target: LOG_TARGET, "result less than 33");
+                                    }
 
-                                PublicKey::from_canonical_bytes(&result.data()[1..33])
-                                    .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))
-                            },
-                            Err(e) => Err(KeyManagerServiceError::LedgerError(e.to_string())),
+                                    return PublicKey::from_canonical_bytes(&result.data()[1..33])
+                                        .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()));
+                                },
+                                Err(e) => return Err(KeyManagerServiceError::LedgerError(e.to_string())),
+                            }
                         }
                     }
-                },
-                (_, _) => {
-                    let km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                        .read()
-                        .await;
-                    Ok(km.derive_public_key(*index)?.key)
-                },
+                }
+
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .read()
+                    .await;
+                Ok(km.derive_public_key(*index)?.key)
             },
             KeyId::Derived { branch, label, index } => {
                 let public_alpha = match &self.wallet_type {
