@@ -87,7 +87,7 @@ pub fn handler_get_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
         Ok(sig) => sig,
         Err(e) => {
             SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
-            return Err(AppSW::ScriptSignatureFail);
+            return Err(AppSW::MetadataSignatureFail);
         },
     };
 
