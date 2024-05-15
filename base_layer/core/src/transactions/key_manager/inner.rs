@@ -422,7 +422,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(key)
             },
             KeyId::Derived { branch, label, index } => match &self.wallet_type {
-                WalletType::Ledger(_) => panic!(),
+                WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
                 WalletType::Software(k, _pk) => {
                     let km = self
                         .key_managers
