@@ -13,7 +13,6 @@ use tari_crypto::{
         RistrettoSecretKey,
     },
 };
-use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
@@ -55,11 +54,7 @@ pub fn handler_get_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let ephemeral_private_key = derive_from_bip32_key(account, ephemeral_private_nonce_index, KeyType::Nonce)?;
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
-    let sender_offset_private_key = Zeroizing::new(derive_from_bip32_key(
-        account,
-        sender_offset_key_index,
-        KeyType::SenderOffset,
-    )?);
+    let sender_offset_private_key = derive_from_bip32_key(account, sender_offset_key_index, KeyType::SenderOffset)?;
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_private_key);
 
     let challenge = finalize_metadata_signature_challenge(
