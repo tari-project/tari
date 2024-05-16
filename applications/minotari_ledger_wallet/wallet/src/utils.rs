@@ -267,24 +267,3 @@ pub fn derive_from_bip32_key(
         },
     }
 }
-
-pub fn finalize_metadata_signature_challenge(
-    _version: u64,
-    network: u64,
-    sender_offset_public_key: &RistrettoPublicKey,
-    ephemeral_commitment: &PedersenCommitment,
-    ephemeral_pubkey: &RistrettoPublicKey,
-    commitment: &PedersenCommitment,
-    message: &[u8; 32],
-) -> [u8; 64] {
-    let challenge =
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature", network)
-            .chain(ephemeral_pubkey)
-            .chain(ephemeral_commitment)
-            .chain(sender_offset_public_key)
-            .chain(commitment)
-            .chain(&message)
-            .finalize();
-
-    challenge.into()
-}

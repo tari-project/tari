@@ -3,6 +3,8 @@
 
 use alloc::format;
 
+use blake2::Blake2b;
+use digest::consts::U64;
 use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{
     keys::PublicKey,
@@ -16,7 +18,8 @@ use tari_crypto::{
 
 use crate::{
     alloc::string::ToString,
-    utils::{derive_from_bip32_key, finalize_metadata_signature_challenge, get_key_from_canonical_bytes},
+    hashing::{DomainSeparatedConsensusHasher, TransactionHashDomain},
+    utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -91,4 +94,25 @@ pub fn handler_get_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     comm.reply_ok();
 
     Ok(())
+}
+
+fn finalize_metadata_signature_challenge(
+    _version: u64,
+    network: u64,
+    sender_offset_public_key: &RistrettoPublicKey,
+    ephemeral_commitment: &PedersenCommitment,
+    ephemeral_pubkey: &RistrettoPublicKey,
+    commitment: &PedersenCommitment,
+    message: &[u8; 32],
+) -> [u8; 64] {
+    let challenge =
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature", network)
+            .chain(ephemeral_pubkey)
+            .chain(ephemeral_commitment)
+            .chain(sender_offset_public_key)
+            .chain(commitment)
+            .chain(&message)
+            .finalize();
+
+    challenge.into()
 }
