@@ -547,22 +547,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let r_a = PrivateKey::random(&mut OsRng);
-        let r_x = PrivateKey::random(&mut OsRng);
-        let r_y = PrivateKey::random(&mut OsRng);
-        let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
-        let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
         let commitment = self.get_commitment(spend_key_id, value).await?;
         let spend_private_key = self.get_private_key(spend_key_id).await?;
-
-        let challenge = TransactionInput::finalize_script_signature_challenge(
-            txi_version,
-            &ephemeral_commitment,
-            &ephemeral_pubkey,
-            &self.get_public_key_at_key_id(script_key_id).await?,
-            &commitment,
-            script_message,
-        );
 
         #[allow(unused_variables)] // When ledger isn't enabled
         match (&self.wallet_type, script_key_id) {
@@ -591,63 +577,64 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         .get_private_key(*index)
                         .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
 
-                    let data: Vec<Vec<u8>> = vec![
-                        branch_key.as_bytes().to_vec(),
-                        value.as_bytes().to_vec(),
-                        spend_private_key.as_bytes().to_vec(),
-                        r_a.as_bytes().to_vec(),
-                        r_x.as_bytes().to_vec(),
-                        r_y.as_bytes().to_vec(),
-                        challenge.to_vec(),
-                    ];
+                    let mut data = u64::from(ledger.network.as_byte()).to_le_bytes().to_vec();
+                    data.extend_from_slice(&u64::from(txi_version.as_u8()).to_le_bytes());
+                    data.extend_from_slice(branch_key.as_bytes());
+                    data.extend_from_slice(value.as_bytes());
+                    data.extend_from_slice(spend_private_key.as_bytes());
+                    data.extend_from_slice(commitment.as_bytes());
+                    data.extend_from_slice(script_message);
 
-                    let commands = ledger.chunk_command(Instruction::GetScriptSignature, data);
+                    let command = ledger.build_command(Instruction::GetScriptSignature, data);
                     let transport = get_transport()?;
 
-                    let mut result = None;
-                    for command in commands {
-                        match command.execute_with_transport(&transport) {
-                            Ok(r) => result = Some(r),
-                            Err(e) => {
-                                return Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into())
-                            },
-                        }
-                    }
-
-                    if let Some(result) = result {
-                        if result.data().len() < 161 {
-                            debug!(target: LOG_TARGET, "result less than 161");
-                            return Err(LedgerDeviceError::Processing(format!(
-                                "'get_script_signature' insufficient data - expected 161 got {} bytes ({:?})",
-                                result.data().len(),
-                                result
+                    match command.execute_with_transport(&transport) {
+                        Ok(result) => {
+                            if result.data().len() < 161 {
+                                debug!(target: LOG_TARGET, "result less than 161");
+                                return Err(LedgerDeviceError::Processing(format!(
+                                    "'get_script_signature' insufficient data - expected 161 got {} bytes ({:?})",
+                                    result.data().len(),
+                                    result
+                                ))
+                                .into());
+                            }
+                            let data = result.data();
+                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                            Ok(ComAndPubSignature::new(
+                                Commitment::from_canonical_bytes(&data[1..33])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PublicKey::from_canonical_bytes(&data[33..65])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PrivateKey::from_canonical_bytes(&data[65..97])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PrivateKey::from_canonical_bytes(&data[97..129])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                                PrivateKey::from_canonical_bytes(&data[129..161])
+                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
                             ))
-                            .into());
-                        }
-                        let data = result.data();
-                        debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                        return Ok(ComAndPubSignature::new(
-                            Commitment::from_canonical_bytes(&data[1..33])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PublicKey::from_canonical_bytes(&data[33..65])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PrivateKey::from_canonical_bytes(&data[65..97])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PrivateKey::from_canonical_bytes(&data[97..129])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            PrivateKey::from_canonical_bytes(&data[129..161])
-                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                        ));
+                        },
+                        Err(e) => Err(LedgerDeviceError::Instruction(format!("GetScriptSignature: {}", e)).into()),
                     }
-
-                    Err(
-                        LedgerDeviceError::Instruction("GetScriptSignature failed to process correctly".to_string())
-                            .into(),
-                    )
                 }
             },
             (_, _) => {
+                let r_a = PrivateKey::random(&mut OsRng);
+                let r_x = PrivateKey::random(&mut OsRng);
+                let r_y = PrivateKey::random(&mut OsRng);
+                let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
+                let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
                 let script_private_key = self.get_private_key(script_key_id).await?;
+
+                let challenge = TransactionInput::finalize_script_signature_challenge(
+                    txi_version,
+                    &ephemeral_commitment,
+                    &ephemeral_pubkey,
+                    &self.get_public_key_at_key_id(script_key_id).await?,
+                    &commitment,
+                    script_message,
+                );
+
                 let script_signature = ComAndPubSignature::sign(
                     value,
                     &spend_private_key,

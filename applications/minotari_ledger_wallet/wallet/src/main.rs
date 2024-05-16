@@ -31,7 +31,7 @@ use handlers::{
     get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
-    get_script_signature::{handler_get_script_signature, ScriptSignatureCtx},
+    get_script_signature::handler_get_script_signature,
     get_version::handler_get_version,
 };
 #[cfg(feature = "pending_review_screen")]
@@ -111,7 +111,7 @@ pub enum Instruction {
     GetAppName,
     GetPublicKey,
     GetPublicAlpha,
-    GetScriptSignature { chunk: u8, more: bool },
+    GetScriptSignature,
     GetScriptOffset { chunk: u8, more: bool },
     GetMetadataSignature,
 }
@@ -162,16 +162,13 @@ impl TryFrom<ApduHeader> for Instruction {
             (2, 0, 0) => Ok(Instruction::GetAppName),
             (3, 0, 0) => Ok(Instruction::GetPublicAlpha),
             (4, 0, 0) => Ok(Instruction::GetPublicKey),
-            (5, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptSignature {
-                chunk: value.p1,
-                more: value.p2 == P2_MORE,
-            }),
+            (5, 0, 0) => Ok(Instruction::GetScriptSignature),
             (6, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
             (7, 0, 0) => Ok(Instruction::GetMetadataSignature),
-            (5..=6, _, _) => Err(AppSW::WrongP1P2),
+            (6, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -191,14 +188,13 @@ extern "C" fn sample_main() {
     display_pending_review(&mut comm);
 
     // This is long lived over the span the ledger app is open, across multiple interactions
-    let mut signer_ctx = ScriptSignatureCtx::new();
     let mut offset_ctx = ScriptOffsetCtx::new();
 
     loop {
         // Wait for either a specific button push to exit the app
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins, &mut signer_ctx, &mut offset_ctx) {
+            match handle_apdu(&mut comm, ins, &mut offset_ctx) {
                 Ok(()) => comm.reply_ok(),
                 Err(sw) => comm.reply(sw),
             }
@@ -206,12 +202,7 @@ extern "C" fn sample_main() {
     }
 }
 
-fn handle_apdu(
-    comm: &mut Comm,
-    ins: Instruction,
-    signer_ctx: &mut ScriptSignatureCtx,
-    offset_ctx: &mut ScriptOffsetCtx,
-) -> Result<(), AppSW> {
+fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetCtx) -> Result<(), AppSW> {
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {
@@ -220,7 +211,7 @@ fn handle_apdu(
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetPublicAlpha => handler_get_public_alpha(comm),
-        Instruction::GetScriptSignature { chunk, more } => handler_get_script_signature(comm, chunk, more, signer_ctx),
+        Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
         Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),
     }
