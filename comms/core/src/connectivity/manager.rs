@@ -562,6 +562,7 @@ impl ConnectivityManagerActor {
                 target: LOG_TARGET,
                 "Node is offline. Ignoring connection failure event for peer '{}'.", node_id
             );
+            self.publish_event(ConnectivityEvent::ConnectivityStateOffline);
             return Ok(());
         }
 
