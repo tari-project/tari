@@ -307,6 +307,7 @@ pub struct TariUtxo {
     pub lock_height: u64,
     pub status: u8,
     pub coinbase_extra: *const c_char,
+    pub payment_id: *const c_char,
 }
 
 impl From<DbWalletOutput> for TariUtxo {
@@ -338,6 +339,9 @@ impl From<DbWalletOutput> for TariUtxo {
             coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
+            payment_id: CString::new(x.payment_id.as_bytes().to_hex())
+            .expect("failed to obtain hex from a payment id")
+            .into_raw(),
         }
     }
 }
