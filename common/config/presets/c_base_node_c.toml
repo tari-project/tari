@@ -83,20 +83,25 @@ track_reorgs = true
 #service.block_sync_trigger = 5
 
 [base_node.state_machine]
-# The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer will be
-# selected. If there are no further peers the sync will be restarted with an increased by `max_latency_increase`.
-#blockchain_sync_config.initial_max_sync_latency = 15
-# If all sync peers exceed latency increase allowed latency by this value
-#blockchain_sync_config.max_latency_increase =2
-# Longer ban period for potentially malicious infractions (protocol violations etc.)
+# The initial max sync latency (seconds). If a peer fails to stream a header/block within this deadline another sync
+# peer will be selected. If there are no further peers the sync will be restarted with an increased by
+# `max_latency_increase`. [default = 240]
+blockchain_sync_config.initial_max_sync_latency = 240
+# If all sync peers exceed latency increase allowed latency by this value (seconds) [default = 10]
+blockchain_sync_config.max_latency_increase = 10
+# Longer ban period (seconds) for potentially malicious infractions (protocol violations etc.) [default = 2 hours]
 #blockchain_sync_config.ban_period = 7_200 # 2 * 60 * 60
-# Short ban period for infractions that are likely not malicious (slow to respond spotty connections etc)
+# Short ban period (seconds) for infractions that are likely not malicious (slow to respond spotty connections etc)
+# [default = 4 minutes]
 #blockchain_sync_config.short_ban_period = 240
 # An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty sync peers
-# are chosen based on their advertised chain metadata.
+# are chosen based on their advertised chain metadata. [default = []]
 #blockchain_sync_config.forced_sync_peers = []
-# Number of threads to use for validation
+# Number of threads to use for validation [default = 6]
 #blockchain_sync_config.validation_concurrency = 6
+# The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
+# [default = 240]
+blockchain_sync_config.rpc_deadline = 240
 
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0
