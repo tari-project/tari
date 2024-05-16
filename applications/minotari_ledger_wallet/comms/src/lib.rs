@@ -1,4 +1,4 @@
-//  Copyright 2023 The Tari Project
+//  Copyright 2024 The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,36 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
-
-use chacha20poly1305::aead::OsRng;
-use minotari_ledger_wallet_comms::ledger_wallet::LedgerWallet;
-use serde::{Deserialize, Serialize};
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-
-use crate::types::{PrivateKey, PublicKey};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WalletType {
-    Software(PrivateKey, PublicKey),
-    Ledger(LedgerWallet),
-}
-
-impl Display for WalletType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            WalletType::Software(_k, pk) => write!(f, "Software({:?})", pk),
-            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
-        }
-    }
-}
-
-impl Default for WalletType {
-    fn default() -> Self {
-        let k: PrivateKey = SecretKey::random(&mut OsRng);
-        WalletType::Software(k.clone(), PublicKey::from_secret_key(&k))
-    }
-}
+pub mod error;
+pub mod ledger_wallet;

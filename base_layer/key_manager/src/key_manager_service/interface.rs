@@ -44,6 +44,11 @@ pub enum KeyId<PK> {
         branch: String,
         index: u64,
     },
+    Derived {
+        branch: String,
+        label: String,
+        index: u64,
+    },
     Imported {
         key: PK,
     },
@@ -57,6 +62,7 @@ where PK: Clone
     pub fn managed_index(&self) -> Option<u64> {
         match self {
             KeyId::Managed { index, .. } => Some(*index),
+            KeyId::Derived { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -65,6 +71,7 @@ where PK: Clone
     pub fn managed_branch(&self) -> Option<String> {
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
+            KeyId::Derived { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -73,6 +80,7 @@ where PK: Clone
     pub fn imported(&self) -> Option<PK> {
         match self {
             KeyId::Managed { .. } => None,
+            KeyId::Derived { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
             KeyId::Zero => None,
         }
@@ -80,6 +88,7 @@ where PK: Clone
 }
 
 pub const MANAGED_KEY_BRANCH: &str = "managed";
+pub const DERIVED_KEY_BRANCH: &str = "derived";
 pub const IMPORTED_KEY_BRANCH: &str = "imported";
 pub const ZERO_KEY_BRANCH: &str = "zero";
 
@@ -90,6 +99,11 @@ where PK: ByteArray
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
+            KeyId::Derived {
+                branch: b,
+                label: l,
+                index: i,
+            } => write!(f, "{}.{}.{}.{}", DERIVED_KEY_BRANCH, b, l, i),
             KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
@@ -126,6 +140,19 @@ where PK: ByteArray
                     Ok(KeyId::Imported { key })
                 },
                 ZERO_KEY_BRANCH => Ok(KeyId::Zero),
+                DERIVED_KEY_BRANCH => {
+                    if parts.len() != 4 {
+                        return Err("Wrong format".to_string());
+                    }
+                    let index = parts[3]
+                        .parse()
+                        .map_err(|_| "Index for default, invalid u64".to_string())?;
+                    Ok(KeyId::Derived {
+                        branch: parts[1].into(),
+                        label: parts[2].into(),
+                        index,
+                    })
+                },
                 _ => Err("Wrong format".to_string()),
             },
         }

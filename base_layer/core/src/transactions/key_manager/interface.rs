@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::str::FromStr;
+
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
@@ -50,16 +52,16 @@ pub enum TxoStage {
     Output,
 }
 
+#[repr(u8)]
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
-    DataEncryption,
-    Coinbase,
-    CoinbaseScript,
-    CommitmentMask,
-    Nonce,
-    KernelNonce,
-    ScriptKey,
-    SenderOffset,
+    DataEncryption = 0x00,
+    Coinbase = 0x01,
+    MetadataEphemeralNonce = 0x02,
+    CommitmentMask = 0x03,
+    Nonce = 0x04,
+    KernelNonce = 0x05,
+    SenderOffset = 0x06,
 }
 
 impl TransactionKeyManagerBranch {
@@ -69,12 +71,54 @@ impl TransactionKeyManagerBranch {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
             TransactionKeyManagerBranch::Coinbase => "coinbase".to_string(),
-            TransactionKeyManagerBranch::CoinbaseScript => "coinbase script".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
+            TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
-            TransactionKeyManagerBranch::ScriptKey => "script key".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
+        }
+    }
+
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "data encryption" => TransactionKeyManagerBranch::DataEncryption,
+            "coinbase" => TransactionKeyManagerBranch::Coinbase,
+            "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
+            "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
+            "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
+            "sender offset" => TransactionKeyManagerBranch::SenderOffset,
+            "nonce" => TransactionKeyManagerBranch::Nonce,
+            _ => TransactionKeyManagerBranch::Nonce,
+        }
+    }
+
+    pub fn as_byte(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Clone, Copy, EnumIter)]
+pub enum TransactionKeyManagerLabel {
+    ScriptKey,
+}
+
+impl TransactionKeyManagerLabel {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(self) -> String {
+        match self {
+            TransactionKeyManagerLabel::ScriptKey => "script key".to_string(),
+        }
+    }
+}
+
+impl FromStr for TransactionKeyManagerLabel {
+    type Err = String;
+
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        match id {
+            "script key" => Ok(TransactionKeyManagerLabel::ScriptKey),
+            _ => Err("Unknown label".to_string()),
         }
     }
 }

@@ -28,6 +28,10 @@ use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
+use minotari_ledger_wallet_comms::{
+    error::LedgerDeviceError,
+    ledger_wallet::{get_transport, Instruction, LedgerWallet},
+};
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -50,15 +54,21 @@ use tari_common::{
     },
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::wallet_types::WalletType;
+use tari_common_types::{
+    types::{PrivateKey, PublicKey},
+    wallet_types::WalletType,
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
-use tari_crypto::keys::PublicKey;
+use tari_core::{
+    consensus::ConsensusManager,
+    transactions::{transaction_components::TransactionError, CryptoFactories},
+};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
@@ -818,34 +828,57 @@ pub fn prompt_wallet_type(
     non_interactive: bool,
 ) -> Option<WalletType> {
     if non_interactive {
-        return Some(WalletType::Software);
+        return Some(WalletType::default());
     }
 
     if wallet_config.wallet_type.is_some() {
-        return wallet_config.wallet_type;
+        return wallet_config.wallet_type.clone();
     }
 
     match boot_mode {
         WalletBoot::New => {
             #[cfg(not(feature = "ledger"))]
-            return Some(WalletType::Software);
+            return Some(WalletType::default());
 
             #[cfg(feature = "ledger")]
             {
                 if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
                     print!("Scanning for connected Ledger hardware device... ");
-                    let err = "No connected device was found. Please make sure the device is plugged in before
-            continuing.";
-                    match TransportNativeHID::new(&HidApi::new().expect(err)) {
-                        Ok(_) => {
+                    match get_transport() {
+                        Ok(hid) => {
                             println!("Device found.");
                             let account = prompt_ledger_account().expect("An account value");
-                            Some(WalletType::Ledger(account))
+                            let ledger = LedgerWallet::new(account, wallet_config.network, None);
+                            match ledger
+                                .build_command(Instruction::GetPublicAlpha, vec![])
+                                .execute_with_transport(&hid)
+                            {
+                                Ok(result) => {
+                                    debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                                    if result.data().len() < 33 {
+                                        debug!(target: LOG_TARGET, "result less than 33");
+                                        panic!(
+                                            "'get_public_key' insufficient data - expected 33 got {} bytes ({:?})",
+                                            result.data().len(),
+                                            result
+                                        );
+                                    }
+
+                                    let key = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
+                                        Ok(k) => k,
+                                        Err(e) => panic!("{}", e),
+                                    };
+
+                                    let ledger = LedgerWallet::new(account, wallet_config.network, Some(key));
+                                    Some(WalletType::Ledger(ledger))
+                                },
+                                Err(e) => panic!("{}", e),
+                            }
                         },
                         Err(e) => panic!("{}", e),
                     }
                 } else {
-                    Some(WalletType::Software)
+                    Some(WalletType::default())
                 }
             }
         },
@@ -853,7 +886,7 @@ pub fn prompt_wallet_type(
     }
 }
 
-pub fn prompt_ledger_account() -> Option<usize> {
+pub fn prompt_ledger_account() -> Option<u64> {
     let question =
         "\r\nPlease enter an account number for your ledger. A simple 1-9, easily remembered numbers are suggested.";
     println!("{}", question);

@@ -383,6 +383,7 @@ impl TransactionInput {
                     script_public_key,
                     commitment,
                 );
+
                 if self.script_signature.verify_challenge(
                     commitment,
                     script_public_key,

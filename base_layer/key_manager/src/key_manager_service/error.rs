@@ -47,6 +47,12 @@ pub enum KeyManagerServiceError {
     RangeProofError(String),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
+    #[error("Unknown error: `{0}`")]
+    UnknownError(String),
+    #[error("Ledger error: `{0}`")]
+    LedgerError(String),
+    #[error("The Ledger private key cannot be access or read")]
+    LedgerPrivateKeyInaccessible,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

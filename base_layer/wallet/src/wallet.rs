@@ -775,13 +775,13 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
     match (db_wallet_type, wallet_type) {
         (None, None) => {
             // this is most likely an older wallet pre ledger support, lets put it in software
-            let wallet_type = WalletType::Software;
-            db.set_wallet_type(wallet_type)?;
+            let wallet_type = WalletType::default();
+            db.set_wallet_type(wallet_type.clone())?;
             Ok(wallet_type)
         },
         (None, Some(t)) => {
-            db.set_wallet_type(t)?;
-            Ok(t)
+            db.set_wallet_type(t.clone())?;
+            Ok(t.clone())
         },
         (Some(t), _) => Ok(t),
     }

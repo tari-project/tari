@@ -50,7 +50,12 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{
+            create_memory_db_key_manager,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TransactionKeyManagerLabel,
+        },
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
@@ -67,7 +72,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tempfile::tempdir;
@@ -179,10 +184,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await
         .unwrap();
-    let (script_key_id, public_script_key) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-        .await
-        .unwrap();
+    let script_key_id = KeyId::Derived {
+        branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+        label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+        index: spending_key_id.managed_index().unwrap(),
+    };
+    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
+
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64())
         .await

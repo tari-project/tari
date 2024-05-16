@@ -1,4 +1,4 @@
-//  Copyright 2023 The Tari Project
+//  Copyright 2024 The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,36 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
-
-use chacha20poly1305::aead::OsRng;
-use minotari_ledger_wallet_comms::ledger_wallet::LedgerWallet;
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+use tari_crypto::tari_utilities::ByteArrayError;
+use thiserror::Error;
 
-use crate::types::{PrivateKey, PublicKey};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WalletType {
-    Software(PrivateKey, PublicKey),
-    Ledger(LedgerWallet),
+/// Ledger device errors.
+#[derive(Debug, Error, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum LedgerDeviceError {
+    /// HID API error
+    #[error("HID API error `{0}`")]
+    HidApi(String),
+    /// Native HID transport error
+    #[error("Native HID transport error `{0}`")]
+    NativeTransport(String),
+    /// Ledger application not started
+    #[error("Ledger application not started")]
+    ApplicationNotStarted,
+    /// Ledger application instruction error
+    #[error("Ledger application instruction error `{0}`")]
+    Instruction(String),
+    /// Ledger application processing error
+    #[error("Processing error `{0}`")]
+    Processing(String),
+    /// Conversion error to or from ledger
+    #[error("Conversion failed: {0}")]
+    ByteArrayError(String),
+    /// Not yet supported
+    #[error("Ledger is not fully supported")]
+    NotSupported,
 }
 
-impl Display for WalletType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            WalletType::Software(_k, pk) => write!(f, "Software({:?})", pk),
-            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
-        }
-    }
-}
-
-impl Default for WalletType {
-    fn default() -> Self {
-        let k: PrivateKey = SecretKey::random(&mut OsRng);
-        WalletType::Software(k.clone(), PublicKey::from_secret_key(&k))
+impl From<ByteArrayError> for LedgerDeviceError {
+    fn from(e: ByteArrayError) -> Self {
+        LedgerDeviceError::ByteArrayError(e.to_string())
     }
 }

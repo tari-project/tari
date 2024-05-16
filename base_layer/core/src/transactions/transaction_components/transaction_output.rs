@@ -318,6 +318,7 @@ impl TransactionOutput {
             &self.encrypted_data,
             self.minimum_value_promise,
         );
+
         if !self.metadata_signature.verify_challenge(
             &self.commitment,
             &self.sender_offset_public_key,
@@ -404,6 +405,7 @@ impl TransactionOutput {
             encrypted_data,
             &minimum_value_promise,
         );
+
         TransactionOutput::finalize_metadata_signature_challenge(
             version,
             sender_offset_public_key,

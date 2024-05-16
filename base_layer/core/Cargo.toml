@@ -24,12 +24,12 @@ base_node = [
 base_node_proto = []
 benches = ["base_node"]
 ledger = [
-  "ledger-transport",
-  "ledger-transport-hid"
+  "minotari_ledger_wallet_comms",
 ]
 metrics = ["tari_metrics"]
 
 [dependencies]
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.13", optional = true }
 tari_common = { path = "../../common", version = "1.0.0-pre.13" }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.13" }
 tari_comms = { path = "../../comms/core", version = "1.0.0-pre.13" }
@@ -66,8 +66,6 @@ fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 integer-encoding = "3.0"
-ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
-ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
