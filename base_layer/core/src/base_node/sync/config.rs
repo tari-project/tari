@@ -50,19 +50,20 @@ pub struct BlockchainSyncConfig {
     pub validation_concurrency: usize,
     /// The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for
     /// sync.
+    #[serde(with = "serializers::seconds")]
     pub rpc_deadline: Duration,
 }
 
 impl Default for BlockchainSyncConfig {
     fn default() -> Self {
         Self {
-            initial_max_sync_latency: Duration::from_secs(15),
-            max_latency_increase: Duration::from_secs(2),
-            ban_period: Duration::from_secs(60 * 60 * 2), // 2 hours
-            short_ban_period: Duration::from_secs(240),   // 4 mins
+            initial_max_sync_latency: Duration::from_secs(240), // Syncing many full blocks over tor require this
+            max_latency_increase: Duration::from_secs(10),      // Syncing many full blocks over tor require this
+            ban_period: Duration::from_secs(60 * 60 * 2),       // 2 hours
+            short_ban_period: Duration::from_secs(240),         // 4 mins
             forced_sync_peers: Default::default(),
             validation_concurrency: 6,
-            rpc_deadline: Duration::from_secs(15),
+            rpc_deadline: Duration::from_secs(240), // Syncing many full blocks over tor require this
         }
     }
 }
