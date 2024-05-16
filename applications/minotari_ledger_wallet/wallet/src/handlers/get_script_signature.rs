@@ -20,8 +20,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
-    hashing::DomainSeparatedConsensusHasher,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, TransactionHashDomain},
+    hashing::{DomainSeparatedConsensusHasher, TransactionHashDomain},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,

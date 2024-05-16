@@ -4,37 +4,28 @@
 use alloc::format;
 use core::ops::Deref;
 
-use blake2::{Blake2b, Digest};
-use digest::consts::U64;
+use blake2::Blake2b;
+use digest::{consts::U64, Digest};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     io::SyscallError,
     ui::gadgets::SingleMessage,
 };
 use tari_crypto::{
-    hash_domain,
     hashing::DomainSeparatedHasher,
     keys::SecretKey,
-    ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
+    ristretto::RistrettoSecretKey,
     tari_utilities::ByteArray,
 };
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::{String, ToString},
-    hashing::DomainSeparatedConsensusHasher,
+    hashing::{KeyManagerTransactionsHashDomain, LedgerHashDomain},
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,
 };
-
-hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
-hash_domain!(
-    KeyManagerTransactionsHashDomain,
-    "com.tari.base_layer.core.transactions.key_manager",
-    1
-);
-hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
 
 /// BIP32 path stored as an array of [`u32`].
 ///

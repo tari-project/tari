@@ -6,7 +6,15 @@ use core::marker::PhantomData;
 
 use borsh::{io, io::Write, BorshSerialize};
 use digest::Digest;
-use tari_crypto::hashing::DomainSeparation;
+use tari_crypto::{hash_domain, hashing::DomainSeparation};
+
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
+hash_domain!(
+    KeyManagerTransactionsHashDomain,
+    "com.tari.base_layer.core.transactions.key_manager",
+    1
+);
+hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
 
 pub struct DomainSeparatedConsensusHasher<M, D> {
     hasher: DomainSeparatedBorshHasher<M, D>,
