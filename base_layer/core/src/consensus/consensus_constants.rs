@@ -97,6 +97,8 @@ pub struct ConsensusConstants {
     transaction_weight: TransactionWeight,
     /// Maximum byte size of TariScript
     max_script_byte_size: usize,
+    /// Maximum byte size of encrypted data
+    max_encrypted_data_byte_size: usize,
     /// Range of valid transaction input versions
     input_version_range: RangeInclusive<TransactionInputVersion>,
     /// Range of valid transaction output (and features) versions
@@ -274,6 +276,11 @@ impl ConsensusConstants {
         self.max_script_byte_size
     }
 
+    /// The maximum serialized byte size of TariScript
+    pub fn max_encrypted_data_byte_size(&self) -> usize {
+        self.max_encrypted_data_byte_size
+    }
+
     /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
@@ -397,6 +404,7 @@ impl ConsensusConstants {
             faucet_value: 0.into(),
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 512,
+            max_encrypted_data_byte_size: 32, // U256 size
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -461,6 +469,7 @@ impl ConsensusConstants {
             faucet_value: 0.into(), // IGOR_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
+            max_encrypted_data_byte_size: 32, // U256 size
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -518,6 +527,7 @@ impl ConsensusConstants {
             faucet_value: ESMERALDA_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
+            max_encrypted_data_byte_size: 32, // U256 size
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -574,6 +584,7 @@ impl ConsensusConstants {
             faucet_value: FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
+            max_encrypted_data_byte_size: 32, // U256 size
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -624,6 +635,7 @@ impl ConsensusConstants {
             faucet_value: FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
+            max_encrypted_data_byte_size: 32, // U256 size
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -676,6 +688,7 @@ impl ConsensusConstants {
             faucet_value: MicroMinotari::from(0),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
+            max_encrypted_data_byte_size: 32, // U256 size
             input_version_range,
             output_version_range,
             kernel_version_range,

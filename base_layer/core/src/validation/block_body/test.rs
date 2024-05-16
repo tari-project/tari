@@ -40,7 +40,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch},
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType, TransactionError},
+        transaction_components::{encrypted_data::PaymentId, EncryptedData, RangeProofType, TransactionError},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -412,6 +412,35 @@ async fn it_limits_the_script_byte_size() {
     let smt = blockchain.db().smt();
     let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
     assert!(matches!(err, ValidationError::TariScriptExceedsMaxSize { .. }));
+}
+
+#[tokio::test]
+async fn it_limits_the_encrypted_data_byte_size() {
+    let rules = ConsensusManager::builder(Network::LocalNet)
+        .add_consensus_constants(
+            ConsensusConstantsBuilder::new(Network::LocalNet)
+                .with_coinbase_lockheight(0)
+                .build(),
+        )
+        .build()
+        .unwrap();
+    let (mut blockchain, validator) = setup_with_rules(rules, true).await;
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
+
+    let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
+    schema1.script = script!(Nop Nop Nop);
+    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+    let mut outputs = txs[0].body.outputs().clone();
+    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; 33]);
+    txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
+    let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
+
+    let txn = blockchain.db().db_read_access().unwrap();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
+    assert!(matches!(err, ValidationError::EncryptedDataExceedsMaxSize { .. }));
 }
 
 #[tokio::test]

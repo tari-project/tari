@@ -52,6 +52,7 @@ use crate::{
             check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
+            check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
             is_all_unique_and_sorted,
             validate_input_version,
@@ -113,6 +114,7 @@ impl AggregateBodyInternalConsistencyValidator {
         for output in body.outputs() {
             check_permitted_output_types(constants, output)?;
             check_script_size(output, constants.max_script_byte_size())?;
+            check_encrypted_data_byte_size(output, constants.max_encrypted_data_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;
@@ -159,6 +161,20 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
 /// Verify that the TariScript is not larger than the max size
 fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), ValidationError> {
     check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
+        warn!(
+            target: LOG_TARGET,
+            "output ({}) script size exceeded max size {:?}.", output, e
+        );
+        e
+    })
+}
+
+/// Verify that the TariScript is not larger than the max size
+fn check_encrypted_data_byte_size(
+    output: &TransactionOutput,
+    max_encrypted_data_size: usize,
+) -> Result<(), ValidationError> {
+    check_tari_encrypted_data_byte_size(output.encrypted_data(), max_encrypted_data_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
             "output ({}) script size exceeded max size {:?}.", output, e

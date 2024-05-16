@@ -133,7 +133,13 @@ use tari_core::{
         },
         tari_amount::*,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{KernelBuilder, OutputFeatures, RangeProofType, Transaction},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            KernelBuilder,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+        },
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -168,7 +174,6 @@ use tokio::{
     task,
     time::sleep,
 };
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,

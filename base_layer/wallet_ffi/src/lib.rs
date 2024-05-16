@@ -9352,8 +9352,14 @@ mod test {
             let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroMinotari::from(123456);
-            let encrypted_data =
-                TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key, PaymentId::Zero).unwrap();
+            let encrypted_data = TariEncryptedOpenings::encrypt_data(
+                &encryption_key,
+                &commitment,
+                amount,
+                &spending_key,
+                PaymentId::Zero,
+            )
+            .unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
 
             let encrypted_data_1 = Box::into_raw(Box::new(encrypted_data));

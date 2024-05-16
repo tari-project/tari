@@ -69,7 +69,7 @@ use tari_core::{
         },
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
@@ -85,7 +85,6 @@ use tokio::{
     task,
     time::sleep,
 };
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,

@@ -94,7 +94,7 @@ impl PaymentId {
             PaymentId::U32(v) => (*v).to_le_bytes().to_vec(),
             PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
             PaymentId::U256(v) => {
-                let mut bytes = vec![0;32];
+                let mut bytes = vec![0; 32];
                 v.to_little_endian(&mut bytes);
                 bytes
             },
@@ -158,7 +158,7 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = vec![0;STATIC_SIZE_TOTAL + payment_id.get_size()];
+        let mut data = vec![0; STATIC_SIZE_TOTAL + payment_id.get_size()];
         data[..SIZE_TAG].clone_from_slice(&tag);
         data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
         data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
@@ -178,7 +178,14 @@ impl EncryptedData {
         // Extract the nonce, ciphertext, and tag
         let tag = Tag::from_slice(&encrypted_data.as_bytes()[..SIZE_TAG]);
         let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[SIZE_TAG..SIZE_TAG + SIZE_NONCE]);
-        let mut bytes = Zeroizing::new(vec![0; encrypted_data.data.len().saturating_sub(SIZE_TAG).saturating_sub(SIZE_NONCE)]);
+        let mut bytes = Zeroizing::new(vec![
+            0;
+            encrypted_data
+                .data
+                .len()
+                .saturating_sub(SIZE_TAG)
+                .saturating_sub(SIZE_NONCE)
+        ]);
         bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_TAG + SIZE_NONCE..]);
 
         // Set up the AEAD
@@ -214,9 +221,14 @@ impl EncryptedData {
                 bytes.len()
             )));
         }
-        let mut data = vec![0;bytes.len()];
+        let mut data = vec![0; bytes.len()];
         data.copy_from_slice(bytes);
         Ok(Self { data })
+    }
+
+    #[cfg(test)]
+    pub fn from_vec_unsafe(data: Vec<u8>) -> Self {
+        Self { data }
     }
 
     /// Get a byte vector with the encrypted data contents
@@ -316,7 +328,9 @@ mod test {
             PaymentId::U32(3453636),
             PaymentId::U64(1),
             PaymentId::U64(156486946518564),
-            PaymentId::U256(U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail")),
+            PaymentId::U256(
+                U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
+            ),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
@@ -354,7 +368,9 @@ mod test {
             PaymentId::U32(3453636),
             PaymentId::U64(1),
             PaymentId::U64(156486946518564),
-            PaymentId::U256(U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail")),
+            PaymentId::U256(
+                U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
+            ),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
