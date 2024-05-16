@@ -282,7 +282,7 @@ async fn response_too_big() {
     let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
 
-    let framed = framing::canonical(socket, rpc::max_response_size());
+    let framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_secs(5))
         .connect(framed)
@@ -291,7 +291,7 @@ async fn response_too_big() {
 
     // RPC_MAX_FRAME_SIZE bytes will always be too large because of the overhead of the RpcResponse proto message
     let err = client
-        .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 + 1)
+        .reply_with_msg_of_size(rpc::RPC_MAX_FRAME_SIZE as u64 + 1)
         .await
         .unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
@@ -299,7 +299,7 @@ async fn response_too_big() {
 
     // Check that the exact frame size boundary works and that the session is still going
     let _string = client
-        .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 - 9)
+        .reply_with_msg_of_size(rpc::RPC_MAX_FRAME_SIZE as u64 - 9)
         .await
         .unwrap();
 }

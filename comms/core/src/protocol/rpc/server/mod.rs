@@ -20,8 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod chunking;
-use chunking::ChunkedResponseIter;
+// mod chunking;
 
 mod error;
 pub use error::RpcServerError;
@@ -52,7 +51,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future, stream, stream::FuturesUnordered, SinkExt, StreamExt};
+use futures::{future, stream::FuturesUnordered, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use router::Router;
@@ -749,12 +748,17 @@ where
         let mut stream = body
             .into_message()
             .map(|result| into_response(request_id, result))
-            .flat_map(move |message| {
+            .map(move |message| {
                 #[cfg(feature = "metrics")]
                 if !message.status.is_ok() {
                     metrics::status_error_counter(&node_id, &protocol, message.status).inc();
                 }
-                stream::iter(ChunkedResponseIter::new(message))
+                proto::rpc::RpcResponse {
+                    request_id,
+                    status: message.status.as_u32(),
+                    flags: message.flags.bits().into(),
+                    payload: message.payload.to_vec(),
+                }
             })
             .map(|resp| Bytes::from(resp.to_encoded_bytes()));
 

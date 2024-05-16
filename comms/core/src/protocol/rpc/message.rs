@@ -267,17 +267,6 @@ pub struct RpcResponse {
     pub payload: Bytes,
 }
 
-impl RpcResponse {
-    pub fn to_proto(&self) -> proto::rpc::RpcResponse {
-        proto::rpc::RpcResponse {
-            request_id: self.request_id,
-            status: self.status as u32,
-            flags: self.flags.bits().into(),
-            payload: self.payload.to_vec(),
-        }
-    }
-}
-
 impl Default for RpcResponse {
     fn default() -> Self {
         Self {
