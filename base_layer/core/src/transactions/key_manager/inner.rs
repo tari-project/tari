@@ -538,7 +538,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
-    #[allow(clippy::too_many_lines)]
     pub async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
