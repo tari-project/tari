@@ -1,8 +1,9 @@
 {
-  "name": "@tari/base-node-grpc-client",
+  "name": "@tariproject/base-node-grpc-client",
   "version": "0.0.1",
   "description": "GRPC client for Tari Base Node",
   "main": "./src/index.js",
+  "private": false,
   "scripts": {
     "test": "jest"
   },

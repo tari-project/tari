@@ -198,10 +198,16 @@ impl LocalNodeCommsInterface {
     pub async fn fetch_matching_utxos(
         &mut self,
         hashes: Vec<HashOutput>,
+        include_spent: bool,
+        include_burnt: bool,
     ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingUtxos(hashes))
+            .call(NodeCommsRequest::FetchMatchingUtxos {
+                hashes,
+                include_burnt,
+                include_spent,
+            })
             .await??
         {
             NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),

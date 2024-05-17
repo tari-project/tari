@@ -1734,6 +1734,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
 
+        let include_spent = request.include_spent;
+        let include_burnt = request.include_burnt;
         let hashes = request
             .hashes
             .into_iter()
@@ -1750,7 +1752,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
         task::spawn(async move {
-            let outputs = match handler.fetch_matching_utxos(hashes).await {
+            let outputs = match handler.fetch_matching_utxos(hashes, include_spent, include_burnt).await {
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
