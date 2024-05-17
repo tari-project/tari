@@ -227,7 +227,6 @@ impl<H: Digest<OutputSize = U32>> MerkleProofDigest<H> for ExclusionProof<H> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use digest::consts::U32;
 
     use super::*;
 

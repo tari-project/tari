@@ -137,12 +137,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
-
     use futures::future;
     use tari_shutdown::Shutdown;
     use tari_test_utils::collect_recv;
-    use tokio::{sync::mpsc, time};
     use tower::service_fn;
 
     use super::*;

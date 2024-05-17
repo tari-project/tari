@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use chrono::NaiveDateTime;
-use diesel::{prelude::*, SqliteConnection};
+use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;

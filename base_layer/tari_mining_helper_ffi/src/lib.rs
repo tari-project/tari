@@ -566,8 +566,6 @@ pub unsafe extern "C" fn share_validate(
 
 #[cfg(test)]
 mod tests {
-    use libc::c_int;
-    use tari_common::configuration::Network;
     use tari_core::{
         blocks::{genesis_block::get_genesis_block, Block},
         proof_of_work::Difficulty,
@@ -575,7 +573,6 @@ mod tests {
     };
 
     use super::*;
-    use crate::{inject_nonce, public_key_hex_validate, share_difficulty, share_validate};
 
     fn min_difficulty() -> Difficulty {
         Difficulty::from_u64(1000).expect("Failed to create difficulty")

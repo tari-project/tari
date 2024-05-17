@@ -22,7 +22,7 @@ use borsh::BorshSerialize;
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use derivative::Derivative;
-use diesel::{prelude::*, SqliteConnection};
+use diesel::prelude::*;
 use tari_common_types::transaction::TxId;
 use tari_utilities::ByteArray;
 

@@ -63,7 +63,7 @@ impl FromStr for DnsNameServer {
 
 #[cfg(test)]
 mod test {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::net::{IpAddr, Ipv4Addr};
 
     use super::*;
 

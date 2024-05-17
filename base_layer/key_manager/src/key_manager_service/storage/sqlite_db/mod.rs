@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use chacha20poly1305::XChaCha20Poly1305;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
@@ -259,14 +256,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
-    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use tempfile::tempdir;
 
     use super::*;
-    use crate::key_manager_service::storage::sqlite_db::{KeyManagerState, KeyManagerStateSql, NewKeyManagerStateSql};
 
     #[test]
     fn test_key_manager_crud() {

@@ -28,7 +28,7 @@ use std::{
 use borsh::BorshDeserialize;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use diesel::{prelude::*, sql_query, SqliteConnection};
+use diesel::{prelude::*, sql_query};
 use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{

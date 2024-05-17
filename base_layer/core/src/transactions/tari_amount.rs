@@ -395,8 +395,6 @@ impl DivAssign<u64> for Minotari {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, str::FromStr};
-
     use super::*;
 
     #[test]

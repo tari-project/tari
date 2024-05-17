@@ -565,9 +565,7 @@ mod test {
         use crate::transactions::key_manager::create_memory_db_key_manager;
 
         mod construct_challenge_from {
-            use blake2::Digest;
             use digest::Update;
-            use tari_crypto::hashing::DomainSeparation;
 
             use super::*;
             use crate::transactions::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
@@ -618,11 +616,7 @@ mod test {
 
         mod get_field_value_ref {
             use super::*;
-            use crate::transactions::{
-                key_manager::create_memory_db_key_manager,
-                tari_amount::MicroMinotari,
-                transaction_components::RangeProofType,
-            };
+            use crate::transactions::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {

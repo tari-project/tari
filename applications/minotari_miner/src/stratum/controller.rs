@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 use std::{
-    self,
     io::{BufRead, ErrorKind, Write},
     sync::mpsc,
     thread,

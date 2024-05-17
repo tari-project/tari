@@ -156,10 +156,7 @@ impl BoundedExecutor {
 #[cfg(test)]
 mod test {
     use std::{
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc,
-        },
+        sync::atomic::{AtomicBool, Ordering},
         time::Duration,
     };
 

@@ -374,14 +374,6 @@ mod test {
     use tari_storage::HashmapDatabase;
 
     use super::*;
-    use crate::{
-        net_address::MultiaddressesWithStats,
-        peer_manager::{
-            node_id::NodeId,
-            peer::{Peer, PeerFlags},
-            PeerFeatures,
-        },
-    };
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);

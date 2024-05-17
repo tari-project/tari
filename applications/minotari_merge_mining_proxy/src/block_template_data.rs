@@ -26,7 +26,7 @@ use std::{collections::HashMap, convert::TryFrom, sync::Arc};
 
 #[cfg(not(test))]
 use chrono::Duration;
-use chrono::{self, DateTime, Utc};
+use chrono::{DateTime, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
 use tari_core::proof_of_work::monero_rx::FixedByteArray;

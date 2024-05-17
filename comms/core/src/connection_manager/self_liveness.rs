@@ -190,8 +190,6 @@ where
 
 #[cfg(test)]
 mod test {
-    use futures::SinkExt;
-    use tokio::{time, time::Duration};
     use tokio_stream::StreamExt;
 
     use super::*;

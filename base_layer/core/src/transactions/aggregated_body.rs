@@ -429,7 +429,7 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, Signature};
+    use tari_common_types::types::{ComAndPubSignature, FixedHash, PublicKey, Signature};
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;

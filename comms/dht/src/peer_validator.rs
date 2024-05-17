@@ -133,7 +133,6 @@ mod tests {
 
     use tari_comms::{
         multiaddr::Multiaddr,
-        net_address::MultiaddressesWithStats,
         peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
         types::Signature,
     };

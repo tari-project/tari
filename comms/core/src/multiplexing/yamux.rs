@@ -28,7 +28,7 @@ use tokio::{
     sync::mpsc,
 };
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
-use tracing::{self, debug, error, warn};
+use tracing::{debug, error, warn};
 // Reexport
 pub use yamux::ConnectionError;
 use yamux::Mode;

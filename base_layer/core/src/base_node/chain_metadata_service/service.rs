@@ -230,12 +230,11 @@ mod test {
         mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
         Metadata,
-        PingPongEvent,
     };
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;
     use tari_utilities::epoch_time::EpochTime;
-    use tokio::{sync::broadcast, task};
+    use tokio::task;
 
     use super::*;
     use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};

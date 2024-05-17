@@ -265,13 +265,10 @@ where D: Deserializer<'de> {
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        tari_utilities::byte_array::ByteArray,
-    };
+    use tari_crypto::keys::{PublicKey, SecretKey};
 
     use super::*;
-    use crate::types::{CommsPublicKey, CommsSecretKey};
+    use crate::types::CommsSecretKey;
 
     #[test]
     fn display() {

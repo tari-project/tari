@@ -39,7 +39,7 @@ use tokio::{
     time,
 };
 use tokio_stream::StreamExt;
-use tracing::{self, span, Instrument, Level};
+use tracing::{span, Instrument, Level};
 
 use super::{direction::ConnectionDirection, error::ConnectionManagerError, peer_connection::PeerConnection};
 #[cfg(feature = "metrics")]

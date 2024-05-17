@@ -12,7 +12,7 @@ tari_common = { path="../../common" }
 tari_common_types = { path="../common_types" }
 tari_comms = {  path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = {  path = "../../comms/dht", default-features = false }
-tari_crypto = { version = "0.20" }
+tari_crypto = { version = "0.20.1" }
 tari_key_manager = {  path = "../key_manager" }
 tari_p2p = {  path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }

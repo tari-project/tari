@@ -308,8 +308,6 @@ impl Display for MultiaddressesWithStats {
 
 #[cfg(test)]
 mod test {
-    use multiaddr::Multiaddr;
-
     use super::*;
 
     #[test]
