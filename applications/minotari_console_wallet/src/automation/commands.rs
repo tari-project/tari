@@ -66,7 +66,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari, Minotari},
     transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoSecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -660,6 +660,12 @@ pub async fn command_runner(
         println!("\n{}. {:?}\n", idx + 1, parsed);
         use crate::cli::CliCommands::*;
         match parsed {
+            CreateRandomKeyPair => {
+                let (secret_key, public_key) = PublicKey::random_keypair(&mut rand::rngs::OsRng);
+                println!("Created random key pair, this keypair is not saved and cannot be recovered.");
+                println!("Secret Key: {}", secret_key.to_hex());
+                println!("Public Key: {}", public_key.to_hex());
+            },
             GetBalance => match output_service.clone().get_balance().await {
                 Ok(balance) => {
                     debug!(target: LOG_TARGET, "get-balance concluded");

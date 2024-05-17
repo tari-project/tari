@@ -136,6 +136,7 @@ pub enum CliCommands {
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
+    CreateRandomKeyPair,
 }
 
 #[derive(Debug, Args, Clone)]
