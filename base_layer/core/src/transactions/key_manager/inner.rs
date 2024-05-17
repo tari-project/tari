@@ -39,7 +39,6 @@ use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
     extended_range_proof::ExtendedRangeProofService,
-    hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RPService,
@@ -48,6 +47,7 @@ use tari_crypto::{
         RistrettoComSig,
     },
 };
+use tari_hashing::KeyManagerTransactionsHashDomain;
 #[cfg(feature = "ledger")]
 use tari_key_manager::error::KeyManagerError;
 use tari_key_manager::{
@@ -91,12 +91,6 @@ use crate::{
         CryptoFactories,
     },
 };
-
-hash_domain!(
-    KeyManagerTransactionsHashDomain,
-    "com.tari.base_layer.core.transactions.key_manager",
-    1
-);
 
 pub struct TransactionKeyManagerInner<TBackend> {
     key_managers: HashMap<String, RwLock<KeyManager<PublicKey, KeyDigest>>>,

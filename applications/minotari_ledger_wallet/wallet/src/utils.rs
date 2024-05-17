@@ -17,11 +17,11 @@ use tari_crypto::{
     ristretto::RistrettoSecretKey,
     tari_utilities::ByteArray,
 };
+use tari_hashing::{KeyManagerTransactionsHashDomain, LedgerHashDomain};
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::{String, ToString},
-    hashing::{KeyManagerTransactionsHashDomain, LedgerHashDomain},
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,

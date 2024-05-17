@@ -16,11 +16,12 @@ use tari_crypto::{
         RistrettoSecretKey,
     },
 };
+use tari_hashing::TransactionHashDomain;
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
-    hashing::{DomainSeparatedConsensusHasher, TransactionHashDomain},
+    hashing::DomainSeparatedConsensusHasher,
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
