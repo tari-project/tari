@@ -78,6 +78,7 @@ use crate::{
     peer_manager::NodeId,
     proto,
     protocol::{
+        rpc,
         rpc::{
             body::BodyBytes,
             message::{RpcMethod, RpcResponse},
@@ -748,17 +749,15 @@ where
         let mut stream = body
             .into_message()
             .map(|result| into_response(request_id, result))
-            .map(move |message| {
+            .map(move |mut message| {
+                if message.payload.len() > rpc::max_response_payload_size() {
+                    message.exceeded_message_size();
+                }
                 #[cfg(feature = "metrics")]
                 if !message.status.is_ok() {
                     metrics::status_error_counter(&node_id, &protocol, message.status).inc();
                 }
-                proto::rpc::RpcResponse {
-                    request_id,
-                    status: message.status.as_u32(),
-                    flags: message.flags.bits().into(),
-                    payload: message.payload.to_vec(),
-                }
+                message.to_proto()
             })
             .map(|resp| Bytes::from(resp.to_encoded_bytes()));
 

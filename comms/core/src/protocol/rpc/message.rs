@@ -24,19 +24,24 @@ use std::{convert::TryFrom, fmt, time::Duration};
 
 use bitflags::bitflags;
 use bytes::Bytes;
+use log::warn;
 
 use super::RpcError;
 use crate::{
     proto,
     proto::rpc::rpc_session_reply::SessionResult,
-    protocol::rpc::{
-        body::{Body, IntoBody},
-        context::RequestContext,
-        error::HandshakeRejectReason,
-        RpcStatusCode,
+    protocol::{
+        rpc,
+        rpc::{
+            body::{Body, IntoBody},
+            context::RequestContext,
+            error::HandshakeRejectReason,
+            RpcStatusCode,
+        },
     },
 };
 
+const LOG_TARGET: &str = "comms::rpc::message";
 #[derive(Debug)]
 pub struct Request<T> {
     pub(super) context: Option<RequestContext>,
@@ -203,8 +208,6 @@ bitflags! {
         const FIN = 0x01;
         /// Typically sent with empty contents and used to confirm a substream is alive.
         const ACK = 0x02;
-        /// Another chunk to be received
-        const MORE = 0x04;
     }
 }
 impl RpcMessageFlags {
@@ -214,10 +217,6 @@ impl RpcMessageFlags {
 
     pub fn is_ack(self) -> bool {
         self.contains(Self::ACK)
-    }
-
-    pub fn is_more(self) -> bool {
-        self.contains(Self::MORE)
     }
 }
 
@@ -265,6 +264,34 @@ pub struct RpcResponse {
     pub status: RpcStatusCode,
     pub flags: RpcMessageFlags,
     pub payload: Bytes,
+}
+
+impl RpcResponse {
+    pub fn to_proto(&self) -> proto::rpc::RpcResponse {
+        proto::rpc::RpcResponse {
+            request_id: self.request_id,
+            status: self.status as u32,
+            flags: self.flags.bits().into(),
+            payload: self.payload.to_vec(),
+        }
+    }
+
+    pub fn exceeded_message_size(&mut self) -> RpcResponse {
+        const BYTES_PER_MB: f32 = 1024.0 * 1024.0;
+        // Precision loss is acceptable because this is for display purposes only
+        let msg = format!(
+            "The response size exceeded the maximum allowed payload size. Max = {:.4} MiB, Got = {:.4} MiB",
+            rpc::max_response_payload_size() as f32 / BYTES_PER_MB,
+            self.payload.len() as f32 / BYTES_PER_MB,
+        );
+        warn!(target: LOG_TARGET, "{}", msg);
+        RpcResponse {
+            request_id: self.request_id,
+            status: RpcStatusCode::MalformedResponse,
+            flags: RpcMessageFlags::FIN,
+            payload: msg.into_bytes().into(),
+        }
+    }
 }
 
 impl Default for RpcResponse {
