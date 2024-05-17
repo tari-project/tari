@@ -348,6 +348,7 @@ struct TariUtxo {
   uint64_t lock_height;
   uint8_t status;
   const char *coinbase_extra;
+  const char *payment_id;
 };
 
 #ifdef __cplusplus

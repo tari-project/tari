@@ -258,6 +258,12 @@ impl EncryptedData {
             }
         }
     }
+
+    /// Returns the size of the payment id
+    pub fn get_payment_id_size(&self) -> usize {
+        // the length should always at least be the static total size, the extra len is the payment id
+        self.data.len().saturating_sub(STATIC_SIZE_TOTAL)
+    }
 }
 
 impl Hex for EncryptedData {

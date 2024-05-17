@@ -473,7 +473,8 @@ impl TransactionOutput {
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
         Ok(self.features.get_serialized_size()? +
             self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()?)
+            self.covenant.get_serialized_size()? +
+            self.encrypted_data.get_payment_id_size())
     }
 }
 
