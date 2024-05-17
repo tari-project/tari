@@ -2,3 +2,6 @@
 -- 'spending_priority', so we drop and recreate the table.
 ALTER TABLE outputs
     ADD payment_id BLOB NULL;
+
+ALTER TABLE completed_transactions
+    ADD payment_id BLOB NULL;

@@ -565,6 +565,7 @@ where
                 None,
                 None,
                 wallet_output.to_transaction_output(&self.key_manager_service).await?,
+                PaymentId::Zero,
             )
             .await?;
         // As non-rewindable

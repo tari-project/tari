@@ -37,6 +37,7 @@ diesel::table! {
         mined_timestamp -> Nullable<Timestamp>,
         transaction_signature_nonce -> Binary,
         transaction_signature_key -> Binary,
+        payment_id -> Nullable<Binary>,
     }
 }
 

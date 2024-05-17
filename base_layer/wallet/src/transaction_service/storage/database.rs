@@ -37,7 +37,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{Transaction, TransactionOutput},
+    transaction_components::{encrypted_data::PaymentId, Transaction, TransactionOutput},
 };
 
 use crate::transaction_service::{
@@ -681,7 +681,12 @@ where T: TransactionBackend + 'static
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     ) -> Result<(), TransactionStorageError> {
+        let payment_id = match payment_id {
+            PaymentId::Zero => None,
+            v => Some(v),
+        };
         let transaction = CompletedTransaction::new(
             tx_id,
             source_address,
@@ -701,6 +706,7 @@ where T: TransactionBackend + 'static
             TransactionDirection::Inbound,
             current_height,
             mined_timestamp,
+            payment_id,
         )?;
 
         self.db

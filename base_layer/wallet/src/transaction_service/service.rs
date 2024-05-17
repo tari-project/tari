@@ -823,6 +823,7 @@ where
                 current_height,
                 mined_timestamp,
                 scanned_output,
+                payment_id,
             } => self
                 .add_utxo_import_transaction_with_status(
                     amount,
@@ -833,6 +834,7 @@ where
                     current_height,
                     mined_timestamp,
                     scanned_output,
+                    payment_id,
                 )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
@@ -1041,6 +1043,7 @@ where
                     message,
                     Utc::now().naive_utc(),
                     TransactionDirection::Inbound,
+                    None,
                     None,
                     None,
                 )?,
@@ -1302,6 +1305,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
+                None,
             )?,
         )
         .await?;
@@ -1504,6 +1508,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
+                Some(payment_id),
             )?,
         )
         .await?;
@@ -1766,6 +1771,7 @@ where
                 message.clone(),
                 Utc::now().naive_utc(),
                 TransactionDirection::Outbound,
+                None,
                 None,
                 None,
             )?,
@@ -2884,6 +2890,7 @@ where
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db.add_utxo_import_transaction_with_status(
@@ -2896,6 +2903,7 @@ where
             current_height,
             mined_timestamp,
             scanned_output,
+            payment_id,
         )?;
         let transaction_event = match import_status {
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
@@ -2993,6 +3001,7 @@ where
                 message,
                 Utc::now().naive_utc(),
                 TransactionDirection::Inbound,
+                None,
                 None,
                 None,
             )?,

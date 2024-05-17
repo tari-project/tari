@@ -1213,6 +1213,7 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
+    pub payment_id: Option<PaymentId>
 }
 
 impl CompletedTransactionInfo {
@@ -1253,6 +1254,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
+            payment_id: tx.payment_id
         })
     }
 }

@@ -43,7 +43,7 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -66,6 +66,7 @@ use crate::{
         },
     },
 };
+
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -1672,6 +1673,7 @@ pub struct CompletedTransactionSql {
     mined_timestamp: Option<NaiveDateTime>,
     transaction_signature_nonce: Vec<u8>,
     transaction_signature_key: Vec<u8>,
+    payment_id: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -1936,7 +1938,10 @@ impl CompletedTransactionSql {
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
-
+        let payment_id = match c.payment_id {
+            Some(id) => Some(id.as_bytes()),
+            None => Some(Vec::new()),
+        };
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
             source_address: c.source_address.to_vec(),
@@ -1957,6 +1962,7 @@ impl CompletedTransactionSql {
             mined_timestamp: c.mined_timestamp,
             transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
+            payment_id,
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2030,6 +2036,18 @@ impl CompletedTransaction {
             },
             None => None,
         };
+        let payment_id = match c.payment_id {
+            Some(bytes) => PaymentId::from_bytes(&bytes).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create payment id from stored bytes"
+                );
+                CompletedTransactionConversionError::BincodeDeserialize (
+                    "payment id could not be converted from bytes".to_string(),
+                )
+            })?,
+            None => PaymentId::Zero,
+        };
 
         let output = Self {
             tx_id: (c.tx_id as u64).into(),
@@ -2054,6 +2072,7 @@ impl CompletedTransaction {
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
             mined_timestamp: c.mined_timestamp,
+            payment_id: Some(payment_id),
         };
 
         // zeroize sensitive data

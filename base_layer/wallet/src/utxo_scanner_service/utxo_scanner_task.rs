@@ -715,6 +715,7 @@ where
                 Some(current_height),
                 Some(mined_timestamp),
                 scanned_output,
+                wallet_output.payment_id,
             )
             .await?;
 

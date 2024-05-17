@@ -147,6 +147,7 @@ pub enum TransactionServiceRequest {
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, String),
     SetLowPowerMode,
@@ -754,6 +755,7 @@ impl TransactionServiceHandle {
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -766,6 +768,7 @@ impl TransactionServiceHandle {
                 current_height,
                 mined_timestamp,
                 scanned_output,
+                payment_id,
             })
             .await??
         {

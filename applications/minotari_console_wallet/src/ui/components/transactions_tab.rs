@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::collections::HashMap;
+use tari_utilities::hex::Hex;
 
 use chrono::{DateTime, Local};
 use log::*;
@@ -288,7 +289,7 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 14];
+        let constraints = [Constraint::Length(1); 15];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
@@ -305,6 +306,7 @@ impl TransactionsTab {
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
         let maturity = Span::styled("Maturity:", Style::default().fg(Color::Magenta));
+        let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
         let paragraph = Paragraph::new(tx_id).wrap(trim);
@@ -335,11 +337,13 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[12]);
         let paragraph = Paragraph::new(maturity).wrap(trim);
         f.render_widget(paragraph, label_layout[13]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[14]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 14];
+            let constraints = [Constraint::Length(1); 15];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
 
@@ -429,6 +433,13 @@ impl TransactionsTab {
             };
             let maturity = Span::styled(maturity, Style::default().fg(Color::White));
 
+
+            let payment_id = match tx.payment_id {
+                Some(v) => format!("#{}", v.as_bytes().to_hex()),
+                None => "None".to_string()
+            };
+            let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
+
             let paragraph = Paragraph::new(tx_id).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_address).wrap(trim);
@@ -457,6 +468,8 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[12]);
             let paragraph = Paragraph::new(maturity).wrap(trim);
             f.render_widget(paragraph, content_layout[13]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[14]);
         }
     }
 }
@@ -469,7 +482,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(16),
+                    Constraint::Length(17),
                 ]
                 .as_ref(),
             )
