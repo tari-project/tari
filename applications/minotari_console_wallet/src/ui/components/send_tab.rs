@@ -408,7 +408,7 @@ impl SendTab {
                     },
                 },
                 SendInputMode::Message => match c {
-                    '\n' => self.send_input_mode = SendInputMode::None,
+                    '\n' => self.send_input_mode = SendInputMode::PaymentId,
                     c => {
                         self.message_field.push(c);
                         return KeyHandled::Handled;
@@ -453,7 +453,7 @@ impl<B: Backend> Component<B> for SendTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(14),
+                    Constraint::Length(17),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]

@@ -347,9 +347,10 @@ impl AppState {
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
         let output_features = OutputFeatures { ..Default::default() };
-        let payment_id_bytes: Vec<u8> = from_hex(&payment_id_hex)
+        let payment_id_u64: u64 = payment_id_hex
+            .parse::<u64>()
             .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
-        let payment_id = PaymentId::from_bytes(&payment_id_bytes).map_err(|_| UiError::PaymentIdParseError)?;
+        let payment_id = PaymentId::U64(payment_id_u64);
 
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
@@ -384,9 +385,10 @@ impl AppState {
             Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
-        let payment_id_bytes: Vec<u8> = from_hex(&payment_id_hex)
+        let payment_id_u64: u64 = payment_id_hex
+            .parse::<u64>()
             .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
-        let payment_id = PaymentId::from_bytes(&payment_id_bytes).map_err(|_| UiError::PaymentIdParseError)?;
+        let payment_id = PaymentId::U64(payment_id_u64);
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -1213,7 +1215,7 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
-    pub payment_id: Option<PaymentId>
+    pub payment_id: Option<PaymentId>,
 }
 
 impl CompletedTransactionInfo {
@@ -1254,7 +1256,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
-            payment_id: tx.payment_id
+            payment_id: tx.payment_id,
         })
     }
 }

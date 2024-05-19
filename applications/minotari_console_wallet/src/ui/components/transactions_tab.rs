@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::collections::HashMap;
-use tari_utilities::hex::Hex;
 
 use chrono::{DateTime, Local};
 use log::*;
@@ -433,10 +432,9 @@ impl TransactionsTab {
             };
             let maturity = Span::styled(maturity, Style::default().fg(Color::White));
 
-
             let payment_id = match tx.payment_id {
-                Some(v) => format!("#{}", v.as_bytes().to_hex()),
-                None => "None".to_string()
+                Some(v) => format!("#{}", v),
+                None => "None".to_string(),
             };
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 

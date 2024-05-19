@@ -25,7 +25,12 @@
 
 //! Encrypted data using the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
-use std::{convert::TryInto, mem::size_of};
+use std::{
+    convert::TryInto,
+    fmt,
+    fmt::{Display, Formatter},
+    mem::size_of,
+};
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -59,7 +64,7 @@ const SIZE_NONCE: usize = size_of::<XNonce>();
 const SIZE_VALUE: usize = size_of::<u64>();
 const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
-const STATIC_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
+pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
 
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating
 const DISPLAY_CUTOFF: usize = 16;
@@ -125,6 +130,17 @@ impl PaymentId {
     }
 }
 
+impl Display for PaymentId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            PaymentId::Zero => write!(f, "N/A"),
+            PaymentId::U32(v) => write!(f, "{}", v),
+            PaymentId::U64(v) => write!(f, "{}", v),
+            PaymentId::U256(v) => write!(f, "{}", v),
+        }
+    }
+}
+
 /// AEAD associated data
 const ENCRYPTED_DATA_AAD: &[u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
 
@@ -158,7 +174,7 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = vec![0; STATIC_SIZE_TOTAL + payment_id.get_size()];
+        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + payment_id.get_size()];
         data[..SIZE_TAG].clone_from_slice(&tag);
         data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
         data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
@@ -207,17 +223,17 @@ impl EncryptedData {
 
     /// Parse encrypted data from a byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
-        if !(bytes.len() == STATIC_SIZE_TOTAL ||
-            bytes.len() == STATIC_SIZE_TOTAL + size_of::<u32>() ||
-            bytes.len() == STATIC_SIZE_TOTAL + size_of::<u64>() ||
-            bytes.len() == STATIC_SIZE_TOTAL + size_of::<U256>())
+        if !(bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL ||
+            bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u32>() ||
+            bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u64>() ||
+            bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<U256>())
         {
             return Err(EncryptedDataError::IncorrectLength(format!(
                 "Expected {}, {}, {} or {} bytes, got {}",
-                STATIC_SIZE_TOTAL,
-                STATIC_SIZE_TOTAL + size_of::<u32>(),
-                STATIC_SIZE_TOTAL + size_of::<u64>(),
-                STATIC_SIZE_TOTAL + size_of::<U256>(),
+                STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+                STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u32>(),
+                STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u64>(),
+                STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<U256>(),
                 bytes.len()
             )));
         }
@@ -262,7 +278,7 @@ impl EncryptedData {
     /// Returns the size of the payment id
     pub fn get_payment_id_size(&self) -> usize {
         // the length should always at least be the static total size, the extra len is the payment id
-        self.data.len().saturating_sub(STATIC_SIZE_TOTAL)
+        self.data.len().saturating_sub(STATIC_ENCRYPTED_DATA_SIZE_TOTAL)
     }
 }
 
@@ -280,7 +296,7 @@ impl Hex for EncryptedData {
 impl Default for EncryptedData {
     fn default() -> Self {
         Self {
-            data: Vec::with_capacity(STATIC_SIZE_TOTAL),
+            data: Vec::with_capacity(STATIC_ENCRYPTED_DATA_SIZE_TOTAL),
         }
     }
 }

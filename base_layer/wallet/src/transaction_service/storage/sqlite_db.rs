@@ -2042,7 +2042,7 @@ impl CompletedTransaction {
                     target: LOG_TARGET,
                     "Could not create payment id from stored bytes"
                 );
-                CompletedTransactionConversionError::BincodeDeserialize (
+                CompletedTransactionConversionError::BincodeDeserialize(
                     "payment id could not be converted from bytes".to_string(),
                 )
             })?,
