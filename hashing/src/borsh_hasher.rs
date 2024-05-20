@@ -23,9 +23,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write, marker::PhantomData};
+use core::marker::PhantomData;
 
-use borsh::BorshSerialize;
+use borsh::{io, io::Write, BorshSerialize};
 use digest::Digest;
 use tari_crypto::hashing::DomainSeparation;
 
@@ -79,6 +79,9 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
+    use alloc::vec::Vec;
+
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::hash_domain;
