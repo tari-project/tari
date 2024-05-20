@@ -247,7 +247,7 @@ impl MerkleProof {
             return pos;
         }
 
-        return (((pos - k) << 1) | (path & 1)) + k;
+        (((pos - k) << 1) | (path & 1)) + k
     }
 }
 
