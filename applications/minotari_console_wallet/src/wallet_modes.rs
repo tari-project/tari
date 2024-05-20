@@ -552,6 +552,8 @@ mod test {
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
+                CliCommands::CreateCommitmentProof(_) => {},
+                CliCommands::VerifyCommitmentProof(_) => {},
             }
         }
         assert!(

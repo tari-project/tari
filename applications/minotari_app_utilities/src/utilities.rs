@@ -97,6 +97,12 @@ impl From<UniPublicKey> for PublicKey {
     }
 }
 
+impl UniPublicKey {
+    pub fn as_public_key(&self) -> &PublicKey {
+        &self.0
+    }
+}
+
 #[derive(Debug)]
 pub enum UniNodeId {
     PublicKey(PublicKey),

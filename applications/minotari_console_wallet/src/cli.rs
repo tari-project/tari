@@ -136,6 +136,8 @@ pub enum CliCommands {
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
+    CreateCommitmentProof(CreateCommitmentProofArgs),
+    VerifyCommitmentProof(VerifyCommitmentProofArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -304,4 +306,19 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_signature: Vec<u8>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateCommitmentProofArgs {
+    pub commitment: UniPublicKey,
+    pub message: String,
+    pub minimum_value: Option<MicroMinotari>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct VerifyCommitmentProofArgs {
+    pub commitment: UniPublicKey,
+    pub message: String,
+    pub minimum_value: Option<MicroMinotari>,
+    pub proof: String,
 }

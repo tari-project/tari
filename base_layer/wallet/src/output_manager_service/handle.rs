@@ -118,6 +118,8 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    CreateCommitmentProof(Commitment, String, Option<MicroMinotari>),
+    VerifyCommitmentProof(Commitment, String, Option<MicroMinotari>, String),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -200,8 +202,29 @@ impl fmt::Display for OutputManagerRequest {
                 "CreateHtlcRefundTransaction(output hash: {}, , fee_per_gram: {} )",
                 output, fee_per_gram,
             ),
-
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            CreateCommitmentProof(commitment, message, minimum_value) => write!(
+                f,
+                "CreateCommitmentProof(commitment: {}, message: {}, minimum_value: {})",
+                commitment.to_hex(),
+                message,
+                if let Some(minimum_value) = minimum_value {
+                    *minimum_value
+                } else {
+                    MicroMinotari::zero()
+                },
+            ),
+            VerifyCommitmentProof(commitment, message, minimum_value, _) => write!(
+                f,
+                "CreateCommitmentProof(commitment: {}, message: {}, minimum_value: {})",
+                commitment.to_hex(),
+                message,
+                if let Some(minimum_value) = minimum_value {
+                    *minimum_value
+                } else {
+                    MicroMinotari::zero()
+                },
+            ),
         }
     }
 }
@@ -238,6 +261,8 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
+    CommitmentProofCreated(Vec<u8>),
+    CommitmentProofVerified,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -387,6 +412,48 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputMetadataSignatureUpdated => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_commitment_proof(
+        &mut self,
+        commitment: Commitment,
+        message: String,
+        minimum_value: Option<MicroMinotari>,
+    ) -> Result<Vec<u8>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCommitmentProof(
+                commitment,
+                message,
+                minimum_value,
+            ))
+            .await??
+        {
+            OutputManagerResponse::CommitmentProofCreated(bytes) => Ok(bytes),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn verify_commitment_proof(
+        &mut self,
+        commitment: Commitment,
+        message: String,
+        minimum_value: Option<MicroMinotari>,
+        proof: String,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::VerifyCommitmentProof(
+                commitment,
+                message,
+                minimum_value,
+                proof,
+            ))
+            .await??
+        {
+            OutputManagerResponse::CommitmentProofVerified => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

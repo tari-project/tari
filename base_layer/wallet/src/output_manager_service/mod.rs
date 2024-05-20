@@ -39,7 +39,7 @@ use futures::future;
 use log::*;
 use tari_core::{
     consensus::NetworkConsensus,
-    transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
+    transactions::{key_manager::SecretTransactionKeyManagerInterface, CryptoFactories},
 };
 use tari_service_framework::{
     async_trait,
@@ -103,7 +103,7 @@ where T: OutputManagerBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
