@@ -25,9 +25,10 @@ thiserror = "1.0.29"
 base64 = "0.21.0"
 blake2 = "0.10"
 primitive-types = { version = "0.12", features = ["serde"] }
+ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
 
 [features]
-ledger = ["minotari_ledger_wallet_comms"]
+ledger = ["minotari_ledger_wallet_comms", "ledger-transport"]
 
 [package.metadata.cargo-machete]
 ignored = ["strum", "strum_macros"] # this is so we can run cargo machete without getting false positive about macro dependancies
