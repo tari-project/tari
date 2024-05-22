@@ -22,7 +22,7 @@
 
 use std::io;
 
-use futures::{future::Either, SinkExt, StreamExt};
+use futures::{future, future::Either, SinkExt, StreamExt};
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -33,7 +33,7 @@ use tokio::{
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::{MessagingEvent, MessagingProtocol};
-use crate::{message::InboundMessage, peer_manager::NodeId, protocol::rpc::__macro_reexports::future};
+use crate::{message::InboundMessage, peer_manager::NodeId};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 

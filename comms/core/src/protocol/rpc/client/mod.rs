@@ -75,7 +75,6 @@ use crate::{
             RpcError,
             RpcServerError,
             RpcStatus,
-            RPC_CHUNKING_MAX_CHUNKS,
         },
         ProtocolId,
     },
@@ -932,53 +931,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     pub async fn read_response(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
         let timer = Instant::now();
-        let mut resp = self.next().await?;
+        let resp = self.next().await?;
         self.time_to_first_msg = Some(timer.elapsed());
         self.check_response(&resp)?;
-        let mut chunk_count = 1;
-        let mut last_chunk_flags =
-            RpcMessageFlags::from_bits(u8::try_from(resp.flags).map_err(|_| {
-                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
-            })?)
-            .ok_or(RpcStatus::protocol_error(&format!(
-                "invalid message flag, does not match any flags ({})",
-                resp.flags
-            )))?;
-        let mut last_chunk_size = resp.payload.len();
-        self.bytes_read += last_chunk_size;
-        loop {
-            trace!(
-                target: LOG_TARGET,
-                "Chunk {} received (flags={:?}, {} bytes, {} total)",
-                chunk_count,
-                last_chunk_flags,
-                last_chunk_size,
-                resp.payload.len()
-            );
-            if !last_chunk_flags.is_more() {
-                return Ok(resp);
-            }
-
-            if chunk_count >= RPC_CHUNKING_MAX_CHUNKS {
-                return Err(RpcError::RemotePeerExceededMaxChunkCount {
-                    expected: RPC_CHUNKING_MAX_CHUNKS,
-                });
-            }
-
-            let msg = self.next().await?;
-            last_chunk_flags = RpcMessageFlags::from_bits(u8::try_from(msg.flags).map_err(|_| {
-                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
-            })?)
-            .ok_or(RpcStatus::protocol_error(&format!(
-                "invalid message flag, does not match any flags ({})",
-                resp.flags
-            )))?;
-            last_chunk_size = msg.payload.len();
-            self.bytes_read += last_chunk_size;
-            self.check_response(&resp)?;
-            resp.payload.extend(msg.payload);
-            chunk_count += 1;
-        }
+        self.bytes_read = resp.payload.len();
+        trace!(
+            target: LOG_TARGET,
+            "Received {} bytes in {:.2?}",
+            resp.payload.len(),
+            self.time_to_first_msg.unwrap_or_default()
+        );
+        Ok(resp)
     }
 
     pub async fn read_ack(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
