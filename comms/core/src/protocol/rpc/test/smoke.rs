@@ -39,6 +39,7 @@ use crate::{
     multiplexing::{Control, Yamux},
     peer_manager::NodeId,
     protocol::{
+        rpc,
         rpc::{
             context::RpcCommsBackend,
             error::HandshakeRejectReason,
@@ -276,33 +277,32 @@ async fn concurrent_requests() {
     assert_eq!(spawned2.await.unwrap(), GreetingService::DEFAULT_GREETINGS[..5]);
 }
 
-// TODO: Fix this test
-// #[tokio::test]
-// async fn response_too_big() {
-//     let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
-//     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
-//
-//     let framed = framing::canonical(socket, rpc::RPC_MAX_RESPONSE_SIZE);
-//     let mut client = GreetingClient::builder()
-//         .with_deadline(Duration::from_secs(5))
-//         .connect(framed)
-//         .await
-//         .unwrap();
-//
-//     // RPC_MAX_FRAME_SIZE bytes will always be too large because of the overhead of the RpcResponse proto message
-//     let err = client
-//         .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 + 1)
-//         .await
-//         .unwrap_err();
-//     unpack_enum!(RpcError::RequestFailed(status) = err);
-//     unpack_enum!(RpcStatusCode::MalformedResponse = status.as_status_code());
-//
-//     // Check that the exact frame size boundary works and that the session is still going
-//     let _string = client
-//         .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 - 9)
-//         .await
-//         .unwrap();
-// }
+#[tokio::test]
+async fn response_too_big() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, rpc::max_request_size());
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // RPC_MAX_FRAME_SIZE bytes will always be too large because of the overhead of the RpcResponse proto message
+    let err = client
+        .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 + 1)
+        .await
+        .unwrap_err();
+    unpack_enum!(RpcError::RequestFailed(status) = err);
+    unpack_enum!(RpcStatusCode::MalformedResponse = status.as_status_code());
+
+    // Check that the exact frame size boundary works and that the session is still going
+    let _string = client
+        .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 - 9)
+        .await
+        .unwrap();
+}
 
 #[tokio::test]
 async fn ping_latency() {

@@ -439,6 +439,10 @@ impl GreetingClient {
         self.inner.request_response((), 6).await
     }
 
+    pub async fn reply_with_msg_of_size(&mut self, request: u64) -> Result<String, RpcError> {
+        self.inner.request_response(request, 7).await
+    }
+
     pub async fn slow_stream(
         &mut self,
         request: SlowStreamRequest,

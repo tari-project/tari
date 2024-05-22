@@ -276,7 +276,7 @@ impl RpcResponse {
         }
     }
 
-    pub fn exceeded_message_size(&mut self) -> RpcResponse {
+    pub fn exceeded_message_size(self) -> RpcResponse {
         const BYTES_PER_MB: f32 = 1024.0 * 1024.0;
         // Precision loss is acceptable because this is for display purposes only
         let msg = format!(

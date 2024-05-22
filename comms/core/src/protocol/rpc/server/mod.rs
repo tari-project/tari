@@ -751,7 +751,7 @@ where
             .map(|result| into_response(request_id, result))
             .map(move |mut message| {
                 if message.payload.len() > rpc::max_response_payload_size() {
-                    message.exceeded_message_size();
+                    message = message.exceeded_message_size();
                 }
                 #[cfg(feature = "metrics")]
                 if !message.status.is_ok() {
