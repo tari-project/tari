@@ -31,8 +31,6 @@ mod test;
 /// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
 /// This can be thought of as the hard limit on message size.
 pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
-/// The maximum size for a single RPC response message
-pub const RPC_MAX_RESPONSE_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
 /// The maximum request payload size
 const fn max_request_size() -> usize {
