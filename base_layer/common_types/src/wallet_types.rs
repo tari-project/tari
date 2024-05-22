@@ -26,6 +26,7 @@ use std::{
 };
 
 use chacha20poly1305::aead::OsRng;
+#[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::ledger_wallet::LedgerWallet;
 use serde::{Deserialize, Serialize};
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
@@ -35,6 +36,7 @@ use crate::types::{PrivateKey, PublicKey};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WalletType {
     Software(PrivateKey, PublicKey),
+    #[cfg(feature = "ledger")]
     Ledger(LedgerWallet),
 }
 
@@ -42,6 +44,7 @@ impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             WalletType::Software(_k, pk) => write!(f, "Software({:?})", pk),
+            #[cfg(feature = "ledger")]
             WalletType::Ledger(account) => write!(f, "Ledger({account})"),
         }
     }
