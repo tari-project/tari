@@ -30,7 +30,7 @@ use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 use minotari_ledger_wallet_comms::{
     error::LedgerDeviceError,
-    ledger_wallet::{get_transport, Instruction, LedgerWallet},
+    ledger_wallet::{get_transport, Instruction},
 };
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
@@ -56,7 +56,7 @@ use tari_common::{
 };
 use tari_common_types::{
     types::{PrivateKey, PublicKey},
-    wallet_types::WalletType,
+    wallet_types::{LedgerWallet, WalletType},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
