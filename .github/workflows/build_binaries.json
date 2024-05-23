@@ -28,7 +28,7 @@
   },
   {
     "name": "macos-x86_64",
-    "runs-on": "macos-11",
+    "runs-on": "macos-12",
     "rust": "stable",
     "target": "x86_64-apple-darwin",
     "cross": false
