@@ -219,21 +219,32 @@ pub fn run_wallet_with_cli(
     let handle = runtime.handle().clone();
 
     let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(handle, &config.wallet, &base_node_config, wallet.clone()),
+        WalletMode::Tui => runtime.block_on(tui_mode(handle, &config.wallet, &base_node_config, wallet.clone())),
         WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone()),
-        WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), path),
-        WalletMode::Command(command) => command_mode(
+        WalletMode::Script(path) => runtime.block_on(script_mode(
+            handle,
+            &cli,
+            &config.wallet,
+            &base_node_config,
+            wallet.clone(),
+            path,
+        )),
+        WalletMode::Command(command) => runtime.block_on(command_mode(
             handle,
             &cli,
             &config.wallet,
             &base_node_config,
             wallet.clone(),
             *command,
-        ),
+        )),
 
-        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
-            recovery_mode(handle, &base_node_config, &config.wallet, wallet_mode, wallet.clone())
-        },
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => runtime.block_on(recovery_mode(
+            handle,
+            &base_node_config,
+            &config.wallet,
+            wallet_mode,
+            wallet.clone(),
+        )),
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
             "Invalid wallet mode - are you trying too many command options at once?",

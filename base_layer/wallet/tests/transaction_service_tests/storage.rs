@@ -130,7 +130,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -237,7 +238,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut inbound_txs = Vec::new();
 
     for i in 0..messages.len() {
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -306,11 +308,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     for i in 0..messages.len() {
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let dest_address = TariAddress::new(
+        let dest_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -424,7 +428,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled completed tx");
     }
-    let address = TariAddress::new(
+    let address = TariAddress::new_dual_address_with_default_features(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -475,7 +480,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&999u64.into()).is_some());
-    let address = TariAddress::new(
+    let address = TariAddress::new_dual_address_with_default_features(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );

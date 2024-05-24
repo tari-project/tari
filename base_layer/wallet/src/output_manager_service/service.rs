@@ -26,11 +26,13 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::types::CommsDHKE;
+use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
@@ -128,9 +130,15 @@ where
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
-        wallet_identity: WalletIdentity,
+        node_identity: Arc<NodeIdentity>,
+        network: Network,
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
+        let view_key = key_manager.get_view_key_id().await?;
+        let view_key = key_manager.get_public_key_at_key_id(&view_key).await?;
+        let tari_address =
+            TariAddress::new_dual_address_with_default_features(view_key, node_identity.public_key().clone(), network);
+        let wallet_identity = WalletIdentity::new(node_identity.clone(), tari_address);
         let resources = OutputManagerResources {
             config,
             db,
@@ -2086,7 +2094,7 @@ where
             .resources
             .key_manager
             .get_diffie_hellman_shared_secret(
-                &self.resources.wallet_identity.wallet_node_key_id,
+                &self.resources.key_manager.get_view_key_id().await?,
                 &output.sender_offset_public_key,
             )
             .await?;
@@ -2299,6 +2307,7 @@ where
 
         let wallet_sk = self.resources.wallet_identity.wallet_node_key_id.clone();
         let wallet_pk = self.resources.key_manager.get_public_key_at_key_id(&wallet_sk).await?;
+        let wallet_view_key = self.resources.key_manager.get_view_key_id().await?;
 
         let mut scanned_outputs = vec![];
 
@@ -2316,7 +2325,7 @@ where
                             let shared_secret = self
                                 .resources
                                 .key_manager
-                                .get_diffie_hellman_shared_secret(&matched_key.1, &output.sender_offset_public_key)
+                                .get_diffie_hellman_shared_secret(&wallet_view_key, &output.sender_offset_public_key)
                                 .await?;
                             scanned_outputs.push((
                                 output.clone(),

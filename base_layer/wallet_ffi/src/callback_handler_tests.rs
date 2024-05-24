@@ -279,7 +279,8 @@ mod test {
         let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -295,11 +296,13 @@ mod test {
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
             .unwrap();
 
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -328,7 +331,8 @@ mod test {
             .unwrap();
 
         let stp = SenderTransactionProtocol::new_placeholder();
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -363,11 +367,13 @@ mod test {
             .unwrap();
         db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown)
             .unwrap();
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -395,11 +401,13 @@ mod test {
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
             .unwrap();
 
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -455,7 +463,8 @@ mod test {
         let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
         let (contacts_liveness_events_sender, _) = broadcast::channel(250);
         let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
-        let comms_address = TariAddress::new(
+        let comms_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );

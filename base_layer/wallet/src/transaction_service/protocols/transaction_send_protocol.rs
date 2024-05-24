@@ -495,7 +495,7 @@ where
                     let rr_tx_id = rr.tx_id;
                     reply = Some(rr);
 
-                    if outbound_tx.destination_address.public_key() != &spk {
+                    if outbound_tx.destination_address.comms_public_key() != &spk {
                         warn!(
                             target: LOG_TARGET,
                             "Transaction Reply did not come from the expected Public Key"
@@ -510,7 +510,7 @@ where
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
                         let _ = send_transaction_cancelled_message(
-                            self.id,self.dest_address.public_key().clone(),
+                            self.id,self.dest_address.comms_public_key().clone(),
                             self.resources.outbound_message_service.clone(), )
                         .await.map_err(|e| {
                             warn!(
@@ -621,7 +621,7 @@ where
         send_finalized_transaction_message(
             tx_id,
             tx.clone(),
-            self.dest_address.public_key().clone(),
+            self.dest_address.comms_public_key().clone(),
             self.resources.outbound_message_service.clone(),
             self.resources.config.direct_send_timeout,
             self.resources.config.transaction_routing_mechanism,
@@ -704,7 +704,7 @@ where
             .resources
             .outbound_message_service
             .send_direct_unencrypted(
-                self.dest_address.public_key().clone(),
+                self.dest_address.comms_public_key().clone(),
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
                 "transaction send".to_string(),
             )
@@ -715,7 +715,7 @@ where
                     if wait_on_dial(
                         send_states,
                         self.id,
-                        self.dest_address.public_key().clone(),
+                        self.dest_address.comms_public_key().clone(),
                         "Transaction",
                         self.resources.config.direct_send_timeout,
                     )
@@ -793,7 +793,7 @@ where
                             direct_send_result = wait_on_dial(
                                 send_states,
                                 self.id,
-                                self.dest_address.public_key().clone(),
+                                self.dest_address.comms_public_key().clone(),
                                 "Transaction",
                                 self.resources.config.direct_send_timeout,
                             )
@@ -849,8 +849,8 @@ where
             .resources
             .outbound_message_service
             .closest_broadcast(
-                self.dest_address.public_key().clone(),
-                OutboundEncryption::encrypt_for(self.dest_address.public_key().clone()),
+                self.dest_address.comms_public_key().clone(),
+                OutboundEncryption::encrypt_for(self.dest_address.comms_public_key().clone()),
                 vec![],
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
             )
@@ -940,7 +940,7 @@ where
     ) -> Result<(), TransactionServiceProtocolError<TxId>> {
         let _ = send_transaction_cancelled_message(
             self.id,
-            self.dest_address.public_key().clone(),
+            self.dest_address.comms_public_key().clone(),
             self.resources.outbound_message_service.clone(),
         )
         .await

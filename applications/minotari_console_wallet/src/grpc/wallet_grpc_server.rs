@@ -226,11 +226,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
-        let network = self.wallet.network.as_network();
-        let pk = self.wallet.comms.node_identity().public_key().clone();
-        let address = TariAddress::new(pk, network);
+        let address = self
+            .wallet
+            .get_wallet_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetAddressResponse {
-            address: address.to_bytes().to_vec(),
+            address: address.to_vec(),
         }))
     }
 
@@ -650,10 +652,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map(|tx| tx.into_iter())
             .map_err(|err| Status::unknown(err.to_string()))?;
-
-        let wallet_pk = self.wallet.comms.node_identity_ref().public_key();
-        let wallet_network = self.wallet.network.as_network();
-        let wallet_address = TariAddress::new(wallet_pk.clone(), wallet_network);
+        let wallet_address = self
+            .wallet
+            .get_wallet_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let transactions = transactions
             .map(|(tx_id, tx)| match tx {
                 Some(tx) => convert_wallet_transaction_into_transaction_info(tx, &wallet_address),
@@ -755,8 +758,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
-                        source_address: txn.source_address.to_bytes().to_vec(),
-                        dest_address: txn.destination_address.to_bytes().to_vec(),
+                        source_address: txn.source_address.to_vec(),
+                        dest_address: txn.destination_address.to_vec(),
                         status: TransactionStatus::from(txn.status.clone()) as i32,
                         amount: txn.amount.into(),
                         is_cancelled: txn.cancelled.is_some(),
@@ -1097,8 +1100,8 @@ fn convert_wallet_transaction_into_transaction_info(
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_address: tx.source_address.to_bytes().to_vec(),
-            dest_address: wallet_address.to_bytes().to_vec(),
+            source_address: tx.source_address.to_vec(),
+            dest_address: wallet_address.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled,
@@ -1110,8 +1113,8 @@ fn convert_wallet_transaction_into_transaction_info(
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_address: wallet_address.to_bytes().to_vec(),
-            dest_address: tx.destination_address.to_bytes().to_vec(),
+            source_address: wallet_address.to_vec(),
+            dest_address: tx.destination_address.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled,
@@ -1123,8 +1126,8 @@ fn convert_wallet_transaction_into_transaction_info(
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_address: tx.source_address.to_bytes().to_vec(),
-            dest_address: tx.destination_address.to_bytes().to_vec(),
+            source_address: tx.source_address.to_vec(),
+            dest_address: tx.destination_address.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled.is_some(),

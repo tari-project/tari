@@ -33,10 +33,11 @@ pub mod service;
 pub mod storage;
 mod tasks;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use futures::future;
 use log::*;
+use tari_comms::NodeIdentity;
 use tari_core::{
     consensus::NetworkConsensus,
     transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
@@ -59,7 +60,6 @@ use crate::{
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
-    util::wallet_identity::WalletIdentity,
 };
 
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
@@ -74,7 +74,7 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    wallet_identity: WalletIdentity,
+    node_identity: Arc<NodeIdentity>,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
@@ -86,14 +86,14 @@ where T: OutputManagerBackend + 'static
         backend: T,
         factories: CryptoFactories,
         network: NetworkConsensus,
-        wallet_identity: WalletIdentity,
+        node_identity: Arc<NodeIdentity>,
     ) -> Self {
         Self {
             config,
             backend: Some(backend),
             factories,
             network,
-            wallet_identity,
+            node_identity,
             phantom: PhantomData,
         }
     }
@@ -120,7 +120,8 @@ where
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
-        let wallet_identity = self.wallet_identity.clone();
+        let node_identity = self.node_identity.clone();
+        let network = self.network.as_network();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -136,7 +137,8 @@ where
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity,
-                wallet_identity,
+                node_identity,
+                network,
                 key_manager,
             )
             .await

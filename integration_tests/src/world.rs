@@ -112,8 +112,11 @@ impl Default for TariWorld {
     fn default() -> Self {
         println!("\nWorld initialized - remove this line when called!\n");
         let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let default_payment_address =
-            TariAddress::new(PublicKey::from_secret_key(&wallet_private_key), Network::LocalNet);
+        let default_payment_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&wallet_private_key),
+            PublicKey::from_secret_key(&wallet_private_key),
+            Network::LocalNet,
+        );
         Self {
             current_scenario_name: None,
             current_feature_name: None,

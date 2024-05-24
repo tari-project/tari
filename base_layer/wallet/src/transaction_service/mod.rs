@@ -24,6 +24,8 @@ use std::{marker::PhantomData, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use log::*;
+use tari_common::configuration::Network;
+use tari_comms::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
@@ -60,7 +62,6 @@ use crate::{
         service::TransactionService,
         storage::database::{TransactionBackend, TransactionDatabase},
     },
-    util::wallet_identity::WalletIdentity,
 };
 
 pub mod config;
@@ -84,7 +85,8 @@ where
     config: TransactionServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
     tx_backend: Option<T>,
-    wallet_identity: WalletIdentity,
+    node_identity: Arc<NodeIdentity>,
+    network: Network,
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
@@ -101,7 +103,8 @@ where
         config: TransactionServiceConfig,
         subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
-        wallet_identity: WalletIdentity,
+        node_identity: Arc<NodeIdentity>,
+        network: Network,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<W>,
@@ -110,7 +113,8 @@ where
             config,
             subscription_factory,
             tx_backend: Some(backend),
-            wallet_identity,
+            node_identity,
+            network,
             consensus_manager,
             factories,
             wallet_database: Some(wallet_database),
@@ -222,10 +226,11 @@ where
             .take()
             .expect("Cannot start Transaction Service without providing a wallet database");
 
-        let wallet_identity = self.wallet_identity.clone();
+        let node_identity = self.node_identity.clone();
         let consensus_manager = self.consensus_manager.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
+        let network = self.network.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
@@ -249,12 +254,15 @@ where
                 outbound_message_service,
                 connectivity,
                 publisher,
-                wallet_identity,
+                node_identity,
+                network,
                 consensus_manager,
                 factories,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
             )
+            .await
+            .expect("Could not initialize Transaction Manager Service")
             .start()
             .await;
 

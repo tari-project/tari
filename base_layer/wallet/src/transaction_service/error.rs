@@ -191,6 +191,8 @@ pub enum TransactionServiceError {
     TransactionTooLarge { got: usize, expected: usize },
     #[error("Pending Transaction was oversized")]
     Oversized,
+    #[error("Transaction has invalid address: `{0}`")]
+    InvalidAddress(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

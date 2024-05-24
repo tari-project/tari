@@ -144,7 +144,7 @@ impl TryFrom<ContactSql> for Contact {
         let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
             // Public key must always be the master data source for node ID here
-            node_id: NodeId::from_key(address.public_key()),
+            node_id: NodeId::from_key(address.public_spend_key()),
             address,
             alias: o.alias,
             last_seen: o.last_seen,
@@ -164,8 +164,8 @@ impl From<Contact> for ContactSql {
     fn from(o: Contact) -> Self {
         Self {
             // Public key must always be the master data source for node ID here
-            node_id: NodeId::from_key(o.address.public_key()).to_vec(),
-            address: o.address.to_bytes().to_vec(),
+            node_id: NodeId::from_key(o.address.public_spend_key()).to_vec(),
+            address: o.address.to_vec(),
             alias: o.alias,
             last_seen: o.last_seen,
             latency: o.latency.map(|val| val as i32),

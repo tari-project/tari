@@ -78,7 +78,7 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::schema_to_transaction,
         transaction_components::OutputFeatures,
@@ -86,6 +86,7 @@ use tari_core::{
     },
     txn_schema,
 };
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
@@ -158,7 +159,17 @@ pub async fn setup() -> (
     let shutdown = Shutdown::new();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
-    let wallet_identity = WalletIdentity::new(client_node_identity, network);
+    let view_key = core_key_manager_service_handle.get_view_key_id().await.unwrap();
+    let view_key = core_key_manager_service_handle
+        .get_public_key_at_key_id(&view_key)
+        .await
+        .unwrap();
+    let tari_address = TariAddress::new_dual_address_with_default_features(
+        view_key,
+        client_node_identity.public_key().clone(),
+        network,
+    );
+    let wallet_identity = WalletIdentity::new(client_node_identity.clone(), tari_address);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,

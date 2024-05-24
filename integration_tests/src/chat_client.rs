@@ -29,6 +29,7 @@ use tari_chat_client::{
     Client,
 };
 use tari_common::configuration::MultiaddrList;
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
@@ -62,7 +63,9 @@ pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: Path
         .collect::<Vec<String>>()
         .into();
     let user_agent = format!("tari/integration_tests/{}", env!("CARGO_PKG_VERSION"));
-    let mut client = Client::new(identity, config, user_agent);
+    let address =
+        TariAddress::new_single_address_with_default_features(identity.public_key().clone(), config.network());
+    let mut client = Client::new(identity, address, config, user_agent);
 
     client.initialize().await.expect("the chat client to spawn");
     client

@@ -22,14 +22,12 @@
 
 use std::{convert::TryInto, thread};
 
-use minotari_app_grpc::tari_rpc::GetIdentityRequest;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_merge_mining_proxy::{merge_miner, Cli};
-use minotari_wallet_grpc_client::WalletGrpcClient;
+use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 use serde_json::{json, Value};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
-use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-use tari_utilities::ByteArray;
+use tari_common_types::tari_address::TariAddress;
 use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
@@ -88,16 +86,13 @@ impl MergeMiningProxyProcess {
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
             .expect("wallet grpc client");
-        let wallet_public_key = PublicKey::from_vec(
-            &wallet_client
-                .identify(GetIdentityRequest {})
-                .await
-                .unwrap()
-                .into_inner()
-                .public_key,
-        )
-        .unwrap();
-        let wallet_payment_address = TariAddress::new(wallet_public_key, Network::LocalNet);
+        let wallet_public_key = &wallet_client
+            .get_address(grpc::Empty {})
+            .await
+            .unwrap()
+            .into_inner()
+            .address;
+        let wallet_payment_address = TariAddress::from_bytes(&wallet_public_key).unwrap();
         let stealth = self.stealth;
         thread::spawn(move || {
             let cli = Cli {

@@ -250,7 +250,7 @@ async fn test_wallet() {
     .await
     .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
-    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
+    let bob_address = TariAddress::new_single_address_with_default_features(bob_identity.public_key().clone(), network);
 
     alice_wallet
         .comms
@@ -320,7 +320,7 @@ async fn test_wallet() {
     let mut contacts = Vec::new();
     for i in 0..2 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new(public_key, Network::LocalNet);
+        let address = TariAddress::new_single_address_with_default_features(public_key, Network::LocalNet);
 
         contacts.push(Contact::new(random::string(8), address, None, None, false));
 
@@ -571,7 +571,7 @@ async fn test_store_and_forward_send_tx() {
     .unwrap();
 
     let carol_identity = carol_wallet.comms.node_identity();
-    let carol_address = TariAddress::new(carol_identity.public_key().clone(), network);
+    let carol_address = TariAddress::new_single_address_with_default_features(carol_identity.public_key().clone(), network);
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
 
     alice_wallet
@@ -738,7 +738,7 @@ async fn test_import_utxo() {
     let utxo = create_wallet_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
     let output = utxo.as_transaction_output(&key_manager).unwrap();
     let expected_output_hash = output.hash();
-    let node_address = TariAddress::new(node_identity.public_key().clone(), network);
+    let node_address = TariAddress::new_single_address_with_default_features(node_identity.public_key().clone(), network);
     alice_wallet
         .set_base_node_peer(
             node_identity.public_key().clone(),
@@ -860,7 +860,7 @@ async fn test_contacts_service_liveness() {
     .await
     .unwrap();
     let alice_identity = alice_wallet.comms.node_identity();
-    let alice_address = TariAddress::new(alice_identity.public_key().clone(), network);
+    let alice_address = TariAddress::new_single_address_with_default_features(alice_identity.public_key().clone(), network);
 
     let mut bob_wallet = create_wallet(
         bob_db_tempdir.path(),
@@ -874,7 +874,7 @@ async fn test_contacts_service_liveness() {
     .await
     .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
-    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
+    let bob_address = TariAddress::new_single_address_with_default_features(bob_identity.public_key().clone(), network);
 
     alice_wallet
         .comms

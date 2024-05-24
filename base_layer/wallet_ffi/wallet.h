@@ -716,25 +716,6 @@ struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
                                           int *error_out);
 
 /**
- * Creates a TariWalletAddress from a TariPrivateKey
- *
- * ## Arguments
- * `secret_key` - The pointer to a TariPrivateKey
- * `network` - an u8 indicating the network
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress
- *
- * # Safety
- * The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
- */
-TariWalletAddress *tari_address_from_private_key(TariPrivateKey *secret_key,
-                                                 unsigned int network,
-                                                 int *error_out);
-
-/**
  * Creates a TariWalletAddress from a char array
  *
  * ## Arguments

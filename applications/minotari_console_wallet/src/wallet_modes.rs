@@ -136,7 +136,7 @@ impl PeerConfig {
     }
 }
 
-pub(crate) fn command_mode(
+pub(crate) async fn command_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
@@ -159,7 +159,7 @@ pub(crate) fn command_mode(
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet)
+    wallet_or_exit(handle, cli, config, base_node_config, wallet).await
 }
 
 pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, ExitError> {
@@ -188,7 +188,7 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
     Ok(commands)
 }
 
-pub(crate) fn script_mode(
+pub(crate) async fn script_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
@@ -221,11 +221,11 @@ pub(crate) fn script_mode(
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet)
+    wallet_or_exit(handle, cli, config, base_node_config, wallet).await
 }
 
 /// Prompts the user to continue to the wallet, or exit.
-fn wallet_or_exit(
+async fn wallet_or_exit(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
@@ -255,13 +255,13 @@ fn wallet_or_exit(
             },
             _ => {
                 info!(target: LOG_TARGET, "Starting TUI.");
-                tui_mode(handle, config, base_node_config, wallet)
+                tui_mode(handle, config, base_node_config, wallet).await
             },
         }
     }
 }
 
-pub fn tui_mode(
+pub async fn tui_mode(
     handle: Handle,
     config: &WalletConfig,
     base_node_config: &PeerConfig,
@@ -329,7 +329,8 @@ pub fn tui_mode(
         base_node_selected,
         base_node_config.clone(),
         notifier,
-    );
+    )
+    .await?;
 
     info!(target: LOG_TARGET, "Starting app");
 
@@ -350,7 +351,7 @@ pub fn tui_mode(
     Ok(())
 }
 
-pub fn recovery_mode(
+pub async fn recovery_mode(
     handle: Handle,
     base_node_config: &PeerConfig,
     wallet_config: &WalletConfig,
@@ -387,7 +388,7 @@ pub fn recovery_mode(
 
     match wallet_mode {
         WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet),
-        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet),
+        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet).await,
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
             "Unsupported post recovery mode",
@@ -490,7 +491,8 @@ mod test {
 
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            send-minotari --message Our_secret! 125T 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d615e
+            send-minotari --message Our_secret! 125T \
+                      2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
@@ -498,7 +500,7 @@ mod test {
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
                       --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
-                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d615e
+                      2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118
 
             export-tx 123456789 --output-file pie.txt
 

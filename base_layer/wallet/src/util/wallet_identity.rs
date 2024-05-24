@@ -30,30 +30,32 @@ use tari_core::transactions::key_manager::TariKeyId;
 #[derive(Clone, Debug)]
 pub struct WalletIdentity {
     pub node_identity: Arc<NodeIdentity>,
-    pub network: Network,
     pub address: TariAddress,
     pub wallet_node_key_id: TariKeyId,
 }
 
 impl WalletIdentity {
-    pub fn new(node_identity: Arc<NodeIdentity>, network: Network) -> Self {
-        let address = TariAddress::new(node_identity.public_key().clone(), network);
+    pub fn new(node_identity: Arc<NodeIdentity>, address: TariAddress) -> Self {
         let wallet_node_key_id = TariKeyId::Imported {
             key: node_identity.public_key().clone(),
         };
         WalletIdentity {
             node_identity,
-            network,
             address,
             wallet_node_key_id,
         }
+    }
+
+    pub fn network(&self) -> Network {
+        self.address.network()
     }
 }
 
 impl Display for WalletIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.node_identity)?;
-        writeln!(f, "Network: {:?}", self.network)?;
+        writeln!(f, "Tari Address: {}", self.address)?;
+        writeln!(f, "Network: {:?}", self.address.network())?;
         Ok(())
     }
 }

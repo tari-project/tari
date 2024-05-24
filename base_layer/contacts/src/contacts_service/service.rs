@@ -31,7 +31,7 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     types::CommsPublicKey,
@@ -667,7 +667,7 @@ where T: ContactsBackend + 'static
             Ok(contact) => contact,
             Err(_) => Contact::from(&address),
         };
-        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
+        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_spend_key().clone()));
 
         match self.get_online_status(&contact).await {
             Ok(ContactOnlineStatus::Online) => {
@@ -676,7 +676,7 @@ where T: ContactsBackend + 'static
 
                 comms_outbound
                     .send_direct_encrypted(
-                        address.public_key().clone(),
+                        address.public_spend_key().clone(),
                         message,
                         encryption,
                         "contact service messaging".to_string(),
@@ -688,7 +688,7 @@ where T: ContactsBackend + 'static
                 info!(target: LOG_TARGET, "Chat message being sent via closest broadcast");
                 let mut comms_outbound = self.dht.outbound_requester();
                 comms_outbound
-                    .closest_broadcast(address.public_key().clone(), encryption, vec![], message)
+                    .closest_broadcast(address.public_spend_key().clone(), encryption, vec![], message)
                     .await?;
             },
         };

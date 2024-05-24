@@ -246,7 +246,7 @@ async fn it_allows_multiple_coinbases() {
         .with_encryption_key_id(TariKeyId::default())
         .with_sender_offset_key_id(TariKeyId::default())
         .with_script_key_id(TariKeyId::default())
-        .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+        .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
         .with_range_proof_type(RangeProofType::RevealedValue)
         .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
         .await

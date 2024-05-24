@@ -326,7 +326,10 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
-        address: TariAddress::from_public_key(identity.public_key(), Network::LocalNet),
+        address: TariAddress::new_single_address_with_default_features(
+            identity.public_key().clone(),
+            Network::LocalNet,
+        ),
     }
 }
 

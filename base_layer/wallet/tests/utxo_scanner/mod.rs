@@ -38,7 +38,7 @@ use minotari_wallet::{
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     },
     transaction_service::handle::TransactionServiceRequest,
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::watch::Watch,
     utxo_scanner_service::{
         handle::{UtxoScannerEvent, UtxoScannerHandle},
         service::{ScannedBlock, UtxoScannerService},
@@ -102,6 +102,7 @@ pub struct UtxoScannerTestInterface {
 }
 
 async fn setup(
+    key_manager: MemoryDbKeyManager,
     mode: UtxoScannerMode,
     previous_db: Option<WalletDatabase<WalletSqliteDatabase>>,
     recovery_message: Option<String>,
@@ -149,7 +150,6 @@ async fn setup(
     task::spawn(oms_mock.run());
 
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let wallet_identity = WalletIdentity::new(node_identity, Network::default());
     let (event_sender, _) = broadcast::channel(200);
 
     let temp_dir = tempdir().unwrap();
@@ -193,20 +193,25 @@ async fn setup(
         scanner_service_builder.with_recovery_message(message);
     }
 
-    let scanner_service = scanner_service_builder.build_with_resources(
-        wallet_db.clone(),
-        comms_connectivity,
-        wallet_connectivity_mock,
-        oms_handle,
-        ts_handle,
-        wallet_identity,
-        factories,
-        shutdown.to_signal(),
-        event_sender,
-        base_node_service_handle,
-        one_sided_message_watch_receiver,
-        recovery_message_watch_receiver,
-    );
+    let scanner_service = scanner_service_builder
+        .build_with_resources(
+            wallet_db.clone(),
+            comms_connectivity,
+            wallet_connectivity_mock,
+            oms_handle,
+            ts_handle,
+            key_manager,
+            node_identity.clone(),
+            Network::default(),
+            factories,
+            shutdown.to_signal(),
+            event_sender,
+            base_node_service_handle,
+            one_sided_message_watch_receiver,
+            recovery_message_watch_receiver,
+        )
+        .await
+        .unwrap();
 
     UtxoScannerTestInterface {
         scanner_service: Some(scanner_service),
@@ -289,7 +294,8 @@ async fn generate_block_headers_and_utxos(
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
-    let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
+    let key_manager = create_memory_db_key_manager();
+    let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
     // get birthday duration, in seconds, from unix epoch
@@ -299,7 +305,6 @@ async fn test_utxo_scanner_recovery() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         wallet_outputs,
@@ -380,7 +385,8 @@ async fn test_utxo_scanner_recovery() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart() {
-    let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
+    let key_manager = create_memory_db_key_manager();
+    let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
     // get birthday duration, in seconds, from unix epoch
@@ -398,7 +404,6 @@ async fn test_utxo_scanner_recovery_with_restart() {
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
 
-    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         wallet_outputs,
@@ -487,6 +492,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     test_interface.shutdown_signal.trigger();
 
     let mut test_interface2 = setup(
+        key_manager.clone(),
         UtxoScannerMode::Recovery,
         Some(test_interface.wallet_db),
         Some("recovery".to_string()),
@@ -554,7 +560,8 @@ async fn test_utxo_scanner_recovery_with_restart() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
-    let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
+    let key_manager = create_memory_db_key_manager();
+    let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
     // get birthday duration, in seconds, from unix epoch
@@ -564,7 +571,6 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
-    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         mut block_headers,
         mut wallet_outputs,
@@ -645,7 +651,14 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     utxos_by_block.append(&mut new_utxos_by_block);
     wallet_outputs.extend(new_wallet_outputs);
 
-    let mut test_interface2 = setup(UtxoScannerMode::Recovery, Some(test_interface.wallet_db), None, None).await;
+    let mut test_interface2 = setup(
+        key_manager.clone(),
+        UtxoScannerMode::Recovery,
+        Some(test_interface.wallet_db),
+        None,
+        None,
+    )
+    .await;
     test_interface2
         .rpc_service_state
         .set_utxos_by_block(utxos_by_block.clone());
@@ -725,7 +738,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_scanned_block_cache_clearing() {
-    let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
+    let key_manager = create_memory_db_key_manager();
+    let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     for h in 0u64..800u64 {
         let num_outputs = if h % 2 == 1 { Some(1) } else { None };
@@ -755,7 +769,6 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         block_headers,
         wallet_outputs: _wallet_outputs,
@@ -848,7 +861,9 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
+    let key_manager = create_memory_db_key_manager();
     let mut test_interface = setup(
+        key_manager.clone(),
         UtxoScannerMode::Scanning,
         None,
         None,
@@ -864,7 +879,6 @@ async fn test_utxo_scanner_one_sided_payments() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_memory_db_key_manager();
     let TestBlockData {
         mut block_headers,
         wallet_outputs,
@@ -1063,7 +1077,8 @@ async fn test_utxo_scanner_one_sided_payments() {
 
 #[tokio::test]
 async fn test_birthday_timestamp_over_chain() {
-    let test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
+    let key_manager = create_memory_db_key_manager();
+    let test_interface = setup(key_manager, UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
     // get birthday duration, in seconds, from unix epoch
