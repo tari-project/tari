@@ -230,7 +230,7 @@ where
         let consensus_manager = self.consensus_manager.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let network = self.network.clone();
+        let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();

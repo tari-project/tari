@@ -99,7 +99,7 @@ impl MinerProcess {
             .unwrap()
             .into_inner()
             .address;
-        let wallet_payment_address = TariAddress::from_bytes(&wallet_public_key).unwrap();
+        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
 
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
         let temp_dir = world

@@ -92,7 +92,7 @@ impl MergeMiningProxyProcess {
             .unwrap()
             .into_inner()
             .address;
-        let wallet_payment_address = TariAddress::from_bytes(&wallet_public_key).unwrap();
+        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
         let stealth = self.stealth;
         thread::spawn(move || {
             let cli = Cli {

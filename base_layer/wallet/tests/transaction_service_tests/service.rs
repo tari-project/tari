@@ -253,7 +253,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             subscription_factory,
             ts_backend,
             node_identity.clone(),
-            Network::LocalNet.into(),
+            Network::LocalNet,
             consensus_manager,
             factories,
             db.clone(),

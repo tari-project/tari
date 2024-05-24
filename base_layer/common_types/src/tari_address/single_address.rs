@@ -114,7 +114,7 @@ impl SingleAddress {
         if bytes.len() != INTERNAL_SINGLE_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
-        if validate_checksum(&bytes).is_err() {
+        if validate_checksum(bytes).is_err() {
             return Err(TariAddressError::InvalidChecksum);
         }
         let network = Network::try_from(bytes[0]).map_err(|_| TariAddressError::InvalidNetwork)?;

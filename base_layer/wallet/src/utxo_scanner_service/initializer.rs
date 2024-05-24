@@ -101,7 +101,7 @@ where
             .expect("Cannot start Utxo scanner service without setting a storage backend");
         let factories = self.factories.clone();
         let node_identity = self.node_identity.clone();
-        let network = self.network.clone();
+        let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
