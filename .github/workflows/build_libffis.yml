@@ -150,7 +150,8 @@ jobs:
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
         run: |
-          brew install openssl cmake coreutils automake autoconf protobuf
+          # openssl and cmake already installed
+          brew install coreutils automake autoconf protobuf
           rustup target add ${{ matrix.builds.target }}
 
       - name: Setup Rust toolchain
