@@ -430,8 +430,10 @@ async fn send_message_with_id_to(
 async fn find_message_with_id(world: &mut TariWorld, sender: String, message_id: String) -> anyhow::Result<()> {
     let sender = world.chat_clients.get(&sender).unwrap();
 
-    match sender.get_message(message_id.as_bytes()).await {
-        Ok(_message) => Ok(()),
-        Err(_e) => panic!("Message not found with id {:?}", message_id),
-    }
+    sender
+        .get_message(message_id.as_bytes())
+        .await
+        .unwrap_or_else(|_| panic!("Message not found with id {:?}", message_id));
+
+    Ok(())
 }
