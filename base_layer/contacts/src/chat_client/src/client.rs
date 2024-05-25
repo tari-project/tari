@@ -150,20 +150,22 @@ impl Client {
 
 #[async_trait]
 impl ChatClient for Client {
-    fn address(&self) -> TariAddress {
-        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
-    }
-
-    fn shutdown(&mut self) {
-        self.shutdown.trigger();
-    }
-
     async fn add_contact(&self, address: &TariAddress) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service.upsert_contact(address.into()).await?;
         }
 
         Ok(())
+    }
+
+    fn add_metadata(&self, mut message: Message, key: String, data: String) -> Message {
+        let metadata = MessageMetadata {
+            key: key.into_bytes(),
+            data: data.into_bytes(),
+        };
+
+        message.push(metadata);
+        message
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error> {
@@ -176,12 +178,8 @@ impl ChatClient for Client {
         Ok(ContactOnlineStatus::Offline)
     }
 
-    async fn send_message(&self, message: Message) -> Result<(), Error> {
-        if let Some(mut contacts_service) = self.contacts.clone() {
-            contacts_service.send_message(message).await?;
-        }
-
-        Ok(())
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        MessageBuilder::new().address(receiver.clone()).message(message).build()
     }
 
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error> {
@@ -202,6 +200,14 @@ impl ChatClient for Client {
         }
     }
 
+    async fn send_message(&self, message: Message) -> Result<(), Error> {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            contacts_service.send_message(message).await?;
+        }
+
+        Ok(())
+    }
+
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
@@ -212,20 +218,6 @@ impl ChatClient for Client {
         Ok(())
     }
 
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
-        MessageBuilder::new().address(receiver.clone()).message(message).build()
-    }
-
-    fn add_metadata(&self, mut message: Message, key: String, data: String) -> Message {
-        let metadata = MessageMetadata {
-            key: key.into_bytes(),
-            data: data.into_bytes(),
-        };
-
-        message.push(metadata);
-        message
-    }
-
     async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error> {
         let mut addresses = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
@@ -233,6 +225,14 @@ impl ChatClient for Client {
         }
 
         Ok(addresses)
+    }
+
+    fn address(&self) -> TariAddress {
+        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
+    }
+
+    fn shutdown(&mut self) {
+        self.shutdown.trigger();
     }
 }
 
