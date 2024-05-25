@@ -102,6 +102,7 @@ extern "C" {
         page: c_int,
         error_out: *const c_int,
     ) -> *mut c_void;
+    pub fn get_chat_message(client: *mut ClientFFI, message_id: *mut c_void, error_out: *const c_int) -> *mut c_void;
     pub fn destroy_chat_client(client: *mut ClientFFI);
     pub fn chat_byte_vector_create(
         byte_array: *const c_uchar,
@@ -140,62 +141,6 @@ impl ChatClient for ChatFFI {
         Ok(result)
     }
 
-    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, ClientError> {
-        let client = self.ptr.lock().unwrap();
-
-        let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
-
-        let result;
-        let error_out = Box::into_raw(Box::new(0));
-        unsafe { result = check_online_status(client.0, address_ptr, error_out) }
-
-        Ok(ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status"))
-    }
-
-    async fn send_message(&self, message: Message) -> Result<(), ClientError> {
-        let client = self.ptr.lock().unwrap();
-
-        let error_out = Box::into_raw(Box::new(0));
-        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
-
-        unsafe {
-            send_chat_message(client.0, message_ptr, error_out);
-        }
-
-        Ok(())
-    }
-
-    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, ClientError> {
-        let client = self.ptr.lock().unwrap();
-
-        let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
-
-        let messages;
-        unsafe {
-            let error_out = Box::into_raw(Box::new(0));
-            let limit = i32::try_from(limit).expect("Truncation occurred") as c_int;
-            let page = i32::try_from(page).expect("Truncation occurred") as c_int;
-            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut MessagesVector;
-            messages = (*all_messages).0.clone();
-        }
-
-        Ok(messages)
-    }
-
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
-        let address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
-
-        let message_c_str = CString::new(message).unwrap();
-        let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
-
-        let error_out = Box::into_raw(Box::new(0));
-
-        unsafe {
-            let message_ptr = create_chat_message(address_ptr, message_c_char, error_out) as *mut Message;
-            *Box::from_raw(message_ptr)
-        }
-    }
-
     fn add_metadata(&self, message: Message, key: String, data: String) -> Message {
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
         let error_out = Box::into_raw(Box::new(0));
@@ -217,6 +162,76 @@ impl ChatClient for ChatFFI {
             );
             *Box::from_raw(message_ptr as *mut Message)
         }
+    }
+
+    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, ClientError> {
+        let client = self.ptr.lock().unwrap();
+
+        let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
+
+        let result;
+        let error_out = Box::into_raw(Box::new(0));
+        unsafe { result = check_online_status(client.0, address_ptr, error_out) }
+
+        Ok(ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status"))
+    }
+
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        let address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
+
+        let message_c_str = CString::new(message).unwrap();
+        let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe {
+            let message_ptr = create_chat_message(address_ptr, message_c_char, error_out) as *mut Message;
+            *Box::from_raw(message_ptr)
+        }
+    }
+
+    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, ClientError> {
+        let client = self.ptr.lock().unwrap();
+
+        let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
+
+        let messages;
+        unsafe {
+            let error_out = Box::into_raw(Box::new(0));
+            let limit = i32::try_from(limit).expect("Truncation occurred") as c_int;
+            let page = i32::try_from(page).expect("Truncation occurred") as c_int;
+            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut MessagesVector;
+            messages = (*all_messages).0.clone();
+        }
+
+        Ok(messages)
+    }
+
+    async fn get_message(&self, message_id: &[u8]) -> Result<Message, ClientError> {
+        let client = self.ptr.lock().unwrap();
+
+        let error_out = Box::into_raw(Box::new(0));
+        let len = i32::try_from(message_id.len()).expect("Truncation occurred") as c_uint;
+        let byte_vector = unsafe { chat_byte_vector_create(message_id.as_ptr(), len, error_out) };
+
+        unsafe {
+            let message = get_chat_message(client.0, byte_vector, error_out) as *mut Message;
+            let message = (*message).clone();
+            return Ok(message);
+        }
+    }
+
+    async fn send_message(&self, message: Message) -> Result<(), ClientError> {
+        let client = self.ptr.lock().unwrap();
+
+        let error_out = Box::into_raw(Box::new(0));
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
+
+        unsafe {
+            send_chat_message(client.0, message_ptr, error_out);
+        }
+
+        Ok(())
     }
 
     async fn send_read_receipt(&self, message: Message) -> Result<(), ClientError> {

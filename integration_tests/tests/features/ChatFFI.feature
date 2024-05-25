@@ -113,3 +113,10 @@ Feature: Chat FFI messaging
     When I have a chat FFI client CHAT_B connected to seed node SEED_A
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
+
+  Scenario: A single message is fetched from FFI
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message with id 'abcd1234' 'Hey there' to CHAT_B
+    Then CHAT_A can find a message locally by id 'abcd1234'

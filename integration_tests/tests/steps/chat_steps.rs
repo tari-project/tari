@@ -60,7 +60,7 @@ async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
     world.chat_clients.insert(name, Box::new(client));
 }
 
-#[when(regex = r"^I use (.+) to send a message '(.+)' to (.*)$")]
+#[when(regex = r"^I use (.+) to send a message '(.+)' to (.+)$")]
 async fn send_message_to(
     world: &mut TariWorld,
     sender: String,
@@ -406,4 +406,32 @@ async fn count_conversationalists(world: &mut TariWorld, user: String, num: u64)
         }
     }
     panic!("Only found conversations with {}/{} addresses", addresses, num)
+}
+
+#[when(regex = r"^I use (.+) to send a message with id '(.+)' '(.+)' to (.+)$")]
+async fn send_message_with_id_to(
+    world: &mut TariWorld,
+    sender: String,
+    id: String,
+    message: String,
+    receiver: String,
+) -> anyhow::Result<()> {
+    let sender = world.chat_clients.get(&sender).unwrap();
+    let receiver = world.chat_clients.get(&receiver).unwrap();
+
+    let mut message = sender.create_message(&receiver.address(), message);
+    message.message_id = id.into_bytes();
+
+    sender.send_message(message).await?;
+    Ok(())
+}
+
+#[then(regex = r"^(.+) can find a message locally by id '(.+)'$")]
+async fn find_message_with_id(world: &mut TariWorld, sender: String, message_id: String) -> anyhow::Result<()> {
+    let sender = world.chat_clients.get(&sender).unwrap();
+
+    match sender.get_message(message_id.as_bytes()).await {
+        Ok(_message) => Ok(()),
+        Err(_e) => panic!("Message not found with id {:?}", message_id),
+    }
 }
