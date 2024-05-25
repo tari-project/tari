@@ -49,6 +49,7 @@ pub trait ChatClient {
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error>;
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error>;
+    async fn get_message(&self, id: &[u8]) -> Result<Message, Error>;
     async fn send_message(&self, message: Message) -> Result<(), Error>;
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error>;
     async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error>;
@@ -190,6 +191,15 @@ impl ChatClient for Client {
         }
 
         Ok(messages)
+    }
+
+    async fn get_message(&self, message_id: &[u8]) -> Result<Message, Error> {
+        match self.contacts.clone() {
+            Some(mut contacts_service) => contacts_service.get_message(message_id).await.map_err(|e| e.into()),
+            None => Err(Error::InitializationError(
+                "ContactsServiceHandle unavailable".to_string(),
+            )),
+        }
     }
 
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
