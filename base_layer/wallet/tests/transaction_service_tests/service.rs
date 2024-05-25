@@ -117,7 +117,11 @@ use tari_core::{
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     covenants::Covenant,
-    one_sided::shared_secret_to_output_encryption_key,
+    one_sided::{
+        diffie_hellman_stealth_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        stealth_address_script_spending_key,
+    },
     proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
@@ -153,7 +157,7 @@ use tari_key_manager::{
     key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack};
+use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
@@ -1765,6 +1769,150 @@ async fn recover_one_sided_transaction() {
         .get_public_key_at_key_id(&bob_view_key_id)
         .await
         .unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_view_key,
+        bob_node_identity.public_key().clone(),
+        network,
+    );
+    let tx_id = alice_ts_clone
+        .send_one_sided_transaction(
+            bob_address,
+            value,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            20.into(),
+            message.clone(),
+        )
+        .await
+        .expect("Alice sending one-sided tx to Bob");
+
+    let completed_tx = alice_ts
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("Could not find completed one-sided tx");
+    let outputs = completed_tx.transaction.body.outputs().clone();
+
+    let recovered_outputs_1 = bob_oms
+        .scan_outputs_for_one_sided_payments(outputs.clone())
+        .await
+        .unwrap();
+    // Bob should be able to claim 1 output.
+    assert_eq!(1, recovered_outputs_1.len());
+    assert_eq!(value, recovered_outputs_1[0].output.value);
+
+    // Should ignore already existing outputs
+    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+    assert!(recovered_outputs_2.is_empty());
+}
+
+#[tokio::test]
+async fn recover_stealth_one_sided_transaction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    // Bob's parameters
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let temp_dir2 = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let database_path2 = temp_dir2.path().to_str().unwrap().to_string();
+
+    let alice_connection = make_wallet_database_memory_connection();
+    let bob_connection = make_wallet_database_memory_connection();
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
+        setup_transaction_service(
+            alice_node_identity,
+            vec![],
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            database_path,
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+
+    let (_bob_ts, mut bob_oms, _bob_comms, _bob_connectivity, bob_key_manager_handle, _bob_db) =
+        setup_transaction_service(
+            bob_node_identity.clone(),
+            vec![],
+            consensus_manager,
+            factories.clone(),
+            bob_connection,
+            database_path2,
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+
+    let bob_view_key_id = bob_key_manager_handle.get_view_key_id().await.unwrap();
+    let bob_view_key = bob_key_manager_handle
+        .get_public_key_at_key_id(&bob_view_key_id)
+        .await
+        .unwrap();
+
+    let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+    let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, &bob_view_key);
+    let script_spending_key = stealth_address_script_spending_key(&c, bob_node_identity.public_key());
+    let script = stealth_payment_script(&nonce_public_key, &script_spending_key);
+    let known_script = KnownOneSidedPaymentScript {
+        script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
+        script_key_id: bob_key_manager_handle
+            .import_key(bob_node_identity.secret_key().clone())
+            .await
+            .unwrap(),
+        script,
+        input: ExecutionStack::default(),
+        script_lock_height: 0,
+    };
+    let mut cloned_bob_oms = bob_oms.clone();
+    cloned_bob_oms.add_known_script(known_script).await.unwrap();
+
+    let initial_wallet_value = 25000.into();
+    let uo1 = make_input(
+        &mut OsRng,
+        initial_wallet_value,
+        &OutputFeatures::default(),
+        &alice_key_manager_handle,
+    )
+    .await;
+    let mut alice_oms_clone = alice_oms;
+    alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.hash(&alice_key_manager_handle).await.unwrap(), true)])
+        .unwrap();
+
+    let message = "".to_string();
+    let value = 10000.into();
+    let mut alice_ts_clone = alice_ts.clone();
+
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_view_key,
         bob_node_identity.public_key().clone(),

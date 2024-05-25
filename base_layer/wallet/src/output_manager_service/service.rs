@@ -2346,7 +2346,7 @@ where
                     let stealth_address_hasher = self
                         .resources
                         .key_manager
-                        .get_diffie_hellman_stealth_domain_hasher(&wallet_sk, nonce.as_ref())
+                        .get_diffie_hellman_stealth_domain_hasher(&wallet_view_key, nonce.as_ref())
                         .await?;
                     let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, &wallet_pk);
                     if &script_spending_key != scanned_pk.as_ref() {
@@ -2365,7 +2365,7 @@ where
                     let shared_secret = self
                         .resources
                         .key_manager
-                        .get_diffie_hellman_shared_secret(&wallet_sk, &output.sender_offset_public_key)
+                        .get_diffie_hellman_shared_secret(&wallet_view_key, &output.sender_offset_public_key)
                         .await?;
                     scanned_outputs.push((
                         output.clone(),

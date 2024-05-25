@@ -136,7 +136,7 @@ impl PeerConfig {
     }
 }
 
-pub(crate) async fn command_mode(
+pub(crate) fn command_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
@@ -159,7 +159,7 @@ pub(crate) async fn command_mode(
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet).await
+    wallet_or_exit(handle, cli, config, base_node_config, wallet)
 }
 
 pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, ExitError> {
@@ -188,7 +188,7 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
     Ok(commands)
 }
 
-pub(crate) async fn script_mode(
+pub(crate) fn script_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
@@ -221,11 +221,11 @@ pub(crate) async fn script_mode(
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet).await
+    wallet_or_exit(handle, cli, config, base_node_config, wallet)
 }
 
 /// Prompts the user to continue to the wallet, or exit.
-async fn wallet_or_exit(
+fn wallet_or_exit(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
@@ -255,13 +255,13 @@ async fn wallet_or_exit(
             },
             _ => {
                 info!(target: LOG_TARGET, "Starting TUI.");
-                tui_mode(handle, config, base_node_config, wallet).await
+                tui_mode(handle, config, base_node_config, wallet)
             },
         }
     }
 }
 
-pub async fn tui_mode(
+pub fn tui_mode(
     handle: Handle,
     config: &WalletConfig,
     base_node_config: &PeerConfig,
@@ -322,15 +322,14 @@ pub async fn tui_mode(
         return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
     }
 
-    let app = App::<CrosstermBackend<Stdout>>::new(
+    let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Minotari Wallet".into(),
         wallet,
         config.clone(),
         base_node_selected,
         base_node_config.clone(),
         notifier,
-    )
-    .await?;
+    ))?;
 
     info!(target: LOG_TARGET, "Starting app");
 
@@ -351,7 +350,7 @@ pub async fn tui_mode(
     Ok(())
 }
 
-pub async fn recovery_mode(
+pub fn recovery_mode(
     handle: Handle,
     base_node_config: &PeerConfig,
     wallet_config: &WalletConfig,
@@ -388,7 +387,7 @@ pub async fn recovery_mode(
 
     match wallet_mode {
         WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet),
-        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet).await,
+        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
             "Unsupported post recovery mode",
