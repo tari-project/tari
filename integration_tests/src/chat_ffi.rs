@@ -70,20 +70,22 @@ extern "C" fn callback_read_confirmation_received(_state: *mut c_void) {
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
-        error_out: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
         callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
         callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        tari_address: *mut c_void,
+        error_out: *const c_int,
     ) -> *mut ClientFFI;
     pub fn sideload_chat_client(
         config: *mut c_void,
         contact_handle: *mut c_void,
-        error_out: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
         callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
         callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        tari_address: *mut c_void,
+        error_out: *const c_int,
     ) -> *mut ClientFFI;
     pub fn create_chat_message(
         receiver: *mut c_void,
@@ -310,26 +312,26 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
     let client_ptr;
 
     let error_out = Box::into_raw(Box::new(0));
-
+    let address =
+        TariAddress::new_single_address_with_default_features(identity.public_key().clone(), Network::LocalNet);
+    let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
     unsafe {
         *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
 
         client_ptr = create_chat_client(
             config_ptr,
-            error_out,
             callback_contact_status_change,
             callback_message_received,
             callback_delivery_confirmation_received,
             callback_read_confirmation_received,
+            address_ptr,
+            error_out,
         );
     }
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
-        address: TariAddress::new_single_address_with_default_features(
-            identity.public_key().clone(),
-            Network::LocalNet,
-        ),
+        address,
     }
 }
 
@@ -342,6 +344,7 @@ pub async fn sideload_ffi_chat_client(
     config.chat_client.set_base_path(base_dir);
 
     let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
+    let adress_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
     let client_ptr;
     let error_out = Box::into_raw(Box::new(0));
@@ -351,11 +354,12 @@ pub async fn sideload_ffi_chat_client(
         client_ptr = sideload_chat_client(
             config_ptr,
             contacts_handle_ptr,
-            error_out,
             callback_contact_status_change,
             callback_message_received,
             callback_delivery_confirmation_received,
             callback_read_confirmation_received,
+            adress_ptr,
+            error_out,
         );
     }
 
