@@ -85,7 +85,12 @@ extern "C" {
         callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
         callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
-    pub fn create_chat_message(receiver: *mut c_void, message: *const c_char, error_out: *const c_int) -> *mut c_void;
+    pub fn create_chat_message(
+        receiver: *mut c_void,
+        sender: *mut c_void,
+        message: *const c_char,
+        error_out: *const c_int,
+    ) -> *mut c_void;
     pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
     pub fn add_chat_message_metadata(
         message: *mut c_void,
@@ -177,7 +182,8 @@ impl ChatClient for ChatFFI {
     }
 
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
-        let address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
+        let receiver_address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
+        let sender_address_ptr = Box::into_raw(Box::new(self.address.clone())) as *mut c_void;
 
         let message_c_str = CString::new(message).unwrap();
         let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
@@ -185,7 +191,8 @@ impl ChatClient for ChatFFI {
         let error_out = Box::into_raw(Box::new(0));
 
         unsafe {
-            let message_ptr = create_chat_message(address_ptr, message_c_char, error_out) as *mut Message;
+            let message_ptr = create_chat_message(receiver_address_ptr, sender_address_ptr, message_c_char, error_out)
+                as *mut Message;
             *Box::from_raw(message_ptr)
         }
     }

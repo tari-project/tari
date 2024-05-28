@@ -168,6 +168,14 @@ impl ChatClient for Client {
         message
     }
 
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        MessageBuilder::new()
+            .receiver_address(receiver.clone())
+            .sender_address(self.address().clone())
+            .message(message)
+            .build()
+    }
+
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             let contact = contacts_service.get_contact(address.clone()).await?;
@@ -176,10 +184,6 @@ impl ChatClient for Client {
         }
 
         Ok(ContactOnlineStatus::Offline)
-    }
-
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
-        MessageBuilder::new().address(receiver.clone()).message(message).build()
     }
 
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error> {
@@ -211,7 +215,7 @@ impl ChatClient for Client {
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
-                .send_read_confirmation(message.address.clone(), message.message_id)
+                .send_read_confirmation(message.receiver_address.clone(), message.message_id)
                 .await?;
         }
 
