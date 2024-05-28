@@ -138,6 +138,7 @@ pub enum ContactsServiceRequest {
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
     GetMessages(TariAddress, i64, i64),
+    GetMessage(Vec<u8>),
     SendReadConfirmation(TariAddress, Confirmation),
     GetConversationalists,
 }
@@ -150,6 +151,7 @@ pub enum ContactsServiceResponse {
     Contacts(Vec<Contact>),
     OnlineStatus(ContactOnlineStatus),
     Messages(Vec<Message>),
+    Message(Message),
     MessageSent,
     ReadConfirmationSent,
     Conversationalists(Vec<TariAddress>),
@@ -273,6 +275,17 @@ impl ContactsServiceHandle {
             .await??
         {
             ContactsServiceResponse::Messages(messages) => Ok(messages),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_message(&mut self, message_id: &[u8]) -> Result<Message, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetMessage(message_id.to_vec()))
+            .await??
+        {
+            ContactsServiceResponse::Message(message) => Ok(message),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

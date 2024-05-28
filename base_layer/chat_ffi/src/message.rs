@@ -29,7 +29,7 @@ use tari_contacts::contacts_service::types::{Message, MessageBuilder, MessageMet
 use tari_utilities::ByteArray;
 
 use crate::{
-    byte_vector::{chat_byte_vector_create, ChatByteVector},
+    byte_vector::{chat_byte_vector_create, process_vector, ChatByteVector},
     error::{InterfaceError, LibChatError},
     ChatClient,
 };
@@ -92,6 +92,53 @@ pub unsafe extern "C" fn create_chat_message(
 pub unsafe extern "C" fn destroy_chat_message(ptr: *mut Message) {
     if !ptr.is_null() {
         drop(Box::from_raw(ptr))
+    }
+}
+
+/// Get a ptr to a message from a message_id
+///
+/// ## Arguments
+/// `client` - The ChatClient pointer
+/// `message_id` - A pointer to a byte vector representing a message id
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut Message` - A pointer to a message
+///
+/// # Safety
+/// The returned pointer to ```Message``` should be destroyed after use
+/// ```client``` should be destroyed after use
+/// ```message_id``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn get_chat_message(
+    client: *mut ChatClient,
+    message_id: *mut ChatByteVector,
+    error_out: *mut c_int,
+) -> *mut Message {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if message_id.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message_id".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    let id = process_vector(message_id, error_out);
+
+    let result = (*client).runtime.block_on((*client).client.get_message(&id));
+
+    match result {
+        Ok(message) => Box::into_raw(Box::new(message)),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 

@@ -508,6 +508,26 @@ struct Message *create_chat_message(struct TariAddress *receiver,
 void destroy_chat_message(struct Message *ptr);
 
 /**
+ * Get a ptr to a message from a message_id
+ *
+ * ## Arguments
+ * `client` - The ChatClient pointer
+ * `message_id` - A pointer to a byte vector representing a message id
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut Message` - A pointer to a message
+ *
+ * # Safety
+ * The returned pointer to ```Message``` should be destroyed after use
+ * ```client``` should be destroyed after use
+ * ```message_id``` should be destroyed after use
+ */
+struct Message *get_chat_message(struct ChatClient *client,
+                                 struct ChatByteVector *message_id,
+                                 int *error_out);
+
+/**
  * Sends a message over a client
  *
  * ## Arguments

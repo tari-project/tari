@@ -49,6 +49,7 @@ pub trait ChatClient {
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error>;
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error>;
+    async fn get_message(&self, id: &[u8]) -> Result<Message, Error>;
     async fn send_message(&self, message: Message) -> Result<(), Error>;
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error>;
     async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error>;
@@ -149,61 +150,12 @@ impl Client {
 
 #[async_trait]
 impl ChatClient for Client {
-    fn address(&self) -> TariAddress {
-        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
-    }
-
-    fn shutdown(&mut self) {
-        self.shutdown.trigger();
-    }
-
     async fn add_contact(&self, address: &TariAddress) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service.upsert_contact(address.into()).await?;
         }
 
         Ok(())
-    }
-
-    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error> {
-        if let Some(mut contacts_service) = self.contacts.clone() {
-            let contact = contacts_service.get_contact(address.clone()).await?;
-
-            return Ok(contacts_service.get_contact_online_status(contact).await?);
-        }
-
-        Ok(ContactOnlineStatus::Offline)
-    }
-
-    async fn send_message(&self, message: Message) -> Result<(), Error> {
-        if let Some(mut contacts_service) = self.contacts.clone() {
-            contacts_service.send_message(message).await?;
-        }
-
-        Ok(())
-    }
-
-    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error> {
-        let mut messages = vec![];
-        if let Some(mut contacts_service) = self.contacts.clone() {
-            messages = contacts_service.get_messages(sender.clone(), limit, page).await?;
-        }
-
-        Ok(messages)
-    }
-
-    async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
-        if let Some(mut contacts_service) = self.contacts.clone() {
-            contacts_service
-                .send_read_confirmation(message.address.clone(), message.message_id)
-                .await?;
-        }
-
-        Ok(())
-    }
-
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
-        MessageBuilder::new().address(receiver.clone()).message(message).build()
     }
 
     fn add_metadata(&self, mut message: Message, key: String, data: String) -> Message {
@@ -216,6 +168,56 @@ impl ChatClient for Client {
         message
     }
 
+    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error> {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            let contact = contacts_service.get_contact(address.clone()).await?;
+
+            return Ok(contacts_service.get_contact_online_status(contact).await?);
+        }
+
+        Ok(ContactOnlineStatus::Offline)
+    }
+
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        MessageBuilder::new().address(receiver.clone()).message(message).build()
+    }
+
+    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error> {
+        let mut messages = vec![];
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            messages = contacts_service.get_messages(sender.clone(), limit, page).await?;
+        }
+
+        Ok(messages)
+    }
+
+    async fn get_message(&self, message_id: &[u8]) -> Result<Message, Error> {
+        match self.contacts.clone() {
+            Some(mut contacts_service) => contacts_service.get_message(message_id).await.map_err(|e| e.into()),
+            None => Err(Error::InitializationError(
+                "ContactsServiceHandle unavailable".to_string(),
+            )),
+        }
+    }
+
+    async fn send_message(&self, message: Message) -> Result<(), Error> {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            contacts_service.send_message(message).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            contacts_service
+                .send_read_confirmation(message.address.clone(), message.message_id)
+                .await?;
+        }
+
+        Ok(())
+    }
+
     async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error> {
         let mut addresses = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
@@ -223,6 +225,14 @@ impl ChatClient for Client {
         }
 
         Ok(addresses)
+    }
+
+    fn address(&self) -> TariAddress {
+        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
+    }
+
+    fn shutdown(&mut self) {
+        self.shutdown.trigger();
     }
 }
 

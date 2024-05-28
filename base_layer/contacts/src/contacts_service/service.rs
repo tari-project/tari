@@ -256,8 +256,8 @@ where T: ContactsBackend + 'static
         request: ContactsServiceRequest,
     ) -> Result<ContactsServiceResponse, ContactsServiceError> {
         match request {
-            ContactsServiceRequest::GetContact(pk) => {
-                let result = self.db.get_contact(pk.clone());
+            ContactsServiceRequest::GetContact(address) => {
+                let result = self.db.get_contact(address.clone());
                 if let Ok(ref contact) = result {
                     self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
                 };
@@ -349,6 +349,10 @@ where T: ContactsBackend + 'static
             ContactsServiceRequest::GetConversationalists => {
                 let result = self.db.get_conversationlists();
                 Ok(result.map(ContactsServiceResponse::Conversationalists)?)
+            },
+            ContactsServiceRequest::GetMessage(message_id) => {
+                let result = self.db.get_message(message_id);
+                Ok(result.map(ContactsServiceResponse::Message)?)
             },
         }
     }
