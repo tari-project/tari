@@ -32,7 +32,7 @@ use tari_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
-use tari_common_types::{grpc_authentication::GrpcAuthentication, wallet_types::WalletType};
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
