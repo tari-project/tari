@@ -162,7 +162,7 @@ impl DualAddress {
         Self::from_bytes(buf.as_slice())
     }
 
-    /// Convert Tari Address to bytes
+    /// Convert Tari Address to hex string
     pub fn to_hex(&self) -> String {
         let buf = self.to_bytes();
         buf.to_hex()

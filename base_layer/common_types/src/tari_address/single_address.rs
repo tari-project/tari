@@ -108,7 +108,7 @@ impl SingleAddress {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes and try to calculate the network
+    /// Construct Tari Address from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         if bytes.len() != INTERNAL_SINGLE_SIZE {

@@ -2337,7 +2337,7 @@ where
                 .insert(data.tx_id, tx_finalized_sender);
             self.receiver_transaction_cancellation_senders
                 .insert(data.tx_id, cancellation_sender);
-            // We are recieving an interactive transaction from someone on our network, so we assume is features are
+            // We are recieving an interactive transaction from someone on our network, so we assume its features are
             // interactive and its the same network
             let source_address = TariAddress::new_single_address(
                 source_pubkey,

@@ -108,7 +108,7 @@ impl UtxoScannerServiceBuilder {
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
     ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, KeyManagerServiceError> {
-        let view_key = wallet.key_manager_service.get_view_key_id().await?;
+        let view_key_id = wallet.key_manager_service.get_view_key_id().await?;
         let view_key = wallet.key_manager_service.get_public_key_at_key_id(&view_key).await?;
         let tari_address = TariAddress::new_dual_address_with_default_features(
             view_key,
@@ -165,7 +165,7 @@ impl UtxoScannerServiceBuilder {
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
     ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity>, KeyManagerServiceError> {
-        let view_key = key_manager.get_view_key_id().await?;
+        let view_key_id = key_manager.get_view_key_id().await?;
         let view_key = key_manager.get_public_key_at_key_id(&view_key).await?;
         let tari_address =
             TariAddress::new_dual_address_with_default_features(view_key, node_identity.public_key().clone(), network);

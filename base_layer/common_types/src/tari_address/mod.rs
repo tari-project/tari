@@ -136,7 +136,7 @@ impl TariAddress {
         }
     }
 
-    /// Construct an TariAddress from an emoji string with checksum trying to calculate the network
+    /// Construct an TariAddress from an emoji string with checksum
     pub fn from_emoji_string(emoji: &str) -> Result<Self, TariAddressError> {
         let bytes = TariAddress::emoji_to_bytes(emoji)?;
 

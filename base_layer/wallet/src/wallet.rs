@@ -488,7 +488,7 @@ where
     }
 
     pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
-        let view_key = self.key_manager_service.get_view_key_id().await?;
+        let view_key_id = self.key_manager_service.get_view_key_id().await?;
         let view_key = self.key_manager_service.get_public_key_at_key_id(&view_key).await?;
         let address = TariAddress::new_dual_address_with_default_features(
             view_key.clone(),
