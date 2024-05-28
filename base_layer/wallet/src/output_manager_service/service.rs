@@ -627,7 +627,7 @@ where
     ) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Add unvalidated output of value {} to Output Manager", output.value
+            "Add unvalidated output of value {} to Output Manager with TxId {}", output.value, tx_id
         );
         let output = DbWalletOutput::from_wallet_output(
             output,
@@ -638,6 +638,7 @@ where
             None,
         )
         .await?;
+        trace!(target: LOG_TARGET, "TxId: {}, {:?}", tx_id, output);
         self.resources.db.add_unvalidated_output(tx_id, output)?;
 
         // Because we added new outputs, let try to trigger a validation for them

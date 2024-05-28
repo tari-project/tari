@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
+use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey, RangeProof};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
@@ -31,7 +31,7 @@ use tari_core::transactions::{
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
+use crate::{tari_rpc as grpc, tari_rpc::RangeProof as GrpcRangeProof};
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;
@@ -111,5 +111,13 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
             encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
         })
+    }
+}
+
+impl From<RangeProof> for GrpcRangeProof {
+    fn from(proof: RangeProof) -> Self {
+        Self {
+            proof_bytes: proof.to_vec(),
+        }
     }
 }

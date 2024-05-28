@@ -60,6 +60,7 @@ use crate::{
     schema::{known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
 };
+
 mod new_output_sql;
 mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
@@ -1130,7 +1131,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &mut conn).is_ok() {
             return Err(OutputManagerStorageError::DuplicateOutput);
         }
-        let new_output = NewOutputSql::new(output, Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
+        let new_output = NewOutputSql::new(output, Some(OutputStatus::UnspentMinedUnconfirmed), Some(tx_id))?;
         new_output.commit(&mut conn)?;
 
         if start.elapsed().as_millis() > 0 {

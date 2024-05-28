@@ -40,7 +40,10 @@ use log::*;
 use tari_comms::NodeIdentity;
 use tari_core::{
     consensus::NetworkConsensus,
-    transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
+    transactions::{
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+        CryptoFactories,
+    },
 };
 use tari_service_framework::{
     async_trait,
@@ -103,7 +106,7 @@ where T: OutputManagerBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();

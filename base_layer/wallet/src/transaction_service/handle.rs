@@ -180,7 +180,11 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message,
                 ..
-            } => write!(f, "SendTransaction (to {}, {}, {})", destination, amount, message),
+            } => write!(
+                f,
+                "SendTransaction (amount: {}, to: {}, message: {})",
+                amount, destination, message
+            ),
             Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
             Self::RegisterValidatorNode {
                 validator_node_public_key,
@@ -222,8 +226,9 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "ImportUtxo (from {}, {}, {} and {:?} and {:?} and {:?} and {:?}",
-                source_address, amount, message, import_status, tx_id, current_height, mined_timestamp
+                "ImportUtxoWithStatus (amount: {}, from: {}, message: {}, import status: {:?}, TxId: {:?}, height: \
+                 {:?}, mined at: {:?}",
+                amount, source_address, message, import_status, tx_id, current_height, mined_timestamp
             ),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),

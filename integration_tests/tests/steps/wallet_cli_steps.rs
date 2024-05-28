@@ -328,6 +328,7 @@ async fn export_utxos(world: &mut TariWorld, wallet: String) {
 
     let args = ExportUtxosArgs {
         output_file: Some(path_buf.clone()),
+        with_private_keys: true,
     };
     cli.command2 = Some(CliCommands::ExportUtxos(args));
 

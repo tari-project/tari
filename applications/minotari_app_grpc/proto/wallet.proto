@@ -265,6 +265,7 @@ message CoinSplitResponse {
 
 message ImportUtxosRequest {
     repeated UnblindedOutput outputs = 1;
+    repeated RangeProof proofs = 2;
 }
 
 message ImportUtxosResponse {

@@ -736,7 +736,7 @@ async fn test_import_utxo() {
     let key_manager = create_memory_db_key_manager();
     let p = TestParams::new(&key_manager);
     let utxo = create_wallet_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
-    let output = utxo.as_transaction_output(&key_manager).unwrap();
+    let output = utxo.to_transaction_output(&key_manager).unwrap();
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new_single_address_with_interactive_only(node_identity.public_key().clone(), network);
     alice_wallet

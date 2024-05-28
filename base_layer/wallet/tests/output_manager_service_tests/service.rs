@@ -2154,7 +2154,7 @@ async fn test_get_status_by_tx_id() {
     assert_eq!(output_statuses_by_tx_id.statuses.len(), 1);
     assert_eq!(
         output_statuses_by_tx_id.statuses[0],
-        OutputStatus::EncumberedToBeReceived
+        OutputStatus::UnspentMinedUnconfirmed
     );
 }
 

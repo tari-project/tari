@@ -92,7 +92,7 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, PublicKey, Signature},
+    types::{BlockHash, PublicKey, RangeProof, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
@@ -843,13 +843,24 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(UnblindedOutput::try_from)
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
+        let mut proofs: Vec<Option<RangeProof>> = Vec::with_capacity(unblinded_outputs.len());
+        for proof in &message.proofs {
+            if proof.proof_bytes.is_empty() {
+                proofs.push(None);
+            } else {
+                let range_proof = RangeProof::from_vec(&proof.proof_bytes)
+                    .map_err(|e| Status::invalid_argument(format!("Proof is invalid: {}", e)))?;
+                proofs.push(Some(range_proof));
+            }
+        }
         let mut tx_ids = Vec::new();
 
-        for o in &unblinded_outputs {
+        for (o, p) in unblinded_outputs.iter().zip(proofs.iter()) {
             tx_ids.push(
                 wallet
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
+                        p.clone(),
                         TariAddress::default(),
                         "Imported via gRPC".to_string(),
                     )

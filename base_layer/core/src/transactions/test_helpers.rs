@@ -372,7 +372,12 @@ pub async fn create_wallet_output_with_data<
             UtxoTestParams {
                 value,
                 script,
-                features: output_features,
+                features: output_features.clone(),
+                minimum_value_promise: if output_features.range_proof_type == RangeProofType::BulletProofPlus {
+                    MicroMinotari::zero()
+                } else {
+                    value
+                },
                 ..Default::default()
             },
             key_manager,

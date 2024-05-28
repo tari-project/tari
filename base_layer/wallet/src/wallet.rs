@@ -31,7 +31,7 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -56,7 +56,7 @@ use tari_core::{
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
+        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, RangeProofType, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -521,8 +521,8 @@ where
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        range_proof: Option<RangeProof>,
     ) -> Result<TxId, WalletError> {
-        // lets import the private keys
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
@@ -537,7 +537,7 @@ where
             encrypted_data,
             minimum_value_promise,
         );
-        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
+        self.import_unblinded_output_as_non_rewindable(unblinded_output, range_proof, source_address, message)
             .await
     }
 
@@ -547,13 +547,15 @@ where
     pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
+        range_proof: Option<RangeProof>,
         source_address: TariAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
+        let mut wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service, PaymentId::Empty).await?;
         let value = unblinded_output.value;
-        let wallet_output = unblinded_output
-            .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
-            .await?;
+        if wallet_output.features.range_proof_type == RangeProofType::BulletProofPlus && range_proof.is_some() {
+            wallet_output.range_proof = range_proof;
+        }
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
@@ -574,9 +576,10 @@ where
             .await?;
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}, value: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
+            "UTXO (Commitment: {}, value: {}, txID: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
             wallet_output.commitment(&self.key_manager_service).await?.to_hex(),
             wallet_output.value,
+            tx_id,
         );
 
         Ok(tx_id)
