@@ -154,7 +154,11 @@ impl MessagesSql {
     pub fn find_all_conversationlists(
         conn: &mut SqliteConnection,
     ) -> Result<Vec<Vec<u8>>, ContactsServiceStorageError> {
-        Ok(messages::table.select(messages::from_address).distinct().load(conn)?)
+        Ok(messages::table
+            .select(messages::from_address)
+            .select(messages::to_address)
+            .distinct()
+            .load(conn)?)
     }
 }
 
