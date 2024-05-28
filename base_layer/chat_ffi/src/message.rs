@@ -76,8 +76,8 @@ pub unsafe extern "C" fn create_chat_message(
     };
 
     let message_out = MessageBuilder::new()
-        .to_address((*receiver).clone())
-        .from_address((*sender).clone())
+        .receiver_address((*receiver).clone())
+        .sender_address((*sender).clone())
         .message(message_str)
         .build();
 
@@ -312,7 +312,7 @@ pub unsafe extern "C" fn read_chat_message_body(message: *mut Message, error_out
 /// `message` should be destroyed eventually
 /// the returned `TariAddress` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_message_from_address(
+pub unsafe extern "C" fn read_chat_message_sender_address(
     message: *mut Message,
     error_out: *mut c_int,
 ) -> *mut TariAddress {
@@ -325,7 +325,7 @@ pub unsafe extern "C" fn read_chat_message_from_address(
         return ptr::null_mut();
     }
 
-    let address = (*message).from_address.clone();
+    let address = (*message).sender_address.clone();
     Box::into_raw(Box::new(address))
 }
 
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn read_chat_message_from_address(
 /// `message` should be destroyed eventually
 /// the returned `TariAddress` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_message_to_address(
+pub unsafe extern "C" fn read_chat_message_receiver_address(
     message: *mut Message,
     error_out: *mut c_int,
 ) -> *mut TariAddress {
@@ -355,7 +355,7 @@ pub unsafe extern "C" fn read_chat_message_to_address(
         return ptr::null_mut();
     }
 
-    let address = (*message).to_address.clone();
+    let address = (*message).receiver_address.clone();
     Box::into_raw(Box::new(address))
 }
 
@@ -599,22 +599,22 @@ mod test {
 
     #[test]
     fn test_reading_message_address() {
-        let to_address =
+        let receiver_address =
             TariAddress::from_hex("0c017c5cd01385f34ac065e3b05948326dc55d2494f120c6f459a07389011b4ec1").unwrap();
-        let from_address =
+        let sender_address =
             TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0").unwrap();
         let message = MessageBuilder::new()
-            .to_address(to_address.clone())
-            .from_address(from_address.clone())
+            .receiver_address(receiver_address.clone())
+            .sender_address(sender_address.clone())
             .build();
 
         let message_ptr = Box::into_raw(Box::new(message));
         let error_out = Box::into_raw(Box::new(0));
 
         unsafe {
-            let address_ptr = read_chat_message_from_address(message_ptr, error_out);
+            let address_ptr = read_chat_message_sender_address(message_ptr, error_out);
 
-            assert_eq!(from_address.to_bytes(), (*address_ptr).to_bytes());
+            assert_eq!(sender_address.to_bytes(), (*address_ptr).to_bytes());
 
             destroy_chat_message(message_ptr);
             destroy_tari_address(address_ptr);

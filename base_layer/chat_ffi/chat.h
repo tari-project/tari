@@ -608,7 +608,7 @@ struct ChatByteVector *read_chat_message_body(struct Message *message, int *erro
  * `message` should be destroyed eventually
  * the returned `TariAddress` should be destroyed eventually
  */
-struct TariAddress *read_chat_message_from_address(struct Message *message, int *error_out);
+struct TariAddress *read_chat_message_sender_address(struct Message *message, int *error_out);
 
 /**
  * Returns a pointer to a TariAddress
@@ -624,7 +624,7 @@ struct TariAddress *read_chat_message_from_address(struct Message *message, int 
  * `message` should be destroyed eventually
  * the returned `TariAddress` should be destroyed eventually
  */
-struct TariAddress *read_chat_message_to_address(struct Message *message, int *error_out);
+struct TariAddress *read_chat_message_receiver_address(struct Message *message, int *error_out);
 
 /**
  * Returns a c_uchar representation of the Direction enum

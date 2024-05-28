@@ -88,8 +88,8 @@ impl TryFrom<proto::Message> for Message {
         Ok(Self {
             body: message.body,
             metadata,
-            to_address: TariAddress::from_bytes(&message.to_address).map_err(|e| e.to_string())?,
-            from_address: TariAddress::from_bytes(&message.from_address).map_err(|e| e.to_string())?,
+            receiver_address: TariAddress::from_bytes(&message.receiver_address).map_err(|e| e.to_string())?,
+            sender_address: TariAddress::from_bytes(&message.sender_address).map_err(|e| e.to_string())?,
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
             message_id: message.message_id,
@@ -107,8 +107,8 @@ impl From<Message> for proto::Message {
                 .iter()
                 .map(|m| proto::MessageMetadata::from(m.clone()))
                 .collect(),
-            to_address: message.to_address.to_bytes().to_vec(),
-            from_address: message.from_address.to_bytes().to_vec(),
+            receiver_address: message.receiver_address.to_bytes().to_vec(),
+            sender_address: message.sender_address.to_bytes().to_vec(),
             direction: i32::from(message.direction.as_byte()),
             message_id: message.message_id,
         }

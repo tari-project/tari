@@ -134,7 +134,7 @@ impl CallbackHandler {
         debug!(
             target: LOG_TARGET,
             "Calling MessageReceived callback function for sender {}",
-            message.from_address,
+            message.sender_address,
         );
 
         unsafe {

@@ -586,7 +586,7 @@ where T: ContactsBackend + 'static
         message: Message,
         source_public_key: CommsPublicKey,
     ) -> Result<(), ContactsServiceError> {
-        if source_public_key != *message.from_address.public_key() {
+        if source_public_key != *message.sender_address.public_key() {
             return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
         }
         let our_message = Message {
@@ -620,7 +620,7 @@ where T: ContactsBackend + 'static
         &mut self,
         message: &Message,
     ) -> Result<(), ContactsServiceError> {
-        let address = &message.from_address;
+        let address = &message.sender_address;
         let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
             message_id: message.message_id.clone(),
             timestamp: message.stored_at,

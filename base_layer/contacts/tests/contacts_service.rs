@@ -243,8 +243,8 @@ pub fn test_message_pagination() {
         for num in 0..8 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
-                .to_address(address.clone())
-                .from_address(address.clone())
+                .receiver_address(address.clone())
+                .sender_address(address.clone())
                 .build();
 
             contacts_db.save_message(message.clone()).expect("Message to be saved");
@@ -274,8 +274,8 @@ pub fn test_message_pagination() {
         for num in 0..3000 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
-                .to_address(address.clone())
-                .from_address(address.clone())
+                .receiver_address(address.clone())
+                .sender_address(address.clone())
                 .build();
 
             contacts_db.save_message(message.clone()).expect("Message to be saved");

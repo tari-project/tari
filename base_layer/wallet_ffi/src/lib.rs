@@ -11584,8 +11584,8 @@ mod test {
                         alice_wallet_runtime.block_on(alice_wallet_contacts_service.send_message(Message {
                             body: vec![i],
                             metadata: vec![MessageMetadata::default()],
-                            to_address: alice_wallet_address.clone(),
-                            from_address: bob_wallet_address.clone(),
+                            receiver_address: alice_wallet_address.clone(),
+                            sender_address: bob_wallet_address.clone(),
                             direction: Direction::Outbound,
                             stored_at: u64::from(i),
                             sent_at: u64::from(i),
@@ -11602,8 +11602,8 @@ mod test {
                         bob_wallet_runtime.block_on(bob_wallet_contacts_service.send_message(Message {
                             body: vec![i],
                             metadata: vec![MessageMetadata::default()],
-                            from_address: alice_wallet_address.clone(),
-                            to_address: bob_wallet_address.clone(),
+                            sender_address: alice_wallet_address.clone(),
+                            receiver_address: bob_wallet_address.clone(),
                             direction: Direction::Outbound,
                             stored_at: u64::from(i),
                             sent_at: u64::from(i),

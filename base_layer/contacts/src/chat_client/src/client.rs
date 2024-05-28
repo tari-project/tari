@@ -170,8 +170,8 @@ impl ChatClient for Client {
 
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
         MessageBuilder::new()
-            .to_address(receiver.clone())
-            .from_address(self.address().clone())
+            .receiver_address(receiver.clone())
+            .sender_address(self.address().clone())
             .message(message)
             .build()
     }
@@ -215,7 +215,7 @@ impl ChatClient for Client {
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
-                .send_read_confirmation(message.to_address.clone(), message.message_id)
+                .send_read_confirmation(message.receiver_address.clone(), message.message_id)
                 .await?;
         }
 
