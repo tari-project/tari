@@ -36,8 +36,8 @@ use crate::contacts_service::proto;
 pub struct Message {
     pub body: Vec<u8>,
     pub metadata: Vec<MessageMetadata>,
-    pub to_address: TariAddress,
-    pub from_address: TariAddress,
+    pub receiver_address: TariAddress,
+    pub sender_address: TariAddress,
     pub direction: Direction,
     pub sent_at: u64,
     pub stored_at: u64,

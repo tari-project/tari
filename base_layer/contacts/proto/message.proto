@@ -7,8 +7,8 @@ package tari.contacts.chat;
 message Message {
   bytes body = 1;
   repeated MessageMetadata metadata = 2;
-  bytes to_address = 3;
-  bytes from_address = 4;
+  bytes receiver_address = 3;
+  bytes sender_address = 4;
   DirectionEnum direction = 5;
   bytes message_id = 6;
 }
