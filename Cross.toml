@@ -6,6 +6,9 @@ passthrough = [
   "BUILD_TARGET",
   "CARGO_BUILD_TARGET",
   "TARGET_CFLAGS",
+  "CC_aarch64_unknown_linux_gnu",
+  "PKG_CONFIG_SYSROOT_DIR",
+  "PKG_CONFIG_ALLOW_CROSS",
   "RUSTFLAGS",
   "RUST_BACKTRACE",
   "RUST_DEBUG",
@@ -52,12 +55,19 @@ passthrough = [
   "CFLAGS=-DMDB_USE_ROBUST=0",
 ]
 
+# Currently needs cross-rs from git ```cargo install cross --git https://github.com/cross-rs/cross```
 [target.aarch64-unknown-linux-gnu]
-image = "ubuntu:18.04"
-# Need to use native aarch64 on Apple silicon
-#image.name = "ubuntu:18.04"
-#image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu"]
+image.name = "ubuntu:18.04"
+# targetting is needed for apple silion
+image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
 pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.aarch64-unknown-linux-gnu.env]
+passthrough = [
+  "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc",
+  "PKG_CONFIG_SYSROOT_DIR=/usr/lib/aarch64-linux-gnu/",
+  "PKG_CONFIG_ALLOW_CROSS=true",
+]
 
 [target.x86_64-unknown-linux-gnu]
 image = "ubuntu:18.04"
