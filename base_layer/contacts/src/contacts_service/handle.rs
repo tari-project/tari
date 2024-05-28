@@ -293,7 +293,7 @@ impl ContactsServiceHandle {
     pub async fn send_message(&mut self, message: Message) -> Result<(), ContactsServiceError> {
         match self
             .request_response_service
-            .call(ContactsServiceRequest::SendMessage(message.address.clone(), message))
+            .call(ContactsServiceRequest::SendMessage(message.to_address.clone(), message))
             .await??
         {
             ContactsServiceResponse::MessageSent => Ok(()),

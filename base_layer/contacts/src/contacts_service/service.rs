@@ -586,8 +586,10 @@ where T: ContactsBackend + 'static
         message: Message,
         source_public_key: CommsPublicKey,
     ) -> Result<(), ContactsServiceError> {
+        if source_public_key != *message.from_address.public_key() {
+            return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
+        }
         let our_message = Message {
-            address: TariAddress::from_public_key(&source_public_key, message.address.network()),
             stored_at: EpochTime::now().as_u64(),
             ..message
         };
@@ -618,7 +620,7 @@ where T: ContactsBackend + 'static
         &mut self,
         message: &Message,
     ) -> Result<(), ContactsServiceError> {
-        let address = &message.address;
+        let address = &message.from_address;
         let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
             message_id: message.message_id.clone(),
             timestamp: message.stored_at,

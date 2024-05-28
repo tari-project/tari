@@ -13,7 +13,8 @@ diesel::table! {
 
 diesel::table! {
     messages (message_id) {
-        address -> Binary,
+        to_address -> Binary,
+        from_address -> Binary,
         message_id -> Binary,
         body -> Binary,
         metadata -> Binary,

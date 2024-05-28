@@ -36,7 +36,8 @@ use crate::contacts_service::proto;
 pub struct Message {
     pub body: Vec<u8>,
     pub metadata: Vec<MessageMetadata>,
-    pub address: TariAddress,
+    pub to_address: TariAddress,
+    pub from_address: TariAddress,
     pub direction: Direction,
     pub sent_at: u64,
     pub stored_at: u64,
@@ -87,7 +88,8 @@ impl TryFrom<proto::Message> for Message {
         Ok(Self {
             body: message.body,
             metadata,
-            address: TariAddress::from_bytes(&message.address).map_err(|e| e.to_string())?,
+            to_address: TariAddress::from_bytes(&message.to_address).map_err(|e| e.to_string())?,
+            from_address: TariAddress::from_bytes(&message.from_address).map_err(|e| e.to_string())?,
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
             message_id: message.message_id,
@@ -105,7 +107,8 @@ impl From<Message> for proto::Message {
                 .iter()
                 .map(|m| proto::MessageMetadata::from(m.clone()))
                 .collect(),
-            address: message.address.to_bytes().to_vec(),
+            to_address: message.to_address.to_bytes().to_vec(),
+            from_address: message.from_address.to_bytes().to_vec(),
             direction: i32::from(message.direction.as_byte()),
             message_id: message.message_id,
         }

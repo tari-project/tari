@@ -40,7 +40,8 @@ use crate::{
 #[diesel(table_name = messages)]
 #[diesel(primary_key(message_id))]
 pub struct MessagesSqlInsert {
-    pub address: Vec<u8>,
+    pub to_address: Vec<u8>,
+    pub from_address: Vec<u8>,
     pub message_id: Vec<u8>,
     pub body: Vec<u8>,
     pub metadata: Vec<u8>,
@@ -53,7 +54,8 @@ pub struct MessagesSqlInsert {
 #[diesel(table_name = messages)]
 #[diesel(primary_key(message_id))]
 pub struct MessagesSql {
-    pub address: Vec<u8>,
+    pub to_address: Vec<u8>,
+    pub from_address: Vec<u8>,
     pub message_id: Vec<u8>,
     pub body: Vec<u8>,
     pub metadata: Vec<u8>,
@@ -83,6 +85,34 @@ impl MessagesSqlInsert {
 
 impl MessagesSql {
     /// Find a particular message by their address, if it exists
+    pub fn find_by_to_address(
+        address: &[u8],
+        limit: i64,
+        page: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<MessagesSql>, ContactsServiceStorageError> {
+        Ok(messages::table
+            .filter(messages::to_address.eq(address))
+            .order(messages::stored_at.desc())
+            .offset(limit * page)
+            .limit(limit)
+            .load::<MessagesSql>(conn)?)
+    }
+
+    pub fn find_by_from_address(
+        address: &[u8],
+        limit: i64,
+        page: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<MessagesSql>, ContactsServiceStorageError> {
+        Ok(messages::table
+            .filter(messages::from_address.eq(address))
+            .order(messages::stored_at.desc())
+            .offset(limit * page)
+            .limit(limit)
+            .load::<MessagesSql>(conn)?)
+    }
+
     pub fn find_by_address(
         address: &[u8],
         limit: i64,
@@ -90,7 +120,7 @@ impl MessagesSql {
         conn: &mut SqliteConnection,
     ) -> Result<Vec<MessagesSql>, ContactsServiceStorageError> {
         Ok(messages::table
-            .filter(messages::address.eq(address))
+            .filter(messages::from_address.eq(address).or(messages::to_address.eq(address)))
             .order(messages::stored_at.desc())
             .offset(limit * page)
             .limit(limit)
@@ -124,7 +154,7 @@ impl MessagesSql {
     pub fn find_all_conversationlists(
         conn: &mut SqliteConnection,
     ) -> Result<Vec<Vec<u8>>, ContactsServiceStorageError> {
-        Ok(messages::table.select(messages::address).distinct().load(conn)?)
+        Ok(messages::table.select(messages::from_address).distinct().load(conn)?)
     }
 }
 
@@ -134,14 +164,20 @@ impl TryFrom<MessagesSql> for Message {
 
     #[allow(clippy::cast_sign_loss)]
     fn try_from(o: MessagesSql) -> Result<Self, Self::Error> {
-        let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
+        let to_address =
+            TariAddress::from_bytes(&o.to_address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
+        let from_address =
+            TariAddress::from_bytes(&o.from_address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         let metadata: Vec<MessageMetadata> = serde_json::from_str(
             &String::from_utf8(o.metadata.clone()).map_err(|_| ContactsServiceStorageError::ConversionError)?,
         )
         .map_err(|_| ContactsServiceStorageError::ConversionError)?;
 
         Ok(Self {
-            address,
+            metadata,
+            body: o.body,
+            to_address,
+            from_address,
             direction: Direction::from_byte(
                 u8::try_from(o.direction).map_err(|_| ContactsServiceStorageError::ConversionError)?,
             )
@@ -150,8 +186,6 @@ impl TryFrom<MessagesSql> for Message {
             stored_at: o.stored_at.timestamp() as u64,
             delivery_confirmation_at: Some(o.stored_at.timestamp() as u64),
             read_confirmation_at: Some(o.stored_at.timestamp() as u64),
-            body: o.body,
-            metadata,
             message_id: o.message_id,
         })
     }
@@ -164,9 +198,9 @@ impl TryFrom<Message> for MessagesSqlInsert {
 
     fn try_from(o: Message) -> Result<Self, Self::Error> {
         let metadata = serde_json::to_string(&o.metadata).map_err(|_| ContactsServiceStorageError::ConversionError)?;
-
         Ok(Self {
-            address: o.address.to_bytes().to_vec(),
+            to_address: o.to_address.to_bytes().to_vec(),
+            from_address: o.from_address.to_bytes().to_vec(),
             message_id: o.message_id,
             body: o.body,
             metadata: metadata.into_bytes().to_vec(),

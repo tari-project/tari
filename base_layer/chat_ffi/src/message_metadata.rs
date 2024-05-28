@@ -211,7 +211,8 @@ mod test {
         let message_ptr = Box::into_raw(Box::new(
             MessageBuilder::new()
                 .message("hello".to_string())
-                .address(address)
+                .to_address(address.clone())
+                .from_address(address)
                 .build(),
         ));
         let error_out = Box::into_raw(Box::new(0));
