@@ -2096,7 +2096,7 @@ where
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
                 let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
-                let rewound_output = WalletOutput::new(
+                let rewound_output = WalletOutput::new_with_rangeproof(
                     output.version,
                     amount,
                     spending_key_id,
@@ -2112,9 +2112,8 @@ where
                     output.covenant,
                     output.encrypted_data,
                     output.minimum_value_promise,
-                    &self.resources.key_manager,
-                )
-                .await?;
+                    output.proof,
+                );
 
                 let message = "SHA-XTR atomic swap".to_string();
 
