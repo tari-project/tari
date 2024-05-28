@@ -832,10 +832,6 @@ pub fn prompt_wallet_type(
         return Some(WalletType::default());
     }
 
-    if wallet_config.wallet_type.is_some() {
-        return wallet_config.wallet_type.clone();
-    }
-
     match boot_mode {
         WalletBoot::New => {
             #[cfg(not(feature = "ledger"))]
