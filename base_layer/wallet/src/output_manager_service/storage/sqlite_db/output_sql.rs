@@ -776,7 +776,7 @@ impl OutputSql {
                 Some(bytes) => Some(RangeProof::from_canonical_bytes(&bytes)?),
                 None => None,
             },
-            payment_id,
+            payment_id.clone(),
         );
 
         let commitment = Commitment::from_vec(&self.commitment)?;

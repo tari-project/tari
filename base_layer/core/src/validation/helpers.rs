@@ -237,7 +237,7 @@ pub fn check_tari_encrypted_data_byte_size(
     let encrypted_data_size = encrypted_data.as_bytes().len();
     if encrypted_data_size > max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
         return Err(ValidationError::EncryptedDataExceedsMaxSize {
-            max_encrypted_data_size,
+            max_encrypted_data_size: max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
             actual_encrypted_data_size: encrypted_data_size,
         });
     }

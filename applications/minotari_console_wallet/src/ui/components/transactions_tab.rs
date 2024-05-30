@@ -432,7 +432,7 @@ impl TransactionsTab {
             };
             let maturity = Span::styled(maturity, Style::default().fg(Color::White));
 
-            let payment_id = match tx.payment_id {
+            let payment_id = match &tx.payment_id {
                 Some(v) => format!("#{}", v),
                 None => "None".to_string(),
             };

@@ -317,7 +317,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 &spending_key_id,
                 Some(&encryption_key_id),
                 total_reward.into(),
-                payment_id,
+                payment_id.clone(),
             )
             .await?;
         let minimum_value_promise = match range_proof_type {

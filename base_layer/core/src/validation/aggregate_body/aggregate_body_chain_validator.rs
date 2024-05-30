@@ -262,7 +262,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     body: &AggregateBody,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
-    let max_encrypted_data_size = constants.max_encrypted_data_byte_size();
+    let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
     for output in body.outputs() {
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;

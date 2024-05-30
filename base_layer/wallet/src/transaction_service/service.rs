@@ -1433,7 +1433,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
-                payment_id,
+                payment_id.clone(),
             )
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(

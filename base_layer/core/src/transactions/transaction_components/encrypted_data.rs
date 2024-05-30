@@ -44,7 +44,10 @@ use chacha20poly1305::{
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::{
+    tari_address::dual_address::DualAddress,
+    types::{Commitment, PrivateKey},
+};
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::TransactionSecureNonceKdfDomain;
 use tari_utilities::{
@@ -75,45 +78,43 @@ pub struct EncryptedData {
     data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum PaymentId {
     Zero,
-    U32(u32),
     U64(u64),
     U256(U256),
+    Address(DualAddress),
+    Open(Vec<u8>),
 }
 
 impl PaymentId {
     pub fn get_size(&self) -> usize {
         match self {
             PaymentId::Zero => 0,
-            PaymentId::U32(_) => size_of::<u32>(),
             PaymentId::U64(_) => size_of::<u64>(),
             PaymentId::U256(_) => size_of::<U256>(),
+            PaymentId::Address(_) => 67,
+            PaymentId::Open(v) => v.len(),
         }
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
         match self {
             PaymentId::Zero => Vec::new(),
-            PaymentId::U32(v) => (*v).to_le_bytes().to_vec(),
             PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
             PaymentId::U256(v) => {
                 let mut bytes = vec![0; 32];
                 v.to_little_endian(&mut bytes);
                 bytes
             },
+            PaymentId::Address(v) => v.to_bytes().to_vec(),
+            PaymentId::Open(v) => v.clone(),
         }
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
         match bytes.len() {
             0 => Ok(PaymentId::Zero),
-            4 => {
-                let bytes: [u8; 4] = bytes.try_into().expect("Cannot fail, as we already test the length");
-                let v = u32::from_le_bytes(bytes);
-                Ok(PaymentId::U32(v))
-            },
             8 => {
                 let bytes: [u8; 8] = bytes.try_into().expect("Cannot fail, as we already test the length");
                 let v = u64::from_le_bytes(bytes);
@@ -123,9 +124,12 @@ impl PaymentId {
                 let v = U256::from_little_endian(bytes);
                 Ok(PaymentId::U256(v))
             },
-            _ => Err(EncryptedDataError::IncorrectLength(
-                "Could not decrypt payment id due to incorrect length".to_string(),
-            )),
+            67 => {
+                let v =
+                    DualAddress::from_bytes(bytes).map_err(|e| EncryptedDataError::ByteArrayError(e.to_string()))?;
+                Ok(PaymentId::Address(v))
+            },
+            _ => Ok(PaymentId::Open(bytes.to_vec())),
         }
     }
 }
@@ -134,9 +138,10 @@ impl Display for PaymentId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             PaymentId::Zero => write!(f, "N/A"),
-            PaymentId::U32(v) => write!(f, "{}", v),
             PaymentId::U64(v) => write!(f, "{}", v),
             PaymentId::U256(v) => write!(f, "{}", v),
+            PaymentId::Address(v) => write!(f, "{}", v.to_emoji_string()),
+            PaymentId::Open(v) => write!(f, "byte vector of len: {}", v.len()),
         }
     }
 }
@@ -223,17 +228,10 @@ impl EncryptedData {
 
     /// Parse encrypted data from a byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
-        if !(bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL ||
-            bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u32>() ||
-            bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u64>() ||
-            bytes.len() == STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<U256>())
-        {
+        if bytes.len() < STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
             return Err(EncryptedDataError::IncorrectLength(format!(
-                "Expected {}, {}, {} or {} bytes, got {}",
+                "Expected bytes to be at least {}, got {}",
                 STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-                STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u32>(),
-                STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<u64>(),
-                STATIC_ENCRYPTED_DATA_SIZE_TOTAL + size_of::<U256>(),
                 bytes.len()
             )));
         }
@@ -346,13 +344,14 @@ mod test {
     fn it_encrypts_and_decrypts_correctly() {
         for payment_id in [
             PaymentId::Zero,
-            PaymentId::U32(1),
-            PaymentId::U32(3453636),
             PaymentId::U64(1),
             PaymentId::U64(156486946518564),
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
+            PaymentId::Address(DualAddress::from_hex("2603bc3d05fb55446f18031feb5494d19d6c795fc93d6218c65a285c7a88fd03917c72e4a70cbabcc52ad79cb2ac170df4a29912ffb345f20b0f8ae5524c749b9425f0").unwrap()),
+            PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        PaymentId::Open(vec![1;256]),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
@@ -365,7 +364,7 @@ mod test {
                 let encryption_key = PrivateKey::random(&mut OsRng);
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
-                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id).unwrap();
+                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone()).unwrap();
                 let (decrypted_value, decrypted_mask, decrypted_payment_id) =
                     EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
                 assert_eq!(amount, decrypted_value);
@@ -386,13 +385,14 @@ mod test {
     fn it_converts_correctly() {
         for payment_id in [
             PaymentId::Zero,
-            PaymentId::U32(1),
-            PaymentId::U32(3453636),
             PaymentId::U64(1),
             PaymentId::U64(156486946518564),
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
+            PaymentId::Address(DualAddress::from_hex("2603bc3d05fb55446f18031feb5494d19d6c795fc93d6218c65a285c7a88fd03917c72e4a70cbabcc52ad79cb2ac170df4a29912ffb345f20b0f8ae5524c749b9425f0").unwrap()),
+        PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        PaymentId::Open(vec![1;256]),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
@@ -405,7 +405,7 @@ mod test {
                 let encryption_key = PrivateKey::random(&mut OsRng);
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
-                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id).unwrap();
+                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone()).unwrap();
                 let bytes = encrypted_data.to_byte_vec();
                 let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();
                 assert_eq!(encrypted_data, encrypted_data_from_bytes);

@@ -40,14 +40,18 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch},
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{encrypted_data::PaymentId, EncryptedData, RangeProofType, TransactionError},
+        transaction_components::{
+            encrypted_data::{PaymentId, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
+            EncryptedData,
+            RangeProofType,
+            TransactionError,
+        },
         CoinbaseBuilder,
         CryptoFactories,
     },
     txn_schema,
     validation::{BlockBodyValidator, ValidationError},
 };
-
 async fn setup_with_rules(rules: ConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
     let blockchain = TestBlockchain::create(rules.clone()).await;
     let validator = BlockBodyFullValidator::new(rules, check_rangeproof);
@@ -433,7 +437,7 @@ async fn it_limits_the_encrypted_data_byte_size() {
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
-    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; 33]);
+    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 257]);
     txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 

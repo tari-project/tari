@@ -114,7 +114,7 @@ impl AggregateBodyInternalConsistencyValidator {
         for output in body.outputs() {
             check_permitted_output_types(constants, output)?;
             check_script_size(output, constants.max_script_byte_size())?;
-            check_encrypted_data_byte_size(output, constants.max_encrypted_data_byte_size())?;
+            check_encrypted_data_byte_size(output, constants.max_extra_encrypted_data_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;

@@ -69,7 +69,7 @@ impl DbWalletOutput {
         spent_in_tx_id: Option<TxId>,
     ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let tx_output = output.to_transaction_output(key_manager).await?;
-        let payment_id = output.payment_id;
+        let payment_id = output.payment_id.clone();
         Ok(DbWalletOutput {
             hash: tx_output.hash(),
             commitment: tx_output.commitment,
