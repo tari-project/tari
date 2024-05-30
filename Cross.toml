@@ -58,7 +58,7 @@ passthrough = [
 # Currently needs cross-rs from git ```cargo install cross --git https://github.com/cross-rs/cross```
 [target.aarch64-unknown-linux-gnu]
 image.name = "ubuntu:18.04"
-# targetting is needed for apple silion
+# targetting is needed for apple silicon
 image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
 pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
 
