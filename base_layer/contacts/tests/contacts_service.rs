@@ -151,7 +151,7 @@ pub fn test_contacts_service() {
         let mut contacts = Vec::new();
         for i in 0..5 {
             let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-            let address = TariAddress::new_single_address_with_default_features(public_key, Network::default());
+            let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
             contacts.push(Contact::new(random::string(8), address, None, None, false));
 
@@ -169,7 +169,7 @@ pub fn test_contacts_service() {
         assert_eq!(contact, contacts[0]);
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new_single_address_with_default_features(public_key, Network::default());
+        let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
         let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
         match contact {
@@ -234,7 +234,7 @@ pub fn test_message_pagination() {
         let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new_single_address_with_default_features(public_key, Network::default());
+        let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
         let contact = Contact::new(random::string(8), address.clone(), None, None, false);
         runtime.block_on(contacts_service.upsert_contact(contact)).unwrap();

@@ -207,8 +207,8 @@ impl TryFrom<Message> for MessagesSqlInsert {
     fn try_from(o: Message) -> Result<Self, Self::Error> {
         let metadata = serde_json::to_string(&o.metadata).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
-            receiver_address: o.receiver_address.to_bytes().to_vec(),
-            sender_address: o.sender_address.to_bytes().to_vec(),
+            receiver_address: o.receiver_address.to_vec(),
+            sender_address: o.sender_address.to_vec(),
             message_id: o.message_id,
             body: o.body,
             metadata: metadata.into_bytes().to_vec(),

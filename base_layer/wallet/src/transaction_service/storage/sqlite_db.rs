@@ -2276,7 +2276,7 @@ mod test {
             );
         let mut stp = builder.build().await.unwrap();
 
-        let address = TariAddress::new_single_address_with_default_features(
+        let address = TariAddress::new_single_address_with_interactive_only(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2294,7 +2294,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new_single_address_with_default_features(
+        let address = TariAddress::new_single_address_with_interactive_only(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );

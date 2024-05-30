@@ -596,7 +596,7 @@ async fn manage_single_transaction() {
     )
     .await;
     let bob_address =
-        TariAddress::new_single_address_with_default_features(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
     assert!(alice_ts
         .send_transaction(
             bob_address.clone(),
@@ -770,7 +770,7 @@ async fn large_interactive_transaction() {
     alice_db.mark_outputs_as_unspent(unspent).unwrap();
     let transaction_value = output_value * (outputs_count as u64 - 1);
     let bob_address =
-        TariAddress::new_single_address_with_default_features(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
 
     let message = "TAKE MAH MONEYS!".to_string();
     alice_ts
@@ -934,7 +934,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value = balance.available_balance - amount_per_output * 10;
     let alice_address =
-        TariAddress::new_single_address_with_default_features(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
     assert!(alice_ts
         .send_transaction(
             alice_address,
@@ -1032,7 +1032,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
     let message = "GIVE MAH _OWN_ MONEYS AWAY!".to_string();
     let value = balance.available_balance - amount_per_output * 10;
     let bob_address =
-        TariAddress::new_single_address_with_default_features(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -1148,7 +1148,7 @@ async fn test_spend_dust_happy_path() {
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value_self = (number_of_outputs / 3) * amount_per_output;
     let alice_address =
-        TariAddress::new_single_address_with_default_features(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             alice_address,
@@ -1193,7 +1193,7 @@ async fn test_spend_dust_happy_path() {
     let message = "GIVE MAH _OWN_ MONEYS AWAY!".to_string();
     let value_bob = (number_of_outputs / 3) * amount_per_output;
     let bob_address =
-        TariAddress::new_single_address_with_default_features(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -1294,7 +1294,7 @@ async fn single_transaction_to_self() {
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value = 10000.into();
     let alice_address =
-        TariAddress::new_single_address_with_default_features(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             alice_address,
@@ -2153,7 +2153,7 @@ async fn send_one_sided_transaction_to_self() {
     let value = 1000.into();
     let mut alice_ts_clone = alice_ts;
     let alice_address =
-        TariAddress::new_single_address_with_default_features(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
     match alice_ts_clone
         .send_one_sided_transaction(
             alice_address,
@@ -2346,7 +2346,7 @@ async fn manage_multiple_transactions() {
     let value_b_to_a_1 = MicroMinotari::from(11000);
     let value_a_to_c_1 = MicroMinotari::from(14000);
     log::trace!("Sending A to B 1");
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -2363,7 +2363,7 @@ async fn manage_multiple_transactions() {
         .unwrap();
     log::trace!("A to B 1 TxID: {}", tx_id_a_to_b_1);
     log::trace!("Sending A to C 1");
-    let carol_address = TariAddress::new_single_address_with_default_features(
+    let carol_address = TariAddress::new_single_address_with_interactive_only(
         carol_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -2382,7 +2382,7 @@ async fn manage_multiple_transactions() {
     assert_eq!(alice_completed_tx.len(), 0);
     log::trace!("A to C 1 TxID: {}", tx_id_a_to_c_1);
 
-    let alice_address = TariAddress::new_single_address_with_default_features(
+    let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -2537,7 +2537,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         )])
         .unwrap();
 
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -2972,7 +2972,7 @@ async fn discovery_async_return_test() {
 
     let value_a_to_c_1 = MicroMinotari::from(14000);
     let bob_address =
-        TariAddress::new_single_address_with_default_features(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -3011,7 +3011,7 @@ async fn discovery_async_return_test() {
     assert!(!is_direct_send);
 
     let carol_address =
-        TariAddress::new_single_address_with_default_features(carol_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(carol_node_identity.public_key().clone(), network);
     let tx_id2 = alice_ts
         .send_transaction(
             carol_address,
@@ -3311,7 +3311,7 @@ async fn test_transaction_cancellation() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -3657,7 +3657,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -3859,7 +3859,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let amount_sent = 20000 * uT;
 
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -4048,7 +4048,7 @@ async fn test_tx_direct_send_behaviour() {
         })
         .await;
 
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -4522,7 +4522,7 @@ async fn test_transaction_resending() {
 
     let amount_sent = 100000 * uT;
 
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -5043,7 +5043,7 @@ async fn test_replying_to_cancelled_tx() {
         )])
         .unwrap();
     let amount_sent = 100000 * uT;
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -5183,7 +5183,7 @@ async fn test_transaction_timeout_cancellation() {
 
     let amount_sent = 10000 * uT;
 
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -5478,7 +5478,7 @@ async fn transaction_service_tx_broadcast() {
 
     let amount_sent1 = 100000 * uT;
 
-    let bob_address = TariAddress::new_single_address_with_default_features(
+    let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -5942,7 +5942,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
-    let alice_address = TariAddress::new_single_address_with_default_features(
+    let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
     );
@@ -6117,7 +6117,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
     let connection = make_wallet_database_memory_connection();
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
-    let alice_address = TariAddress::new_single_address_with_default_features(
+    let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
     );

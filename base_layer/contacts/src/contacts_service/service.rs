@@ -31,7 +31,7 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
-use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     types::CommsPublicKey,
@@ -586,7 +586,7 @@ where T: ContactsBackend + 'static
         message: Message,
         source_public_key: CommsPublicKey,
     ) -> Result<(), ContactsServiceError> {
-        if source_public_key != *message.sender_address.public_key() {
+        if source_public_key != *message.sender_address.comms_public_key() {
             return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
         }
         let our_message = Message {

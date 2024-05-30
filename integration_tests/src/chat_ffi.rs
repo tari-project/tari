@@ -313,7 +313,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
     let error_out = Box::into_raw(Box::new(0));
     let address =
-        TariAddress::new_single_address_with_default_features(identity.public_key().clone(), Network::LocalNet);
+        TariAddress::new_single_address_with_interactive_only(identity.public_key().clone(), Network::LocalNet);
     let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
     unsafe {
         *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;

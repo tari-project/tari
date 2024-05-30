@@ -245,7 +245,7 @@ impl ChatClient for Client {
     }
 
     fn address(&self) -> TariAddress {
-        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
+        self.address.clone()
     }
 
     fn shutdown(&mut self) {

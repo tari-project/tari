@@ -87,7 +87,7 @@ impl DualAddress {
         Ok(bytes)
     }
 
-    /// Construct an TariAddress from an emoji string with checksum trying to calculate the network
+    /// Construct an TariAddress from an emoji string
     pub fn from_emoji_string(emoji: &str) -> Result<Self, TariAddressError> {
         let bytes = Self::emoji_to_bytes(emoji)?;
 
@@ -104,24 +104,24 @@ impl DualAddress {
         self.features
     }
 
-    /// Convert Tari Address to an emoji string with checksum
+    /// Convert Tari Address to an emoji string
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_bytes();
         bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
     }
 
-    /// Return the public view key of an Tari Address
+    /// Return the public view key of a Tari Address
     pub fn public_view_key(&self) -> &PublicKey {
         &self.public_view_key
     }
 
-    /// Return the public spend key of an Tari Address
+    /// Return the public spend key of a Tari Address
     pub fn public_spend_key(&self) -> &PublicKey {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes and try to calculate the network
+    /// Construct Tari Address from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         if bytes.len() != INTERNAL_DUAL_SIZE {
@@ -156,7 +156,7 @@ impl DualAddress {
         buf
     }
 
-    /// Construct Tari Address from hex  and try to calculate the network
+    /// Construct Tari Address from hex
     pub fn from_hex(hex_str: &str) -> Result<Self, TariAddressError> {
         let buf = from_hex(hex_str).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Self::from_bytes(buf.as_slice())
@@ -378,6 +378,22 @@ mod test {
         assert_eq!(
             DualAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidChecksum)
+        );
+    }
+
+    #[test]
+    /// Test invalid features
+    fn invalid_features() {
+        let mut rng = rand::thread_rng();
+        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let mut address = DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda);
+        address.features = TariAddressFeatures(5);
+
+        let emoji_string = address.to_emoji_string();
+        assert_eq!(
+            DualAddress::from_emoji_string(&emoji_string),
+            Err(TariAddressError::InvalidFeatures)
         );
     }
 

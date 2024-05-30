@@ -600,9 +600,9 @@ mod test {
     #[test]
     fn test_reading_message_address() {
         let receiver_address =
-            TariAddress::from_hex("0c017c5cd01385f34ac065e3b05948326dc55d2494f120c6f459a07389011b4ec1").unwrap();
+            TariAddress::from_hex("2602742c39084e62565e1416f9f97ff34bd91fc3ccd35bb7e6cf916cb757066c816966").unwrap();
         let sender_address =
-            TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0").unwrap();
+            TariAddress::from_hex("2602764460f2fff434446cab6e03a5ea2a4c1dc4984c1749a4af8371ceecd8da1d0c01").unwrap();
         let message = MessageBuilder::new()
             .receiver_address(receiver_address.clone())
             .sender_address(sender_address.clone())
@@ -614,7 +614,7 @@ mod test {
         unsafe {
             let address_ptr = read_chat_message_sender_address(message_ptr, error_out);
 
-            assert_eq!(sender_address.to_bytes(), (*address_ptr).to_bytes());
+            assert_eq!(sender_address.to_vec(), (*address_ptr).to_vec());
 
             destroy_chat_message(message_ptr);
             destroy_tari_address(address_ptr);

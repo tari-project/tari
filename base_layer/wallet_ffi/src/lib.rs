@@ -9485,7 +9485,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
             let key = PublicKey::from_secret_key(&(*test_contact_private_key));
-            let test_address = Box::into_raw(Box::new(TariWalletAddress::new_single_address_with_default_features(
+            let test_address = Box::into_raw(Box::new(TariWalletAddress::new_single_address_with_interactive_only(
                 key,
                 Network::default(),
             )));
@@ -9518,7 +9518,7 @@ mod test {
             let test_contact_private_key = private_key_generate();
             let key = PublicKey::from_secret_key(&(*test_contact_private_key));
             let test_contact_address = Box::into_raw(Box::new(
-                TariWalletAddress::new_single_address_with_default_features(key, Network::default()),
+                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()),
             ));
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
@@ -11532,7 +11532,7 @@ mod test {
 
             // Add some contacts
             // - Contact for Alice
-            let bob_wallet_address = TariWalletAddress::new_single_address_with_default_features(
+            let bob_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
                 bob_node_identity.public_key().clone(),
                 Network::LocalNet,
             );
@@ -11544,7 +11544,7 @@ mod test {
             assert!(wallet_upsert_contact(alice_wallet_ptr, alice_contact_ptr, error_ptr));
             contact_destroy(alice_contact_ptr);
             // - Contact for Bob
-            let alice_wallet_address = TariWalletAddress::new_single_address_with_default_features(
+            let alice_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
                 alice_node_identity.public_key().clone(),
                 Network::LocalNet,
             );

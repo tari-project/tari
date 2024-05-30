@@ -52,10 +52,10 @@ impl SingleAddress {
     }
 
     /// Creates a new Tari Address from the provided public keys and network while using the default features
-    pub fn new_with_default_features(spend_key: PublicKey, network: Network) -> SingleAddress {
+    pub fn new_with_interactive_only(spend_key: PublicKey, network: Network) -> SingleAddress {
         Self {
             network,
-            features: TariAddressFeatures::default(),
+            features: TariAddressFeatures::create_interactive_only(),
             public_spend_key: spend_key,
         }
     }
@@ -79,7 +79,7 @@ impl SingleAddress {
         Ok(bytes)
     }
 
-    /// Construct an TariAddress from an emoji string with checksum trying to calculate the network
+    /// Construct an TariAddress from an emoji string
     pub fn from_emoji_string(emoji: &str) -> Result<Self, TariAddressError> {
         let bytes = Self::emoji_to_bytes(emoji)?;
 
@@ -96,14 +96,14 @@ impl SingleAddress {
         self.features
     }
 
-    /// Convert Tari Address to an emoji string with checksum
+    /// Convert Tari Address to an emoji string
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_bytes();
         bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
     }
 
-    /// Return the public spend key of an Tari Address
+    /// Return the public spend key of a Tari Address
     pub fn public_spend_key(&self) -> &PublicKey {
         &self.public_spend_key
     }
@@ -139,7 +139,7 @@ impl SingleAddress {
         buf
     }
 
-    /// Construct Tari Address from hex  and try to calculate the network
+    /// Construct Tari Address from hex
     pub fn from_hex(hex_str: &str) -> Result<Self, TariAddressError> {
         let buf = from_hex(hex_str).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Self::from_bytes(buf.as_slice())
@@ -166,11 +166,11 @@ mod test {
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
-        let emoji_id_from_public_key = SingleAddress::new_with_default_features(public_key.clone(), Network::Esmeralda);
+        let emoji_id_from_public_key = SingleAddress::new_with_interactive_only(public_key.clone(), Network::Esmeralda);
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &public_key);
 
         let features = emoji_id_from_public_key.features();
-        assert_eq!(features, TariAddressFeatures::create_interactive_and_one_sided());
+        assert_eq!(features, TariAddressFeatures::create_interactive_only());
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
@@ -241,7 +241,7 @@ mod test {
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
-        let address = SingleAddress::new_with_default_features(public_key.clone(), Network::Esmeralda);
+        let address = SingleAddress::new_with_interactive_only(public_key.clone(), Network::Esmeralda);
 
         let buff = address.to_bytes();
         let hex = address.to_hex();
@@ -332,6 +332,21 @@ mod test {
     }
 
     #[test]
+    /// Test invalid features
+    fn invalid_features() {
+        let mut rng = rand::thread_rng();
+        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let mut address = SingleAddress::new_with_interactive_only( spend_key.clone(), Network::Esmeralda);
+        address.features = TariAddressFeatures(5);
+
+        let emoji_string = address.to_emoji_string();
+        assert_eq!(
+            SingleAddress::from_emoji_string(&emoji_string),
+            Err(TariAddressError::InvalidFeatures)
+        );
+    }
+
+    #[test]
     /// Test invalid checksum
     fn invalid_checksum() {
         // This emoji string contains an invalid checksum
@@ -349,7 +364,7 @@ mod test {
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an address using a valid network and ensure it's not valid on another network
-        let address = SingleAddress::new_with_default_features(public_key, Network::Esmeralda);
+        let address = SingleAddress::new_with_interactive_only(public_key, Network::Esmeralda);
         let mut bytes = address.to_bytes();
         // this is an invalid network
         bytes[0] = 123;

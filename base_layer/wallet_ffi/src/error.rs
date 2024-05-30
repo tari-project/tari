@@ -423,6 +423,10 @@ impl From<TariAddressError> for LibWalletError {
                 code: 706,
                 message: format!("{:?}", e),
             },
+            TariAddressError::InvalidAddressString => Self {
+                code: 706,
+                message: format!("{:?}", e),
+            },
         }
     }
 }

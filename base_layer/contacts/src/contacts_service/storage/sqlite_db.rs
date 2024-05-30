@@ -248,7 +248,7 @@ mod test {
             let mut contacts = Vec::new();
             for i in 0..names.len() {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-                let address = TariAddress::new_single_address_with_default_features(pub_key, Network::default());
+                let address = TariAddress::new_single_address_with_interactive_only(pub_key, Network::default());
                 contacts.push(Contact::new(names[i].clone(), address, None, None, false));
                 ContactSql::from(contacts[i].clone()).commit(&mut conn).unwrap();
             }
