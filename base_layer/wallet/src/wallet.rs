@@ -54,7 +54,7 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
+        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
@@ -186,7 +186,6 @@ where
             config.transaction_service_config,
             config.buffer_size,
         );
-        let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
@@ -201,7 +200,7 @@ where
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
-                wallet_identity.clone(),
+                node_identity.clone(),
             ))
             .add_initializer(TransactionKeyManagerInitializer::new(
                 key_manager_backend,
@@ -213,7 +212,8 @@ where
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
-                wallet_identity.clone(),
+                node_identity.clone(),
+                config.network,
                 consensus_manager,
                 factories.clone(),
                 wallet_database.clone(),
@@ -238,10 +238,11 @@ where
                 wallet_database.clone(),
             ))
             .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
-            .add_initializer(UtxoScannerServiceInitializer::new(
+            .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 factories.clone(),
-                wallet_identity.clone(),
+                node_identity.clone(),
+                config.network,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -319,7 +320,7 @@ where
             None
         };
 
-        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, wallet_identity.clone())
+        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, &node_identity)
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "{:?}", e);
@@ -474,6 +475,27 @@ where
                 None
             },
         }
+    }
+
+    pub async fn get_wallet_address(&self) -> Result<TariAddress, WalletError> {
+        let view_key_id = self.key_manager_service.get_view_key_id().await?;
+        let view_key = self.key_manager_service.get_public_key_at_key_id(&view_key_id).await?;
+        Ok(TariAddress::new_dual_address_with_default_features(
+            view_key.clone(),
+            self.comms.node_identity().public_key().clone(),
+            self.network.as_network(),
+        ))
+    }
+
+    pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
+        let view_key_id = self.key_manager_service.get_view_key_id().await?;
+        let view_key = self.key_manager_service.get_public_key_at_key_id(&view_key_id).await?;
+        let address = TariAddress::new_dual_address_with_default_features(
+            view_key.clone(),
+            self.comms.node_identity().public_key().clone(),
+            self.network.as_network(),
+        );
+        Ok(WalletIdentity::new(self.comms.node_identity(), address))
     }
 
     pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
@@ -801,15 +823,18 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    wallet_identity: WalletIdentity,
+    node_identity: &Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {
-    let script = one_sided_payment_script(wallet_identity.node_identity.public_key());
+    let script = one_sided_payment_script(node_identity.public_key());
+    let wallet_node_key_id = TariKeyId::Imported {
+        key: node_identity.public_key().clone(),
+    };
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
             .as_hash::<Blake2b<U32>>()
             .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
             .to_vec(),
-        script_key_id: wallet_identity.wallet_node_key_id.clone(),
+        script_key_id: wallet_node_key_id.clone(),
         script,
         input: ExecutionStack::default(),
         script_lock_height: 0,

@@ -63,6 +63,7 @@ pub struct Client {
     pub contacts: Option<ContactsServiceHandle>,
     pub identity: Arc<NodeIdentity>,
     pub shutdown: Shutdown,
+    pub address: TariAddress,
 }
 
 impl Debug for Client {
@@ -82,17 +83,28 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub fn new(identity: Arc<NodeIdentity>, config: ApplicationConfig, user_agent: String) -> Self {
+    pub fn new(
+        identity: Arc<NodeIdentity>,
+        address: TariAddress,
+        config: ApplicationConfig,
+        user_agent: String,
+    ) -> Self {
         Self {
             config,
             user_agent,
             contacts: None,
             identity,
             shutdown: Shutdown::new(),
+            address,
         }
     }
 
-    pub fn sideload(config: ApplicationConfig, contacts: ContactsServiceHandle, user_agent: String) -> Self {
+    pub fn sideload(
+        config: ApplicationConfig,
+        contacts: ContactsServiceHandle,
+        user_agent: String,
+        address: TariAddress,
+    ) -> Self {
         // Create a placeholder ID. It won't be written or used when sideloaded.
         let identity = Arc::new(NodeIdentity::random(
             &mut OsRng,
@@ -106,6 +118,7 @@ impl Client {
             contacts: Some(contacts),
             identity,
             shutdown: Shutdown::new(),
+            address,
         }
     }
 
@@ -232,7 +245,7 @@ impl ChatClient for Client {
     }
 
     fn address(&self) -> TariAddress {
-        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
+        self.address.clone()
     }
 
     fn shutdown(&mut self) {

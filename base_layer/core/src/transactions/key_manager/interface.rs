@@ -139,7 +139,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         value: u64,
     ) -> Result<bool, KeyManagerServiceError>;
 
-    async fn get_recovery_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError>;
+    async fn get_view_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError>;
 
     async fn get_next_spend_and_script_key_ids(
         &self,

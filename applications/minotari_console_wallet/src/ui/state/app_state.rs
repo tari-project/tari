@@ -939,11 +939,11 @@ impl AppStateInner {
     }
 
     pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
-        let wallet_id = WalletIdentity::new(self.wallet.comms.node_identity(), self.wallet.network.as_network());
+        let wallet_id = self.wallet.get_wallet_id().await?;
         let eid = wallet_id.address.to_emoji_string();
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
-            wallet_id.network,
+            wallet_id.network(),
             wallet_id.address.to_hex()
         );
         let code = QrCode::new(qr_link).unwrap();
@@ -1278,7 +1278,7 @@ impl AppStateData {
         let eid = wallet_identity.address.to_emoji_string();
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
-            wallet_identity.network,
+            wallet_identity.network(),
             wallet_identity.address.to_hex()
         );
         let code = QrCode::new(qr_link).unwrap();

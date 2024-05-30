@@ -315,7 +315,7 @@ where
                 tokio::select! {
                     Some((address, tx_id, tx)) = receiver.recv() => {
                         incoming_finalized_transaction = Some(tx);
-                        if inbound_tx.source_address != address {
+                        if inbound_tx.source_address.public_spend_key() != address.public_spend_key()  {
                             warn!(
                                 target: LOG_TARGET,
                                 "Finalized Transaction did not come from the expected Public Key"

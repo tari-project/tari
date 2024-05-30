@@ -40,7 +40,6 @@ use minotari_wallet::{
     },
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
-    util::wallet_identity::WalletIdentity,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -162,7 +161,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let key_manager = create_memory_db_key_manager();
 
-    let wallet_identity = WalletIdentity::new(server_node_identity.clone(), Network::LocalNet);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -173,7 +171,8 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
-        wallet_identity,
+        server_node_identity.clone(),
+        Network::LocalNet,
         key_manager.clone(),
     )
     .await
@@ -228,7 +227,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     task::spawn(mock_base_node_service.run());
     let connectivity = create_wallet_connectivity_mock();
     let key_manager = create_memory_db_key_manager();
-    let wallet_identity = WalletIdentity::new(node_identity.clone(), Network::LocalNet);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -239,7 +237,8 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         connectivity,
-        wallet_identity,
+        node_identity.clone(),
+        Network::LocalNet,
         key_manager.clone(),
     )
     .await

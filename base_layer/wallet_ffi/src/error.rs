@@ -398,7 +398,7 @@ impl From<TariAddressError> for LibWalletError {
     fn from(e: TariAddressError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", e));
         match e {
-            TariAddressError::InvalidNetworkOrChecksum => Self {
+            TariAddressError::InvalidNetwork => Self {
                 code: 701,
                 message: format!("{:?}", e),
             },
@@ -412,6 +412,19 @@ impl From<TariAddressError> for LibWalletError {
             },
             TariAddressError::InvalidEmoji => Self {
                 code: 704,
+                message: format!("{:?}", e),
+            },
+
+            TariAddressError::InvalidFeatures => Self {
+                code: 705,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidChecksum => Self {
+                code: 706,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidAddressString => Self {
+                code: 706,
                 message: format!("{:?}", e),
             },
         }

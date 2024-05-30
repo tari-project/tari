@@ -1125,50 +1125,9 @@ pub unsafe extern "C" fn tari_address_get_bytes(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     } else {
-        bytes.0 = (*address).to_bytes().to_vec();
+        bytes.0 = (*address).to_vec();
     }
     Box::into_raw(Box::new(bytes))
-}
-
-/// Creates a TariWalletAddress from a TariPrivateKey
-///
-/// ## Arguments
-/// `secret_key` - The pointer to a TariPrivateKey
-/// `network` - an u8 indicating the network
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress
-///
-/// # Safety
-/// The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
-// casting here is network is a u8
-#[allow(clippy::cast_possible_truncation)]
-#[no_mangle]
-pub unsafe extern "C" fn tari_address_from_private_key(
-    secret_key: *mut TariPrivateKey,
-    network: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariWalletAddress {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if secret_key.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("secret_key".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-    let key = PublicKey::from_secret_key(&(*secret_key));
-    let network = match (network as u8).try_into() {
-        Ok(network) => network,
-        Err(_) => {
-            error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    };
-    let address = TariWalletAddress::new(key, network);
-    Box::into_raw(Box::new(address))
 }
 
 /// Creates a TariWalletAddress from a char array
@@ -5556,7 +5515,14 @@ pub unsafe extern "C" fn wallet_create(
 
     match w {
         Ok(w) => {
-            let wallet_address = TariAddress::new(w.comms.node_identity().public_key().clone(), w.network.as_network());
+            let wallet_address = match runtime.block_on(async { w.get_wallet_address().await }) {
+                Ok(address) => address,
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return ptr::null_mut();
+                },
+            };
 
             // Start Callback Handler
             let callback_handler = CallbackHandler::new(
@@ -7235,10 +7201,22 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     for tx in completed_transactions.values() {
         completed.push(tx.clone());
     }
-    let wallet_address = TariAddress::new(
-        (*wallet).wallet.comms.node_identity().public_key().clone(),
-        (*wallet).wallet.network.as_network(),
-    );
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let wallet_address = match runtime.block_on(async { (*wallet).wallet.get_wallet_address().await }) {
+        Ok(address) => address,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
     for tx in inbound_transactions.values() {
         let mut inbound_tx = CompletedTransaction::from(tx.clone());
         inbound_tx.destination_address = wallet_address.clone();
@@ -7517,8 +7495,22 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                 return ptr::null_mut();
             },
         };
-        let network = (*wallet).wallet.network.as_network();
-        let address = TariWalletAddress::new((*wallet).wallet.comms.node_identity().public_key().clone(), network);
+        let runtime = match Runtime::new() {
+            Ok(r) => r,
+            Err(e) => {
+                error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+        let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_address().await }) {
+            Ok(address) => address,
+            Err(e) => {
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
         if let Some(tx) = outbound_transactions.remove(&transaction_id) {
             let mut outbound_tx = CompletedTransaction::from(tx);
             outbound_tx.source_address = address;
@@ -7586,9 +7578,22 @@ pub unsafe extern "C" fn wallet_get_tari_address(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let network = (*wallet).wallet.network.as_network();
-    let pk = (*wallet).wallet.comms.node_identity().public_key().clone();
-    let address = TariWalletAddress::new(pk, network);
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_address().await }) {
+        Ok(address) => address,
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
     Box::into_raw(Box::new(address))
 }
 
@@ -8190,11 +8195,28 @@ pub unsafe extern "C" fn wallet_start_recovery(
         };
         recovery_task_builder.with_recovery_message(message_str);
     }
-
-    let mut recovery_task = recovery_task_builder
-        .with_peers(peer_public_keys)
-        .with_retry_limit(10)
-        .build_with_wallet(&(*wallet).wallet, shutdown_signal);
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return false;
+        },
+    };
+    let mut recovery_task = match runtime.block_on(async {
+        recovery_task_builder
+            .with_peers(peer_public_keys)
+            .with_retry_limit(10)
+            .build_with_wallet(&(*wallet).wallet, shutdown_signal)
+            .await
+    }) {
+        Ok(v) => v,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::KeyManagerServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return false;
+        },
+    };
 
     let event_stream = recovery_task.get_event_receiver();
     let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());
@@ -9234,36 +9256,21 @@ mod test {
             let private_key = private_key_generate();
             let public_key = public_key_from_private_key(private_key, error_ptr);
             assert_eq!(error, 0);
-            let address = tari_address_from_private_key(private_key, 0x26, error_ptr);
-            assert_eq!(error, 0);
             let private_bytes = private_key_get_bytes(private_key, error_ptr);
             assert_eq!(error, 0);
             let public_bytes = public_key_get_bytes(public_key, error_ptr);
-            assert_eq!(error, 0);
-            let address_bytes = tari_address_get_bytes(address, error_ptr);
             assert_eq!(error, 0);
             let private_key_length = byte_vector_get_length(private_bytes, error_ptr);
             assert_eq!(error, 0);
             let public_key_length = byte_vector_get_length(public_bytes, error_ptr);
             assert_eq!(error, 0);
-            let tari_address_length = byte_vector_get_length(address_bytes, error_ptr);
-            assert_eq!(error, 0);
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
-            assert_eq!(tari_address_length, 33);
             assert_ne!((*private_bytes), (*public_bytes));
-            let emoji = tari_address_to_emoji_id(address, error_ptr) as *mut c_char;
-            let emoji_str = CStr::from_ptr(emoji).to_str().unwrap();
-            assert!(TariAddress::from_emoji_string(emoji_str).is_ok());
-            let address_emoji = emoji_id_to_tari_address(emoji, error_ptr);
-            assert_eq!((*address), (*address_emoji));
             private_key_destroy(private_key);
             public_key_destroy(public_key);
-            tari_address_destroy(address_emoji);
-            tari_address_destroy(address);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
-            byte_vector_destroy(address_bytes);
         }
     }
 
@@ -9477,7 +9484,11 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let test_address = tari_address_from_private_key(test_contact_private_key, 0x10, error_ptr);
+            let key = PublicKey::from_secret_key(&(*test_contact_private_key));
+            let test_address = Box::into_raw(Box::new(TariWalletAddress::new_single_address_with_interactive_only(
+                key,
+                Network::default(),
+            )));
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
@@ -9490,7 +9501,7 @@ mod test {
             let contact_address = contact_get_tari_address(test_contact, error_ptr);
             let contact_key_bytes = tari_address_get_bytes(contact_address, error_ptr);
             let contact_bytes_len = byte_vector_get_length(contact_key_bytes, error_ptr);
-            assert_eq!(contact_bytes_len, 33);
+            assert_eq!(contact_bytes_len, 35);
             contact_destroy(test_contact);
             tari_address_destroy(test_address);
             private_key_destroy(test_contact_private_key);
@@ -9505,7 +9516,10 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let test_contact_address = tari_address_from_private_key(test_contact_private_key, 0x00, error_ptr);
+            let key = PublicKey::from_secret_key(&(*test_contact_private_key));
+            let test_contact_address = Box::into_raw(Box::new(
+                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()),
+            ));
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
@@ -11518,7 +11532,10 @@ mod test {
 
             // Add some contacts
             // - Contact for Alice
-            let bob_wallet_address = TariWalletAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+            let bob_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
+                bob_node_identity.public_key().clone(),
+                Network::LocalNet,
+            );
             let alice_contact_alias_ptr: *const c_char =
                 CString::into_raw(CString::new("bob").unwrap()) as *const c_char;
             let alice_contact_address_ptr = Box::into_raw(Box::new(bob_wallet_address.clone()));
@@ -11527,8 +11544,10 @@ mod test {
             assert!(wallet_upsert_contact(alice_wallet_ptr, alice_contact_ptr, error_ptr));
             contact_destroy(alice_contact_ptr);
             // - Contact for Bob
-            let alice_wallet_address =
-                TariWalletAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
+            let alice_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
+                alice_node_identity.public_key().clone(),
+                Network::LocalNet,
+            );
             let bob_contact_alias_ptr: *const c_char =
                 CString::into_raw(CString::new("alice").unwrap()) as *const c_char;
             let bob_contact_address_ptr = Box::into_raw(Box::new(alice_wallet_address.clone()));

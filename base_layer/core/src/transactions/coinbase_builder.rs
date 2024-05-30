@@ -91,8 +91,8 @@ pub enum CoinbaseBuildError {
     MissingScript,
     #[error("The range proof type for this coinbase transaction wasn't provided")]
     MissingRangeProofType,
-    #[error("The wallet public key for this coinbase transaction wasn't provided")]
-    MissingWalletPublicKey,
+    #[error("The wallet public view key for this coinbase transaction wasn't provided")]
+    MissingWalletPublicViewKey,
     #[error("The encryption key for this coinbase transaction wasn't provided")]
     MissingEncryptionKey,
     #[error("The sender offset key for this coinbase transaction wasn't provided")]
@@ -436,7 +436,12 @@ pub async fn generate_coinbase_with_wallet_output(
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await?;
     let shared_secret = key_manager
-        .get_diffie_hellman_shared_secret(&sender_offset_key_id, wallet_payment_address.public_key())
+        .get_diffie_hellman_shared_secret(
+            &sender_offset_key_id,
+            wallet_payment_address
+                .public_view_key()
+                .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
+        )
         .await?;
     let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;
 
@@ -447,11 +452,16 @@ pub async fn generate_coinbase_with_wallet_output(
 
     let script = if stealth_payment {
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, wallet_payment_address.public_key());
-        let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_key());
+        let c = diffie_hellman_stealth_domain_hasher(
+            &nonce_private_key,
+            wallet_payment_address
+                .public_view_key()
+                .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
+        );
+        let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_spend_key());
         stealth_payment_script(&nonce_public_key, &script_spending_key)
     } else {
-        one_sided_payment_script(wallet_payment_address.public_key())
+        one_sided_payment_script(wallet_payment_address.public_spend_key())
     };
 
     let (transaction, wallet_output) = CoinbaseBuilder::new(key_manager.clone())
@@ -567,7 +577,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx, _unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
@@ -618,7 +628,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
@@ -653,7 +663,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
@@ -668,7 +678,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx2, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
@@ -700,7 +710,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx3, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
@@ -750,7 +760,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
@@ -767,7 +777,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, output) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
@@ -882,7 +892,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx1, wo1) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
@@ -899,7 +909,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, wo2) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())

@@ -196,7 +196,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_recovery_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError> {
+    async fn get_view_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError> {
         self.get_static_key(TransactionKeyManagerBranch::DataEncryption.get_branch_key())
             .await
     }

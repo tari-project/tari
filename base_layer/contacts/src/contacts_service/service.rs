@@ -586,7 +586,7 @@ where T: ContactsBackend + 'static
         message: Message,
         source_public_key: CommsPublicKey,
     ) -> Result<(), ContactsServiceError> {
-        if source_public_key != *message.sender_address.public_key() {
+        if source_public_key != *message.sender_address.comms_public_key() {
             return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
         }
         let our_message = Message {
@@ -667,7 +667,7 @@ where T: ContactsBackend + 'static
             Ok(contact) => contact,
             Err(_) => Contact::from(&address),
         };
-        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
+        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_spend_key().clone()));
 
         match self.get_online_status(&contact).await {
             Ok(ContactOnlineStatus::Online) => {
@@ -676,7 +676,7 @@ where T: ContactsBackend + 'static
 
                 comms_outbound
                     .send_direct_encrypted(
-                        address.public_key().clone(),
+                        address.public_spend_key().clone(),
                         message,
                         encryption,
                         "contact service messaging".to_string(),
@@ -688,7 +688,7 @@ where T: ContactsBackend + 'static
                 info!(target: LOG_TARGET, "Chat message being sent via closest broadcast");
                 let mut comms_outbound = self.dht.outbound_requester();
                 comms_outbound
-                    .closest_broadcast(address.public_key().clone(), encryption, vec![], message)
+                    .closest_broadcast(address.public_spend_key().clone(), encryption, vec![], message)
                     .await?;
             },
         };

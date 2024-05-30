@@ -24,7 +24,7 @@ use std::{ffi::CString, ptr::null_mut};
 
 use libc::c_void;
 
-use super::{ffi_bytes::FFIBytes, ffi_import, FFIString, PrivateKey};
+use super::{ffi_bytes::FFIBytes, ffi_import, FFIString};
 
 pub struct WalletAddress {
     ptr: *mut c_void,
@@ -39,19 +39,6 @@ impl Drop for WalletAddress {
 
 impl WalletAddress {
     pub fn from_ptr(ptr: *mut c_void) -> Self {
-        Self { ptr }
-    }
-
-    #[allow(dead_code)]
-    pub fn from_private_key(private_key: PrivateKey, network: u32) -> Self {
-        let mut error = 0;
-        let ptr;
-        unsafe {
-            ptr = ffi_import::tari_address_from_private_key(private_key.get_ptr(), network, &mut error);
-            if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
-            }
-        }
         Self { ptr }
     }
 

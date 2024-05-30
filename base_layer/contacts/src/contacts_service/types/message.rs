@@ -28,7 +28,6 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_p2p::tari_message::TariMessageType;
-use tari_utilities::ByteArray;
 
 use crate::contacts_service::proto;
 
@@ -107,8 +106,8 @@ impl From<Message> for proto::Message {
                 .iter()
                 .map(|m| proto::MessageMetadata::from(m.clone()))
                 .collect(),
-            receiver_address: message.receiver_address.to_bytes().to_vec(),
-            sender_address: message.sender_address.to_bytes().to_vec(),
+            receiver_address: message.receiver_address.to_vec(),
+            sender_address: message.sender_address.to_vec(),
             direction: i32::from(message.direction.as_byte()),
             message_id: message.message_id,
         }

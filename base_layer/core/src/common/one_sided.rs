@@ -80,10 +80,10 @@ pub fn diffie_hellman_stealth_domain_hasher(
 /// Stealth payment script spending key
 pub fn stealth_address_script_spending_key(
     dh_domain_hasher: &DomainSeparatedHash<Blake2b<U64>>,
-    destination_public_key: &PublicKey,
+    spend_key: &PublicKey,
 ) -> PublicKey {
     PublicKey::from_secret_key(
         &PrivateKey::from_uniform_bytes(dh_domain_hasher.as_ref())
             .expect("'DomainSeparatedHash<Blake2b<U64>>' has correct size"),
-    ) + destination_public_key
+    ) + spend_key
 }

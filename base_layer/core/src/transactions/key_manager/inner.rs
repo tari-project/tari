@@ -1175,12 +1175,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Encrypted data section (transactions > transaction_components > encrypted_data)
     // -----------------------------------------------------------------------------------------------------------------
 
-    async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        let recovery_id = KeyId::Managed {
+    async fn get_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+        let view_id = KeyId::Managed {
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
         };
-        self.get_private_key(&recovery_id).await
+        self.get_private_key(&view_id).await
     }
 
     pub async fn encrypt_data_for_recovery(
@@ -1192,7 +1192,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {
-            self.get_recovery_key().await?
+            self.get_view_key().await?
         };
         let value_key = value.into();
         let commitment = self.get_commitment(spend_key_id, &value_key).await?;
@@ -1209,7 +1209,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {
-            self.get_recovery_key().await?
+            self.get_view_key().await?
         };
         let (value, private_key) =
             EncryptedData::decrypt_data(&recovery_key, output.commitment(), output.encrypted_data())?;

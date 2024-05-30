@@ -157,7 +157,7 @@ mod test {
     #[test]
     fn test_reading_address() {
         let address =
-            TariAddress::from_hex("0c017c5cd01385f34ac065e3b05948326dc55d2494f120c6f459a07389011b4ec1").unwrap();
+            TariAddress::from_hex("2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118").unwrap();
         let liveness = ContactsLivenessData::new(
             address.clone(),
             Default::default(),
@@ -172,7 +172,7 @@ mod test {
         unsafe {
             let address_ptr = read_liveness_data_address(liveness_ptr, error_out);
 
-            assert_eq!(address.to_bytes(), (*address_ptr).to_bytes());
+            assert_eq!(address.to_vec(), (*address_ptr).to_vec());
 
             destroy_contacts_liveness_data(liveness_ptr);
             destroy_tari_address(address_ptr);

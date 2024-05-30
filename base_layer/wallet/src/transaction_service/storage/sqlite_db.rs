@@ -1320,7 +1320,7 @@ impl InboundTransactionSql {
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let i = Self {
             tx_id: i.tx_id.as_u64() as i64,
-            source_address: i.source_address.to_bytes().to_vec(),
+            source_address: i.source_address.to_vec(),
             amount: u64::from(i.amount) as i64,
             receiver_protocol: receiver_protocol_bytes.to_vec(),
             message: i.message,
@@ -1568,7 +1568,7 @@ impl OutboundTransactionSql {
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let outbound_tx = Self {
             tx_id: o.tx_id.as_u64() as i64,
-            destination_address: o.destination_address.to_bytes().to_vec(),
+            destination_address: o.destination_address.to_vec(),
             amount: u64::from(o.amount) as i64,
             fee: u64::from(o.fee) as i64,
             sender_protocol: sender_protocol_bytes.to_vec(),
@@ -1939,8 +1939,8 @@ impl CompletedTransactionSql {
 
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
-            source_address: c.source_address.to_bytes().to_vec(),
-            destination_address: c.destination_address.to_bytes().to_vec(),
+            source_address: c.source_address.to_vec(),
+            destination_address: c.destination_address.to_vec(),
             amount: u64::from(c.amount) as i64,
             fee: u64::from(c.fee) as i64,
             transaction_protocol: transaction_bytes.to_vec(),
@@ -2276,7 +2276,7 @@ mod test {
             );
         let mut stp = builder.build().await.unwrap();
 
-        let address = TariAddress::new(
+        let address = TariAddress::new_single_address_with_interactive_only(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2294,7 +2294,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new(
+        let address = TariAddress::new_single_address_with_interactive_only(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2361,7 +2361,8 @@ mod test {
             &consensus_constants,
         )
         .await;
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2378,7 +2379,8 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2431,11 +2433,13 @@ mod test {
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         );
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2459,11 +2463,13 @@ mod test {
             mined_in_block: None,
             mined_timestamp: None,
         };
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2634,7 +2640,8 @@ mod test {
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2660,7 +2667,8 @@ mod test {
         let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx, &cipher).unwrap();
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2688,11 +2696,13 @@ mod test {
         let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx, &cipher).unwrap();
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2773,7 +2783,8 @@ mod test {
                 })
                 .expect("Migrations failed");
 
-            let source_address = TariAddress::new(
+            let source_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2794,7 +2805,8 @@ mod test {
 
             inbound_tx_sql.commit(&mut conn).unwrap();
 
-            let destination_address = TariAddress::new(
+            let destination_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2816,11 +2828,13 @@ mod test {
 
             outbound_tx_sql.commit(&mut conn).unwrap();
 
-            let source_address = TariAddress::new(
+            let source_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
-            let destination_address = TariAddress::new(
+            let destination_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2956,11 +2970,13 @@ mod test {
                 10 => (None, TransactionStatus::MinedConfirmed),
                 _ => (None, TransactionStatus::Completed),
             };
-            let source_address = TariAddress::new(
+            let source_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
-            let destination_address = TariAddress::new(
+            let destination_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );

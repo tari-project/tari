@@ -193,7 +193,7 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
-    /// As the Sender adds an output to the transaction.
+    /// As the Sender add an output to the transaction.
     pub async fn with_output(
         &mut self,
         output: WalletOutput,

@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
 use futures::future;
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_core::transactions::CryptoFactories;
+use tari_common::configuration::Network;
+use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
+use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 
@@ -33,7 +36,7 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::watch::Watch,
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
         service::UtxoScannerService,
@@ -43,27 +46,38 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
 
-pub struct UtxoScannerServiceInitializer<T> {
+pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
     backend: Option<WalletDatabase<T>>,
     factories: CryptoFactories,
-    wallet_identity: WalletIdentity,
+    node_identity: Arc<NodeIdentity>,
+    network: Network,
+    phantom: PhantomData<TKeyManagerInterface>,
 }
 
-impl<T> UtxoScannerServiceInitializer<T>
+impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, wallet_identity: WalletIdentity) -> Self {
+    pub fn new(
+        backend: WalletDatabase<T>,
+        factories: CryptoFactories,
+        node_identity: Arc<NodeIdentity>,
+        network: Network,
+    ) -> Self {
         Self {
             backend: Some(backend),
             factories,
-            wallet_identity,
+            node_identity,
+            network,
+            phantom: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<T> ServiceInitializer for UtxoScannerServiceInitializer<T>
-where T: WalletBackend + 'static
+impl<T, TKeyManagerInterface> ServiceInitializer for UtxoScannerServiceInitializer<T, TKeyManagerInterface>
+where
+    T: WalletBackend + 'static,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(target: LOG_TARGET, "Utxo scanner initialization");
@@ -86,7 +100,8 @@ where T: WalletBackend + 'static
             .take()
             .expect("Cannot start Utxo scanner service without setting a storage backend");
         let factories = self.factories.clone();
-        let wallet_identity = self.wallet_identity.clone();
+        let node_identity = self.node_identity.clone();
+        let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
@@ -94,6 +109,7 @@ where T: WalletBackend + 'static
             let comms_connectivity = handles.expect_handle::<ConnectivityRequester>();
             let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+            let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
             let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle>::builder()
                 .with_peers(vec![])
@@ -105,7 +121,9 @@ where T: WalletBackend + 'static
                     wallet_connectivity.clone(),
                     output_manager_service,
                     transaction_service,
-                    wallet_identity,
+                    key_manager,
+                    node_identity,
+                    network,
                     factories,
                     handles.get_shutdown_signal(),
                     event_sender,
@@ -113,6 +131,8 @@ where T: WalletBackend + 'static
                     one_sided_message_watch_receiver,
                     recovery_message_watch_receiver,
                 )
+                .await
+                .expect("Could not initialize UTXO scanner Service")
                 .run();
 
             futures::pin_mut!(scanning_service);

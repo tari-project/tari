@@ -67,11 +67,12 @@ extern "C" {
  * The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
 struct ChatClient *create_chat_client(struct ApplicationConfig *config,
-                                      int *error_out,
                                       CallbackContactStatusChange callback_contact_status_change,
                                       CallbackMessageReceived callback_message_received,
                                       CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
-                                      CallbackReadConfirmationReceived callback_read_confirmation_received);
+                                      CallbackReadConfirmationReceived callback_read_confirmation_received,
+                                      struct TariAddress *tari_address,
+                                      int *error_out);
 
 /**
  * Side loads a chat client
@@ -98,11 +99,12 @@ struct ChatClient *create_chat_client(struct ApplicationConfig *config,
  */
 struct ChatClient *sideload_chat_client(struct ApplicationConfig *config,
                                         struct ContactsServiceHandle *contacts_handle,
-                                        int *error_out,
                                         CallbackContactStatusChange callback_contact_status_change,
                                         CallbackMessageReceived callback_message_received,
                                         CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
-                                        CallbackReadConfirmationReceived callback_read_confirmation_received);
+                                        CallbackReadConfirmationReceived callback_read_confirmation_received,
+                                        struct TariAddress *tari_address,
+                                        int *error_out);
 
 /**
  * Frees memory for a ChatClient

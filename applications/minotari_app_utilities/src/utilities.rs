@@ -83,8 +83,6 @@ impl FromStr for UniPublicKey {
             Ok(Self(PublicKey::from(&emoji_id)))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self(public_key))
-        } else if let Ok(tari_address) = TariAddress::from_hex(key) {
-            Ok(Self(tari_address.public_key().clone()))
         } else {
             Err(UniIdError::UnknownIdType)
         }
@@ -136,7 +134,7 @@ impl TryFrom<UniNodeId> for PublicKey {
     fn try_from(id: UniNodeId) -> Result<Self, Self::Error> {
         match id {
             UniNodeId::PublicKey(public_key) => Ok(public_key),
-            UniNodeId::TariAddress(tari_address) => Ok(tari_address.public_key().clone()),
+            UniNodeId::TariAddress(tari_address) => Ok(tari_address.public_spend_key().clone()),
             UniNodeId::NodeId(_) => Err(UniIdError::Nonconvertible),
         }
     }
@@ -147,7 +145,7 @@ impl From<UniNodeId> for NodeId {
         match id {
             UniNodeId::PublicKey(public_key) => NodeId::from_public_key(&public_key),
             UniNodeId::NodeId(node_id) => node_id,
-            UniNodeId::TariAddress(tari_address) => NodeId::from_public_key(tari_address.public_key()),
+            UniNodeId::TariAddress(tari_address) => NodeId::from_public_key(tari_address.public_spend_key()),
         }
     }
 }
