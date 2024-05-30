@@ -203,8 +203,8 @@ jobs:
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
         run: |
-          # openssl and cmake already installed
-          brew install zip coreutils automake autoconf protobuf
+          # openssl, cmake and autoconf already installed
+          brew install zip coreutils automake protobuf
           rustup target add ${{ matrix.builds.target }}
 
       - name: Install Windows dependencies
@@ -283,7 +283,8 @@ jobs:
         if: ${{ matrix.builds.cross }}
         shell: bash
         run: |
-          cargo install cross
+          #cargo install cross
+          cargo install cross --git https://github.com/cross-rs/cross
           echo "CARGO=cross" >> $GITHUB_ENV
 
       - name: Install and setup cargo-auditable

@@ -67,7 +67,6 @@ apt-get install --no-install-recommends --assume-yes \
   dh-autoreconf \
   clang \
   g++ \
-  g++-7 \
   libc++-dev \
   libc++abi-dev \
   libprotobuf-dev \
@@ -75,6 +74,7 @@ apt-get install --no-install-recommends --assume-yes \
   libncurses5-dev \
   libncursesw5-dev \
   libudev-dev \
+  libhidapi-dev \
   zip
 
 echo "Installing rust ..."
@@ -154,13 +154,13 @@ EoF
 
   # packages needed for Ledger and hidapi
   apt-get --assume-yes install \
-    libhidapi-dev:${CROSS_DEB_ARCH} \
-    libudev-dev:${CROSS_DEB_ARCH}
+    libudev-dev:${CROSS_DEB_ARCH} \
+    libhidapi-dev:${CROSS_DEB_ARCH}
 
 fi
 
 rustup target add ${targetBuild}
 rustup toolchain install stable-${targetBuild} --force-non-host
 
-rustup target list
+rustup target list --installed
 rustup toolchain list
