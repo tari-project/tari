@@ -387,7 +387,8 @@ mod test {
         let mut rng = rand::thread_rng();
         let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let mut address = DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda);
+        let mut address =
+            DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda);
         address.features = TariAddressFeatures(5);
 
         let emoji_string = address.to_emoji_string();

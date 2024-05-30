@@ -336,7 +336,7 @@ mod test {
     fn invalid_features() {
         let mut rng = rand::thread_rng();
         let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let mut address = SingleAddress::new_with_interactive_only( spend_key.clone(), Network::Esmeralda);
+        let mut address = SingleAddress::new_with_interactive_only(spend_key.clone(), Network::Esmeralda);
         address.features = TariAddressFeatures(5);
 
         let emoji_string = address.to_emoji_string();
