@@ -45,7 +45,11 @@ use crate::{
         tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, OutputFeatures},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            transaction_output::batch_verify_range_proofs,
+            OutputFeatures,
+        },
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },

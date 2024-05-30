@@ -3130,6 +3130,7 @@ async fn test_power_mode_updates() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
+        payment_id: None,
     };
 
     let source_address = TariAddress::new_dual_address_with_default_features(
@@ -3161,6 +3162,7 @@ async fn test_power_mode_updates() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
+        payment_id: None,
     };
 
     tx_backend
@@ -5853,6 +5855,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
+        payment_id: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -5991,6 +5994,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
+            PaymentId::Zero,
         )
         .await
         .unwrap();
@@ -6007,6 +6011,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
+            PaymentId::Zero,
         )
         .await
         .unwrap();
@@ -6023,6 +6028,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
+            PaymentId::Zero,
         )
         .await
         .unwrap();
@@ -6166,6 +6172,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
+            PaymentId::Zero,
         )
         .await
         .unwrap();
@@ -6182,6 +6189,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
+            PaymentId::Zero,
         )
         .await
         .unwrap();
@@ -6198,6 +6206,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
+            PaymentId::Zero,
         )
         .await
         .unwrap();

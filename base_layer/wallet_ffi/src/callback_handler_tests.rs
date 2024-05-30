@@ -325,6 +325,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
+            None,
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -396,6 +397,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(2),
             Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap_or(NaiveDateTime::MIN)),
+            None,
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -430,6 +432,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(5),
             Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            None,
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())

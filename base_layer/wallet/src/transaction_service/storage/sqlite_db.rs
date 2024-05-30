@@ -2193,7 +2193,7 @@ mod test {
         key_manager::create_memory_db_key_manager,
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, Transaction},
+        transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -2481,6 +2481,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: None,
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2511,6 +2512,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -2750,6 +2752,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: Some(PaymentId::Zero),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -2882,6 +2885,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
+                payment_id: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3024,6 +3028,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
+                payment_id: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

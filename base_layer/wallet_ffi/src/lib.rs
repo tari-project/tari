@@ -6730,7 +6730,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
         let payment_id = match payment_id {
             0 => PaymentId::Zero,
             x if x <= u64::from(u32::MAX) => PaymentId::U32(x.try_into().expect("number should fit into u32")),
-            x => PaymentId::U64(x.try_into().expect("number should fit into u64")),
+            x => PaymentId::U64(x),
         };
         match (*wallet).runtime.block_on(
             (*wallet)

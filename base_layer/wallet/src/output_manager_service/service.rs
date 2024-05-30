@@ -2130,6 +2130,7 @@ where
                     output.minimum_value_promise,
                     output.proof,
                     payment_id,
+                );
 
                 let message = "SHA-XTR atomic swap".to_string();
 

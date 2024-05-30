@@ -344,6 +344,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: Some(PaymentId::Zero),
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -594,6 +595,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
@@ -623,6 +625,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
@@ -652,6 +655,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
