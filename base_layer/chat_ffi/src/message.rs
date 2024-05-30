@@ -50,6 +50,7 @@ use crate::{
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_message(
     receiver: *mut TariAddress,
+    sender: *mut TariAddress,
     message: *const c_char,
     error_out: *mut c_int,
 ) -> *mut Message {
@@ -58,6 +59,10 @@ pub unsafe extern "C" fn create_chat_message(
 
     if receiver.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+    if sender.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("sender".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
@@ -71,7 +76,8 @@ pub unsafe extern "C" fn create_chat_message(
     };
 
     let message_out = MessageBuilder::new()
-        .address((*receiver).clone())
+        .receiver_address((*receiver).clone())
+        .sender_address((*sender).clone())
         .message(message_str)
         .build();
 
@@ -306,7 +312,10 @@ pub unsafe extern "C" fn read_chat_message_body(message: *mut Message, error_out
 /// `message` should be destroyed eventually
 /// the returned `TariAddress` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_message_address(message: *mut Message, error_out: *mut c_int) -> *mut TariAddress {
+pub unsafe extern "C" fn read_chat_message_sender_address(
+    message: *mut Message,
+    error_out: *mut c_int,
+) -> *mut TariAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -316,7 +325,37 @@ pub unsafe extern "C" fn read_chat_message_address(message: *mut Message, error_
         return ptr::null_mut();
     }
 
-    let address = (*message).address.clone();
+    let address = (*message).sender_address.clone();
+    Box::into_raw(Box::new(address))
+}
+
+/// Returns a pointer to a TariAddress
+///
+/// ## Arguments
+/// `message` - A pointer to a Message
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut TariAddress` - A ptr to a TariAddress
+///
+/// ## Safety
+/// `message` should be destroyed eventually
+/// the returned `TariAddress` should be destroyed eventually
+#[no_mangle]
+pub unsafe extern "C" fn read_chat_message_receiver_address(
+    message: *mut Message,
+    error_out: *mut c_int,
+) -> *mut TariAddress {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let address = (*message).receiver_address.clone();
     Box::into_raw(Box::new(address))
 }
 
@@ -560,17 +599,22 @@ mod test {
 
     #[test]
     fn test_reading_message_address() {
-        let address =
+        let receiver_address =
             TariAddress::from_hex("0c017c5cd01385f34ac065e3b05948326dc55d2494f120c6f459a07389011b4ec1").unwrap();
-        let message = MessageBuilder::new().address(address.clone()).build();
+        let sender_address =
+            TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0").unwrap();
+        let message = MessageBuilder::new()
+            .receiver_address(receiver_address.clone())
+            .sender_address(sender_address.clone())
+            .build();
 
         let message_ptr = Box::into_raw(Box::new(message));
         let error_out = Box::into_raw(Box::new(0));
 
         unsafe {
-            let address_ptr = read_chat_message_address(message_ptr, error_out);
+            let address_ptr = read_chat_message_sender_address(message_ptr, error_out);
 
-            assert_eq!(address.to_bytes(), (*address_ptr).to_bytes());
+            assert_eq!(sender_address.to_bytes(), (*address_ptr).to_bytes());
 
             destroy_chat_message(message_ptr);
             destroy_tari_address(address_ptr);

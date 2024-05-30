@@ -490,6 +490,7 @@ void destroy_conversationalists_vector(struct ConversationalistsVector *ptr);
  * The ```Message``` received should be destroyed after use
  */
 struct Message *create_chat_message(struct TariAddress *receiver,
+                                    struct TariAddress *sender,
                                     const char *message,
                                     int *error_out);
 
@@ -607,7 +608,23 @@ struct ChatByteVector *read_chat_message_body(struct Message *message, int *erro
  * `message` should be destroyed eventually
  * the returned `TariAddress` should be destroyed eventually
  */
-struct TariAddress *read_chat_message_address(struct Message *message, int *error_out);
+struct TariAddress *read_chat_message_sender_address(struct Message *message, int *error_out);
+
+/**
+ * Returns a pointer to a TariAddress
+ *
+ * ## Arguments
+ * `message` - A pointer to a Message
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `TariAddress` should be destroyed eventually
+ */
+struct TariAddress *read_chat_message_receiver_address(struct Message *message, int *error_out);
 
 /**
  * Returns a c_uchar representation of the Direction enum
