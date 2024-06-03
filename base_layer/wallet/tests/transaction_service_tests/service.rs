@@ -1789,6 +1789,7 @@ async fn recover_one_sided_transaction() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
+            PaymentId::Zero,
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
