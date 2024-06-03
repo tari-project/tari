@@ -339,9 +339,11 @@ impl From<DbWalletOutput> for TariUtxo {
             coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            payment_id: CString::new(x.payment_id.as_bytes().to_hex())
-                .expect("failed to obtain hex from a payment id")
-                .into_raw(),
+            payment_id: CString::new(
+                String::from_utf8(x.payment_id.as_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
+            )
+            .expect("failed to obtain string from a payment id")
+            .into_raw(),
         }
     }
 }
@@ -6671,7 +6673,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     one_sided: bool,
-    payment_id: c_ulonglong,
+    payment_id_string: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -6717,19 +6719,26 @@ pub unsafe extern "C" fn wallet_send_transaction(
             _ => {
                 error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
-                message_string = CString::new("")
-                    .expect("Blank CString will not fail")
-                    .to_str()
-                    .expect("CString.to_str() will not fail")
-                    .to_owned();
+                return 0;
             },
         }
     };
 
     if one_sided {
-        let payment_id = match payment_id {
-            0 => PaymentId::Empty,
-            x => PaymentId::U64(x),
+        let payment_id = if payment_id_string.is_null() {
+            PaymentId::Empty
+        } else {
+            match CStr::from_ptr(payment_id_string).to_str() {
+                Ok(v) => {
+                    let bytes = v.as_bytes().to_vec();
+                    PaymentId::Open(bytes)
+                },
+                _ => {
+                    error = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return 0;
+                },
+            }
         };
         match (*wallet).runtime.block_on(
             (*wallet)
