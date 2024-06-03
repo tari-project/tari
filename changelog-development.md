@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.14](https://github.com/tari-project/tari/compare/v1.0.0-pre.13...v1.0.0-pre.14) (2024-06-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* add payment id (#6340)
+* new tari address scheme (#6353)
+* change position calculation in MTparams for mergemining (#6339)
+*  monero merkle tree params (#6336)
+* update key manager hasher labels (#6329)
+
+### Features
+
+* add default message tag ([#6355](https://github.com/tari-project/tari/issues/6355)) ([ef387d7](https://github.com/tari-project/tari/commit/ef387d720ae1b092d0ebe4459fafc27a241368f8))
+* add payment id ([#6340](https://github.com/tari-project/tari/issues/6340)) ([ec4e5e9](https://github.com/tari-project/tari/commit/ec4e5e953b86aa3e99e65f428997682674707d4a))
+* adjust block sync timeouts ([#6342](https://github.com/tari-project/tari/issues/6342)) ([16ca4b5](https://github.com/tari-project/tari/commit/16ca4b5dc8b5e02629dd02d6839edad189d23956))
+* chat ffi find by message ([#6354](https://github.com/tari-project/tari/issues/6354)) ([28c7659](https://github.com/tari-project/tari/commit/28c76596920be88eb7b2077e6bd0645e4c5ae4a3))
+* fix base node console display ([#6341](https://github.com/tari-project/tari/issues/6341)) ([df0d801](https://github.com/tari-project/tari/commit/df0d8011d9f55f087478b0795ed0c1657b3552af))
+* generate script challenge on the ledger ([#6344](https://github.com/tari-project/tari/issues/6344)) ([34db82d](https://github.com/tari-project/tari/commit/34db82dcccc2c4bb3c9a999518cd2f5381314b07))
+* improve initial connection times ([#6343](https://github.com/tari-project/tari/issues/6343)) ([64e650b](https://github.com/tari-project/tari/commit/64e650bd61762df2b014b1dbcd7e689cd72e0c62))
+* ledger blind sign ([#6264](https://github.com/tari-project/tari/issues/6264)) ([301ea00](https://github.com/tari-project/tari/commit/301ea00fcc0664f00428828ce710bebc9491350a))
+* limit script max size ([#6364](https://github.com/tari-project/tari/issues/6364)) ([0fd2efe](https://github.com/tari-project/tari/commit/0fd2efe69298e981eec7839df5d7d0e5135d7386))
+* limit wallet base node peer outbound connections ([#6307](https://github.com/tari-project/tari/issues/6307)) ([79fcd03](https://github.com/tari-project/tari/commit/79fcd03a36f1bd81f252b1db52acc5ecc9152e61))
+* new tari address scheme ([#6353](https://github.com/tari-project/tari/issues/6353)) ([4c0ce46](https://github.com/tari-project/tari/commit/4c0ce46a3988d7d1de84f9b449a4e2c8a364ce45))
+* remove chunking from rpc ([#6345](https://github.com/tari-project/tari/issues/6345)) ([82f0d6a](https://github.com/tari-project/tari/commit/82f0d6af77841fae088f07fc1b89005377571ed8))
+* remove wallet type from config ([#6357](https://github.com/tari-project/tari/issues/6357)) ([f927d69](https://github.com/tari-project/tari/commit/f927d69ac475c5b4a66f107bcdb7a57b7c8db75c))
+* split message to have dedicated to and from fields ([#6358](https://github.com/tari-project/tari/issues/6358)) ([c24cc15](https://github.com/tari-project/tari/commit/c24cc1515d3e8980cf67564b11a78a5fabc30b08))
+* update key manager hasher labels ([#6329](https://github.com/tari-project/tari/issues/6329)) ([ae63bab](https://github.com/tari-project/tari/commit/ae63babfde7f4e4528ed63b1ffec96425da79593))
+
+
+### Bug Fixes
+
+*  monero merkle tree params ([#6336](https://github.com/tari-project/tari/issues/6336)) ([9920916](https://github.com/tari-project/tari/commit/9920916f891fbd26759f7cb4912701189b7579a1))
+* atomic swap ([#6360](https://github.com/tari-project/tari/issues/6360)) ([01f93ab](https://github.com/tari-project/tari/commit/01f93ab62aa468869d51ed1afa17e103cf948a8f))
+* change position calculation in MTparams for mergemining ([#6339](https://github.com/tari-project/tari/issues/6339)) ([1d6e0d8](https://github.com/tari-project/tari/commit/1d6e0d84c9553fbb3479e2605e6122d9dd1791db))
+* new monero release for mr support in monero ([#6335](https://github.com/tari-project/tari/issues/6335)) ([3c58600](https://github.com/tari-project/tari/commit/3c58600fcf43030d7a75343a51f6aa945e8b04d1))
+
 ## [1.0.0-pre.13](https://github.com/tari-project/tari/compare/v1.0.0-pre.12...v1.0.0-pre.13) (2024-05-07)
 
 
