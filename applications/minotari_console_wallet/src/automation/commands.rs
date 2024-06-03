@@ -468,7 +468,7 @@ pub async fn make_it_rain(
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
                                 msg.clone(),
-                                PaymentId::Zero,
+                                PaymentId::Empty,
                             )
                             .await
                         },
