@@ -313,7 +313,7 @@ async fn mining_cycle(
         config.stealth_payment,
         consensus_manager.consensus_constants(height),
         config.range_proof_type,
-        PaymentId::Zero,
+        PaymentId::Empty,
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;

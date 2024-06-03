@@ -324,7 +324,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         let output = WalletOutputBuilder::new(tx_output, spending_key)
             .with_features(txn_schema.features.clone())
             .with_script(txn_schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::Zero)
+            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -400,7 +400,7 @@ async fn test_sender_transaction_protocol_for_overflow() {
         utxo.encrypted_data,
         utxo.minimum_value_promise,
         utxo.proof,
-        PaymentId::Zero,
+        PaymentId::Empty,
     );
 
     // Test overflow in inputs

@@ -81,7 +81,7 @@ impl WalletOutputBuilder {
             encrypted_data: EncryptedData::default(),
             custom_recovery_key_id: None,
             minimum_value_promise: MicroMinotari::zero(),
-            payment_id: PaymentId::Zero,
+            payment_id: PaymentId::Empty,
         }
     }
 
@@ -259,7 +259,7 @@ mod test {
         let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
-            .encrypt_data_for_recovery(&key_manager, None, PaymentId::Zero)
+            .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
             .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
@@ -299,7 +299,7 @@ mod test {
         let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
-            .encrypt_data_for_recovery(&key_manager, None, PaymentId::Zero)
+            .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
             .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)

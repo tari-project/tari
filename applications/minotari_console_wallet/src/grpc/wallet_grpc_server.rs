@@ -110,10 +110,7 @@ use tari_core::{
     },
 };
 use tari_script::script;
-use tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
 
@@ -515,10 +512,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, message, payment_type, payment_id) in recipients {
-            let payment_id_bytes: Vec<u8> = from_hex(&payment_id)
-                .map_err(|_| "Could not convert payment_id to bytes".to_string())
-                .map_err(Status::invalid_argument)?;
-            let payment_id = PaymentId::from_bytes(&payment_id_bytes)
+            let payment_id = PaymentId::from_bytes(&payment_id)
                 .map_err(|_| "Invalid payment id".to_string())
                 .map_err(Status::invalid_argument)?;
             let mut transaction_service = self.get_transaction_service();

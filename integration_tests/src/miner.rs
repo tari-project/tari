@@ -297,7 +297,7 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
-        PaymentId::Zero,
+        PaymentId::Empty,
     )
     .await
     .unwrap();

@@ -130,7 +130,7 @@ async fn range_proof_verification() {
     let wallet_output2 = WalletOutputBuilder::new((2u64.pow(32) + 1u64).into(), test_params_2.spend_key_id.clone())
         .with_features(OutputFeatures::default())
         .with_script(script![Nop])
-        .encrypt_data_for_recovery(&key_manager, None, PaymentId::Zero)
+        .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
         .await
         .unwrap()
         .with_input_data(input_data)

@@ -255,7 +255,7 @@ async fn it_allows_multiple_coinbases() {
         .build_with_reward(
             blockchain.rules().consensus_constants(1),
             coinbase.value,
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();

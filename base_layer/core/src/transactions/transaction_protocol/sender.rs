@@ -985,7 +985,7 @@ mod test {
 
         // Encrypted value
         let encrypted_data = key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, value, PaymentId::Zero)
+            .encrypt_data_for_recovery(&spending_key_id, None, value, PaymentId::Empty)
             .await
             .unwrap();
 
@@ -1155,7 +1155,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1278,7 +1278,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1389,7 +1389,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1576,7 +1576,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager_bob,
         )
         .await

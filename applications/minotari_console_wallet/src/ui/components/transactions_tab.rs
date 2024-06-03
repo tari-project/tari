@@ -7,6 +7,7 @@ use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -432,8 +433,14 @@ impl TransactionsTab {
             };
             let maturity = Span::styled(maturity, Style::default().fg(Color::White));
 
-            let payment_id = match &tx.payment_id {
-                Some(v) => format!("#{}", v),
+            let payment_id = match tx.payment_id.clone() {
+                Some(v) => {
+                    if let PaymentId::Open(bytes) = v {
+                        format!("{}", String::from_utf8(bytes).unwrap_or_else(|_| "Invalid".to_string()))
+                    } else {
+                        format!("#{}", v)
+                    }
+                },
                 None => "None".to_string(),
             };
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));

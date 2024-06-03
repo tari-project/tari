@@ -121,7 +121,7 @@ pub async fn create_block(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::Zero,
+        PaymentId::Empty,
     )
     .await
     .unwrap();

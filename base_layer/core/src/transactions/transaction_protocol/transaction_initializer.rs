@@ -385,7 +385,7 @@ where KM: TransactionKeyManagerInterface
 
                         let encrypted_data = self
                             .key_manager
-                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), PaymentId::Zero)
+                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), PaymentId::Empty)
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -429,7 +429,7 @@ where KM: TransactionKeyManagerInterface
                             covenant,
                             encrypted_data,
                             minimum_value_promise,
-                            PaymentId::Zero,
+                            PaymentId::Empty,
                             &self.key_manager,
                         )
                         .await

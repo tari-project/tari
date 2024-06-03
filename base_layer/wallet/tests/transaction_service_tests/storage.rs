@@ -193,7 +193,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
 
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64(), PaymentId::Zero)
+        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64(), PaymentId::Empty)
         .await
         .unwrap();
     let mut output = WalletOutput::new(
@@ -210,7 +210,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
-        PaymentId::Zero,
+        PaymentId::Empty,
         &key_manager,
     )
     .await
@@ -344,7 +344,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: Some(PaymentId::Zero),
+            payment_id: Some(PaymentId::Empty),
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();

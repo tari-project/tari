@@ -6728,7 +6728,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
 
     if one_sided {
         let payment_id = match payment_id {
-            0 => PaymentId::Zero,
+            0 => PaymentId::Empty,
             x => PaymentId::U64(x),
         };
         match (*wallet).runtime.block_on(
@@ -9360,7 +9360,7 @@ mod test {
                 &commitment,
                 amount,
                 &spending_key,
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();

@@ -80,7 +80,7 @@ pub struct EncryptedData {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum PaymentId {
-    Zero,
+    Empty,
     U64(u64),
     U256(U256),
     Address(DualAddress),
@@ -90,7 +90,7 @@ pub enum PaymentId {
 impl PaymentId {
     pub fn get_size(&self) -> usize {
         match self {
-            PaymentId::Zero => 0,
+            PaymentId::Empty => 0,
             PaymentId::U64(_) => size_of::<u64>(),
             PaymentId::U256(_) => size_of::<U256>(),
             PaymentId::Address(_) => 67,
@@ -100,7 +100,7 @@ impl PaymentId {
 
     pub fn as_bytes(&self) -> Vec<u8> {
         match self {
-            PaymentId::Zero => Vec::new(),
+            PaymentId::Empty => Vec::new(),
             PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
             PaymentId::U256(v) => {
                 let mut bytes = vec![0; 32];
@@ -114,7 +114,7 @@ impl PaymentId {
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
         match bytes.len() {
-            0 => Ok(PaymentId::Zero),
+            0 => Ok(PaymentId::Empty),
             8 => {
                 let bytes: [u8; 8] = bytes.try_into().expect("Cannot fail, as we already test the length");
                 let v = u64::from_le_bytes(bytes);
@@ -137,7 +137,7 @@ impl PaymentId {
 impl Display for PaymentId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PaymentId::Zero => write!(f, "N/A"),
+            PaymentId::Empty => write!(f, "N/A"),
             PaymentId::U64(v) => write!(f, "{}", v),
             PaymentId::U256(v) => write!(f, "{}", v),
             PaymentId::Address(v) => write!(f, "{}", v.to_emoji_string()),
@@ -343,7 +343,7 @@ mod test {
     #[test]
     fn it_encrypts_and_decrypts_correctly() {
         for payment_id in [
-            PaymentId::Zero,
+            PaymentId::Empty,
             PaymentId::U64(1),
             PaymentId::U64(156486946518564),
             PaymentId::U256(
@@ -384,7 +384,7 @@ mod test {
     #[test]
     fn it_converts_correctly() {
         for payment_id in [
-            PaymentId::Zero,
+            PaymentId::Empty,
             PaymentId::U64(1),
             PaymentId::U64(156486946518564),
             PaymentId::U256(

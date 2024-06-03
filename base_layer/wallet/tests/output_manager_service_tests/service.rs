@@ -2191,7 +2191,7 @@ async fn scan_for_recovery_test() {
         let features = OutputFeatures::default();
         let encrypted_data = oms
             .key_manager_handle
-            .encrypt_data_for_recovery(&spending_key_result, None, amount, PaymentId::Zero)
+            .encrypt_data_for_recovery(&spending_key_result, None, amount, PaymentId::Empty)
             .await
             .unwrap();
 
@@ -2208,7 +2208,7 @@ async fn scan_for_recovery_test() {
             Covenant::new(),
             encrypted_data,
             MicroMinotari::zero(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &oms.key_manager_handle,
         )
         .await

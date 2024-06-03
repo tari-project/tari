@@ -79,7 +79,7 @@ pub async fn create_wallet_output_from_sender_data(
             &test_params.spend_key_id,
             None,
             sender_data.amount.as_u64(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -97,7 +97,7 @@ pub async fn create_wallet_output_from_sender_data(
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
-        PaymentId::Zero,
+        PaymentId::Empty,
         key_manager,
     )
     .await

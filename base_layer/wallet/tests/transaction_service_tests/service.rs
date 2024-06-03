@@ -1636,7 +1636,7 @@ async fn send_one_sided_transaction_to_other() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1789,7 +1789,7 @@ async fn recover_one_sided_transaction() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1934,7 +1934,7 @@ async fn recover_stealth_one_sided_transaction() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -2171,7 +2171,7 @@ async fn send_one_sided_transaction_to_self() {
             OutputFeatures::default(),
             20.into(),
             message.clone(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
     {
@@ -5995,7 +5995,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -6012,7 +6012,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -6029,7 +6029,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -6173,7 +6173,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -6190,7 +6190,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -6207,7 +6207,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
         .unwrap();

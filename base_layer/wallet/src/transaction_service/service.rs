@@ -1225,7 +1225,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .await?
             .with_input_data(ExecutionStack::default())
@@ -1671,7 +1671,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(

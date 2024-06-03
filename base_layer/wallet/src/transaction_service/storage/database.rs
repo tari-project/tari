@@ -684,7 +684,7 @@ where T: TransactionBackend + 'static
         payment_id: PaymentId,
     ) -> Result<(), TransactionStorageError> {
         let payment_id = match payment_id {
-            PaymentId::Zero => None,
+            PaymentId::Empty => None,
             v => Some(v),
         };
         let transaction = CompletedTransaction::new(

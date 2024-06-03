@@ -552,7 +552,7 @@ where
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
         let wallet_output = unblinded_output
-            .to_wallet_output(&self.key_manager_service, PaymentId::Zero)
+            .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
             .await?;
         let tx_id = self
             .transaction_service
@@ -565,7 +565,7 @@ where
                 None,
                 None,
                 wallet_output.to_transaction_output(&self.key_manager_service).await?,
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .await?;
         // As non-rewindable

@@ -685,7 +685,7 @@ impl OutputSql {
                     reason: "payment id could not be converted from bytes".to_string(),
                 }
             })?,
-            None => PaymentId::Zero,
+            None => PaymentId::Empty,
         };
 
         let wallet_output = WalletOutput::new_with_rangeproof(

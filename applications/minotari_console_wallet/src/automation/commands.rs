@@ -456,7 +456,7 @@ pub async fn make_it_rain(
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
                                 msg.clone(),
-                                PaymentId::Zero,
+                                PaymentId::Empty,
                             )
                             .await
                         },
@@ -731,7 +731,7 @@ pub async fn command_runner(
                     UtxoSelectionCriteria::default(),
                     args.destination,
                     args.message,
-                    PaymentId::Zero,
+                    PaymentId::Empty,
                 )
                 .await
                 {
@@ -750,7 +750,7 @@ pub async fn command_runner(
                     UtxoSelectionCriteria::default(),
                     args.destination,
                     args.message,
-                    PaymentId::Zero,
+                    PaymentId::Empty,
                 )
                 .await
                 {

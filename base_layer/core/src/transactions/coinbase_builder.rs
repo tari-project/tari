@@ -542,7 +542,11 @@ mod test {
 
         assert_eq!(
             builder
-                .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+                .build(
+                    rules.consensus_constants(0),
+                    rules.emission_schedule(),
+                    PaymentId::Empty
+                )
                 .await
                 .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
@@ -558,7 +562,7 @@ mod test {
                 .build(
                     rules.consensus_constants(42),
                     rules.emission_schedule(),
-                    PaymentId::Zero
+                    PaymentId::Empty
                 )
                 .await
                 .unwrap_err(),
@@ -577,7 +581,7 @@ mod test {
                 .build(
                     rules.consensus_constants(42),
                     rules.emission_schedule(),
-                    PaymentId::Zero
+                    PaymentId::Empty
                 )
                 .await
                 .unwrap_err(),
@@ -603,7 +607,7 @@ mod test {
             .build(
                 rules.consensus_constants(42),
                 rules.emission_schedule(),
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .await
             .unwrap();
@@ -658,7 +662,7 @@ mod test {
             .build(
                 rules.consensus_constants(42),
                 rules.emission_schedule(),
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .await
             .unwrap();
@@ -694,7 +698,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
@@ -709,7 +717,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx2, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let mut coinbase2 = tx2.body.outputs()[0].clone();
@@ -741,7 +753,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx3, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         assert!(tx3
@@ -791,7 +807,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
 
@@ -808,7 +828,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, output) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let mut tx_kernel_test = tx.clone();
@@ -923,7 +947,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx1, wo1) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
 
@@ -940,7 +968,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, wo2) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule(), PaymentId::Zero)
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
 

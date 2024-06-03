@@ -380,7 +380,7 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await
     }) {

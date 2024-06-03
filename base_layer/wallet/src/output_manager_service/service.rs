@@ -724,7 +724,7 @@ where
                 &spending_key_id,
                 None,
                 single_round_sender_data.amount.as_u64(),
-                PaymentId::Zero,
+                PaymentId::Empty,
             )
             .await
             .unwrap();
@@ -766,7 +766,7 @@ where
             single_round_sender_data.covenant.clone(),
             encrypted_data,
             minimum_value_promise,
-            PaymentId::Zero,
+            PaymentId::Empty,
             &self.resources.key_manager,
         )
         .await?;
@@ -1903,7 +1903,7 @@ where
         let encrypted_data = self
             .resources
             .key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64(), PaymentId::Zero)
+            .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64(), PaymentId::Empty)
             .await?;
         let minimum_value_promise = MicroMinotari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
@@ -1946,7 +1946,7 @@ where
                 covenant,
                 encrypted_data,
                 minimum_value_promise,
-                PaymentId::Zero,
+                PaymentId::Empty,
                 &self.resources.key_manager,
             )
             .await?,

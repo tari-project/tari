@@ -2046,7 +2046,7 @@ impl CompletedTransaction {
                     "payment id could not be converted from bytes".to_string(),
                 )
             })?,
-            None => PaymentId::Zero,
+            None => PaymentId::Empty,
         };
 
         let output = Self {
@@ -2752,7 +2752,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: Some(PaymentId::Zero),
+            payment_id: Some(PaymentId::Empty),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();

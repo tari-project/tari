@@ -190,7 +190,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -231,7 +231,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -308,7 +308,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Zero,
+            PaymentId::Empty,
             &key_manager,
         )
         .await

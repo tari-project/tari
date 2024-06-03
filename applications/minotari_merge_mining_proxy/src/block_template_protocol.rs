@@ -338,7 +338,7 @@ impl BlockTemplateProtocol<'_> {
             self.config.stealth_payment,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
-            PaymentId::Zero,
+            PaymentId::Empty,
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

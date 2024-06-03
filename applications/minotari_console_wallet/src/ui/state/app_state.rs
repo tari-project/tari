@@ -337,7 +337,7 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
-        payment_id_hex: String,
+        payment_id: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -347,10 +347,8 @@ impl AppState {
                 .map_err(|_| UiError::PublicKeyParseError)?,
         };
         let output_features = OutputFeatures { ..Default::default() };
-        let payment_id_u64: u64 = payment_id_hex
-            .parse::<u64>()
-            .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
-        let payment_id = PaymentId::U64(payment_id_u64);
+        let payment_id_bytes: Vec<u8> = payment_id.as_bytes().to_vec();
+        let payment_id = PaymentId::Open(payment_id_bytes);
 
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
