@@ -115,9 +115,7 @@ impl SendTab {
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a normal transaction, "),
                 Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a one-sided transaction, "),
-                Span::styled("X", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a one-sided transaction to a stealth address."),
+                Span::raw(" to send a one-sided transaction"),
             ]),
         ])
         .wrap(Wrap { trim: false })
@@ -260,9 +258,7 @@ impl SendTab {
             } else if 'y' == c {
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::Normal) |
-                    Some(ConfirmationDialogType::OneSided) |
-                    Some(ConfirmationDialogType::StealthAddress) => {
+                    Some(ConfirmationDialogType::Normal) | Some(ConfirmationDialogType::StealthAddress) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
                                 v
@@ -287,25 +283,6 @@ impl SendTab {
 
                             let mut reset_fields = false;
                             match self.confirmation_dialog {
-                                Some(ConfirmationDialogType::OneSided) => {
-                                    match Handle::current().block_on(app_state.send_one_sided_transaction(
-                                        self.to_field.clone(),
-                                        amount.into(),
-                                        UtxoSelectionCriteria::default(),
-                                        fee_per_gram,
-                                        self.message_field.clone(),
-                                        self.payment_id_field.clone(),
-                                        tx,
-                                    )) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
-                                },
                                 Some(ConfirmationDialogType::StealthAddress) => {
                                     match Handle::current().block_on(
                                         app_state.send_one_sided_to_stealth_address_transaction(
@@ -534,24 +511,12 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::OneSided) => {
-                draw_dialog(
-                    f,
-                    area,
-                    "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
-                    Color::Red,
-                    120,
-                    9,
-                );
-            },
             Some(ConfirmationDialogType::StealthAddress) => {
                 draw_dialog(
                     f,
                     area,
                     "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this one-sided transaction to a stealth address?\n(Y)es / (N)o"
-                        .to_string(),
+                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -608,8 +573,7 @@ impl<B: Backend> Component<B> for SendTab {
             },
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
-            'p' => self.send_input_mode = SendInputMode::PaymentId,
-            's' | 'o' | 'x' => {
+            's' | 'o' => {
                 if self.to_field.is_empty() {
                     self.error_message =
                         Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());
@@ -626,8 +590,7 @@ impl<B: Backend> Component<B> for SendTab {
                 }
 
                 self.confirmation_dialog = Some(match c {
-                    'o' => ConfirmationDialogType::OneSided,
-                    'x' => ConfirmationDialogType::StealthAddress,
+                    'o' => ConfirmationDialogType::StealthAddress,
                     _ => ConfirmationDialogType::Normal,
                 });
             },
@@ -702,6 +665,5 @@ pub enum SendInputMode {
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
     Normal,
-    OneSided,
     StealthAddress,
 }
