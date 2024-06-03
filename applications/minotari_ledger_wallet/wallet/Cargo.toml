@@ -1,13 +1,13 @@
 [package]
 name = "minotari_ledger_wallet"
-version = "1.0.0-pre.13"
+version = "1.0.0-pre.14"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
 tari_crypto = { version = "0.20.1", default-features = false, features = ["borsh"]}
-tari_hashing = { path = "../../../hashing", version = "1.0.0-pre.13" }
+tari_hashing = { path = "../../../hashing", version = "1.0.0-pre.14" }
 
 blake2 = { version = "0.10", default-features = false  }
 borsh = { version = "1.2", default-features = false }
