@@ -56,6 +56,7 @@ use crate::{
         },
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
+            encrypted_data::PaymentId,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -241,10 +242,11 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
+        payment_id: PaymentId,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
-        self.build_with_reward(constants, reward).await
+        self.build_with_reward(constants, reward, payment_id).await
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
@@ -257,6 +259,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self,
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,
+        payment_id: PaymentId,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
@@ -310,7 +313,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra, range_proof_type);
         let encrypted_data = self
             .key_manager
-            .encrypt_data_for_recovery(&spending_key_id, Some(&encryption_key_id), total_reward.into())
+            .encrypt_data_for_recovery(
+                &spending_key_id,
+                Some(&encryption_key_id),
+                total_reward.into(),
+                payment_id.clone(),
+            )
             .await?;
         let minimum_value_promise = match range_proof_type {
             RangeProofType::BulletProofPlus => MicroMinotari::zero(),
@@ -355,6 +363,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             covenant,
             encrypted_data,
             minimum_value_promise,
+            payment_id,
             &self.key_manager,
         )
         .await?;
@@ -399,6 +408,7 @@ pub async fn generate_coinbase(
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
     range_proof_type: RangeProofType,
+    payment_id: PaymentId,
 ) -> Result<(TransactionOutput, TransactionKernel), CoinbaseBuildError> {
     // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
     let script_key_id = TariKeyId::default();
@@ -413,6 +423,7 @@ pub async fn generate_coinbase(
         stealth_payment,
         consensus_constants,
         range_proof_type,
+        payment_id,
     )
     .await?;
     Ok((coinbase_output, coinbase_kernel))
@@ -431,6 +442,7 @@ pub async fn generate_coinbase_with_wallet_output(
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
     range_proof_type: RangeProofType,
+    payment_id: PaymentId,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
     let (sender_offset_key_id, _) = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -474,7 +486,7 @@ pub async fn generate_coinbase_with_wallet_output(
         .with_script(script)
         .with_extra(extra.to_vec())
         .with_range_proof_type(range_proof_type)
-        .build_with_reward(consensus_constants, reward)
+        .build_with_reward(consensus_constants, reward, payment_id)
         .await?;
 
     let output = transaction
@@ -530,7 +542,11 @@ mod test {
 
         assert_eq!(
             builder
-                .build(rules.consensus_constants(0), rules.emission_schedule())
+                .build(
+                    rules.consensus_constants(0),
+                    rules.emission_schedule(),
+                    PaymentId::Empty
+                )
                 .await
                 .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
@@ -543,7 +559,11 @@ mod test {
         let builder = builder.with_block_height(42);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(42), rules.emission_schedule(),)
+                .build(
+                    rules.consensus_constants(42),
+                    rules.emission_schedule(),
+                    PaymentId::Empty
+                )
                 .await
                 .unwrap_err(),
             CoinbaseBuildError::MissingFees
@@ -558,7 +578,11 @@ mod test {
         let builder = builder.with_block_height(42).with_fees(fees);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(42), rules.emission_schedule(),)
+                .build(
+                    rules.consensus_constants(42),
+                    rules.emission_schedule(),
+                    PaymentId::Empty
+                )
                 .await
                 .unwrap_err(),
             CoinbaseBuildError::MissingSpendKey
@@ -580,7 +604,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx, _unblinded_output) = builder
-            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(42),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let utxo = &tx.body.outputs()[0];
@@ -631,7 +659,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(42),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let mut outputs = tx.body.outputs().clone();
@@ -666,7 +698,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
@@ -681,7 +717,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx2, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let mut coinbase2 = tx2.body.outputs()[0].clone();
@@ -713,7 +753,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx3, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         assert!(tx3
@@ -739,7 +783,7 @@ mod test {
             TransactionKeyManagerInterface,
             TxoStage,
         },
-        transaction_components::{KernelBuilder, RangeProofType, TransactionKernelVersion},
+        transaction_components::{encrypted_data::PaymentId, KernelBuilder, RangeProofType, TransactionKernelVersion},
     };
 
     #[tokio::test]
@@ -763,7 +807,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
 
@@ -780,7 +828,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, output) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let mut tx_kernel_test = tx.clone();
@@ -895,7 +947,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx1, wo1) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
 
@@ -912,7 +968,11 @@ mod test {
             .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, wo2) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
 

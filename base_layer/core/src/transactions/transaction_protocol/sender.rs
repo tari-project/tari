@@ -883,6 +883,7 @@ mod test {
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
+                encrypted_data::PaymentId,
                 EncryptedData,
                 OutputFeatures,
                 TransactionOutput,
@@ -984,7 +985,7 @@ mod test {
 
         // Encrypted value
         let encrypted_data = key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, value)
+            .encrypt_data_for_recovery(&spending_key_id, None, value, PaymentId::Empty)
             .await
             .unwrap();
 
@@ -1154,6 +1155,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1276,6 +1278,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1386,6 +1389,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1572,6 +1576,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager_bob,
         )
         .await
@@ -1601,7 +1606,7 @@ mod test {
 
         let output = tx.body.outputs().iter().find(|o| o.script.size() > 1).unwrap();
 
-        let (key, _value) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
+        let (key, _value, _) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
         assert_eq!(key, change_params.spend_key_id);
     }
 }

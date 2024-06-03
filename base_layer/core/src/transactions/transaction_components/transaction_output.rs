@@ -473,7 +473,8 @@ impl TransactionOutput {
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
         Ok(self.features.get_serialized_size()? +
             self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()?)
+            self.covenant.get_serialized_size()? +
+            self.encrypted_data.get_payment_id_size())
     }
 }
 
@@ -600,7 +601,7 @@ mod test {
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
         assert!(tx_output.verify_metadata_signature().is_ok());
-        let (_, recovered_value) = key_manager.try_output_key_recovery(&tx_output, None).await.unwrap();
+        let (_, recovered_value, _) = key_manager.try_output_key_recovery(&tx_output, None).await.unwrap();
         assert_eq!(recovered_value, value);
     }
 

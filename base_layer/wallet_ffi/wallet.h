@@ -348,6 +348,7 @@ struct TariUtxo {
   uint64_t lock_height;
   uint8_t status;
   const char *coinbase_extra;
+  const char *payment_id;
 };
 
 #ifdef __cplusplus
@@ -3148,6 +3149,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            unsigned long long fee_per_gram,
                                            const char *message,
                                            bool one_sided,
+                                           unsigned long long payment_id,
                                            int *error_out);
 
 /**

@@ -310,7 +310,7 @@ mod test {
             .unwrap();
         assert_eq!(data.partial_signature, kernel_signature);
 
-        let (mask, value) = key_manager.try_output_key_recovery(&data.output, None).await.unwrap();
+        let (mask, value, _) = key_manager.try_output_key_recovery(&data.output, None).await.unwrap();
         assert_eq!(output.spending_key_id, mask);
         assert_eq!(output.value, value);
     }

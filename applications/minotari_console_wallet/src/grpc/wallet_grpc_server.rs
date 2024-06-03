@@ -100,6 +100,7 @@ use tari_core::{
     transactions::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
+            encrypted_data::PaymentId,
             CodeTemplateRegistration,
             OutputFeatures,
             OutputType,
@@ -503,13 +504,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     dest.fee_per_gram,
                     dest.message,
                     dest.payment_type,
+                    dest.payment_id,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (hex_address, address, amount, fee_per_gram, message, payment_type) in recipients {
+        for (hex_address, address, amount, fee_per_gram, message, payment_type, payment_id) in recipients {
+            let payment_id = PaymentId::from_bytes(&payment_id)
+                .map_err(|_| "Invalid payment id".to_string())
+                .map_err(Status::invalid_argument)?;
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
                 (
@@ -534,6 +539,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
+                                payment_id,
                             )
                             .await
                     } else {
@@ -545,6 +551,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
+                                payment_id,
                             )
                             .await
                     },

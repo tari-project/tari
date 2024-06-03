@@ -43,7 +43,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::create_memory_db_key_manager,
-        transaction_components::RangeProofType,
+        transaction_components::{encrypted_data::PaymentId, RangeProofType},
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -380,6 +380,7 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
+            PaymentId::Empty,
         )
         .await
     }) {

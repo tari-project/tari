@@ -107,7 +107,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
@@ -159,7 +159,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
@@ -271,7 +271,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     let mut block = get_esmeralda_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `esmeralda_genesis_sanity_check` must pass
@@ -304,7 +304,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("26 Apr 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("03 Jun 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -421,7 +421,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 100, 1);
+        check_block(Network::Esmeralda, &block, 0, 0);
     }
 
     #[test]
@@ -430,7 +430,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 100, 1);
+        check_block(Network::NextNet, &block, 0, 0);
     }
 
     #[test]
@@ -440,7 +440,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 100, 1);
+        check_block(Network::StageNet, &block, 0, 0);
     }
 
     #[test]

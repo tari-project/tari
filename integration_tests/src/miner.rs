@@ -42,7 +42,7 @@ use tari_core::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{RangeProofType, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, RangeProofType, WalletOutput},
     },
 };
 use tonic::transport::Channel;
@@ -297,6 +297,7 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
+        PaymentId::Empty,
     )
     .await
     .unwrap();

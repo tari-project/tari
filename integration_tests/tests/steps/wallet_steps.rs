@@ -706,6 +706,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
             dest_wallet.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -766,6 +767,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             dest_wallet.as_str()
         ),
         payment_type: 1, // one sided transaction
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -865,6 +867,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
             fee_per_gram
         ),
         payment_type: 0, // mimblewimble transaction
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1294,6 +1297,7 @@ async fn send_num_transactions_to_wallets_at_fee(
                 receiver_wallet.as_str()
             ),
             payment_type: 0, // standard mimblewimble transaction
+            payment_id: Vec::new(),
         };
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
@@ -1435,6 +1439,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
             receiver.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1629,6 +1634,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             receiver1.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
 
     let payment_recipient2 = PaymentRecipient {
@@ -1642,6 +1648,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             receiver2.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
@@ -1753,6 +1760,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         fee_per_gram,
         message: format!("transfer amount {} from {} to self", amount, sender.as_str(),),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1838,6 +1846,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
             fee_per_gram
         ),
         payment_type: 0, // normal mimblewimble transaction
+        payment_id: Vec::new(),
     };
 
     let atomic_swap_request = SendShaAtomicSwapRequest {
@@ -2127,6 +2136,7 @@ async fn send_one_sided_stealth_transaction(
             receiver.as_str()
         ),
         payment_type: 2, // one sided stealth transaction
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -2608,6 +2618,7 @@ async fn multi_send_txs_from_wallet(
                 fee_per_gram
             ),
             payment_type: 0, // mimblewimble transaction
+            payment_id: Vec::new(),
         };
 
         let transfer_req = TransferRequest {

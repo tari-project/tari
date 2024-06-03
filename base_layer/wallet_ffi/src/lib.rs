@@ -143,7 +143,14 @@ use tari_core::{
     consensus::ConsensusManager,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            UnblindedOutput,
+        },
         CryptoFactories,
     },
 };
@@ -300,6 +307,7 @@ pub struct TariUtxo {
     pub lock_height: u64,
     pub status: u8,
     pub coinbase_extra: *const c_char,
+    pub payment_id: *const c_char,
 }
 
 impl From<DbWalletOutput> for TariUtxo {
@@ -331,6 +339,11 @@ impl From<DbWalletOutput> for TariUtxo {
             coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
+            payment_id: CString::new(
+                String::from_utf8(x.payment_id.as_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
+            )
+            .expect("failed to obtain string from a payment id")
+            .into_raw(),
         }
     }
 }
@@ -1562,7 +1575,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
     let encrypted_data = if encrypted_data.is_null() {
         TariEncryptedOpenings::default()
     } else {
-        *encrypted_data
+        (*encrypted_data).clone()
     };
 
     let unblinded_output = UnblindedOutput::new_current_version(
@@ -6660,6 +6673,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     one_sided: bool,
+    payment_id_string: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -6705,16 +6719,27 @@ pub unsafe extern "C" fn wallet_send_transaction(
             _ => {
                 error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
-                message_string = CString::new("")
-                    .expect("Blank CString will not fail")
-                    .to_str()
-                    .expect("CString.to_str() will not fail")
-                    .to_owned();
+                return 0;
             },
         }
     };
 
     if one_sided {
+        let payment_id = if payment_id_string.is_null() {
+            PaymentId::Empty
+        } else {
+            match CStr::from_ptr(payment_id_string).to_str() {
+                Ok(v) => {
+                    let bytes = v.as_bytes().to_vec();
+                    PaymentId::Open(bytes)
+                },
+                _ => {
+                    error = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return 0;
+                },
+            }
+        };
         match (*wallet).runtime.block_on(
             (*wallet)
                 .wallet
@@ -6726,6 +6751,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     OutputFeatures::default(),
                     MicroMinotari::from(fee_per_gram),
                     message_string,
+                    payment_id,
                 ),
         ) {
             Ok(tx_id) => tx_id.as_u64(),
@@ -9338,8 +9364,14 @@ mod test {
             let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroMinotari::from(123456);
-            let encrypted_data =
-                TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
+            let encrypted_data = TariEncryptedOpenings::encrypt_data(
+                &encryption_key,
+                &commitment,
+                amount,
+                &spending_key,
+                PaymentId::Empty,
+            )
+            .unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
 
             let encrypted_data_1 = Box::into_raw(Box::new(encrypted_data));

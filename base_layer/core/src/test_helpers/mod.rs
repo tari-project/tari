@@ -48,7 +48,7 @@ use crate::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{RangeProofType, Transaction, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, RangeProofType, Transaction, WalletOutput},
     },
 };
 
@@ -121,6 +121,7 @@ pub async fn create_block(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
+        PaymentId::Empty,
     )
     .await
     .unwrap();

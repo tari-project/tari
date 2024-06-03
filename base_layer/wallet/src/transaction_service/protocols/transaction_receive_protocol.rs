@@ -448,6 +448,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
+                None,
             )
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 

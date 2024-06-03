@@ -64,7 +64,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari, Minotari},
-    transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
+    transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -232,6 +232,7 @@ pub async fn send_one_sided(
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_one_sided_transaction(
@@ -241,6 +242,7 @@ pub async fn send_one_sided(
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -253,6 +255,7 @@ pub async fn send_one_sided_to_stealth_address(
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_one_sided_to_stealth_address_transaction(
@@ -262,6 +265,7 @@ pub async fn send_one_sided_to_stealth_address(
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -452,6 +456,7 @@ pub async fn make_it_rain(
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
                                 msg.clone(),
+                                PaymentId::Empty,
                             )
                             .await
                         },
@@ -463,6 +468,7 @@ pub async fn make_it_rain(
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
                                 msg.clone(),
+                                PaymentId::Empty,
                             )
                             .await
                         },
@@ -725,6 +731,7 @@ pub async fn command_runner(
                     UtxoSelectionCriteria::default(),
                     args.destination,
                     args.message,
+                    PaymentId::Empty,
                 )
                 .await
                 {
@@ -743,6 +750,7 @@ pub async fn command_runner(
                     UtxoSelectionCriteria::default(),
                     args.destination,
                     args.message,
+                    PaymentId::Empty,
                 )
                 .await
                 {

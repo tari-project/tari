@@ -50,6 +50,7 @@ use crate::{
         },
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::PaymentId,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -169,7 +170,7 @@ impl TestParams {
         let output = WalletOutputBuilder::new(params.value, self.spend_key_id.clone())
             .with_features(params.features)
             .with_script(params.script.clone())
-            .encrypt_data_for_recovery(key_manager, None)
+            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -747,7 +748,7 @@ pub async fn create_stx_protocol_internal(
         let output = WalletOutputBuilder::new(val, spending_key)
             .with_features(schema.features.clone())
             .with_script(schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None)
+            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -852,7 +853,7 @@ pub async fn create_utxo(
         .await
         .unwrap();
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&spending_key_id, None, value.into())
+        .encrypt_data_for_recovery(&spending_key_id, None, value.into(), PaymentId::Empty)
         .await
         .unwrap();
     let (sender_offset_key_id, sender_offset_public_key) = key_manager

@@ -45,7 +45,11 @@ use crate::{
         tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, OutputFeatures},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            transaction_output::batch_verify_range_proofs,
+            OutputFeatures,
+        },
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -97,7 +101,7 @@ async fn key_manager_input() {
         .expect("Should be able to create transaction output");
 
     assert_eq!(*input.features().unwrap(), OutputFeatures::default());
-    let (_, value) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
+    let (_, value, _) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
     assert_eq!(value, i.value);
 }
 
@@ -126,7 +130,7 @@ async fn range_proof_verification() {
     let wallet_output2 = WalletOutputBuilder::new((2u64.pow(32) + 1u64).into(), test_params_2.spend_key_id.clone())
         .with_features(OutputFeatures::default())
         .with_script(script![Nop])
-        .encrypt_data_for_recovery(&key_manager, None)
+        .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
         .await
         .unwrap()
         .with_input_data(input_data)
@@ -560,7 +564,7 @@ async fn test_output_recover_openings() {
         .unwrap();
     let output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
 
-    let (mask, value) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
+    let (mask, value, _) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
     assert_eq!(value, wallet_output.value);
     assert_eq!(mask, test_params.spend_key_id);
 }

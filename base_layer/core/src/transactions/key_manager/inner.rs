@@ -77,6 +77,7 @@ use crate::{
         },
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::PaymentId,
             EncryptedData,
             KernelFeatures,
             RangeProofType,
@@ -1188,6 +1189,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         spend_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
+        payment_id: PaymentId,
     ) -> Result<EncryptedData, TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
@@ -1197,7 +1199,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let value_key = value.into();
         let commitment = self.get_commitment(spend_key_id, &value_key).await?;
         let spend_key = self.get_private_key(spend_key_id).await?;
-        let data = EncryptedData::encrypt_data(&recovery_key, &commitment, value.into(), &spend_key)?;
+        let data = EncryptedData::encrypt_data(&recovery_key, &commitment, value.into(), &spend_key, payment_id)?;
         Ok(data)
     }
 
@@ -1205,13 +1207,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari), TransactionError> {
+    ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {
             self.get_view_key().await?
         };
-        let (value, private_key) =
+        let (value, private_key, payment_id) =
             EncryptedData::decrypt_data(&recovery_key, output.commitment(), output.encrypted_data())?;
         self.crypto_factories
             .range_proof
@@ -1233,6 +1235,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 KeyId::Imported { key: public_key }
             },
         };
-        Ok((key, value))
+        Ok((key, value, payment_id))
     }
 }

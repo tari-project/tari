@@ -39,7 +39,7 @@ use tari_core::{
     consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{BuildInfo, OutputFeatures, TemplateType},
+        transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
     },
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
@@ -138,6 +138,7 @@ pub async fn send_one_sided_transaction_task(
     output_features: OutputFeatures,
     message: String,
     fee_per_gram: MicroMinotari,
+    payment_id: PaymentId,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -151,6 +152,7 @@ pub async fn send_one_sided_transaction_task(
             output_features,
             fee_per_gram,
             message,
+            payment_id,
         )
         .await
     {
@@ -192,6 +194,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     output_features: OutputFeatures,
     message: String,
     fee_per_gram: MicroMinotari,
+    payment_id: PaymentId,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -205,6 +208,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
             output_features,
             fee_per_gram,
             message,
+            payment_id,
         )
         .await
     {

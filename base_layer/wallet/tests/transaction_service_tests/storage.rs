@@ -58,6 +58,7 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
+            encrypted_data::PaymentId,
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -192,7 +193,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
 
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64())
+        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64(), PaymentId::Empty)
         .await
         .unwrap();
     let mut output = WalletOutput::new(
@@ -209,6 +210,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
+        PaymentId::Empty,
         &key_manager,
     )
     .await
@@ -342,6 +344,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: Some(PaymentId::Empty),
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -592,6 +595,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
@@ -621,6 +625,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
@@ -650,6 +655,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 

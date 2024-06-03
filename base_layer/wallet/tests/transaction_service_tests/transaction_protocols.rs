@@ -228,6 +228,7 @@ pub async fn add_transaction_to_database(
         TransactionDirection::Outbound,
         None,
         None,
+        None,
     )
     .unwrap();
     db.insert_completed_transaction(tx_id, completed_tx1).unwrap();

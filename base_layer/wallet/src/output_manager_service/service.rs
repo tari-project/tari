@@ -44,6 +44,7 @@ use tari_core::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::PaymentId,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -719,7 +720,12 @@ where
         let encrypted_data = self
             .resources
             .key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, single_round_sender_data.amount.as_u64())
+            .encrypt_data_for_recovery(
+                &spending_key_id,
+                None,
+                single_round_sender_data.amount.as_u64(),
+                PaymentId::Empty,
+            )
             .await
             .unwrap();
         let minimum_value_promise = single_round_sender_data.minimum_value_promise;
@@ -760,6 +766,7 @@ where
             single_round_sender_data.covenant.clone(),
             encrypted_data,
             minimum_value_promise,
+            PaymentId::Empty,
             &self.resources.key_manager,
         )
         .await?;
@@ -1896,7 +1903,7 @@ where
         let encrypted_data = self
             .resources
             .key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64())
+            .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64(), PaymentId::Empty)
             .await?;
         let minimum_value_promise = MicroMinotari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
@@ -1939,6 +1946,7 @@ where
                 covenant,
                 encrypted_data,
                 minimum_value_promise,
+                PaymentId::Empty,
                 &self.resources.key_manager,
             )
             .await?,
@@ -2099,7 +2107,7 @@ where
             )
             .await?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        if let Ok((amount, spending_key)) =
+        if let Ok((amount, spending_key, payment_id)) =
             EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
@@ -2121,6 +2129,7 @@ where
                     output.encrypted_data,
                     output.minimum_value_promise,
                     output.proof,
+                    payment_id,
                 );
 
                 let message = "SHA-XTR atomic swap".to_string();
@@ -2391,7 +2400,7 @@ where
 
         for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-            if let Ok((committed_value, spending_key)) =
+            if let Ok((committed_value, spending_key, payment_id)) =
                 EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
             {
                 if output.verify_mask(
@@ -2416,6 +2425,7 @@ where
                         output.encrypted_data,
                         output.minimum_value_promise,
                         output.proof,
+                        payment_id,
                     );
 
                     let tx_id = TxId::new_random();

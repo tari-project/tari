@@ -42,6 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::PaymentId,
             BuildInfo,
             CodeTemplateRegistration,
             OutputFeatures,
@@ -124,6 +125,7 @@ pub enum TransactionServiceRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
         message: String,
+        payment_id: PaymentId,
     },
     SendOneSidedToStealthAddressTransaction {
         destination: TariAddress,
@@ -132,6 +134,7 @@ pub enum TransactionServiceRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
         message: String,
+        payment_id: PaymentId,
     },
     SendShaAtomicSwapTransaction(TariAddress, MicroMinotari, UtxoSelectionCriteria, MicroMinotari, String),
     CancelTransaction(TxId),
@@ -144,6 +147,7 @@ pub enum TransactionServiceRequest {
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, String),
     SetLowPowerMode,
@@ -540,6 +544,7 @@ impl TransactionServiceHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -550,6 +555,7 @@ impl TransactionServiceHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
+                payment_id,
             })
             .await??
         {
@@ -591,6 +597,7 @@ impl TransactionServiceHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -601,6 +608,7 @@ impl TransactionServiceHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
+                payment_id,
             })
             .await??
         {
@@ -747,6 +755,7 @@ impl TransactionServiceHandle {
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -759,6 +768,7 @@ impl TransactionServiceHandle {
                 current_height,
                 mined_timestamp,
                 scanned_output,
+                payment_id,
             })
             .await??
         {

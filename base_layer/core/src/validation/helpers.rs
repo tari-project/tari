@@ -42,7 +42,13 @@ use crate::{
         PowAlgorithm,
         PowError,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        EncryptedData,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+    },
     validation::ValidationError,
 };
 
@@ -218,6 +224,21 @@ pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) 
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,
             actual_script_size: script_size,
+        });
+    }
+    Ok(())
+}
+
+/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
+pub fn check_tari_encrypted_data_byte_size(
+    encrypted_data: &EncryptedData,
+    max_encrypted_data_size: usize,
+) -> Result<(), ValidationError> {
+    let encrypted_data_size = encrypted_data.as_bytes().len();
+    if encrypted_data_size > max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
+        return Err(ValidationError::EncryptedDataExceedsMaxSize {
+            max_encrypted_data_size: max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+            actual_encrypted_data_size: encrypted_data_size,
         });
     }
     Ok(())

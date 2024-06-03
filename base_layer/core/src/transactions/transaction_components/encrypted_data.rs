@@ -25,7 +25,12 @@
 
 //! Encrypted data using the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
-use std::mem::size_of;
+use std::{
+    convert::TryInto,
+    fmt,
+    fmt::{Display, Formatter},
+    mem::size_of,
+};
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -37,8 +42,12 @@ use chacha20poly1305::{
     XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::{
+    tari_address::dual_address::DualAddress,
+    types::{Commitment, PrivateKey},
+};
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::TransactionSecureNonceKdfDomain;
 use tari_utilities::{
@@ -58,17 +67,83 @@ const SIZE_NONCE: usize = size_of::<XNonce>();
 const SIZE_VALUE: usize = size_of::<u64>();
 const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
-const SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
+pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
 
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating
 const DISPLAY_CUTOFF: usize = 16;
 
-#[derive(
-    Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize,
-)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
 pub struct EncryptedData {
     #[serde(with = "tari_utilities::serde::hex")]
-    data: [u8; SIZE_TOTAL], // nonce, encrypted value, encrypted mask, tag
+    data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub enum PaymentId {
+    Empty,
+    U64(u64),
+    U256(U256),
+    Address(DualAddress),
+    Open(Vec<u8>),
+}
+
+impl PaymentId {
+    pub fn get_size(&self) -> usize {
+        match self {
+            PaymentId::Empty => 0,
+            PaymentId::U64(_) => size_of::<u64>(),
+            PaymentId::U256(_) => size_of::<U256>(),
+            PaymentId::Address(_) => 67,
+            PaymentId::Open(v) => v.len(),
+        }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        match self {
+            PaymentId::Empty => Vec::new(),
+            PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
+            PaymentId::U256(v) => {
+                let mut bytes = vec![0; 32];
+                v.to_little_endian(&mut bytes);
+                bytes
+            },
+            PaymentId::Address(v) => v.to_bytes().to_vec(),
+            PaymentId::Open(v) => v.clone(),
+        }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
+        match bytes.len() {
+            0 => Ok(PaymentId::Empty),
+            8 => {
+                let bytes: [u8; 8] = bytes.try_into().expect("Cannot fail, as we already test the length");
+                let v = u64::from_le_bytes(bytes);
+                Ok(PaymentId::U64(v))
+            },
+            32 => {
+                let v = U256::from_little_endian(bytes);
+                Ok(PaymentId::U256(v))
+            },
+            67 => {
+                let v =
+                    DualAddress::from_bytes(bytes).map_err(|e| EncryptedDataError::ByteArrayError(e.to_string()))?;
+                Ok(PaymentId::Address(v))
+            },
+            _ => Ok(PaymentId::Open(bytes.to_vec())),
+        }
+    }
+}
+
+impl Display for PaymentId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            PaymentId::Empty => write!(f, "N/A"),
+            PaymentId::U64(v) => write!(f, "{}", v),
+            PaymentId::U256(v) => write!(f, "{}", v),
+            PaymentId::Address(v) => write!(f, "{}", v.to_emoji_string()),
+            PaymentId::Open(v) => write!(f, "byte vector of len: {}", v.len()),
+        }
+    }
 }
 
 /// AEAD associated data
@@ -85,11 +160,13 @@ impl EncryptedData {
         commitment: &Commitment,
         value: MicroMinotari,
         mask: &PrivateKey,
+        payment_id: PaymentId,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
-        let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
+        let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
         bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
-        bytes[SIZE_VALUE..].clone_from_slice(mask.as_bytes());
+        bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
+        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&payment_id.as_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -102,10 +179,11 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = [0u8; SIZE_TOTAL];
-        data[..SIZE_NONCE].clone_from_slice(&nonce);
-        data[SIZE_NONCE..SIZE_NONCE + SIZE_VALUE + SIZE_MASK].clone_from_slice(bytes.as_slice());
-        data[SIZE_NONCE + SIZE_VALUE + SIZE_MASK..].clone_from_slice(&tag);
+        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + payment_id.get_size()];
+        data[..SIZE_TAG].clone_from_slice(&tag);
+        data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
+        data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
+            .clone_from_slice(bytes.as_slice());
 
         Ok(Self { data })
     }
@@ -117,12 +195,19 @@ impl EncryptedData {
         encryption_key: &PrivateKey,
         commitment: &Commitment,
         encrypted_data: &EncryptedData,
-    ) -> Result<(MicroMinotari, PrivateKey), EncryptedDataError> {
+    ) -> Result<(MicroMinotari, PrivateKey, PaymentId), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
-        let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..SIZE_NONCE]);
-        let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
-        bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_NONCE..SIZE_NONCE + SIZE_VALUE + SIZE_MASK]);
-        let tag = Tag::from_slice(&encrypted_data.as_bytes()[SIZE_NONCE + SIZE_VALUE + SIZE_MASK..]);
+        let tag = Tag::from_slice(&encrypted_data.as_bytes()[..SIZE_TAG]);
+        let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[SIZE_TAG..SIZE_TAG + SIZE_NONCE]);
+        let mut bytes = Zeroizing::new(vec![
+            0;
+            encrypted_data
+                .data
+                .len()
+                .saturating_sub(SIZE_TAG)
+                .saturating_sub(SIZE_NONCE)
+        ]);
+        bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_TAG + SIZE_NONCE..]);
 
         // Set up the AEAD
         let aead_key = kdf_aead(encryption_key, commitment);
@@ -136,32 +221,33 @@ impl EncryptedData {
         value_bytes.clone_from_slice(&bytes[0..SIZE_VALUE]);
         Ok((
             u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..])?,
+            PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK])?,
+            PaymentId::from_bytes(&bytes[SIZE_VALUE + SIZE_MASK..])?,
         ))
     }
 
     /// Parse encrypted data from a byte slice
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EncryptedDataError> {
-        if bytes.len() != SIZE_TOTAL {
+        if bytes.len() < STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
             return Err(EncryptedDataError::IncorrectLength(format!(
-                "Expected {} bytes, got {}",
-                SIZE_TOTAL,
+                "Expected bytes to be at least {}, got {}",
+                STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
                 bytes.len()
             )));
         }
-        let mut data = [0u8; SIZE_TOTAL];
+        let mut data = vec![0; bytes.len()];
         data.copy_from_slice(bytes);
         Ok(Self { data })
     }
 
-    /// Get a byte vector with the encrypted data contents
-    pub fn to_byte_vec(&self) -> Vec<u8> {
-        self.data.to_vec()
+    #[cfg(test)]
+    pub fn from_vec_unsafe(data: Vec<u8>) -> Self {
+        Self { data }
     }
 
-    /// Get a byte array with the encrypted data contents
-    pub fn to_bytes(&self) -> [u8; SIZE_TOTAL] {
-        self.data
+    /// Get a byte vector with the encrypted data contents
+    pub fn to_byte_vec(&self) -> Vec<u8> {
+        self.data.clone()
     }
 
     /// Get a byte slice with the encrypted data contents
@@ -186,6 +272,12 @@ impl EncryptedData {
             }
         }
     }
+
+    /// Returns the size of the payment id
+    pub fn get_payment_id_size(&self) -> usize {
+        // the length should always at least be the static total size, the extra len is the payment id
+        self.data.len().saturating_sub(STATIC_ENCRYPTED_DATA_SIZE_TOTAL)
+    }
 }
 
 impl Hex for EncryptedData {
@@ -202,7 +294,7 @@ impl Hex for EncryptedData {
 impl Default for EncryptedData {
     fn default() -> Self {
         Self {
-            data: [0u8; SIZE_TOTAL],
+            data: Vec::with_capacity(STATIC_ENCRYPTED_DATA_SIZE_TOTAL),
         }
     }
 }
@@ -250,46 +342,74 @@ mod test {
 
     #[test]
     fn it_encrypts_and_decrypts_correctly() {
-        for (value, mask) in [
-            (0, PrivateKey::default()),
-            (0, PrivateKey::random(&mut OsRng)),
-            (123456, PrivateKey::default()),
-            (654321, PrivateKey::random(&mut OsRng)),
-            (u64::MAX, PrivateKey::random(&mut OsRng)),
+        for payment_id in [
+            PaymentId::Empty,
+            PaymentId::U64(1),
+            PaymentId::U64(156486946518564),
+            PaymentId::U256(
+                U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
+            ),
+            PaymentId::Address(DualAddress::from_hex("2603bc3d05fb55446f18031feb5494d19d6c795fc93d6218c65a285c7a88fd03917c72e4a70cbabcc52ad79cb2ac170df4a29912ffb345f20b0f8ae5524c749b9425f0").unwrap()),
+            PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        PaymentId::Open(vec![1;256]),
         ] {
-            let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
-            let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroMinotari::from(value);
-            let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
-            let (decrypted_value, decrypted_mask) =
-                EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
-            assert_eq!(amount, decrypted_value);
-            assert_eq!(mask, decrypted_mask);
-            if let Ok((decrypted_value, decrypted_mask)) =
-                EncryptedData::decrypt_data(&PrivateKey::random(&mut OsRng), &commitment, &encrypted_data)
-            {
-                assert_ne!(amount, decrypted_value);
-                assert_ne!(mask, decrypted_mask);
+            for (value, mask) in [
+                (0, PrivateKey::default()),
+                (0, PrivateKey::random(&mut OsRng)),
+                (123456, PrivateKey::default()),
+                (654321, PrivateKey::random(&mut OsRng)),
+                (u64::MAX, PrivateKey::random(&mut OsRng)),
+            ] {
+                let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+                let encryption_key = PrivateKey::random(&mut OsRng);
+                let amount = MicroMinotari::from(value);
+                let encrypted_data =
+                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone()).unwrap();
+                let (decrypted_value, decrypted_mask, decrypted_payment_id) =
+                    EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
+                assert_eq!(amount, decrypted_value);
+                assert_eq!(mask, decrypted_mask);
+                assert_eq!(payment_id, decrypted_payment_id);
+                if let Ok((decrypted_value, decrypted_mask, decrypted_payment_id)) =
+                    EncryptedData::decrypt_data(&PrivateKey::random(&mut OsRng), &commitment, &encrypted_data)
+                {
+                    assert_ne!(amount, decrypted_value);
+                    assert_ne!(mask, decrypted_mask);
+                    assert_ne!(payment_id, decrypted_payment_id);
+                }
             }
         }
     }
 
     #[test]
     fn it_converts_correctly() {
-        for (value, mask) in [
-            (0, PrivateKey::default()),
-            (0, PrivateKey::random(&mut OsRng)),
-            (123456, PrivateKey::default()),
-            (654321, PrivateKey::random(&mut OsRng)),
-            (u64::MAX, PrivateKey::random(&mut OsRng)),
+        for payment_id in [
+            PaymentId::Empty,
+            PaymentId::U64(1),
+            PaymentId::U64(156486946518564),
+            PaymentId::U256(
+                U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
+            ),
+            PaymentId::Address(DualAddress::from_hex("2603bc3d05fb55446f18031feb5494d19d6c795fc93d6218c65a285c7a88fd03917c72e4a70cbabcc52ad79cb2ac170df4a29912ffb345f20b0f8ae5524c749b9425f0").unwrap()),
+        PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        PaymentId::Open(vec![1;256]),
         ] {
-            let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
-            let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroMinotari::from(value);
-            let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
-            let bytes = encrypted_data.to_byte_vec();
-            let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();
-            assert_eq!(encrypted_data, encrypted_data_from_bytes);
+            for (value, mask) in [
+                (0, PrivateKey::default()),
+                (0, PrivateKey::random(&mut OsRng)),
+                (123456, PrivateKey::default()),
+                (654321, PrivateKey::random(&mut OsRng)),
+                (u64::MAX, PrivateKey::random(&mut OsRng)),
+            ] {
+                let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+                let encryption_key = PrivateKey::random(&mut OsRng);
+                let amount = MicroMinotari::from(value);
+                let encrypted_data =
+                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone()).unwrap();
+                let bytes = encrypted_data.to_byte_vec();
+                let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();
+                assert_eq!(encrypted_data, encrypted_data_from_bytes);
+            }
         }
     }
 }

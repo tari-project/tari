@@ -33,6 +33,7 @@ use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManag
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
+        encrypted_data::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,
@@ -216,13 +217,14 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         spend_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
+        payment_id: PaymentId,
     ) -> Result<EncryptedData, TransactionError>;
 
     async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari), TransactionError>;
+    ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
 
     async fn get_script_offset(
         &self,
