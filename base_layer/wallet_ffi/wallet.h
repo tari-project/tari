@@ -3149,7 +3149,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            unsigned long long fee_per_gram,
                                            const char *message,
                                            bool one_sided,
-                                           unsigned long long payment_id,
+                                           const char *payment_id_string,
                                            int *error_out);
 
 /**

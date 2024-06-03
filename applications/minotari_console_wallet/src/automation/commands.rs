@@ -224,30 +224,6 @@ pub async fn register_validator_node(
         .map_err(CommandError::TransactionServiceError)
 }
 
-/// Send a one-sided transaction to a recipient
-pub async fn send_one_sided(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    fee_per_gram: u64,
-    amount: MicroMinotari,
-    selection_criteria: UtxoSelectionCriteria,
-    dest_address: TariAddress,
-    message: String,
-    payment_id: PaymentId,
-) -> Result<TxId, CommandError> {
-    wallet_transaction_service
-        .send_one_sided_transaction(
-            dest_address,
-            amount,
-            selection_criteria,
-            OutputFeatures::default(),
-            fee_per_gram * uT,
-            message,
-            payment_id,
-        )
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
-
 pub async fn send_one_sided_to_stealth_address(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
@@ -447,18 +423,6 @@ pub async fn make_it_rain(
                     let tx_id = match transaction_type {
                         MakeItRainTransactionType::Interactive => {
                             send_tari(tx_service, fee, amount, address.clone(), msg.clone()).await
-                        },
-                        MakeItRainTransactionType::OneSided => {
-                            send_one_sided(
-                                tx_service,
-                                fee,
-                                amount,
-                                UtxoSelectionCriteria::default(),
-                                address.clone(),
-                                msg.clone(),
-                                PaymentId::Empty,
-                            )
-                            .await
                         },
                         MakeItRainTransactionType::StealthOneSided => {
                             send_one_sided_to_stealth_address(
@@ -721,25 +685,6 @@ pub async fn command_runner(
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("SendMinotari error! {}", e),
-                }
-            },
-            SendOneSided(args) => {
-                match send_one_sided(
-                    transaction_service.clone(),
-                    config.fee_per_gram,
-                    args.amount,
-                    UtxoSelectionCriteria::default(),
-                    args.destination,
-                    args.message,
-                    PaymentId::Empty,
-                )
-                .await
-                {
-                    Ok(tx_id) => {
-                        debug!(target: LOG_TARGET, "send-one-sided concluded with tx_id {}", tx_id);
-                        tx_ids.push(tx_id);
-                    },
-                    Err(e) => eprintln!("SendOneSided error! {}", e),
                 }
             },
             SendOneSidedToStealthAddress(args) => {

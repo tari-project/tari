@@ -116,7 +116,6 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    SendOneSided(SendMinotariArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -185,8 +184,6 @@ impl MakeItRainArgs {
     pub fn transaction_type(&self) -> MakeItRainTransactionType {
         if self.stealth {
             MakeItRainTransactionType::StealthOneSided
-        } else if self.one_sided {
-            MakeItRainTransactionType::OneSided
         } else if self.burn_tari {
             MakeItRainTransactionType::BurnTari
         } else {
@@ -198,7 +195,6 @@ impl MakeItRainArgs {
 #[derive(Debug, Clone, Copy)]
 pub enum MakeItRainTransactionType {
     Interactive,
-    OneSided,
     StealthOneSided,
     BurnTari,
 }
