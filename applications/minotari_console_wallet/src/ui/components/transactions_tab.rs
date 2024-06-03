@@ -436,7 +436,9 @@ impl TransactionsTab {
             let payment_id = match tx.payment_id.clone() {
                 Some(v) => {
                     if let PaymentId::Open(bytes) = v {
-                        format!("{}", String::from_utf8(bytes).unwrap_or_else(|_| "Invalid".to_string()))
+                        String::from_utf8(bytes)
+                            .unwrap_or_else(|_| "Invalid".to_string())
+                            .to_string()
                     } else {
                         format!("#{}", v)
                     }
