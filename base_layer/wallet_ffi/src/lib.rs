@@ -11631,12 +11631,12 @@ mod test {
             range_proof_destroy(proof_ptr_2);
             let _spending_key = Box::from_raw(spending_key_ptr_2);
             tari_unblinded_output_destroy(tari_utxo_ptr_2);
-            tari_unblinded_output_destroy(tari_utxo_ptr_2);
             range_proof_destroy(range_proof_ptr_2);
             tari_unblinded_output_destroy(unblinded_output_ptr_2);
 
             string_destroy(message_ptr as *mut c_char);
             let _source_address = Box::from_raw(source_address_ptr);
+            unblinded_outputs_destroy(unspent_outputs_ptr);
 
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
             string_destroy(base_node_peer_address_ptr as *mut c_char);
