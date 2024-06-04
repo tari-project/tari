@@ -96,7 +96,7 @@ impl WalletOutput {
         payment_id: PaymentId,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
+        let range_proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
             Some(
                 key_manager
                     .construct_range_proof(&spending_key_id, value.into(), minimum_value_promise.into())
@@ -119,7 +119,7 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
-            range_proof: rangeproof,
+            range_proof,
             payment_id,
         })
     }

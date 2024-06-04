@@ -174,11 +174,7 @@ struct TariPublicKeys;
 
 struct TariSeedWords;
 
-struct TariUnblindedOutputWithProof;
-
 struct TariUnblindedOutputs;
-
-struct TariUnblindedOutputsWithProofs;
 
 struct TariWallet;
 
@@ -885,6 +881,7 @@ TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
                                                   TariEncryptedOpenings *encrypted_data,
                                                   unsigned long long minimum_value_promise,
                                                   unsigned long long script_lock_height,
+                                                  TariRangeProof *range_proof,
                                                   int *error_out);
 
 /**
@@ -1009,83 +1006,6 @@ struct TariUnblindedOutputs *wallet_get_unspent_outputs(struct TariWallet *walle
                                                         int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- TariUnblindedOutputsWithProofs ------------------------------------///
- * Gets the length of TariUnblindedOutputsWithProofs
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputsWithProofs
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_uint` - Returns number of elements in , zero if outputs is null
- *
- * # Safety
- * None
- */
-unsigned int unblinded_outputs_and_proofs_get_length(struct TariUnblindedOutputsWithProofs *outputs,
-                                                     int *error_out);
-
-/**
- * Gets a TariUnblindedOutputWithProof from TariUnblindedOutputsWithProofs at position
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputsWithProofs
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariUnblindedOutputWithProof` - Returns a TariUnblindedOutputWithProof, note that it returns ptr::null_mut()
- * if TariUnblindedOutputsWithProofs is null or position is invalid
- *
- * # Safety
- * The ```unblinded_output_and_proof_destroy``` method must be called when finished with a TariUnblindedOutputWithProof
- * to prevent a memory leak
- */
-struct TariUnblindedOutputWithProof *unblinded_outputs_and_proofs_get_at(struct TariUnblindedOutputsWithProofs *outputs,
-                                                                         unsigned int position,
-                                                                         int *error_out);
-
-/**
- * Gets a TariUnblindedOutput from a TariUnblindedOutputWithProof
- *
- * ## Arguments
- * `output_with_proof` - The pointer to a TariUnblindedOutputWithProof
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut()
- * if TariUnblindedOutputsWithProofs is null or position is invalid
- *
- * # Safety
- *  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
- * prevent a memory leak
- */
-TariUnblindedOutput *unblinded_output_get(struct TariUnblindedOutputWithProof *output_with_proof,
-                                          int *error_out);
-
-/**
- * Gets a TariRangeProof from a TariUnblindedOutputWithProof
- *
- * ## Arguments
- * `output_with_proof` - The pointer to a TariUnblindedOutputWithProof
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut()
- * if TariUnblindedOutputsWithProofs is null or position is invalid
- *
- * # Safety
- * The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
- */
-TariRangeProof *range_proof_get(struct TariUnblindedOutputWithProof *output_with_proof,
-                                int *error_out);
-
-/**
  * Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
  * UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
  *
@@ -1108,57 +1028,9 @@ TariRangeProof *range_proof_get(struct TariUnblindedOutputWithProof *output_with
  */
 unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWallet *wallet,
                                                                  TariUnblindedOutput *output,
-                                                                 TariRangeProof *range_proof,
                                                                  TariWalletAddress *source_address,
                                                                  const char *message,
                                                                  int *error_out);
-
-/**
- * Get the TariUnblindedOutputsWithProofs from a TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariUnblindedOutputsWithProofs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut()
- * if wallet is null
- *
- * # Safety
- * The ```unblinded_outputs_and_proofs_destroy``` method must be called when finished with a TariUnblindedOutput to
- * prevent a memory leak
- */
-struct TariUnblindedOutputsWithProofs *wallet_get_unspent_outputs_and_proofs(struct TariWallet *wallet,
-                                                                             int *error_out);
-
-/**
- * Frees memory for a TariUnblindedOutputsWithProofs
- *
- * ## Arguments
- * `outputs_with_proofs` - The pointer to a TariUnblindedOutputsWithProofs
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void unblinded_outputs_and_proofs_destroy(struct TariUnblindedOutputsWithProofs *outputs_with_proofs);
-
-/**
- * Frees memory for a TariUnblindedOutputWithProof
- *
- * ## Arguments
- * `output_with_proof` - The pointer to a TariUnblindedOutputsWithProofs
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void unblinded_output_and_proof_destroy(struct TariUnblindedOutputWithProof *output_with_proof);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -1260,6 +1132,24 @@ TariPrivateKey *private_key_from_hex(const char *key,
  * The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
  */
 TariRangeProof *range_proof_default(void);
+
+/**
+ * Gets a TariRangeProof from a TariUnblindedOutput
+ *
+ * ## Arguments
+ * `unblinded_output` - The pointer to a TariUnblindedOutput
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariRangeProof` - Returns a TariRangeProof, note that it returns ptr::null_mut()
+ * if TariUnblindedOutput is null or position is invalid
+ *
+ * # Safety
+ * The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
+ */
+TariRangeProof *range_proof_get(TariUnblindedOutput *unblinded_output,
+                                int *error_out);
 
 /**
  * Creates a TariRangeProof from a ByteVector
@@ -3366,7 +3256,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            unsigned long long fee_per_gram,
                                            const char *message,
                                            bool one_sided,
-                                           unsigned long long payment_id,
+                                           const char *payment_id_string,
                                            int *error_out);
 
 /**

@@ -56,7 +56,7 @@ use tari_core::{
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, RangeProofType, UnblindedOutput},
+        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -536,8 +536,9 @@ where
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
         );
-        self.import_unblinded_output_as_non_rewindable(unblinded_output, range_proof, source_address, message)
+        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
             .await
     }
 
@@ -547,15 +548,13 @@ where
     pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
-        range_proof: Option<RangeProof>,
         source_address: TariAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
-        let mut wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service, PaymentId::Empty).await?;
         let value = unblinded_output.value;
-        if wallet_output.features.range_proof_type == RangeProofType::BulletProofPlus && range_proof.is_some() {
-            wallet_output.range_proof = range_proof;
-        }
+        let wallet_output = unblinded_output
+            .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
+            .await?;
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(

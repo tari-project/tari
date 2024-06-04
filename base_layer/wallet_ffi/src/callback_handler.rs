@@ -285,6 +285,10 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations);
                                     self.trigger_balance_refresh().await;
                                 },
+                                TransactionEvent::TransactionImported(tx_id) => {
+                                    self.receive_faux_transaction_unconfirmed_event(tx_id, 0);
+                                    self.trigger_balance_refresh().await;
+                                },
                                 TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
                                     self.trigger_balance_refresh().await;
                                 },
@@ -297,7 +301,6 @@ where TBackend: TransactionBackend + 'static
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
-                                TransactionEvent::TransactionImported(_tx_id)|
                                 TransactionEvent::TransactionCompletedImmediately(_tx_id)
                                 => {
                                     self.trigger_balance_refresh().await;

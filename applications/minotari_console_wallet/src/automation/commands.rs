@@ -54,7 +54,7 @@ use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, RangeProof, Signature},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -64,7 +64,13 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari, Minotari},
-    transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, UnblindedOutput, WalletOutput},
+    transaction_components::{
+        encrypted_data::PaymentId,
+        OutputFeatures,
+        TransactionOutput,
+        UnblindedOutput,
+        WalletOutput,
+    },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -811,14 +817,12 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment, Option<RangeProof>)> =
-                        Vec::with_capacity(utxos.len());
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
                     for output in utxos {
-                        let range_proof = output.wallet_output.range_proof.clone();
                         let unblinded =
                             UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
                                 .await?;
-                        unblinded_utxos.push((unblinded, output.commitment, range_proof));
+                        unblinded_utxos.push((unblinded, output.commitment));
                     }
                     let count = unblinded_utxos.len();
                     let sum: MicroMinotari = unblinded_utxos.iter().map(|utxo| utxo.0.value).sum();
@@ -832,8 +836,16 @@ pub async fn command_runner(
                                 "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
                                 i + 1,
                                 utxo.0.value,
-                                utxo.0.spending_key.to_hex(),
-                                utxo.0.script_private_key.to_hex(),
+                                if args.with_private_keys {
+                                    utxo.0.spending_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
+                                if args.with_private_keys {
+                                    utxo.0.script_private_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
                                 utxo.0.features
                             );
                         }
@@ -873,14 +885,12 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment, Option<RangeProof>)> =
-                        Vec::with_capacity(utxos.len());
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
                     for output in utxos {
-                        let range_proof = output.wallet_output.range_proof.clone();
                         let unblinded =
                             UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
                                 .await?;
-                        unblinded_utxos.push((unblinded, output.commitment, range_proof));
+                        unblinded_utxos.push((unblinded, output.commitment));
                     }
                     let count = unblinded_utxos.len();
                     let sum: MicroMinotari = unblinded_utxos.iter().map(|utxo| utxo.0.value).sum();
@@ -894,8 +904,16 @@ pub async fn command_runner(
                                 "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
                                 i + 1,
                                 utxo.0.value,
-                                utxo.0.spending_key.to_hex(),
-                                utxo.0.script_private_key.to_hex(),
+                                if args.with_private_keys {
+                                    utxo.0.spending_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
+                                if args.with_private_keys {
+                                    utxo.0.script_private_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
                                 utxo.0.features
                             );
                         }
@@ -1127,7 +1145,7 @@ pub async fn command_runner(
 }
 
 fn write_utxos_to_csv_file(
-    utxos: Vec<(UnblindedOutput, Commitment, Option<RangeProof>)>,
+    utxos: Vec<(UnblindedOutput, Commitment)>,
     file_path: PathBuf,
     with_private_keys: bool,
 ) -> Result<(), CommandError> {
@@ -1138,7 +1156,7 @@ fn write_utxos_to_csv_file(
         r##""index","version","value","spending_key","commitment","output_type","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise","range_proof""##
     )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;
-    for (i, (utxo, commitment, proof)) in utxos.iter().enumerate() {
+    for (i, (utxo, commitment)) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
             r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
@@ -1164,7 +1182,7 @@ fn write_utxos_to_csv_file(
             utxo.script_lock_height,
             utxo.encrypted_data.to_byte_vec().to_hex(),
             utxo.minimum_value_promise.as_u64(),
-            if let Some(proof) = proof {
+            if let Some(proof) = utxo.range_proof.clone() {
                 proof.to_hex()
             } else {
                 "".to_string()

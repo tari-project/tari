@@ -2237,7 +2237,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<(UnblindedOutput, RangeProof)> = vec![];
+    let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2272,7 +2272,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
-        let proof = RangeProof::from_hex(&output[21]).unwrap();
+        let proof = if output[21].is_empty() {
+            None
+        } else {
+            Some(RangeProof::from_hex(&output[21]).unwrap())
+        };
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2297,21 +2301,18 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             covenant,
             encrypted_data,
             minimum_value_promise,
+            proof,
         );
 
-        outputs.push((utxo, proof));
+        outputs.push(utxo);
     }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.0.clone()).expect("Unable to make grpc conversion"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        proofs: outputs
-            .iter()
-            .map(|p| grpc::RangeProof::from(p.1.clone()))
-            .collect::<Vec<grpc::RangeProof>>(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2347,7 +2348,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<(UnblindedOutput, RangeProof)> = vec![];
+    let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2382,7 +2383,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
-        let proof = RangeProof::from_hex(&output[21]).unwrap();
+        let proof = if output[21].is_empty() {
+            None
+        } else {
+            Some(RangeProof::from_hex(&output[21]).unwrap())
+        };
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2407,21 +2412,18 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             covenant,
             encrypted_data,
             minimum_value_promise,
+            proof,
         );
 
-        outputs.push((utxo, proof));
+        outputs.push(utxo);
     }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.0.clone()).expect("Unable to make grpc conversion"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        proofs: outputs
-            .iter()
-            .map(|p| grpc::RangeProof::from(p.1.clone()))
-            .collect::<Vec<grpc::RangeProof>>(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2457,7 +2459,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<(UnblindedOutput, RangeProof)> = vec![];
+    let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2492,7 +2494,11 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
-        let proof = RangeProof::from_hex(&output[21]).unwrap();
+        let proof = if output[21].is_empty() {
+            None
+        } else {
+            Some(RangeProof::from_hex(&output[21]).unwrap())
+        };
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2517,23 +2523,20 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             covenant,
             encrypted_data,
             minimum_value_promise,
+            proof,
         );
 
         let script_public_key = PublicKey::from_secret_key(&utxo.script_private_key);
         utxo.input_data = ExecutionStack::new(vec![StackItem::PublicKey(script_public_key)]);
-        outputs.push((utxo, proof));
+        outputs.push(utxo);
     }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.0.clone()).expect("Unable to make grpc conversion"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        proofs: outputs
-            .iter()
-            .map(|p| grpc::RangeProof::from(p.1.clone()))
-            .collect::<Vec<grpc::RangeProof>>(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
