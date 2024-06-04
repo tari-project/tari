@@ -3,6 +3,9 @@ name: CI
 
 'on':
   workflow_dispatch:
+  push:
+    branches:
+      - "ci-*"
   pull_request:
     types:
       - opened
@@ -18,10 +21,13 @@ env:
   CARGO_INCREMENTAL: 0
   PROTOC: protoc
   TERM: unknown
+  ## Must be a JSon string
+  TS_FEATURES: '["default","safe","grpc","ledger","libtor","metrics","miner_input"]'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
 
 jobs:
   clippy:
@@ -39,7 +45,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
       - name: caching (nightly)
+        if: startsWith(runner.environment,'self-hosted')
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
@@ -64,6 +74,7 @@ jobs:
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
         run: cargo lints clippy --all-targets --all-features
+
   machete:
     # Checks for unused dependencies.
     name: machete
@@ -80,7 +91,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
       - name: caching (machete)
+        if: startsWith(runner.environment,'self-hosted')
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
@@ -102,6 +117,7 @@ jobs:
         run: |
           cargo install cargo-machete
           cargo machete
+
   build-stable:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
@@ -110,7 +126,11 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
       - name: caching (stable)
+        if: startsWith(runner.environment,'self-hosted')
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
@@ -144,10 +164,21 @@ jobs:
         run: rustup show
       - name: cargo check
         run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
+      - name: cargo check individual features
+        shell: bash
+        run: |
+          FEATURES_ARRAY=( $(echo ${TS_FEATURES} | jq --raw-output '.[]' | awk '{ print $1 }') )
+          for FEATURE_TEST in "${FEATURES_ARRAY[@]}"; do
+            echo "Testing for feature ${FEATURE_TEST} ..."
+            cargo check --release --all-targets \
+              --features ${FEATURE_TEST} \
+              --workspace --exclude tari_integration_tests --locked
+          done
       - name: cargo check wallet ffi separately
         run: cargo check --release --package minotari_wallet_ffi --locked
       - name: cargo check chat ffi separately
         run: cargo check --release --package minotari_chat_ffi --locked
+
   licenses:
     name: file licenses
     runs-on: [ubuntu-20.04]
@@ -156,11 +187,13 @@ jobs:
         uses: actions/checkout@v4
       - name: install ripgrep
         run: |
-          wget https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep_13.0.0_amd64.deb
-          sudo dpkg -i ripgrep_13.0.0_amd64.deb
+          #wget https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb.sha256
+          wget https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.0-1_amd64.deb
           rg --version || exit 1
       - name: run the license check
         run: ./scripts/file_license_check.sh
+
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]
@@ -189,7 +222,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
       - name: caching (nightly)
+        if: startsWith(runner.environment,'self-hosted')
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
@@ -224,7 +261,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: pr_2_artifact
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Save the PR number in an artifact
         shell: bash
@@ -241,7 +278,7 @@ jobs:
   # needed for test results
   event_file:
     name: "Upload Event File for Test Results"
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest]
     steps:
       - name: Upload
         uses: actions/upload-artifact@v4
