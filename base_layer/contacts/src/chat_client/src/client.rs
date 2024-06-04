@@ -228,7 +228,7 @@ impl ChatClient for Client {
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
-                .send_read_confirmation(message.receiver_address.clone(), message.message_id)
+                .send_read_confirmation(message.sender_address.clone(), message.message_id)
                 .await?;
         }
 
