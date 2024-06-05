@@ -57,7 +57,7 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::commitment::HomomorphicCommitment;
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
@@ -67,7 +67,7 @@ use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
-use tari_script::{ExecutionStack, StackItem, TariScript};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
 use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
@@ -2509,7 +2509,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             signature_u_x,
             signature_u_y,
         );
-        let mut utxo = UnblindedOutput::new(
+        let utxo = UnblindedOutput::new(
             version,
             value,
             spending_key,
@@ -2526,8 +2526,6 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             proof,
         );
 
-        let script_public_key = PublicKey::from_secret_key(&utxo.script_private_key);
-        utxo.input_data = ExecutionStack::new(vec![StackItem::PublicKey(script_public_key)]);
         outputs.push(utxo);
     }
 

@@ -166,6 +166,7 @@ Feature: Wallet Transactions
     When node C is at height 11
     Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
+  @critical
   Scenario: Wallet imports faucet UTXO
     Given I have a seed node NODE
     When I have 1 base nodes connected to all seed nodes
@@ -183,11 +184,10 @@ Feature: Wallet Transactions
     Then I stop wallet WALLET_B
     When I wait 15 seconds
     Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
-    When mining node MINER mines 5 blocks
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     When I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
     When mining node MINER mines 6 blocks
-    Then all nodes are at height 22
+    Then all nodes are at height 17
     Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made

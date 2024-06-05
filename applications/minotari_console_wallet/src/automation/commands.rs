@@ -1189,6 +1189,12 @@ fn write_utxos_to_csv_file(
             },
         )
             .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+        debug!(
+            target: LOG_TARGET,
+            "UTXO {} exported: {:?}",
+            i + 1,
+            utxo
+        );
     }
     Ok(())
 }
