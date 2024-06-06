@@ -35,6 +35,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use thiserror::Error;
 use tonic::{codegen::InterceptedService, transport::Channel, Code};
+use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 
 /// Error parsing input
 #[derive(Debug, Error)]
@@ -162,6 +163,9 @@ pub fn wait_for_keypress() {
 
 /// Base node gRPC client
 pub type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
+
+/// SHA P2Pool gRPC client
+pub type ShaP2PoolGrpcClient = ShaP2PoolClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
 /// Verify that the base node is responding to the mining gRPC requests
 pub async fn verify_base_node_grpc_mining_responses(

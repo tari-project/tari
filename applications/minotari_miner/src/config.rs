@@ -89,6 +89,8 @@ pub struct MinerConfig {
     pub stealth_payment: bool,
     /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
+    /// SHA based p2pool decentralized mining enabled or not
+    pub sha_p2pool_enabled: bool,
 }
 
 /// The proof of work data structure that is included in the block header. For the Minotari miner only `Sha3x` is
@@ -126,6 +128,7 @@ impl Default for MinerConfig {
             wallet_payment_address: TariAddress::default().to_base58(),
             stealth_payment: true,
             range_proof_type: RangeProofType::RevealedValue,
+            sha_p2pool_enabled: false,
         }
     }
 }

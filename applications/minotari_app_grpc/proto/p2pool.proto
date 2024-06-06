@@ -5,9 +5,14 @@ package tari.rpc;
 import "base_node.proto";
 
 service ShaP2Pool {
-  rpc GetNewBlock(GetNewBlockRequest) returns(tari.rpc.GetNewBlockResult);
+  rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
 }
 
 message GetNewBlockRequest {
   string wallet_payment_address = 1;
+}
+
+message GetNewBlockResponse {
+  tari.rpc.GetNewBlockResult block = 1;
+  uint64 target_difficulty = 2;
 }
