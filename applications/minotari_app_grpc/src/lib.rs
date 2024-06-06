@@ -27,4 +27,5 @@ pub mod tls;
 #[allow(clippy::all, clippy::pedantic)]
 pub mod tari_rpc {
     tonic::include_proto!("tari.rpc");
+    tonic::include_proto!("tari.sha_p2pool.rpc");
 }
