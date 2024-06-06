@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package tari.sha_p2pool.rpc;
+
+import "base_node.proto";
+
+service ShaP2Pool {
+  rpc GetNewBlock(GetNewBlockRequest) returns(tari.rpc.GetNewBlockResult);
+}
+
+message GetNewBlockRequest {
+  string wallet_payment_address = 1;
+}
