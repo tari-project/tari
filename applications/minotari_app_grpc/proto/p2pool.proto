@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tari.sha_p2pool.rpc;
+package tari.rpc;
 
 import "base_node.proto";
 
