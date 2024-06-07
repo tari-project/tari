@@ -50,7 +50,7 @@ use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
 use tokio::time::sleep;
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
-use minotari_app_grpc::tari_rpc::{Block, GetNewBlockRequest, GetNewBlockResult};
+use minotari_app_grpc::tari_rpc::{Block, GetNewBlockRequest};
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 
 use crate::{
