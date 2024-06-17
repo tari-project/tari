@@ -215,7 +215,7 @@ jobs:
 
       - name: Docker image build and push
         id: docker_build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./tari/
           file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
