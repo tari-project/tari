@@ -3,6 +3,7 @@ syntax = "proto3";
 package tari.rpc;
 
 import "base_node.proto";
+import "block.proto";
 
 service ShaP2Pool {
   rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
@@ -17,5 +18,6 @@ message GetNewBlockResponse {
 }
 
 message SubmitBlockRequest {
-  string wallet_payment_address = 1;
+  tari.rpc.Block block = 1;
+  string wallet_payment_address = 2;
 }

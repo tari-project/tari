@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{convert::TryFrom, str::FromStr, thread, time::Instant};
+use std::sync::Arc;
 
 use futures::stream::StreamExt;
 use log::*;
@@ -48,9 +49,10 @@ use tari_core::{
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
+use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
-use minotari_app_grpc::tari_rpc::{Block, GetNewBlockRequest};
+use minotari_app_grpc::tari_rpc::{Block, GetNewBlockRequest, SubmitBlockRequest, SubmitBlockResponse};
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 
 use crate::{
@@ -148,7 +150,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             debug!(target: LOG_TARGET, "Starting new mining cycle");
             match mining_cycle(
                 &mut base_node_client,
-                p2pool_node_client.as_mut(),
+                p2pool_node_client.clone(),
                 &config,
                 &cli,
                 &key_manager,
@@ -336,17 +338,20 @@ struct GetNewBlockResponse {
 /// Gets a new block from base node or p2pool node if its enabled in config
 async fn get_new_block(
     base_node_client: &mut BaseNodeGrpcClient,
-    sha_p2pool_client: Option<&mut ShaP2PoolGrpcClient>,
+    sha_p2pool_client: Arc<Mutex<Option<ShaP2PoolGrpcClient>>>,
     config: &MinerConfig,
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &ConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
-    match sha_p2pool_client {
-        Some(client) => get_new_block_p2pool_node(client, wallet_payment_address).await,
-        None => get_new_block_base_node(base_node_client, config, cli, key_manager, wallet_payment_address, consensus_manager).await,
+    if config.sha_p2pool_enabled {
+        if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
+            return get_new_block_p2pool_node(client).await;
+        }
     }
+    
+    get_new_block_base_node(base_node_client, config, cli, key_manager, wallet_payment_address, consensus_manager).await
 }
 
 async fn get_new_block_base_node(
@@ -418,10 +423,8 @@ async fn get_new_block_base_node(
     })
 }
 
-async fn get_new_block_p2pool_node(sha_p2pool_client: &mut ShaP2PoolGrpcClient, wallet_payment_address: &TariAddress) -> Result<GetNewBlockResponse, MinerError> {
-    let block_result = sha_p2pool_client.get_new_block(GetNewBlockRequest{
-        wallet_payment_address: wallet_payment_address.to_hex(),
-    }).await?.into_inner();
+async fn get_new_block_p2pool_node(sha_p2pool_client: &mut ShaP2PoolGrpcClient) -> Result<GetNewBlockResponse, MinerError> {
+    let block_result = sha_p2pool_client.get_new_block(GetNewBlockRequest::default()).await?.into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;
     let block = new_block_result.block.ok_or_else(|| err_empty("block response"))?;
     Ok(GetNewBlockResponse{
@@ -430,19 +433,43 @@ async fn get_new_block_p2pool_node(sha_p2pool_client: &mut ShaP2PoolGrpcClient, 
     })
 }
 
+async fn submit_block(
+    config: &MinerConfig,
+    base_node_client: &mut BaseNodeGrpcClient,
+    sha_p2pool_client: Arc<Mutex<Option<ShaP2PoolGrpcClient>>>,
+    block: Block,
+    wallet_payment_address: &TariAddress,
+) -> Result<SubmitBlockResponse, MinerError> {
+    if config.sha_p2pool_enabled {
+        if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
+            return Ok(
+                client.submit_block(SubmitBlockRequest{
+                    block: Some(block),
+                    wallet_payment_address: wallet_payment_address.to_hex(),
+                }).await.map_err(MinerError::GrpcStatus)?.into_inner()
+            );
+        }
+    }
+
+    Ok(
+        base_node_client.submit_block(block).await.map_err(MinerError::GrpcStatus)?.into_inner()
+    )
+}
+
 #[allow(clippy::too_many_lines)]
 async fn mining_cycle(
     base_node_client: &mut BaseNodeGrpcClient,
-    sha_p2pool_client: Option<&mut ShaP2PoolGrpcClient>,
+    sha_p2pool_client: Option<ShaP2PoolGrpcClient>,
     config: &MinerConfig,
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &ConsensusManager,
 ) -> Result<bool, MinerError> {
+    let sha_p2pool_client = Arc::new(Mutex::new(sha_p2pool_client));
     let block_result = get_new_block(
         base_node_client,
-        sha_p2pool_client,
+        sha_p2pool_client.clone(),
         config,
         cli,
         key_manager,
@@ -489,7 +516,7 @@ async fn mining_cycle(
                 let mut mined_block = block.clone();
                 mined_block.header = Some(header);
                 // 5. Sending block to the node
-                base_node_client.submit_block(mined_block).await?;
+                submit_block(config, base_node_client, sha_p2pool_client.clone(), mined_block, wallet_payment_address).await?;
                 block_submitted = true;
                 break;
             } else {
