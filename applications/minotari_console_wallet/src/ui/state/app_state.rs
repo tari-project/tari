@@ -246,7 +246,7 @@ impl AppState {
 
     // Return alias or pub key if the contact is not in the list.
     pub fn get_alias(&self, address: &TariAddress) -> String {
-        let address_hex = address.to_hex();
+        let address_hex = address.to_base58();
 
         match self
             .cached_data
@@ -912,7 +912,7 @@ impl AppStateInner {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_id.network(),
-            wallet_id.address.to_hex()
+            wallet_id.address.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -924,7 +924,7 @@ impl AppStateInner {
             .skip(1)
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         let identity = MyIdentity {
-            tari_address: wallet_id.address.to_hex(),
+            tari_address: wallet_id.address.to_base58(),
             network_address: wallet_id
                 .node_identity
                 .public_addresses()
@@ -1249,7 +1249,7 @@ impl AppStateData {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network(),
-            wallet_identity.address.to_hex()
+            wallet_identity.address.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -1262,7 +1262,7 @@ impl AppStateData {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
-            tari_address: wallet_identity.address.to_hex(),
+            tari_address: wallet_identity.address.to_base58(),
             network_address: wallet_identity
                 .node_identity
                 .public_addresses()

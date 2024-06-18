@@ -25,7 +25,6 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_utilities::hex::{from_hex, Hex};
 
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
@@ -139,16 +138,32 @@ impl SingleAddress {
         buf
     }
 
-    /// Construct Tari Address from hex
-    pub fn from_hex(hex_str: &str) -> Result<Self, TariAddressError> {
-        let buf = from_hex(hex_str).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        Self::from_bytes(buf.as_slice())
+    /// Construct Tari Address from Base58
+    pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
+        if hex_str.len() < 3 {
+            return Err(TariAddressError::InvalidSize);
+        }
+        let (first, rest) = hex_str.split_at(2);
+        let (network, features) = first.split_at(1);
+        let mut network = bs58::decode(network).into_vec().map_err(|_| TariAddressError::CannotRecoverNetwork)?;
+        let mut features = bs58::decode(features).into_vec().map_err(|_| TariAddressError::CannotRecoverFeature)?;
+        if rest.is_empty(){
+            return Err(TariAddressError::CannotRecoverPublicKey);
+        }
+        let mut rest = bs58::decode(rest).into_vec().map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        network.append(&mut features);network.append(&mut rest);
+        Self::from_bytes(network.as_slice())
     }
 
-    /// Convert Tari Address to bytes
-    pub fn to_hex(&self) -> String {
-        let buf = self.to_bytes();
-        buf.to_hex()
+    /// Convert Tari Address to Base58
+    pub fn to_base58(&self) -> String {
+        let bytes = self.to_bytes();
+        let mut network = bs58::encode(&bytes[0..1]).into_string();
+        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
+        let rest = bs58::encode(&bytes[2..]).into_string();
+        network.push_str(&features);
+        network.push_str(&rest);
+        network
     }
 }
 #[cfg(test)]
@@ -244,14 +259,14 @@ mod test {
         let address = SingleAddress::new_with_interactive_only(public_key.clone(), Network::Esmeralda);
 
         let buff = address.to_bytes();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = SingleAddress::from_hex(&hex).unwrap();
+        let address_hex = SingleAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.network(), address.network());
         assert_eq!(address_hex.features(), address.features());
@@ -267,14 +282,14 @@ mod test {
         );
 
         let buff = address.to_bytes();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = SingleAddress::from_hex(&hex).unwrap();
+        let address_hex = SingleAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.network(), address.network());
         assert_eq!(address_hex.features(), address.features());
@@ -290,14 +305,14 @@ mod test {
         );
 
         let buff = address.to_bytes();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = SingleAddress::from_hex(&hex).unwrap();
+        let address_hex = SingleAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.network(), address.network());
         assert_eq!(address_hex.features(), address.features());

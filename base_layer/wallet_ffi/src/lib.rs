@@ -1181,7 +1181,7 @@ pub unsafe extern "C" fn tari_address_from_hex(
         }
     }
 
-    let address = TariWalletAddress::from_hex(key_str.as_str());
+    let address = TariWalletAddress::from_base58(key_str.as_str());
     match address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {

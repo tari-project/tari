@@ -132,7 +132,7 @@ impl MergeMiningProxyProcess {
                         ),
                         (
                             "merge_mining_proxy.wallet_payment_address".to_string(),
-                            wallet_payment_address.to_hex(),
+                            wallet_payment_address.to_base58(),
                         ),
                         ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
                         (

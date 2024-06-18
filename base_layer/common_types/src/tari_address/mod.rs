@@ -32,7 +32,6 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_utilities::hex::{from_hex, Hex};
 use thiserror::Error;
 
 use crate::{
@@ -89,6 +88,10 @@ pub enum TariAddressError {
     InvalidEmoji,
     #[error("Cannot recover public key")]
     CannotRecoverPublicKey,
+    #[error("Cannot recover network")]
+    CannotRecoverNetwork,
+    #[error("Cannot recover feature")]
+    CannotRecoverFeature,
     #[error("Could not recover TariAddress from string")]
     InvalidAddressString,
 }
@@ -214,15 +217,31 @@ impl TariAddress {
     }
 
     /// Construct Tari Address from hex
-    pub fn from_hex(hex_str: &str) -> Result<TariAddress, TariAddressError> {
-        let buf = from_hex(hex_str).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        TariAddress::from_bytes(buf.as_slice())
+    pub fn from_base58(hex_str: &str) -> Result<TariAddress, TariAddressError> {
+        if hex_str.len() < 3 {
+            return Err(TariAddressError::InvalidSize);
+        }
+        let (first, rest) = hex_str.split_at(2);
+        let (network, features) = first.split_at(1);
+        let mut network = bs58::decode(network).into_vec().map_err(|_| TariAddressError::CannotRecoverNetwork)?;
+        let mut features = bs58::decode(features).into_vec().map_err(|_| TariAddressError::CannotRecoverFeature)?;
+        if rest.is_empty(){
+            return Err(TariAddressError::CannotRecoverPublicKey);
+        }
+        let mut rest = bs58::decode(rest).into_vec().map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        network.append(&mut features);network.append(&mut rest);
+        Self::from_bytes(network.as_slice())
     }
 
     /// Convert Tari Address to bytes
-    pub fn to_hex(&self) -> String {
-        let buf = self.to_vec();
-        buf.to_hex()
+    pub fn to_base58(&self) -> String {
+        let bytes = self.to_vec();
+        let mut network = bs58::encode(&bytes[0..1]).into_string();
+        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
+        let rest = bs58::encode(&bytes[2..]).into_string();
+        network.push_str(&features);
+        network.push_str(&rest);
+        network
     }
 }
 
@@ -232,7 +251,7 @@ impl FromStr for TariAddress {
     fn from_str(key: &str) -> Result<Self, Self::Err> {
         if let Ok(address) = TariAddress::from_emoji_string(&key.trim().replace('|', "")) {
             Ok(address)
-        } else if let Ok(address) = TariAddress::from_hex(key) {
+        } else if let Ok(address) = TariAddress::from_base58(key) {
             Ok(address)
         } else {
             Err(TariAddressError::InvalidAddressString)
@@ -438,7 +457,7 @@ mod test {
         let address = TariAddress::new_single_address_with_interactive_only(public_key.clone(), Network::Esmeralda);
 
         let buff = address.to_vec();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = TariAddress::from_bytes(&buff);
         assert_eq!(address_buff, Ok(address.clone()));
@@ -448,7 +467,7 @@ mod test {
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
+        let address_hex = TariAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.network(), address.network());
         assert_eq!(address_hex.features(), address.features());
@@ -464,7 +483,7 @@ mod test {
         );
 
         let buff = address.to_vec();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = TariAddress::from_bytes(&buff);
         assert_eq!(address_buff, Ok(address.clone()));
@@ -474,7 +493,7 @@ mod test {
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
+        let address_hex = TariAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.network(), address.network());
         assert_eq!(address_hex.features(), address.features());
@@ -489,7 +508,7 @@ mod test {
         );
 
         let buff = address.to_vec();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = TariAddress::from_bytes(&buff);
         assert_eq!(address_buff, Ok(address.clone()));
@@ -499,7 +518,7 @@ mod test {
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
+        let address_hex = TariAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.network(), address.network());
         assert_eq!(address_hex.features(), address.features());
@@ -521,7 +540,7 @@ mod test {
         );
 
         let buff = address.to_vec();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = TariAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
@@ -529,7 +548,7 @@ mod test {
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
+        let address_hex = TariAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.public_view_key(), address.public_view_key());
         assert_eq!(address_hex.network(), address.network());
@@ -547,7 +566,7 @@ mod test {
         );
 
         let buff = address.to_vec();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = TariAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
@@ -555,7 +574,7 @@ mod test {
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
+        let address_hex = TariAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.public_view_key(), address.public_view_key());
         assert_eq!(address_hex.network(), address.network());
@@ -573,7 +592,7 @@ mod test {
         );
 
         let buff = address.to_vec();
-        let hex = address.to_hex();
+        let hex = address.to_base58();
 
         let address_buff = TariAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
@@ -581,7 +600,7 @@ mod test {
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
+        let address_hex = TariAddress::from_base58(&hex).unwrap();
         assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
         assert_eq!(address_hex.public_view_key(), address.public_view_key());
         assert_eq!(address_hex.network(), address.network());
