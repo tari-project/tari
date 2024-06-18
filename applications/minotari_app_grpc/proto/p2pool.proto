@@ -6,7 +6,7 @@ import "base_node.proto";
 
 service ShaP2Pool {
   rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
-  rpc SubmitBlock(SubmitBlockRequest) returns(SubmitBlockResponse);
+  rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
 }
 
 message GetNewBlockRequest {}
@@ -18,8 +18,4 @@ message GetNewBlockResponse {
 
 message SubmitBlockRequest {
   string wallet_payment_address = 1;
-}
-
-message SubmitBlockResponse {
-  bool success = 1;
 }
