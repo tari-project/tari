@@ -525,7 +525,6 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::SendOneSided(_) => {},
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,

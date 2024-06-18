@@ -184,38 +184,6 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
     spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 }
 
-#[then(expr = "I send one-sided {int} uT from {word} to {word} via command line")]
-async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wallet_b: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
-    let wallet_b_address = wallet_b_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .address
-        .to_hex();
-    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
-
-    let mut cli = get_default_cli();
-
-    let args = SendMinotariArgs {
-        amount: MicroMinotari(amount),
-        message: format!("Send one sided amount {} from {} to {}", amount, wallet_a, wallet_b),
-        destination: wallet_b_address,
-    };
-    cli.command2 = Some(CliCommands::SendOneSided(args));
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-
-    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
-}
-
 #[when(
     expr = "I make-it-rain from {word} rate {int} txns_per_sec duration {int} sec value {int} uT increment {int} uT \
             to {word} via command line"
