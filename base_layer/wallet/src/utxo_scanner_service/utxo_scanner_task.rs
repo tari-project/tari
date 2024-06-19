@@ -226,7 +226,6 @@ where
         ));
 
         let timer = Instant::now();
-
         loop {
             let tip_header = self.get_chain_tip_header(&mut client).await?;
             let tip_header_hash = tip_header.hash();
@@ -563,6 +562,7 @@ where
         height: u64,
     ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
         let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)> = Vec::new();
+        let start = Instant::now();
         found_outputs.append(
             &mut self
                 .resources
@@ -586,6 +586,8 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
+        let scanned_time = start.elapsed();
+        let start = Instant::now();
 
         found_outputs.append(
             &mut self
@@ -612,6 +614,13 @@ where
                     Ok((ro.output, message, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
+        );
+        let one_sided_time = start.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            scanned_time.as_millis(),
+            one_sided_time.as_millis(),
         );
         Ok(found_outputs)
     }

@@ -243,7 +243,7 @@ where
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
+                "sqlite profile - get_imported_key: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()

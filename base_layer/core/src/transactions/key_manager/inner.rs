@@ -242,9 +242,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Derived { branch, label, index } => {
                 let public_alpha = match &self.wallet_type {
                     WalletType::Software(_k, pk) => pk,
-                    WalletType::Ledger(ledger) => ledger.pubkey.as_ref().ok_or(KeyManagerServiceError::LedgerError(
-                        "Key manager set to use ledger, ledger alpha public key missing".to_string(),
-                    ))?,
+                    WalletType::Ledger(ledger) => {
+                        ledger.public_alpha.as_ref().ok_or(KeyManagerServiceError::LedgerError(
+                            "Key manager set to use ledger, ledger alpha public key missing".to_string(),
+                        ))?
+                    },
                 };
                 let km = self
                     .key_managers
@@ -363,11 +365,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         let current_index = km.key_index();
 
-        for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            let private_key = &km.derive_key(i)?.key;
+        // its most likely that the key is close to the current index, so we start searching from the current index
+        for i in 0u64..KEY_MANAGER_MAX_SEARCH_DEPTH {
+            let index = current_index + i;
+            let private_key = &km.derive_key(index)?.key;
             if private_key == key {
-                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
-                return Ok(i);
+                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
+                return Ok(index);
+            }
+            if i <= current_index {
+                let index = current_index - i;
+                let private_key = &km.derive_key(index)?.key;
+                if private_key == key {
+                    trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
+                    return Ok(index);
+                }
             }
         }
 
@@ -418,7 +430,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             KeyId::Derived { branch, label, index } => match &self.wallet_type {
                 WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
-                WalletType::Software(k, _pk) => {
+                WalletType::Software(private_alpha, _pk) => {
                     let km = self
                         .key_managers
                         .get(branch)
@@ -431,7 +443,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
                         KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", label))
                     })?;
-                    let private_key = private_key + k;
+                    let private_key = private_key + private_alpha;
                     Ok(private_key)
                 },
             },
@@ -1218,12 +1230,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.crypto_factories
             .range_proof
             .verify_mask(output.commitment(), &private_key, value.into())?;
-        // Detect the branch we need to scan on for the key.
-        let branch = if output.is_coinbase() {
-            TransactionKeyManagerBranch::Coinbase.get_branch_key()
-        } else {
-            TransactionKeyManagerBranch::CommitmentMask.get_branch_key()
-        };
+        let branch = TransactionKeyManagerBranch::CommitmentMask.get_branch_key();
         let key = match self.find_private_key_index(&branch, &private_key).await {
             Ok(index) => {
                 self.update_current_key_index_if_higher(&branch, index).await?;
