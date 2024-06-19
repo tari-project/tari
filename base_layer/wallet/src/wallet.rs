@@ -31,7 +31,7 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -521,8 +521,8 @@ where
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        range_proof: Option<RangeProof>,
     ) -> Result<TxId, WalletError> {
-        // lets import the private keys
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
@@ -536,6 +536,7 @@ where
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
         );
         self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
             .await
@@ -574,9 +575,10 @@ where
             .await?;
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}, value: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
+            "UTXO (Commitment: {}, value: {}, txID: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
             wallet_output.commitment(&self.key_manager_service).await?.to_hex(),
             wallet_output.value,
+            tx_id,
         );
 
         Ok(tx_id)

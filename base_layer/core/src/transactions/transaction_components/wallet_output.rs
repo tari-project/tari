@@ -71,7 +71,7 @@ pub struct WalletOutput {
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroMinotari,
-    pub rangeproof: Option<RangeProof>,
+    pub range_proof: Option<RangeProof>,
     pub payment_id: PaymentId,
 }
 
@@ -96,7 +96,7 @@ impl WalletOutput {
         payment_id: PaymentId,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
+        let range_proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
             Some(
                 key_manager
                     .construct_range_proof(&spending_key_id, value.into(), minimum_value_promise.into())
@@ -119,8 +119,8 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
             payment_id,
-            rangeproof,
         })
     }
 
@@ -156,7 +156,7 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
-            rangeproof,
+            range_proof: rangeproof,
             payment_id,
         }
     }
@@ -205,7 +205,7 @@ impl WalletOutput {
     ) -> Result<TransactionInput, TransactionError> {
         let value = self.value.into();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
-        let rangeproof_hash = match &self.rangeproof {
+        let rangeproof_hash = match &self.range_proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
         };
@@ -271,7 +271,7 @@ impl WalletOutput {
             self.version,
             self.features.clone(),
             commitment,
-            self.rangeproof.clone(),
+            self.range_proof.clone(),
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),

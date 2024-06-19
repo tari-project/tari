@@ -50,6 +50,7 @@ tari_test_utils = {  path = "../../infrastructure/test_utils"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_core = {  path = "../../base_layer/core", default-features = false, features = ["base_node"] }
 borsh = "1.2"
+env_logger = "0.7.1"
 
 [build-dependencies]
 cbindgen = "0.24.3"

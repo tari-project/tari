@@ -241,6 +241,7 @@ pub struct WhoisArgs {
 pub struct ExportUtxosArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
+    pub with_private_keys: bool,
 }
 
 #[derive(Debug, Args, Clone)]

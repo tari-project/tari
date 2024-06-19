@@ -121,7 +121,7 @@ use tari_common_types::{
     emoji::emoji_set,
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
+    types::{ComAndPubSignature, Commitment, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -206,36 +206,36 @@ mod consts {
 
 const LOG_TARGET: &str = "wallet_ffi";
 
-pub type TariTransportConfig = tari_p2p::TransportConfig;
-pub type TariPublicKey = tari_common_types::types::PublicKey;
-pub type TariWalletAddress = tari_common_types::tari_address::TariAddress;
+pub type TariTransportConfig = TransportConfig;
+pub type TariPublicKey = PublicKey;
+pub type TariWalletAddress = TariAddress;
 pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
-pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
+pub type TariRangeProof = RangeProof;
+pub type TariOutputFeatures = OutputFeatures;
 pub type TariCommsConfig = tari_p2p::P2pConfig;
 pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 pub type TariEncryptedOpenings = tari_core::transactions::transaction_components::EncryptedData;
-pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
-pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
-
+pub type TariComAndPubSignature = ComAndPubSignature;
+pub type TariUnblindedOutput = UnblindedOutput;
 pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
-pub type TariContact = tari_contacts::contacts_service::types::Contact;
-pub type TariCompletedTransaction = minotari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariContact = Contact;
+pub type TariCompletedTransaction = CompletedTransaction;
 pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
-pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
+pub type TariMnemonicLanguage = MnemonicLanguage;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
-pub type TariPendingInboundTransaction = minotari_wallet::transaction_service::storage::models::InboundTransaction;
-pub type TariPendingOutboundTransaction = minotari_wallet::transaction_service::storage::models::OutboundTransaction;
+pub type TariPendingInboundTransaction = InboundTransaction;
+pub type TariPendingOutboundTransaction = OutboundTransaction;
 
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 
@@ -485,7 +485,7 @@ impl TariVector {
     }
 
     #[allow(dead_code)]
-    fn to_utxo_vec(&self) -> Result<Vec<TariUtxo>, InterfaceError> {
+    pub fn to_utxo_vec(&self) -> Result<Vec<TariUtxo>, InterfaceError> {
         if self.tag != TariTypeTag::Utxo {
             return Err(InterfaceError::InvalidArgument(format!(
                 "expecting Utxo, got {}",
@@ -1481,6 +1481,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
     encrypted_data: *mut TariEncryptedOpenings,
     minimum_value_promise: c_ulonglong,
     script_lock_height: c_ulonglong,
+    range_proof: *mut TariRangeProof,
     error_out: *mut c_int,
 ) -> *mut TariUnblindedOutput {
     let mut error = 0;
@@ -1578,6 +1579,16 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
         (*encrypted_data).clone()
     };
 
+    let proof = if range_proof.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("range_proof".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else if *range_proof == TariRangeProof::default() {
+        None
+    } else {
+        Some((*range_proof).clone())
+    };
+
     let unblinded_output = UnblindedOutput::new_current_version(
         amount.into(),
         (*spending_key).clone(),
@@ -1591,6 +1602,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
         covenant,
         encrypted_data,
         minimum_value_promise.into(),
+        proof,
     );
 
     Box::into_raw(Box::new(unblinded_output))
@@ -1796,92 +1808,6 @@ pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOu
     }
 }
 
-/// Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
-/// UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `amount` - The value of the UTXO in MicroMinotari
-/// `spending_key` - The private spending key
-/// `source_address` - The tari address of the source of the transaction
-/// `features` - Options for an output's structure or use
-/// `metadata_signature` - UTXO signature with the script offset private key, k_O
-/// `sender_offset_public_key` - Tari script offset pubkey, K_O
-/// `script_private_key` - Tari script private key, k_S, is used to create the script signature
-/// `covenant` - The covenant that will be executed when spending this output
-/// `message` - The message that the transaction will have
-/// `encrypted_data` - Encrypted data.
-/// `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
-/// transaction is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
-    wallet: *mut TariWallet,
-    output: *mut TariUnblindedOutput,
-    source_address: *mut TariWalletAddress,
-    message: *const c_char,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-    let source_address = if source_address.is_null() {
-        TariWalletAddress::default()
-    } else {
-        (*source_address).clone()
-    };
-    let message_string;
-    if message.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        message_string = CString::new("Imported UTXO")
-            .expect("CString will not fail")
-            .to_str()
-            .expect("CString.toStr() will not fail")
-            .to_owned();
-    } else {
-        match CStr::from_ptr(message).to_str() {
-            Ok(v) => {
-                message_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                message_string = CString::new("Imported UTXO")
-                    .expect("CString will not fail")
-                    .to_str()
-                    .expect("CString.to_str() will not fail")
-                    .to_owned();
-            },
-        }
-    };
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
-            (*output).clone(),
-            source_address,
-            message_string,
-        )) {
-        Ok(tx_id) => tx_id.as_u64(),
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
 /// Get the TariUnblindedOutputs from a TariWallet
 ///
 /// ## Arguments
@@ -1941,8 +1867,91 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
     }
 }
 
+/// Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
+/// UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `output` - The pointer to a TariUnblindedOutput
+/// `range_proof` - The pointer to a TariRangeProof. If the 'range_proof_type' is 'RevealedValue', a default range proof
+///  can be provided.
+/// `source_address` - The tari address of the source of the transaction
+/// `message` - The message that the transaction will have
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
+/// transaction is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
+    wallet: *mut TariWallet,
+    output: *mut TariUnblindedOutput,
+    source_address: *mut TariWalletAddress,
+    message: *const c_char,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    if output.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("output".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    };
+    let source_address = if source_address.is_null() {
+        TariWalletAddress::default()
+    } else {
+        (*source_address).clone()
+    };
+    let message_string;
+    if message.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        message_string = CString::new("Imported UTXO")
+            .expect("CString will not fail")
+            .to_str()
+            .expect("CString.toStr() will not fail")
+            .to_owned();
+    } else {
+        match CStr::from_ptr(message).to_str() {
+            Ok(v) => {
+                message_string = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                message_string = CString::new("Imported UTXO")
+                    .expect("CString will not fail")
+                    .to_str()
+                    .expect("CString.to_str() will not fail")
+                    .to_owned();
+            },
+        }
+    };
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
+            (*output).clone(),
+            source_address,
+            message_string,
+        )) {
+        Ok(tx_id) => tx_id.as_u64(),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
 /// -------------------------------------------------------------------------------------------- ///
-
 /// -------------------------------- Private Key ----------------------------------------------- ///
 
 /// Creates a TariPrivateKey from a ByteVector
@@ -2086,6 +2095,188 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+/// -------------------------------- Range Proof ----------------------------------------------- ///
+
+/// Creates a default TariRangeProof
+///
+/// ## Arguments
+/// None.
+///
+/// ## Returns
+/// `*mut TariRangeProof` - Returns a pointer to a TariRangeProof. Note that it returns ptr::null_mut()
+/// if bytes is null or if there was an error creating the TariRangeProof from bytes
+///
+/// # Safety
+/// The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn range_proof_default() -> *mut TariRangeProof {
+    Box::into_raw(Box::default())
+}
+
+/// Gets a TariRangeProof from a TariUnblindedOutput
+///
+/// ## Arguments
+/// `unblinded_output` - The pointer to a TariUnblindedOutput
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariRangeProof` - Returns a TariRangeProof, note that it returns ptr::null_mut()
+/// if TariUnblindedOutput is null or position is invalid
+///
+/// # Safety
+/// The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
+#[allow(clippy::cast_possible_wrap)]
+#[no_mangle]
+pub unsafe extern "C" fn range_proof_get(
+    unblinded_output: *mut TariUnblindedOutput,
+    error_out: *mut c_int,
+) -> *mut TariRangeProof {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if unblinded_output.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("output_with_proof".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new((*unblinded_output).clone().range_proof.unwrap_or_default()))
+}
+
+/// Creates a TariRangeProof from a ByteVector
+///
+/// ## Arguments
+/// `bytes` - The pointer to a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariRangeProof` - Returns a pointer to a TariRangeProof. Note that it returns ptr::null_mut()
+/// if bytes is null or if there was an error creating the TariRangeProof from bytes
+///
+/// # Safety
+/// The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn range_proof_from_bytes(
+    bytes_ptr: *mut ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariRangeProof {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if bytes_ptr.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let v = (*bytes_ptr).0.clone();
+    let range_proof = TariRangeProof::from_canonical_bytes(&v);
+    match range_proof {
+        Ok(proof) => Box::into_raw(Box::new(proof)),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a TariRangeProof from a char array
+///
+/// ## Arguments
+/// `char_ptr` - The pointer to a char array which is hex encoded
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariRangeProof` - Returns a pointer to a TariRangeProof. Note that it returns ptr::null_mut()
+/// if proof is null or if there was an error creating the TariRangeProof from proof
+///
+/// # Safety
+/// The ```range_proof_destroy``` method must be called when finished with a TariRangeProof to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn range_proof_from_hex(char_ptr: *const c_char, error_out: *mut c_int) -> *mut TariRangeProof {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let proof_hex;
+    if char_ptr.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("proof".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(char_ptr).to_str() {
+            Ok(v) => {
+                proof_hex = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("proof".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+    }
+
+    let range_proof = TariRangeProof::from_hex(proof_hex.as_str());
+
+    match range_proof {
+        Ok(proof) => Box::into_raw(Box::new(proof)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a range proof from Hex: {:?}", e);
+
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Gets a ByteVector from a TariRangeProof
+///
+/// ## Arguments
+/// `proof` - The pointer to a TariRangeProof
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut ByteVectror` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut()
+/// if pk is null
+///
+/// # Safety
+/// The ```byte_vector_destroy``` must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn range_proof_get_bytes(
+    proof_ptr: *mut TariRangeProof,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut bytes = ByteVector(Vec::new());
+    if proof_ptr.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("pk".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        bytes.0 = (*proof_ptr).to_vec();
+    }
+    Box::into_raw(Box::new(bytes))
+}
+
+/// Frees memory for a TariRangeProof
+///
+/// ## Arguments
+/// `proof` - The pointer to a TariRangeProof
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn range_proof_destroy(proof_ptr: *mut TariRangeProof) {
+    if !proof_ptr.is_null() {
+        drop(Box::from_raw(proof_ptr))
     }
 }
 
@@ -8982,27 +9173,32 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::OneSidedUnconfirmed);
-        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
-        lock.scanned_tx_unconfirmed_callback_called = true;
-        let mut error = 0;
-        let error_ptr = &mut error as *mut c_int;
-        let kernel = completed_transaction_get_transaction_kernel(tx, error_ptr);
-        let excess_hex_ptr = transaction_kernel_get_excess_hex(kernel, error_ptr);
-        let excess_hex = CString::from_raw(excess_hex_ptr).to_str().unwrap().to_owned();
-        assert!(!excess_hex.is_empty());
-        let nonce_hex_ptr = transaction_kernel_get_excess_public_nonce_hex(kernel, error_ptr);
-        let nonce_hex = CString::from_raw(nonce_hex_ptr).to_str().unwrap().to_owned();
-        assert!(!nonce_hex.is_empty());
-        let sig_hex_ptr = transaction_kernel_get_excess_signature_hex(kernel, error_ptr);
-        let sig_hex = CString::from_raw(sig_hex_ptr).to_str().unwrap().to_owned();
-        assert!(!sig_hex.is_empty());
-        string_destroy(excess_hex_ptr as *mut c_char);
-        string_destroy(sig_hex_ptr as *mut c_char);
-        string_destroy(nonce_hex_ptr);
-        transaction_kernel_destroy(kernel);
-        drop(lock);
-        completed_transaction_destroy(tx);
+        match (*tx).status {
+            TransactionStatus::Imported => {},
+            TransactionStatus::OneSidedUnconfirmed => {
+                let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+                lock.scanned_tx_unconfirmed_callback_called = true;
+                let mut error = 0;
+                let error_ptr = &mut error as *mut c_int;
+                let kernel = completed_transaction_get_transaction_kernel(tx, error_ptr);
+                let excess_hex_ptr = transaction_kernel_get_excess_hex(kernel, error_ptr);
+                let excess_hex = CString::from_raw(excess_hex_ptr).to_str().unwrap().to_owned();
+                assert!(!excess_hex.is_empty());
+                let nonce_hex_ptr = transaction_kernel_get_excess_public_nonce_hex(kernel, error_ptr);
+                let nonce_hex = CString::from_raw(nonce_hex_ptr).to_str().unwrap().to_owned();
+                assert!(!nonce_hex.is_empty());
+                let sig_hex_ptr = transaction_kernel_get_excess_signature_hex(kernel, error_ptr);
+                let sig_hex = CString::from_raw(sig_hex_ptr).to_str().unwrap().to_owned();
+                assert!(!sig_hex.is_empty());
+                string_destroy(excess_hex_ptr as *mut c_char);
+                string_destroy(sig_hex_ptr as *mut c_char);
+                string_destroy(nonce_hex_ptr);
+                transaction_kernel_destroy(kernel);
+                drop(lock);
+                completed_transaction_destroy(tx);
+            },
+            _ => panic!("Invalid transaction status"),
+        }
     }
 
     unsafe extern "C" fn transaction_send_result_callback(_tx_id: c_ulonglong, status: *mut TransactionSendStatus) {
@@ -11104,6 +11300,7 @@ mod test {
                 .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
                 .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
+            let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
@@ -11127,6 +11324,7 @@ mod test {
                 encrypted_data_ptr,
                 minimum_value_promise,
                 0,
+                range_proof_ptr,
                 error_ptr,
             );
 
@@ -11232,7 +11430,10 @@ mod test {
                 error_ptr,
             );
 
-            // Test the consistent features case
+            let source_address_ptr = Box::into_raw(Box::default());
+            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
+
+            // Test import with bulletproof range proof
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),
@@ -11242,70 +11443,200 @@ mod test {
                     key_manager,
                 ))
                 .unwrap();
-            let amount = utxo_1.value.as_u64();
+            // Test all range proof methods; convenient because we have the data
+            {
+                // - Range proof from hex
+                let proof_char_ptr =
+                    CString::into_raw(CString::new(utxo_1.range_proof.as_ref().unwrap().to_hex()).unwrap())
+                        as *const c_char;
+                let ptr_a = range_proof_from_hex(proof_char_ptr, error_ptr);
+                // - Range proof from bytes
+                let proof_bytes_ptr =
+                    Box::into_raw(Box::new(ByteVector(utxo_1.range_proof.as_ref().unwrap().to_vec())));
+                let ptr_b = range_proof_from_bytes(proof_bytes_ptr, error_ptr);
+                // - Verify
+                let ptr_a_bytes = range_proof_get_bytes(ptr_a, error_ptr);
+                let ptr_b_bytes = range_proof_get_bytes(ptr_b, error_ptr);
+                for i in 0..utxo_1.range_proof.as_ref().unwrap().0.len() {
+                    let byte_a = byte_vector_get_at(ptr_a_bytes, i.try_into().unwrap(), error_ptr);
+                    let byte_b = byte_vector_get_at(ptr_b_bytes, i.try_into().unwrap(), error_ptr);
+                    assert_eq!(byte_a, byte_b);
+                }
+                // - Cleanup
+                string_destroy(proof_char_ptr as *mut c_char);
+                byte_vector_destroy(proof_bytes_ptr);
+                byte_vector_destroy(ptr_a_bytes);
+                byte_vector_destroy(ptr_b_bytes);
+                range_proof_destroy(ptr_a);
+                range_proof_destroy(ptr_b);
+            };
 
+            let amount = utxo_1.value.as_u64();
             let spending_key = runtime
                 .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
                 .unwrap();
             let script_private_key = runtime
                 .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
                 .unwrap();
-            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
-            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let source_address_ptr = Box::into_raw(Box::default());
-            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
-            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
-            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
-            let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
+            let spending_key_ptr_1 = Box::into_raw(Box::new(spending_key));
+            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
+            let features_ptr_1 = Box::into_raw(Box::new(utxo_1.features.clone()));
+            let metadata_signature_ptr_1 = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
+            let sender_offset_public_key_ptr_1 = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
+            let script_private_key_ptr_1 = Box::into_raw(Box::new(script_private_key));
+            let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant.clone()));
+            let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
-            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
-            let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
-            let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
+            let script_ptr_1 = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr_1 =
+                CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
-            let tari_utxo = create_tari_unblinded_output(
+            let tari_utxo_ptr_1 = create_tari_unblinded_output(
                 amount,
-                spending_key_ptr,
-                features_ptr,
-                script_ptr,
-                input_data_ptr,
-                metadata_signature_ptr,
-                sender_offset_public_key_ptr,
-                script_private_key_ptr,
-                covenant_ptr,
-                encrypted_data_ptr,
+                spending_key_ptr_1,
+                features_ptr_1,
+                script_ptr_1,
+                input_data_ptr_1,
+                metadata_signature_ptr_1,
+                sender_offset_public_key_ptr_1,
+                script_private_key_ptr_1,
+                covenant_ptr_1,
+                encrypted_data_ptr_1,
                 minimum_value_promise,
                 0,
+                proof_ptr_1,
                 error_ptr,
             );
-            let tx_id = wallet_import_external_utxo_as_non_rewindable(
+            let tx_id_1 = wallet_import_external_utxo_as_non_rewindable(
                 wallet_ptr,
-                tari_utxo,
+                tari_utxo_ptr_1,
                 source_address_ptr,
                 message_ptr,
                 error_ptr,
             );
 
             assert_eq!(error, 0);
-            assert!(tx_id > 0);
+            assert!(tx_id_1 > 0);
 
-            let outputs = wallet_get_unspent_outputs(wallet_ptr, error_ptr);
-            assert_eq!((*outputs).0.len(), 0);
-            assert_eq!(unblinded_outputs_get_length(outputs, error_ptr), 0);
+            // Test import with revealed value range proof
+            let features = OutputFeatures {
+                version: OutputFeaturesVersion::V0,
+                output_type: Default::default(),
+                maturity: 0,
+                coinbase_extra: vec![],
+                sidechain_feature: None,
+                range_proof_type: RangeProofType::RevealedValue,
+            };
+            let utxo_2 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    features,
+                    &runtime.block_on(TestParams::new(key_manager)),
+                    MicroMinotari(12345u64),
+                    key_manager,
+                ))
+                .unwrap();
+
+            let amount = utxo_2.value.as_u64();
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_2.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_2.script_key_id))
+                .unwrap();
+            let spending_key_ptr_2 = Box::into_raw(Box::new(spending_key));
+            let features_ptr_2 = Box::into_raw(Box::new(utxo_2.features.clone()));
+            let proof_ptr_2 = range_proof_default();
+            let metadata_signature_ptr_2 = Box::into_raw(Box::new(utxo_2.metadata_signature.clone()));
+            let sender_offset_public_key_ptr_2 = Box::into_raw(Box::new(utxo_2.sender_offset_public_key.clone()));
+            let script_private_key_ptr_2 = Box::into_raw(Box::new(script_private_key));
+            let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant.clone()));
+            let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data));
+            let minimum_value_promise = utxo_2.minimum_value_promise.as_u64();
+            let script_ptr_2 = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let input_data_ptr_2 =
+                CString::into_raw(CString::new(utxo_2.input_data.to_hex()).unwrap()) as *const c_char;
+
+            let tari_utxo_ptr_2 = create_tari_unblinded_output(
+                amount,
+                spending_key_ptr_2,
+                features_ptr_2,
+                script_ptr_2,
+                input_data_ptr_2,
+                metadata_signature_ptr_2,
+                sender_offset_public_key_ptr_2,
+                script_private_key_ptr_2,
+                covenant_ptr_2,
+                encrypted_data_ptr_2,
+                minimum_value_promise,
+                0,
+                proof_ptr_2,
+                error_ptr,
+            );
+            let tx_id_2 = wallet_import_external_utxo_as_non_rewindable(
+                wallet_ptr,
+                tari_utxo_ptr_2,
+                source_address_ptr,
+                message_ptr,
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+            assert!(tx_id_2 > 0);
+
+            let outputs_vec = wallet_get_all_utxos(wallet_ptr, error_ptr);
+            let outputs = (*outputs_vec).to_utxo_vec().unwrap();
+            assert_eq!(outputs.len(), 2);
+
+            let unspent_outputs_ptr = wallet_get_unspent_outputs(wallet_ptr, error_ptr);
+            let unblinded_output_ptr_1 = unblinded_outputs_get_at(unspent_outputs_ptr, 0, error_ptr);
+            let range_proof_ptr_1 = range_proof_get(unblinded_output_ptr_1, error_ptr);
+            let unblinded_output_ptr_2 = unblinded_outputs_get_at(unspent_outputs_ptr, 1, error_ptr);
+            let range_proof_ptr_2 = range_proof_get(unblinded_output_ptr_2, error_ptr);
+
+            assert_eq!((*tari_utxo_ptr_1).spending_key, (*unblinded_output_ptr_1).spending_key);
+            assert_eq!(
+                (*tari_utxo_ptr_1).encrypted_data,
+                (*unblinded_output_ptr_1).encrypted_data
+            );
+            assert_eq!((*proof_ptr_1).0, (*range_proof_ptr_1).0);
+            assert_eq!((*tari_utxo_ptr_2).spending_key, (*unblinded_output_ptr_2).spending_key);
+            assert_eq!(
+                (*tari_utxo_ptr_2).encrypted_data,
+                (*unblinded_output_ptr_2).encrypted_data
+            );
+            assert_eq!((*proof_ptr_2).0, (*range_proof_ptr_2).0);
 
             // Cleanup
-            tari_unblinded_output_destroy(tari_utxo);
-            unblinded_outputs_destroy(outputs);
+            string_destroy(script_ptr_1 as *mut c_char);
+            string_destroy(input_data_ptr_1 as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr_1);
+            let _script_private_key = Box::from_raw(script_private_key_ptr_1);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr_1);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr_1);
+            let _features = Box::from_raw(features_ptr_1);
+            range_proof_destroy(proof_ptr_1);
+            let _spending_key = Box::from_raw(spending_key_ptr_1);
+            tari_unblinded_output_destroy(tari_utxo_ptr_1);
+            range_proof_destroy(range_proof_ptr_1);
+            tari_unblinded_output_destroy(unblinded_output_ptr_1);
+
+            string_destroy(script_ptr_2 as *mut c_char);
+            string_destroy(input_data_ptr_2 as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr_2);
+            let _script_private_key = Box::from_raw(script_private_key_ptr_2);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr_2);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr_2);
+            let _features = Box::from_raw(features_ptr_2);
+            range_proof_destroy(proof_ptr_2);
+            let _spending_key = Box::from_raw(spending_key_ptr_2);
+            tari_unblinded_output_destroy(tari_utxo_ptr_2);
+            range_proof_destroy(range_proof_ptr_2);
+            tari_unblinded_output_destroy(unblinded_output_ptr_2);
+
             string_destroy(message_ptr as *mut c_char);
-            string_destroy(script_ptr as *mut c_char);
-            string_destroy(input_data_ptr as *mut c_char);
-            let _covenant = Box::from_raw(covenant_ptr);
-            let _script_private_key = Box::from_raw(script_private_key_ptr);
-            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
-            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
-            let _features = Box::from_raw(features_ptr);
             let _source_address = Box::from_raw(source_address_ptr);
-            let _spending_key = Box::from_raw(spending_key_ptr);
+            unblinded_outputs_destroy(unspent_outputs_ptr);
 
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
             string_destroy(base_node_peer_address_ptr as *mut c_char);
@@ -11346,6 +11677,7 @@ mod test {
                 .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
                 .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
+            let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
@@ -11371,6 +11703,7 @@ mod test {
                 encrypted_data_ptr,
                 minimum_value_promise,
                 0,
+                proof_ptr_1,
                 error_ptr,
             );
             let json_string = tari_unblinded_output_to_json(tari_utxo, error_ptr);

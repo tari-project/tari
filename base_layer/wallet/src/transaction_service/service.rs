@@ -2906,7 +2906,11 @@ where
             payment_id,
         )?;
         let transaction_event = match import_status {
-            ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
+            ImportStatus::Imported => TransactionEvent::DetectedTransactionUnconfirmed {
+                tx_id,
+                num_confirmations: 0,
+                is_valid: true,
+            },
             ImportStatus::OneSidedUnconfirmed | ImportStatus::CoinbaseUnconfirmed => {
                 TransactionEvent::DetectedTransactionUnconfirmed {
                     tx_id,
