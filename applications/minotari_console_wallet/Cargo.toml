@@ -87,9 +87,9 @@ features = ["crossterm"]
 tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.14" }
 
 [features]
-default = ["libtor"]
+default = ["libtor", "ledger"]
 grpc = []
-ledger = ["ledger-transport-hid", "minotari_ledger_wallet_comms"]
+ledger = ["ledger-transport-hid", "minotari_ledger_wallet_comms", "tari_common_types/ledger"]
 libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]
