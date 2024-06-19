@@ -480,6 +480,7 @@ mod test {
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn clap_parses_user_defined_commands_as_expected() {
         let script = "
             # Beginning of script file
@@ -496,6 +497,57 @@ mod test {
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
             create-key-pair --key-branch pie
+
+            create-aggregate-signature-utxo --amount 125T --m 2 --n 3 --fee-per-gram 1 --message ff \
+                --public-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --public-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
+
+            encumber-aggregate-utxo \
+                --fee-per-gram 1 \
+                --output-hash f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --wallet-script-secret-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
+                --script-pubkeys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --script-pubkeys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --offset-pubkeys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --offset-pubkeys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --script-signature-nonces=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --script-signature-nonces=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --metadata-signature-nonces=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --metadata-signature-nonces=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c
+
+            spend-aggregate-utxo \
+                --tx-id 12345678 \
+                --meta-signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --meta-signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
+                --script-signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --script-signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
+                --script-offset-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --script-offset-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
+
+            sign-message \
+                --private-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
+                --challenge f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
+
+            create-script-sig \
+                --secret-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
+                --secret-nonce 3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03 \
+                --input-script ae010268593ed2d36a2d95f0ffe0f41649b97cc36fc4ef0c8ecd6bd28f9d56c76b793b08691435a5c813578f8a7f4973166dc1c6c15f37aec2a7d65b1583c8b2129364c916d5986a0c1b3dac7d6efb94bed688ba52fa8b962cf27c0446e2fea6d66a04 \
+                --input-stack 050857c14f72cf885aac9f08c9484cb7cb06b6cc20eab68c9bee1e8d5a85649b0a6d31c5cc49afc1e03ebbcf55c82f47e8cbc796c33e96c17a31eab027ee821f00 \
+                --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --total-script-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67
+
+            create-meta-sig \
+                --secret-script-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
+                --secret-offset-key 3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03 \
+                --secret-nonce 3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908 \
+                --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --total-meta-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
@@ -517,6 +569,12 @@ mod test {
         let mut send_tari = false;
         let mut burn_tari = false;
         let mut create_key_pair = false;
+        let mut create_aggregate_signature_utxo = false;
+        let mut encumber_aggregate_utxo = false;
+        let mut spend_aggregate_utxo = false;
+        let mut sign_message = false;
+        let mut create_script_sig = false;
+        let mut create_meta_sig = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -529,7 +587,12 @@ mod test {
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
                 CliCommands::CreateKeyPair(_) => create_key_pair = true,
-                CliCommands::SendOneSided(_) => {},
+                CliCommands::CreateAggregateSignatureUtxo(_) => create_aggregate_signature_utxo = true,
+                CliCommands::EncumberAggregateUtxo(_) => encumber_aggregate_utxo = true,
+                CliCommands::SpendAggregateUtxo(_) => spend_aggregate_utxo = true,
+                CliCommands::SignMessage(_) => sign_message = true,
+                CliCommands::CreateScriptSig(_) => create_script_sig = true,
+                CliCommands::CreateMetaSig(_) => create_meta_sig = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
@@ -564,6 +627,12 @@ mod test {
                 send_tari &&
                 burn_tari &&
                 create_key_pair &&
+                create_aggregate_signature_utxo &&
+                encumber_aggregate_utxo &&
+                spend_aggregate_utxo &&
+                sign_message &&
+                create_script_sig &&
+                create_meta_sig &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&

@@ -49,6 +49,7 @@ pub struct WalletOutputBuilder {
     spending_key_id: TariKeyId,
     features: OutputFeatures,
     script: Option<TariScript>,
+    script_lock_height: u64,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
     script_key_id: Option<TariKeyId>,
@@ -71,6 +72,7 @@ impl WalletOutputBuilder {
             spending_key_id,
             features: OutputFeatures::default(),
             script: None,
+            script_lock_height: 0,
             covenant: Covenant::default(),
             input_data: None,
             script_key_id: None,
@@ -97,6 +99,11 @@ impl WalletOutputBuilder {
 
     pub fn with_script(mut self, script: TariScript) -> Self {
         self.script = Some(script);
+        self
+    }
+
+    pub fn with_script_lock_height(mut self, height: u64) -> Self {
+        self.script_lock_height = height;
         self
     }
 
@@ -222,7 +229,7 @@ impl WalletOutputBuilder {
                 .ok_or_else(|| TransactionError::BuilderError("sender_offset_public_key must be set".to_string()))?,
             self.metadata_signature
                 .ok_or_else(|| TransactionError::BuilderError("metadata_signature must be set".to_string()))?,
-            0,
+            self.script_lock_height,
             self.covenant,
             self.encrypted_data,
             self.minimum_value_promise,

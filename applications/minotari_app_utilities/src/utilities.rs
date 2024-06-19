@@ -28,10 +28,10 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
-    types::{BlockHash, PublicKey},
+    types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
@@ -137,6 +137,28 @@ impl TryFrom<UniNodeId> for PublicKey {
             UniNodeId::TariAddress(tari_address) => Ok(tari_address.public_spend_key().clone()),
             UniNodeId::NodeId(_) => Err(UniIdError::Nonconvertible),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UniSignature(Signature);
+
+impl FromStr for UniSignature {
+    type Err = HexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let data = s.split(',').collect::<Vec<_>>();
+        let signature = PrivateKey::from_hex(data[0])?;
+        let public_nonce = PublicKey::from_hex(data[1])?;
+
+        let signature = Signature::new(public_nonce, signature);
+        Ok(Self(signature))
+    }
+}
+
+impl From<UniSignature> for Signature {
+    fn from(id: UniSignature) -> Self {
+        id.0
     }
 }
 

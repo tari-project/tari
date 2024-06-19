@@ -186,6 +186,14 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn get_script_signature_from_challenge(
+        &self,
+        script_key_id: &TariKeyId,
+        spend_key_id: &TariKeyId,
+        value: &PrivateKey,
+        challenge: &[u8; 64],
+    ) -> Result<ComAndPubSignature, TransactionError>;
+
     async fn get_partial_txo_kernel_signature(
         &self,
         spend_key_id: &TariKeyId,

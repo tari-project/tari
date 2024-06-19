@@ -28,7 +28,10 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
-use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use minotari_app_utilities::{
+    common_cli_args::CommonCliArgs,
+    utilities::{UniPublicKey, UniSignature},
+};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
@@ -117,7 +120,12 @@ pub enum CliCommands {
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
     CreateKeyPair(CreateKeyPairArgs),
-    SendOneSided(SendMinotariArgs),
+    CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
+    EncumberAggregateUtxo(EncumberAggregateUtxoArgs),
+    SpendAggregateUtxo(SpendAggregateUtxoArgs),
+    SignMessage(SignMessageArgs),
+    CreateScriptSig(CreateScriptSigArgs),
+    CreateMetaSig(CreateMetaSigArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -161,9 +169,104 @@ pub struct BurnMinotariArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct CreateKeyPairArgs {
-    #[clap(short, long, default_value = "Burn funds")]
+    #[clap(long)]
     pub key_branch: String,
 }
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateAggregateSignatureUtxoArgs {
+    #[clap(long)]
+    pub amount: MicroMinotari,
+    #[clap(long)]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub n: u8,
+    #[clap(long)]
+    pub m: u8,
+    #[clap(long)]
+    pub message: String,
+    #[clap(long)]
+    pub public_keys: Vec<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignMessageArgs {
+    #[clap(long)]
+    pub private_key: String,
+    #[clap(long)]
+    pub challenge: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct EncumberAggregateUtxoArgs {
+    #[clap(long)]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub output_hash: String,
+    #[clap(long)]
+    pub wallet_script_secret_key: String,
+    #[clap(long)]
+    pub script_pubkeys: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub offset_pubkeys: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub script_signature_nonces: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub metadata_signature_nonces: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub signatures: Vec<UniSignature>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SpendAggregateUtxoArgs {
+    #[clap(long)]
+    pub tx_id: u64,
+    #[clap(long)]
+    pub meta_signatures: Vec<UniSignature>,
+    #[clap(long)]
+    pub script_signatures: Vec<UniSignature>,
+    #[clap(long)]
+    pub script_offset_keys: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateScriptSigArgs {
+    #[clap(long)]
+    pub secret_key: String,
+    #[clap(long)]
+    pub secret_nonce: String,
+    #[clap(long)]
+    pub input_script: String,
+    #[clap(long)]
+    pub input_stack: String,
+    #[clap(long)]
+    pub ephemeral_commitment: String,
+    #[clap(long)]
+    pub ephemeral_pubkey: String,
+    #[clap(long)]
+    pub total_script_key: UniPublicKey,
+    #[clap(long)]
+    pub commitment: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateMetaSigArgs {
+    #[clap(long)]
+    pub secret_script_key: String,
+    #[clap(long)]
+    pub secret_offset_key: String,
+    #[clap(long)]
+    pub secret_nonce: String,
+    #[clap(long)]
+    pub ephemeral_commitment: String,
+    #[clap(long)]
+    pub ephemeral_pubkey: String,
+    #[clap(long)]
+    pub total_meta_key: UniPublicKey,
+    #[clap(long)]
+    pub commitment: String,
+}
+
 #[derive(Debug, Args, Clone)]
 pub struct MakeItRainArgs {
     pub destination: TariAddress,

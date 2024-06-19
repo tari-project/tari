@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, HashOutput, PublicKey},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
@@ -59,6 +59,17 @@ pub enum OutputManagerRequest {
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     ConfirmPendingTransaction(TxId),
+    EncumberAggregateUtxo {
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    },
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroMinotari,
@@ -141,6 +152,11 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
+            EncumberAggregateUtxo { tx_id, output_hash, .. } => write!(
+                f,
+                "Encumber aggregate utxo with tx_id: {} and output_hash: {}",
+                tx_id, output_hash
+            ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { message, .. } => write!(f, "PrepareToSendTransaction ({})", message),
@@ -214,6 +230,7 @@ pub enum OutputManagerResponse {
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
+    EncumberAggregateUtxo((Transaction, MicroMinotari, MicroMinotari, PublicKey)),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
@@ -713,6 +730,40 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CreatePayToSelfWithOutputs { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::EncumberAggregateUtxo {
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            })
+            .await??
+        {
+            OutputManagerResponse::EncumberAggregateUtxo((transaction, amount, fee, total_script_key)) => {
+                Ok((transaction, amount, fee, total_script_key))
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

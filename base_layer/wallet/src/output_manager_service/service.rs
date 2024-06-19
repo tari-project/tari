@@ -30,7 +30,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
@@ -229,6 +229,30 @@ where
                 .add_output(Some(tx_id), *uo, spend_priority)
                 .await
                 .map(|_| OutputManagerResponse::OutputAdded),
+            OutputManagerRequest::EncumberAggregateUtxo {
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            } => self
+                .encumber_aggregate_utxo(
+                    tx_id,
+                    fee_per_gram,
+                    output_hash,
+                    signatures,
+                    total_script_pubkey,
+                    total_offset_pubkey,
+                    total_signature_nonce,
+                    metadata_signature_nonce,
+                    wallet_script_secret_key,
+                )
+                .await
+                .map(OutputManagerResponse::EncumberAggregateUtxo),
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
                 .await
@@ -1123,6 +1147,152 @@ where
         stp.finalize(&self.resources.key_manager).await?;
 
         Ok((tx_id, stp.into_transaction()?))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        _tx_id: TxId,
+        _fee_per_gram: MicroMinotari,
+        _output_hash: String,
+        _signatures: Vec<Signature>,
+        _total_script_pubkey: PublicKey,
+        _total_offset_pubkey: PublicKey,
+        _total_signature_nonce: PublicKey,
+        _metadata_signature_nonce: PublicKey,
+        _wallet_script_secret_key: String,
+    ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
+        unimplemented!("encumber_aggregate_utxo");
+
+        // let script = script!(Nop);
+        // let covenant = Covenant::default();
+        // let output_features = OutputFeatures::default();
+        //
+        // let metadata_byte_size = self
+        //     .resources
+        //     .consensus_constants
+        //     .transaction_weight_params()
+        //     .round_up_features_and_scripts_size(
+        //         output_features.get_serialized_size()? +
+        //             script.get_serialized_size()? +
+        //             covenant.get_serialized_size()?,
+        //     );
+        //
+        // let output_hash =
+        //     FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+        // let db_input = self.resources.db.get_unspent_output(output_hash)?;
+        // let mut input: WalletOutput = db_input.clone().into();
+        //
+        // let mut script_signatures = Vec::new();
+        //
+        // for signature in &signatures {
+        //     script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(signature.get_public_nonce().
+        // clone(), signature.get_signature().clone()))); }
+        // input.input_data = ExecutionStack::new(script_signatures);
+        //
+        // let wallet_script_secret_key = PrivateKey::from_hex(&wallet_script_secret_key)
+        //     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+        // let total_script_key = PublicKey::from_secret_key(&wallet_script_secret_key) + &total_script_pubkey;
+        // input.script_key_id = self.resources.key_manager.import_key(wallet_script_secret_key).await?;
+        //
+        // let offset = PrivateKey::random(&mut OsRng);
+        // let nonce = PrivateKey::random(&mut OsRng);
+        // let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        //
+        // // Create builder with no recipients (other than ourselves)
+        // let mut builder = SenderTransactionProtocol::builder(self.resources.consensus_constants.clone(),
+        // self.resources.key_manager.clone()); builder
+        //     .with_fee_per_gram(fee_per_gram)
+        //     // .with_offset(offset.clone())
+        //     // .with_private_nonce(nonce.clone())
+        //     // .with_rewindable_outputs(self.resources.rewind_data.clone())
+        //     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+        //     .with_kernel_features(KernelFeatures::empty())
+        //     .with_tx_id(tx_id)
+        //     .with_lock_height(0)
+        //     // TODO: The input to this function has changed; it needs a `WalletOutput`, not a `TransactionInput`
+        //     .with_input(
+        //         input.clone().as_transaction_input_with_partial_signature(
+        //             &self.resources.factories.commitment,
+        //             total_script_pubkey,
+        //             total_signature_nonce,
+        //             &()
+        //         )?).await?;
+        //
+        //
+        //
+        // let fee = self.get_fee_calc();
+        // let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
+        // let amount = input.value - fee;
+        //
+        // let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        // let encrypted_value = EncryptedValue::default();
+        // let minimum_amount_promise = MicroTari::zero();
+        // let metadata_signature = TransactionOutput::create_metadata_signature(
+        //     TransactionOutputVersion::get_current_version(),
+        //     amount,
+        //     &spending_key,
+        //     &script,
+        //     &output_features,
+        //     &(&total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key)),
+        //     Some(&metadata_signature_nonce),
+        //     Some(&sender_offset_private_key),
+        //     &covenant,
+        //     &encrypted_value,
+        //     minimum_amount_promise,
+        // )?;
+        //
+        // let metadata_signature = ComSignature::new(
+        //     metadata_signature.public_nonce() + &metadata_signature_nonce,
+        //     metadata_signature.u().clone(),
+        //     metadata_signature.v().clone(),
+        // );
+        // let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
+        //     UnblindedOutput::new_current_version(
+        //         amount,
+        //         spending_key,
+        //         output_features,
+        //         script,
+        //         inputs!(PublicKey::from_secret_key(&script_private_key)),
+        //         script_private_key,
+        //         &total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key),
+        //         metadata_signature,
+        //         u64::MAX,
+        //         covenant,
+        //         encrypted_value,
+        //         minimum_amount_promise,
+        //     ),
+        //     &self.resources.factories,
+        //     &self.resources.rewind_data,
+        //     None,
+        //     None,
+        //     OutputSource::default(),
+        // )?;
+        // builder
+        //     .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
+        //     .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        // let factories = CryptoFactories::default();
+        // let mut stp = builder
+        //     .build(
+        //         &self.resources.factories,
+        //         None,
+        //         self.last_seen_tip_height.unwrap_or(u64::MAX),
+        //     )
+        //     .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        //
+        // trace!(
+        //     target: LOG_TARGET,
+        //     "Encumber send to self transaction ({}) outputs.",
+        //     tx_id
+        // );
+        // self.resources.db.encumber_outputs(tx_id, vec![db_input], vec![utxo])?;
+        //
+        // trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        //
+        // stp.finalize(&self.resources.key_manager).await?;
+        // let tx = stp.take_transaction()?;
+        //
+        // Ok((tx, amount, fee, total_script_key))
     }
 
     async fn create_pay_to_self_transaction(

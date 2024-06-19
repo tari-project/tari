@@ -28,8 +28,18 @@ use std::{
     fmt::{Debug, Formatter},
 };
 
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
+use tari_common_types::types::{
+    ComAndPubSignature,
+    Commitment,
+    CommitmentFactory,
+    FixedHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
@@ -233,6 +243,65 @@ impl WalletOutput {
                 metadata_signature: self.metadata_signature.clone(),
                 rangeproof_hash,
                 minimum_value_promise: self.minimum_value_promise,
+            },
+            self.input_data.clone(),
+            script_signature,
+        ))
+    }
+
+    /// It creates a transaction input given a partial script signature. The public keys
+    /// `partial_script_public_key` and `partial_total_nonce` exclude caller's private keys
+    pub async fn as_transaction_input_with_partial_signature<KM: TransactionKeyManagerInterface>(
+        &self,
+        factory: &CommitmentFactory,
+        partial_script_public_key: PublicKey,
+        partial_total_nonce: PublicKey,
+        key_manager: &KM,
+    ) -> Result<TransactionInput, TransactionError> {
+        let value = self.value.into();
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+
+        let version = TransactionInputVersion::get_current_version();
+        let script_nonce_a = PrivateKey::random(&mut OsRng);
+        let script_nonce_b = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
+        // TODO: Is this correct? It seems `PublicKey::default()` should be repalced with some non-default value
+        let ephemeral_pubkey = PublicKey::default() + &partial_total_nonce;
+        let script_public_key =
+            key_manager.get_public_key_at_key_id(&self.script_key_id).await? + &partial_script_public_key;
+        let challenge = TransactionInput::build_script_signature_challenge(
+            &version,
+            &ephemeral_commitment,
+            &ephemeral_pubkey,
+            &self.script,
+            &self.input_data,
+            &script_public_key,
+            &commitment,
+        );
+        let script_signature = key_manager
+            .get_script_signature_from_challenge(&self.script_key_id, &self.spending_key_id, &value, &challenge)
+            .await?;
+        // TODO: Is this correct? `partial_total_nonce` is already added to `ephemeral_pubkey` above
+        let script_signature = ComAndPubSignature::new(
+            script_signature.ephemeral_commitment().clone(),
+            script_signature.ephemeral_pubkey().clone() + &partial_total_nonce,
+            script_signature.u_a().clone(),
+            script_signature.u_x().clone(),
+            script_signature.u_y().clone(),
+        );
+
+        Ok(TransactionInput::new_current_version(
+            SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
+                encrypted_data: Default::default(),
+                metadata_signature: Default::default(),
+                version: self.version,
+                minimum_value_promise: self.minimum_value_promise,
+                rangeproof_hash: Default::default(),
             },
             self.input_data.clone(),
             script_signature,

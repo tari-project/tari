@@ -32,7 +32,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -53,6 +53,7 @@ use tari_core::{
     },
 };
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
@@ -98,6 +99,30 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+    },
+    CreateNMUtxo {
+        amount: MicroMinotari,
+        fee_per_gram: MicroMinotari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    },
+    EncumberAggregateUtxo {
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    },
+    FinalizeSentAggregateTransaction {
+        tx_id: u64,
+        total_meta_data_signature: Signature,
+        total_script_data_signature: Signature,
+        script_offset: PrivateKey,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
@@ -165,6 +190,7 @@ pub enum TransactionServiceRequest {
 }
 
 impl fmt::Display for TransactionServiceRequest {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
@@ -186,6 +212,53 @@ impl fmt::Display for TransactionServiceRequest {
                 amount, destination, message
             ),
             Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
+            Self::CreateNMUtxo {
+                amount,
+                fee_per_gram: _,
+                n,
+                m,
+                public_keys: _,
+                message: _,
+            } => f.write_str(&format!(
+                "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
+                amount, n, m
+            )),
+            Self::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                ..
+            } => f.write_str(&format!(
+                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, signatures = {:?}, \
+                 total_script_pubkey = {}, total_offset_pubkey = {}, total_signature_nonce = {}, \
+                 metadata_signature_nonce = {}",
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey.to_hex(),
+                total_offset_pubkey.to_hex(),
+                total_signature_nonce.to_hex(),
+                metadata_signature_nonce.to_hex(),
+            )),
+            Self::FinalizeSentAggregateTransaction {
+                tx_id,
+                total_meta_data_signature,
+                total_script_data_signature,
+                script_offset,
+            } => f.write_str(&format!(
+                "Finalizing encumbered n-of-m tx(#{}) with: meta_sig(sig: {}, nonce: {}), script_sig(sig: {}, nonce: \
+                 {}) and script_offset: {}",
+                tx_id,
+                total_meta_data_signature.get_signature().to_hex(),
+                total_meta_data_signature.get_public_nonce().to_hex(),
+                total_script_data_signature.get_signature().to_hex(),
+                total_script_data_signature.get_public_nonce().to_hex(),
+                script_offset.to_hex(),
+            )),
             Self::RegisterValidatorNode {
                 validator_node_public_key,
                 message,
@@ -254,6 +327,8 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
+    TransactionSentWithOutputHash(TxId, FixedHash),
+    EncumberAggregateUtxo(TxId, Box<Transaction>, Box<PublicKey>),
     TransactionImported(TxId),
     BurntTransactionSent {
         tx_id: TxId,
@@ -590,6 +665,86 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, *proof)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_aggregate_signature_utxo(
+        &mut self,
+        amount: MicroMinotari,
+        fee_per_gram: MicroMinotari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash) => Ok((tx_id, output_hash)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        signatures: Vec<Signature>,
+        total_script_pubkey: PublicKey,
+        total_offset_pubkey: PublicKey,
+        total_signature_nonce: PublicKey,
+        metadata_signature_nonce: PublicKey,
+        wallet_script_secret_key: String,
+    ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                signatures,
+                total_script_pubkey,
+                total_offset_pubkey,
+                total_signature_nonce,
+                metadata_signature_nonce,
+                wallet_script_secret_key,
+            })
+            .await??
+        {
+            TransactionServiceResponse::EncumberAggregateUtxo(tx_id, transaction, total_script_key) => {
+                Ok((tx_id, *transaction, *total_script_key))
+            },
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn finalize_aggregate_utxo(
+        &mut self,
+        tx_id: u64,
+        total_meta_data_signature: Signature,
+        total_script_data_signature: Signature,
+        script_offset: PrivateKey,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::FinalizeSentAggregateTransaction {
+                tx_id,
+                total_meta_data_signature,
+                total_script_data_signature,
+                script_offset,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
