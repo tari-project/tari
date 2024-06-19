@@ -29,6 +29,7 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
+use zeroize::Zeroizing;
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
@@ -274,6 +275,11 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
+
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(Zeroizing<PrivateKey>, PublicKey), KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]

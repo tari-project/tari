@@ -63,6 +63,7 @@ use tari_key_manager::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::RwLock;
+use zeroize::Zeroizing;
 
 const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
 const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
@@ -177,6 +178,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         };
         let key = self.get_public_key_at_key_id(&key_id).await?;
         Ok((key_id, key))
+    }
+
+    pub async fn create_key_pair(
+        &mut self,
+        branch: &str,
+    ) -> Result<(Zeroizing<PrivateKey>, PublicKey), KeyManagerServiceError> {
+        self.add_key_manager_branch(branch)?;
+        let (key_id, public_key) = self.get_next_key(branch).await?;
+        let private_key = Zeroizing::new(self.get_private_key(&key_id).await?);
+        Ok((private_key, public_key))
     }
 
     pub async fn get_static_key(&self, branch: &str) -> Result<TariKeyId, KeyManagerServiceError> {

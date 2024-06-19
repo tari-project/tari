@@ -63,6 +63,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
+    key_manager::TransactionKeyManagerInterface,
     tari_amount::{uT, MicroMinotari, Minotari},
     transaction_components::{
         encrypted_data::PaymentId,
@@ -617,6 +618,7 @@ pub async fn command_runner(
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
+    let key_manager_service = wallet.key_manager_service.clone();
     let mut online = false;
 
     let mut tx_ids = Vec::new();
@@ -675,6 +677,18 @@ pub async fn command_runner(
                     },
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
+            },
+            CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
+                Ok((sk, pk)) => {
+                    println!(
+                        "New key pair:
+                                1. secret key: {},
+                                2. public key: {}",
+                        sk.to_hex(),
+                        pk.to_hex()
+                    )
+                },
+                Err(e) => eprintln!("CreateKeyPair error! {}", e),
             },
             SendMinotari(args) => {
                 match send_tari(

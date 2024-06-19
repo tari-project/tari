@@ -40,6 +40,7 @@ use tari_key_manager::{
     },
 };
 use tokio::sync::RwLock;
+use zeroize::Zeroizing;
 
 use crate::transactions::{
     key_manager::{
@@ -478,6 +479,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
+            .await
+    }
+
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(Zeroizing<PrivateKey>, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .write()
+            .await
+            .create_key_pair(&branch.into())
             .await
     }
 }
