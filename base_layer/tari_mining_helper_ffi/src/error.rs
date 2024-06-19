@@ -49,6 +49,7 @@ pub enum InterfaceError {
 /// This struct is meant to hold an error for use by Miningcore. The error has an integer code and string
 /// message
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MiningHelperError {
     pub code: i32,
     pub message: String,

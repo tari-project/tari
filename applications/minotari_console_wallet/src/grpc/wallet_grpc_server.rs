@@ -142,6 +142,7 @@ pub struct WalletGrpcServer {
 }
 
 impl WalletGrpcServer {
+    #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self { wallet, rules })
