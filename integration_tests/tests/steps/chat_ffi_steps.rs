@@ -48,7 +48,7 @@ async fn chat_ffi_client_connected_to_base_node(world: &mut TariWorld, name: Str
 async fn sideloaded_chat_ffi_client_connected_to_wallet(world: &mut TariWorld, chat_name: String, wallet_name: String) {
     let wallet = world.get_ffi_wallet(&wallet_name).unwrap();
     let address = world.get_wallet_address(&wallet_name).await.unwrap();
-    let address = TariAddress::from_hex(&address).unwrap();
+    let address = TariAddress::from_base58(&address).unwrap();
     let client = sideload_ffi_chat_client(address, wallet.base_dir.clone(), wallet.contacts_handle()).await;
     world.chat_clients.insert(chat_name, Box::new(client));
 }

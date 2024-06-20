@@ -753,18 +753,22 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
         new_template: Some(block_template),
         coinbases: vec![
             NewBlockCoinbase {
-                address: TariAddress::from_hex("2603025d6849dd3dcc42c59b4bbfed335a438a0538f0d46a12f5142fcded0159b34d42f59c53d2e9a9fa7b90d2baec1455a7ab1144c49d69599c52b8bd8e0bb3e32292")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+                )
+                .unwrap()
+                .to_base58(),
                 value: amount - 1000,
                 stealth_payment: false,
                 revealed_value_proof: true,
                 coinbase_extra: Vec::new(),
             },
             NewBlockCoinbase {
-                address: TariAddress::from_hex("2603cc911148f1a78fbf721e27c80d1717dcfe1e6750ffe60af2047bff1d4f066575e84190b0bc7e939d1998c6bbd81c8dfd654abaa7ffae6af295f1077124b5885751")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4HS8b64MDbvdaG5fiNgtsHhnoeCPaniS5M7iFuvEMDoyh9uikhWmYbnRtjdgHHVPjAXr7oSW61VSH5QvHU8jps1JXW",
+                )
+                .unwrap()
+                .to_base58(),
                 value: 1000,
                 stealth_payment: false,
                 revealed_value_proof: true,
@@ -809,18 +813,22 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
         max_weight: 0,
         coinbases: vec![
             NewBlockCoinbase {
-                address: TariAddress::from_hex("2603025d6849dd3dcc42c59b4bbfed335a438a0538f0d46a12f5142fcded0159b34d42f59c53d2e9a9fa7b90d2baec1455a7ab1144c49d69599c52b8bd8e0bb3e32292")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+                )
+                .unwrap()
+                .to_base58(),
                 value: 1,
                 stealth_payment: false,
                 revealed_value_proof: true,
                 coinbase_extra: Vec::new(),
             },
             NewBlockCoinbase {
-                address: TariAddress::from_hex("2603cc911148f1a78fbf721e27c80d1717dcfe1e6750ffe60af2047bff1d4f066575e84190b0bc7e939d1998c6bbd81c8dfd654abaa7ffae6af295f1077124b5885751")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4HS8b64MDbvdaG5fiNgtsHhnoeCPaniS5M7iFuvEMDoyh9uikhWmYbnRtjdgHHVPjAXr7oSW61VSH5QvHU8jps1JXW",
+                )
+                .unwrap()
+                .to_base58(),
                 value: 2,
                 stealth_payment: false,
                 revealed_value_proof: true,
