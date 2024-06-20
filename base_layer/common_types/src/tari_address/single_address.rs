@@ -140,7 +140,9 @@ impl SingleAddress {
 
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
-        if hex_str.len() != 47 {
+        // Due to the byte length, it can be encoded as 46, 47 or 48 chars
+        if hex_str.len() != 46 && hex_str.len() != 47 && hex_str.len() != 48 {
+            dbg!(hex_str.len());
             return Err(TariAddressError::InvalidSize);
         }
         let (first, rest) = hex_str.split_at(2);

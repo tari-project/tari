@@ -157,7 +157,9 @@ impl DualAddress {
 
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
-        if hex_str.len() != 91 {
+        // Due to the byte length, it can be encoded as 90 or 91
+        if hex_str.len() != 90 && hex_str.len() != 91 {
+            dbg!(hex_str.len());
             return Err(TariAddressError::InvalidSize);
         }
         let (first, rest) = hex_str.split_at(2);
