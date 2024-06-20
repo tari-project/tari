@@ -73,12 +73,7 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{
-                send_burn_transaction_task,
-                send_one_sided_transaction_task,
-                send_register_template_transaction_task,
-                send_transaction_task,
-            },
+            tasks::{send_burn_transaction_task, send_register_template_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
         ui_burnt_proof::UiBurntProof,
@@ -323,43 +318,6 @@ impl AppState {
             output_features,
             message,
             fee_per_gram,
-            tx_service_handle,
-            result_tx,
-        ));
-
-        Ok(())
-    }
-
-    pub async fn send_one_sided_transaction(
-        &mut self,
-        address: String,
-        amount: u64,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: u64,
-        message: String,
-        payment_id: String,
-        result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&address) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
-        let output_features = OutputFeatures { ..Default::default() };
-        let payment_id_bytes: Vec<u8> = payment_id.as_bytes().to_vec();
-        let payment_id = PaymentId::Open(payment_id_bytes);
-
-        let fee_per_gram = fee_per_gram * uT;
-        let tx_service_handle = inner.wallet.transaction_service.clone();
-        tokio::spawn(send_one_sided_transaction_task(
-            address,
-            MicroMinotari::from(amount),
-            selection_criteria,
-            output_features,
-            message,
-            fee_per_gram,
-            payment_id,
             tx_service_handle,
             result_tx,
         ));
