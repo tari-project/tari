@@ -218,19 +218,23 @@ impl TariAddress {
 
     /// Construct Tari Address from hex
     pub fn from_base58(hex_str: &str) -> Result<TariAddress, TariAddressError> {
-        if hex_str.len() < 3 {
+        if hex_str.len() < 47 {
             return Err(TariAddressError::InvalidSize);
         }
         let (first, rest) = hex_str.split_at(2);
         let (network, features) = first.split_at(1);
-        let mut network = bs58::decode(network).into_vec().map_err(|_| TariAddressError::CannotRecoverNetwork)?;
-        let mut features = bs58::decode(features).into_vec().map_err(|_| TariAddressError::CannotRecoverFeature)?;
-        if rest.is_empty(){
-            return Err(TariAddressError::CannotRecoverPublicKey);
-        }
-        let mut rest = bs58::decode(rest).into_vec().map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        network.append(&mut features);network.append(&mut rest);
-        Self::from_bytes(network.as_slice())
+        let mut result = bs58::decode(network)
+            .into_vec()
+            .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
+        let mut features = bs58::decode(features)
+            .into_vec()
+            .map_err(|_| TariAddressError::CannotRecoverFeature)?;
+        let mut rest = bs58::decode(rest)
+            .into_vec()
+            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        result.append(&mut features);
+        result.append(&mut rest);
+        Self::from_bytes(result.as_slice())
     }
 
     /// Convert Tari Address to bytes

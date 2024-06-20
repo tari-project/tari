@@ -140,19 +140,23 @@ impl SingleAddress {
 
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
-        if hex_str.len() < 3 {
+        if hex_str.len() != 47 {
             return Err(TariAddressError::InvalidSize);
         }
         let (first, rest) = hex_str.split_at(2);
         let (network, features) = first.split_at(1);
-        let mut network = bs58::decode(network).into_vec().map_err(|_| TariAddressError::CannotRecoverNetwork)?;
-        let mut features = bs58::decode(features).into_vec().map_err(|_| TariAddressError::CannotRecoverFeature)?;
-        if rest.is_empty(){
-            return Err(TariAddressError::CannotRecoverPublicKey);
-        }
-        let mut rest = bs58::decode(rest).into_vec().map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        network.append(&mut features);network.append(&mut rest);
-        Self::from_bytes(network.as_slice())
+        let mut result = bs58::decode(network)
+            .into_vec()
+            .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
+        let mut features = bs58::decode(features)
+            .into_vec()
+            .map_err(|_| TariAddressError::CannotRecoverFeature)?;
+        let mut rest = bs58::decode(rest)
+            .into_vec()
+            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        result.append(&mut features);
+        result.append(&mut rest);
+        Self::from_bytes(result.as_slice())
     }
 
     /// Convert Tari Address to Base58
@@ -259,17 +263,17 @@ mod test {
         let address = SingleAddress::new_with_interactive_only(public_key.clone(), Network::Esmeralda);
 
         let buff = address.to_bytes();
-        let hex = address.to_base58();
+        let base58 = address.to_base58();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = SingleAddress::from_base58(&hex).unwrap();
-        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_hex.network(), address.network());
-        assert_eq!(address_hex.features(), address.features());
+        let address_base58 = SingleAddress::from_base58(&base58).unwrap();
+        assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_base58.network(), address.network());
+        assert_eq!(address_base58.features(), address.features());
 
         // Generate random public key
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -282,17 +286,17 @@ mod test {
         );
 
         let buff = address.to_bytes();
-        let hex = address.to_base58();
+        let base58 = address.to_base58();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = SingleAddress::from_base58(&hex).unwrap();
-        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_hex.network(), address.network());
-        assert_eq!(address_hex.features(), address.features());
+        let address_base58 = SingleAddress::from_base58(&base58).unwrap();
+        assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_base58.network(), address.network());
+        assert_eq!(address_base58.features(), address.features());
 
         // Generate random public key
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -305,17 +309,17 @@ mod test {
         );
 
         let buff = address.to_bytes();
-        let hex = address.to_base58();
+        let base58 = address.to_base58();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
         assert_eq!(address_buff.network(), address.network());
         assert_eq!(address_buff.features(), address.features());
 
-        let address_hex = SingleAddress::from_base58(&hex).unwrap();
-        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_hex.network(), address.network());
-        assert_eq!(address_hex.features(), address.features());
+        let address_base58 = SingleAddress::from_base58(&base58).unwrap();
+        assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_base58.network(), address.network());
+        assert_eq!(address_base58.features(), address.features());
     }
 
     #[test]
