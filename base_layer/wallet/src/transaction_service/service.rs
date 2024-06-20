@@ -47,7 +47,6 @@ use tari_core::{
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{
-        diffie_hellman_stealth_domain_hasher,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
@@ -1329,11 +1328,17 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        script: TariScript,
+        recipient_script: Option<TariScript>,
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
 
+        // If the script is not provided, use the default script as we will replace this later on here with a stealth
+        // one with the correct public key, for now we only care that the script size is correct
+        let (mut script, replace_script) = match recipient_script {
+            Some(s) => (s, false),
+            None => (script!(PushPubKey(Box::new(Default::default()))), true),
+        };
         // Prepare sender part of the transaction
         let mut stp = self
             .resources
@@ -1353,7 +1358,8 @@ where
             .await?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used
+        // but the returned value is not used. We have to wait until the stp creates a sender_offset_private_key for us,
+        // so we can use it to create the shared secret
         let _single_round_sender_data = stp
             .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
@@ -1376,6 +1382,30 @@ where
                 tx_id,
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
+
+        if replace_script {
+            // lets fix the script with the correct one
+            let c = self
+                .resources
+                .transaction_key_manager_service
+                .get_diffie_hellman_stealth_domain_hasher(
+                    &sender_offset_private_key,
+                    dest_address
+                        .public_view_key()
+                        .ok_or(TransactionServiceError::OneSidedTransactionError(
+                            "Missing public view key".to_string(),
+                        ))?,
+                )
+                .await?;
+
+            let script_spending_key = stealth_address_script_spending_key(&c, dest_address.public_spend_key());
+            let nonce_public_key = self
+                .resources
+                .transaction_key_manager_service
+                .get_public_key_at_key_id(&sender_offset_private_key)
+                .await?;
+            script = stealth_payment_script(&nonce_public_key, &script_spending_key);
+        }
 
         let shared_secret = self
             .resources
@@ -1552,7 +1582,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            one_sided_payment_script(&dest_pubkey),
+            Some(one_sided_payment_script(&dest_pubkey)),
             payment_id,
         )
         .await
@@ -1871,25 +1901,18 @@ where
         if destination.network() != self.resources.wallet_identity.address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }
-        if self.resources.wallet_identity.node_identity.public_key() == destination.comms_public_key() {
-            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
-            return Err(TransactionServiceError::OneSidedTransactionError(
-                "One-sided-to-stealth-address spend-to-self transactions not supported".to_string(),
-            ));
-        }
 
-        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-
-        let c = diffie_hellman_stealth_domain_hasher(
-            &nonce_private_key,
-            destination
-                .public_view_key()
-                .ok_or(TransactionServiceError::OneSidedTransactionError(
-                    "Missing public view key".to_string(),
-                ))?,
-        );
-
-        let script_spending_key = stealth_address_script_spending_key(&c, destination.public_spend_key());
+        // let c = diffie_hellman_stealth_domain_hasher(
+        //     &nonce_private_key,
+        //     destination
+        //         .public_view_key()
+        //         .ok_or(TransactionServiceError::OneSidedTransactionError(
+        //             "Missing public view key".to_string(),
+        //         ))?,
+        // );
+        //
+        // let script_spending_key = stealth_address_script_spending_key(&c, destination.public_spend_key());
+        // let script = stealth_payment_script(&nonce_public_key, &script_spending_key);
 
         self.send_one_sided_or_stealth(
             destination,
@@ -1899,7 +1922,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            stealth_payment_script(&nonce_public_key, &script_spending_key),
+            None,
             payment_id,
         )
         .await
