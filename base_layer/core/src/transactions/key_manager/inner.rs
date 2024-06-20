@@ -343,11 +343,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         let current_index = km.key_index();
 
-        for i in 0u64..current_index + TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
-            let public_key = PublicKey::from_secret_key(&km.derive_key(i)?.key);
+        for i in 0u64..TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
+            let index = current_index + i;
+            let public_key = PublicKey::from_secret_key(&km.derive_key(index)?.key);
             if public_key == *key {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
-                return Ok(i);
+                return Ok(index);
+            }
+            if i <= current_index && i != 0u64 {
+                let index = current_index - i;
+                let public_key = PublicKey::from_secret_key(&km.derive_key(index)?.key);
+                if public_key == *key {
+                    trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
+                    return Ok(index);
+                }
             }
         }
 
@@ -373,7 +382,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
                 return Ok(index);
             }
-            if i <= current_index {
+            if i <= current_index && i != 0u64 {
                 let index = current_index - i;
                 let private_key = &km.derive_key(index)?.key;
                 if private_key == key {
