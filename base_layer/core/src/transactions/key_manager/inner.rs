@@ -65,7 +65,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
-const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
+const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 use crate::{
     common::ConfidentialOutputHasher,
@@ -343,7 +343,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         let current_index = km.key_index();
 
-        for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
+        for i in 0u64..current_index + TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
             let public_key = PublicKey::from_secret_key(&km.derive_key(i)?.key);
             if public_key == *key {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
@@ -366,7 +366,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let current_index = km.key_index();
 
         // its most likely that the key is close to the current index, so we start searching from the current index
-        for i in 0u64..KEY_MANAGER_MAX_SEARCH_DEPTH {
+        for i in 0u64..TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
             let index = current_index + i;
             let private_key = &km.derive_key(index)?.key;
             if private_key == key {

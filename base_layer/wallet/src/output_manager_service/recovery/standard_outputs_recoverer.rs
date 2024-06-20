@@ -160,8 +160,6 @@ where
                 tx_id,
                 hash: *hash,
             });
-            self.update_outputs_script_private_key_and_update_key_manager_index(output)
-                .await?;
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
@@ -267,33 +265,5 @@ where
             };
 
         Ok(Some((key, committed_value, payment_id)))
-    }
-
-    /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
-    /// output to contain correct associated script private key and update the key manager to the highest index it has
-    /// seen so far.
-    async fn update_outputs_script_private_key_and_update_key_manager_index(
-        &mut self,
-        output: &WalletOutput,
-    ) -> Result<(), OutputManagerError> {
-        let public_key = self
-            .master_key_manager
-            .get_public_key_at_key_id(&output.spending_key_id)
-            .await?;
-        let found_index = self
-            .master_key_manager
-            .find_key_index(
-                TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                &public_key,
-            )
-            .await?;
-
-        self.master_key_manager
-            .update_current_key_index_if_higher(
-                TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                found_index,
-            )
-            .await?;
-        Ok(())
     }
 }
