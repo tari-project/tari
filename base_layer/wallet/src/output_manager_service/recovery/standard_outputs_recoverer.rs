@@ -23,7 +23,10 @@
 use std::time::Instant;
 
 use log::*;
-use tari_common_types::{transaction::TxId, types::FixedHash};
+use tari_common_types::{
+    transaction::TxId,
+    types::{FixedHash, PrivateKey},
+};
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
     tari_amount::MicroMinotari,
@@ -35,6 +38,7 @@ use tari_core::transactions::{
         WalletOutput,
     },
 };
+use tari_crypto::keys::SecretKey;
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
@@ -156,8 +160,6 @@ where
                 tx_id,
                 hash: *hash,
             });
-            self.update_outputs_script_private_key_and_update_key_manager_index(output)
-                .await?;
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
@@ -200,11 +202,16 @@ where
         known_scripts: &[KnownOneSidedPaymentScript],
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop) {
-            // This is a nop, so we can just create a new key an create the input stack.
-            let key = KeyId::Derived {
-                branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-                index: spending_key.managed_index().unwrap(),
+            // This is a nop, so we can just create a new key for the input stack.
+            let key = if let Some(index) = spending_key.managed_index() {
+                KeyId::Derived {
+                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+                    index,
+                }
+            } else {
+                let private_key = PrivateKey::random(&mut rand::thread_rng());
+                self.master_key_manager.import_key(private_key).await?
             };
             let public_key = self.master_key_manager.get_public_key_at_key_id(&key).await?;
             (inputs!(public_key), key)
@@ -258,44 +265,5 @@ where
             };
 
         Ok(Some((key, committed_value, payment_id)))
-    }
-
-    /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
-    /// output to contain correct associated script private key and update the key manager to the highest index it has
-    /// seen so far.
-    async fn update_outputs_script_private_key_and_update_key_manager_index(
-        &mut self,
-        output: &mut WalletOutput,
-    ) -> Result<(), OutputManagerError> {
-        let public_key = self
-            .master_key_manager
-            .get_public_key_at_key_id(&output.spending_key_id)
-            .await?;
-        let script_key = {
-            let found_index = self
-                .master_key_manager
-                .find_key_index(
-                    TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    &public_key,
-                )
-                .await?;
-
-            self.master_key_manager
-                .update_current_key_index_if_higher(
-                    TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    found_index,
-                )
-                .await?;
-
-            TariKeyId::Derived {
-                branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-                index: found_index,
-            }
-        };
-        let public_script_key = self.master_key_manager.get_public_key_at_key_id(&script_key).await?;
-        output.input_data = inputs!(public_script_key);
-        output.script_key_id = script_key;
-        Ok(())
     }
 }

@@ -239,7 +239,7 @@ async fn it_allows_multiple_coinbases() {
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
     let spend_key_id = KeyId::Managed {
-        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
+        branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
         index: 42,
     };
     let wallet_payment_address = TariAddress::default();

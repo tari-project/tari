@@ -65,14 +65,14 @@ impl Default for WalletType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerWallet {
     account: u64,
-    pub pubkey: Option<RistrettoPublicKey>,
+    pub public_alpha: Option<RistrettoPublicKey>,
     pub network: Network,
 }
 
 impl Display for LedgerWallet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "account {}", self.account)?;
-        write!(f, "pubkey {}", self.pubkey.is_some())?;
+        write!(f, "pubkey {}", self.public_alpha.is_some())?;
         Ok(())
     }
 }
@@ -81,10 +81,10 @@ impl Display for LedgerWallet {
 const WALLET_CLA: u8 = 0x80;
 
 impl LedgerWallet {
-    pub fn new(account: u64, network: Network, pubkey: Option<RistrettoPublicKey>) -> Self {
+    pub fn new(account: u64, network: Network, public_alpha: Option<RistrettoPublicKey>) -> Self {
         Self {
             account,
-            pubkey,
+            public_alpha,
             network,
         }
     }
