@@ -321,7 +321,7 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
-        payment_id_hex: String,
+        payment_id_str: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -329,7 +329,14 @@ impl AppState {
         let payment_id_u64: u64 = payment_id_hex
             .parse::<u64>()
             .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
-        let payment_id = PaymentId::U64(payment_id_u64);
+        let payment_id = if payment_id_str.is_empty() {
+            PaymentId::Empty
+        } else {
+            let payment_id_u64: u64 = payment_id_str
+                .parse::<u64>()
+                .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
+            PaymentId::U64(payment_id_u64)
+        };
 
         let output_features = OutputFeatures { ..Default::default() };
 

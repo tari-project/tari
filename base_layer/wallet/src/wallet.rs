@@ -77,7 +77,7 @@ use tari_p2p::{
     PeerSeedsConfig,
     TransportType,
 };
-use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
+use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -826,7 +826,7 @@ async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: &Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {
-    let script = one_sided_payment_script(node_identity.public_key());
+    let script = push_pubkey_script(node_identity.public_key());
     let wallet_node_key_id = TariKeyId::Imported {
         key: node_identity.public_key().clone(),
     };

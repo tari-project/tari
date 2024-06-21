@@ -163,7 +163,7 @@ use tari_key_manager::{
     key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, ExecutionStack};
+use tari_script::{inputs, push_pubkey_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
@@ -1740,7 +1740,7 @@ async fn recover_one_sided_transaction() {
             shutdown.to_signal(),
         )
         .await;
-    let script = one_sided_payment_script(bob_node_identity.public_key());
+    let script = push_pubkey_script(bob_node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
         script_key_id: bob_key_manager_handle
@@ -1886,22 +1886,7 @@ async fn recover_stealth_one_sided_transaction() {
         .await
         .unwrap();
 
-    let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-    let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, &bob_view_key);
-    let script_spending_key = stealth_address_script_spending_key(&c, bob_node_identity.public_key());
-    let script = stealth_payment_script(&nonce_public_key, &script_spending_key);
-    let known_script = KnownOneSidedPaymentScript {
-        script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
-        script_key_id: bob_key_manager_handle
-            .import_key(bob_node_identity.secret_key().clone())
-            .await
-            .unwrap(),
-        script,
-        input: ExecutionStack::default(),
-        script_lock_height: 0,
-    };
     let mut cloned_bob_oms = bob_oms.clone();
-    cloned_bob_oms.add_known_script(known_script).await.unwrap();
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
@@ -1927,7 +1912,7 @@ async fn recover_stealth_one_sided_transaction() {
         network,
     );
     let tx_id = alice_ts_clone
-        .send_one_sided_transaction(
+        .send_one_sided_to_stealth_address_transaction(
             bob_address,
             value,
             UtxoSelectionCriteria::default(),

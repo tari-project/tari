@@ -80,7 +80,7 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, ExecutionStack, TariScript};
+use tari_script::{inputs, push_pubkey_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -1399,12 +1399,7 @@ where
                 .await?;
 
             let script_spending_key = stealth_address_script_spending_key(&c, dest_address.public_spend_key());
-            let nonce_public_key = self
-                .resources
-                .transaction_key_manager_service
-                .get_public_key_at_key_id(&sender_offset_private_key)
-                .await?;
-            script = stealth_payment_script(&nonce_public_key, &script_spending_key);
+            script = push_pubkey_script(&script_spending_key);
         }
 
         let shared_secret = self
@@ -1582,7 +1577,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            Some(one_sided_payment_script(&dest_pubkey)),
+            Some(push_pubkey_script(&dest_pubkey)),
             payment_id,
         )
         .await
@@ -3080,53 +3075,4 @@ enum PowerMode {
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: TransactionStatus,
-}
-
-#[cfg(test)]
-mod tests {
-    use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_script::Opcode;
-
-    use super::*;
-
-    #[test]
-    fn test_stealth_addresses() {
-        // recipient's keys
-        let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
-        let (_b, big_b) = PublicKey::random_keypair(&mut OsRng);
-
-        // Sender generates a random nonce key-pair: R=r⋅G
-        let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
-
-        // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
-        // where H(⋅) is a cryptographic hash function
-        let c = diffie_hellman_stealth_domain_hasher(&r, &big_a);
-
-        // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
-        let sender_spending_key = stealth_address_script_spending_key(&c, &big_b);
-
-        let script = stealth_payment_script(&big_r, &sender_spending_key);
-
-        // ----------------------------------------------------------------------------
-        // imitating the receiving end, scanning and extraction
-
-        // Extracting the nonce R and a spending key from the script
-        if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
-        {
-            // calculating Ks with the provided R nonce from the script
-            let c = diffie_hellman_stealth_domain_hasher(&a, big_r);
-
-            // computing a spending key `Ks=(c+b)G` for comparison
-            let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);
-
-            // computing a scanning key `Ks=cG+B` for comparison
-            let scanning_key =
-                PublicKey::from_secret_key(&RistrettoSecretKey::from_uniform_bytes(c.as_ref()).unwrap()) + big_b;
-
-            assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
-            assert_eq!(receiver_spending_key, sender_spending_key);
-            assert_eq!(scanning_key, sender_spending_key);
-            assert_eq!(scanning_key, receiver_spending_key);
-        }
-    }
 }

@@ -573,6 +573,7 @@ impl<B: Backend> Component<B> for SendTab {
             },
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
+            'p' => self.send_input_mode = SendInputMode::PaymentId,
             's' | 'o' => {
                 if self.to_field.is_empty() {
                     self.error_message =
