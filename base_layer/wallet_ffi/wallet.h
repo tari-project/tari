@@ -740,7 +740,7 @@ struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
  * # Safety
  * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *tari_address_from_hex(const char *address,
+TariWalletAddress *tari_address_from_base58(const char *address,
                                          int *error_out);
 
 /**

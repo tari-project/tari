@@ -46,7 +46,6 @@ use tari_core::{
 };
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
-use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
@@ -202,24 +201,25 @@ impl TariWorld {
         if let Some(address) = self.wallet_addresses.get(name.as_ref()) {
             return Ok(address.clone());
         }
-        match self.get_wallet_client(name).await {
+        let address_bytes = match self.get_wallet_client(name).await {
             Ok(wallet) => {
                 let mut wallet = wallet;
 
-                Ok(wallet
+                wallet
                     .get_address(minotari_wallet_grpc_client::grpc::Empty {})
                     .await
                     .unwrap()
                     .into_inner()
                     .address
-                    .to_hex())
             },
             Err(_) => {
                 let ffi_wallet = self.get_ffi_wallet(name).unwrap();
 
-                Ok(ffi_wallet.get_address().address().get_as_hex())
+                ffi_wallet.get_address().address().get_vec()
             },
-        }
+        };
+        let tari_address = TariAddress::from_bytes(&address_bytes)?;
+        Ok(tari_address.to_base58())
     }
 
     #[allow(dead_code)]

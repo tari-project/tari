@@ -1157,7 +1157,7 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 /// # Safety
 /// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_from_hex(
+pub unsafe extern "C" fn tari_address_from_base58(
     address: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariWalletAddress {
@@ -1185,7 +1185,7 @@ pub unsafe extern "C" fn tari_address_from_hex(
     match address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Tari Address from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Tari Address from Base58 string: {:?}", e);
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
