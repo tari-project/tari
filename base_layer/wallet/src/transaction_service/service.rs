@@ -1337,7 +1337,7 @@ where
         // one with the correct public key, for now we only care that the script size is correct
         let (mut script, use_stealth_address) = match recipient_script {
             Some(s) => (s, false),
-            None => (script!(PushPubKey(Box::new(Default::default()))), true),
+            None => (push_pubkey_script(&Default::default()), true),
         };
         // Prepare sender part of the transaction
         let mut stp = self
@@ -1896,18 +1896,6 @@ where
         if destination.network() != self.resources.wallet_identity.address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }
-
-        // let c = diffie_hellman_stealth_domain_hasher(
-        //     &nonce_private_key,
-        //     destination
-        //         .public_view_key()
-        //         .ok_or(TransactionServiceError::OneSidedTransactionError(
-        //             "Missing public view key".to_string(),
-        //         ))?,
-        // );
-        //
-        // let script_spending_key = stealth_address_script_spending_key(&c, destination.public_spend_key());
-        // let script = stealth_payment_script(&nonce_public_key, &script_spending_key);
 
         self.send_one_sided_or_stealth(
             destination,

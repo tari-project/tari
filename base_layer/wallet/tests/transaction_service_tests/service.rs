@@ -117,11 +117,7 @@ use tari_core::{
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     covenants::Covenant,
-    one_sided::{
-        diffie_hellman_stealth_domain_hasher,
-        shared_secret_to_output_encryption_key,
-        stealth_address_script_spending_key,
-    },
+    one_sided::shared_secret_to_output_encryption_key,
     proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
@@ -1885,8 +1881,6 @@ async fn recover_stealth_one_sided_transaction() {
         .get_public_key_at_key_id(&bob_view_key_id)
         .await
         .unwrap();
-
-    let mut cloned_bob_oms = bob_oms.clone();
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
