@@ -294,7 +294,7 @@ impl Hex for EncryptedData {
 impl Default for EncryptedData {
     fn default() -> Self {
         Self {
-            data: vec![0;STATIC_ENCRYPTED_DATA_SIZE_TOTAL],
+            data: vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL],
         }
     }
 }
