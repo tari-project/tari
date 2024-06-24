@@ -474,6 +474,7 @@ extern "C" {
         fee_per_gram: c_ulonglong,
         message: *const c_char,
         one_sided: bool,
+        payment_id_string: *const c_char,
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn wallet_get_fee_estimate(
