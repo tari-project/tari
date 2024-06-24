@@ -335,7 +335,7 @@ impl BlockTemplateProtocol<'_> {
             self.config.coinbase_extra.as_bytes(),
             &self.key_manager,
             &self.wallet_payment_address,
-            self.config.stealth_payment,
+            true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
             PaymentId::Empty,
