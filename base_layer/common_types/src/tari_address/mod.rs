@@ -603,6 +603,43 @@ mod test {
     #[test]
     /// Test encoding for dual tari address
     fn encoding_dual() {
+        fn test_addres(address: TariAddress) {
+            let buff = address.to_vec();
+            let base58 = address.to_base58();
+            let hex = address.to_hex();
+            let emoji = address.to_emoji_string();
+
+            let address_buff = TariAddress::from_bytes(&buff).unwrap();
+            assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
+            assert_eq!(address_buff.public_view_key(), address.public_view_key());
+            assert_eq!(address_buff.network(), address.network());
+            assert_eq!(address_buff.features(), address.features());
+
+            let address_base58 = TariAddress::from_base58(&base58).unwrap();
+            assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
+            assert_eq!(address_base58.public_view_key(), address.public_view_key());
+            assert_eq!(address_base58.network(), address.network());
+            assert_eq!(address_base58.features(), address.features());
+
+            let address_hex = TariAddress::from_hex(&hex).unwrap();
+            assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
+            assert_eq!(address_hex.public_view_key(), address.public_view_key());
+            assert_eq!(address_hex.network(), address.network());
+            assert_eq!(address_hex.features(), address.features());
+
+            let address_emoji = TariAddress::from_emoji_string(&emoji).unwrap();
+            assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
+            assert_eq!(address_emoji.public_view_key(), address.public_view_key());
+            assert_eq!(address_emoji.network(), address.network());
+            assert_eq!(address_emoji.features(), address.features());
+
+            let address_base58_string = TariAddress::from_str(&base58).unwrap();
+            assert_eq!(address_base58_string, address_base58);
+            let address_hex_string = TariAddress::from_str(&hex).unwrap();
+            assert_eq!(address_hex_string, address_hex);
+            let address_emoji_string = TariAddress::from_str(&emoji).unwrap();
+            assert_eq!(address_emoji_string, address_emoji);
+        }
         // Generate random public key
         let mut rng = rand::thread_rng();
         let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -614,42 +651,7 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
         );
-
-        let buff = address.to_vec();
-        let base58 = address.to_base58();
-        let hex = address.to_hex();
-        let emoji = address.to_emoji_string();
-
-        let address_buff = TariAddress::from_bytes(&buff).unwrap();
-        assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_buff.public_view_key(), address.public_view_key());
-        assert_eq!(address_buff.network(), address.network());
-        assert_eq!(address_buff.features(), address.features());
-
-        let address_base58 = TariAddress::from_base58(&base58).unwrap();
-        assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_base58.public_view_key(), address.public_view_key());
-        assert_eq!(address_base58.network(), address.network());
-        assert_eq!(address_base58.features(), address.features());
-
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
-        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_hex.public_view_key(), address.public_view_key());
-        assert_eq!(address_hex.network(), address.network());
-        assert_eq!(address_hex.features(), address.features());
-
-        let address_emoji = TariAddress::from_emoji_string(&emoji).unwrap();
-        assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_emoji.public_view_key(), address.public_view_key());
-        assert_eq!(address_emoji.network(), address.network());
-        assert_eq!(address_emoji.features(), address.features());
-
-        let address_base58_string = TariAddress::from_str(&base58).unwrap();
-        assert_eq!(address_base58_string, address_base58);
-        let address_hex_string = TariAddress::from_str(&hex).unwrap();
-        assert_eq!(address_hex_string, address_hex);
-        let address_emoji_string = TariAddress::from_str(&emoji).unwrap();
-        assert_eq!(address_emoji_string, address_emoji);
+        test_addres(address);
 
         let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -661,42 +663,7 @@ mod test {
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
         );
-
-        let buff = address.to_vec();
-        let base58 = address.to_base58();
-        let hex = address.to_hex();
-        let emoji = address.to_emoji_string();
-
-        let address_buff = TariAddress::from_bytes(&buff).unwrap();
-        assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_buff.public_view_key(), address.public_view_key());
-        assert_eq!(address_buff.network(), address.network());
-        assert_eq!(address_buff.features(), address.features());
-
-        let address_base58 = TariAddress::from_base58(&base58).unwrap();
-        assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_base58.public_view_key(), address.public_view_key());
-        assert_eq!(address_base58.network(), address.network());
-        assert_eq!(address_base58.features(), address.features());
-
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
-        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_hex.public_view_key(), address.public_view_key());
-        assert_eq!(address_hex.network(), address.network());
-        assert_eq!(address_hex.features(), address.features());
-
-        let address_emoji = TariAddress::from_emoji_string(&emoji).unwrap();
-        assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_emoji.public_view_key(), address.public_view_key());
-        assert_eq!(address_emoji.network(), address.network());
-        assert_eq!(address_emoji.features(), address.features());
-
-        let address_base58_string = TariAddress::from_str(&base58).unwrap();
-        assert_eq!(address_base58_string, address_base58);
-        let address_hex_string = TariAddress::from_str(&hex).unwrap();
-        assert_eq!(address_hex_string, address_hex);
-        let address_emoji_string = TariAddress::from_str(&emoji).unwrap();
-        assert_eq!(address_emoji_string, address_emoji);
+        test_addres(address);
 
         let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -708,42 +675,7 @@ mod test {
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
         );
-
-        let buff = address.to_vec();
-        let base58 = address.to_base58();
-        let hex = address.to_hex();
-        let emoji = address.to_emoji_string();
-
-        let address_buff = TariAddress::from_bytes(&buff).unwrap();
-        assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_buff.public_view_key(), address.public_view_key());
-        assert_eq!(address_buff.network(), address.network());
-        assert_eq!(address_buff.features(), address.features());
-
-        let address_base58 = TariAddress::from_base58(&base58).unwrap();
-        assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_base58.public_view_key(), address.public_view_key());
-        assert_eq!(address_base58.network(), address.network());
-        assert_eq!(address_base58.features(), address.features());
-
-        let address_hex = TariAddress::from_hex(&hex).unwrap();
-        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_hex.public_view_key(), address.public_view_key());
-        assert_eq!(address_hex.network(), address.network());
-        assert_eq!(address_hex.features(), address.features());
-
-        let address_emoji = TariAddress::from_emoji_string(&emoji).unwrap();
-        assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
-        assert_eq!(address_emoji.public_view_key(), address.public_view_key());
-        assert_eq!(address_emoji.network(), address.network());
-        assert_eq!(address_emoji.features(), address.features());
-
-        let address_base58_string = TariAddress::from_str(&base58).unwrap();
-        assert_eq!(address_base58_string, address_base58);
-        let address_hex_string = TariAddress::from_str(&hex).unwrap();
-        assert_eq!(address_hex_string, address_hex);
-        let address_emoji_string = TariAddress::from_str(&emoji).unwrap();
-        assert_eq!(address_emoji_string, address_emoji);
+        test_addres(address);
     }
 
     #[test]
