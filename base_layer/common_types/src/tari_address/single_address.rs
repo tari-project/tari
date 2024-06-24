@@ -25,6 +25,7 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::hex::{from_hex, Hex};
 
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
@@ -170,6 +171,18 @@ impl SingleAddress {
         network.push_str(&rest);
         network
     }
+
+    /// Convert Tari single Address to hex
+    pub fn to_hex(&self) -> String {
+        let buf = self.to_bytes();
+        buf.to_hex()
+    }
+
+    /// Creates Tari single Address from hex
+    pub fn from_hex(hex_str: &str) -> Result<SingleAddress, TariAddressError> {
+        let buf = from_hex(hex_str).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        SingleAddress::from_bytes(buf.as_slice())
+    }
 }
 #[cfg(test)]
 mod test {
@@ -265,6 +278,8 @@ mod test {
 
         let buff = address.to_bytes();
         let base58 = address.to_base58();
+        let hex = address.to_hex();
+        let emoji = address.to_emoji_string();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
@@ -275,6 +290,16 @@ mod test {
         assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
         assert_eq!(address_base58.network(), address.network());
         assert_eq!(address_base58.features(), address.features());
+
+        let address_hex = SingleAddress::from_hex(&hex).unwrap();
+        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_hex.network(), address.network());
+        assert_eq!(address_hex.features(), address.features());
+
+        let address_emoji = SingleAddress::from_emoji_string(&emoji).unwrap();
+        assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_emoji.network(), address.network());
+        assert_eq!(address_emoji.features(), address.features());
 
         // Generate random public key
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -288,6 +313,8 @@ mod test {
 
         let buff = address.to_bytes();
         let base58 = address.to_base58();
+        let hex = address.to_hex();
+        let emoji = address.to_emoji_string();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
@@ -298,6 +325,16 @@ mod test {
         assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
         assert_eq!(address_base58.network(), address.network());
         assert_eq!(address_base58.features(), address.features());
+
+        let address_hex = SingleAddress::from_hex(&hex).unwrap();
+        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_hex.network(), address.network());
+        assert_eq!(address_hex.features(), address.features());
+
+        let address_emoji = SingleAddress::from_emoji_string(&emoji).unwrap();
+        assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_emoji.network(), address.network());
+        assert_eq!(address_emoji.features(), address.features());
 
         // Generate random public key
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -311,6 +348,8 @@ mod test {
 
         let buff = address.to_bytes();
         let base58 = address.to_base58();
+        let hex = address.to_hex();
+        let emoji = address.to_emoji_string();
 
         let address_buff = SingleAddress::from_bytes(&buff).unwrap();
         assert_eq!(address_buff.public_spend_key(), address.public_spend_key());
@@ -321,6 +360,16 @@ mod test {
         assert_eq!(address_base58.public_spend_key(), address.public_spend_key());
         assert_eq!(address_base58.network(), address.network());
         assert_eq!(address_base58.features(), address.features());
+
+        let address_hex = SingleAddress::from_hex(&hex).unwrap();
+        assert_eq!(address_hex.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_hex.network(), address.network());
+        assert_eq!(address_hex.features(), address.features());
+
+        let address_emoji = SingleAddress::from_emoji_string(&emoji).unwrap();
+        assert_eq!(address_emoji.public_spend_key(), address.public_spend_key());
+        assert_eq!(address_emoji.network(), address.network());
+        assert_eq!(address_emoji.features(), address.features());
     }
 
     #[test]
