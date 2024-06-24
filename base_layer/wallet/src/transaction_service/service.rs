@@ -1333,8 +1333,9 @@ where
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
 
-        // If the script is not provided, use the default script as we will replace this later on here with a stealth
-        // one with the correct public key, for now we only care that the script size is correct
+        // For a stealth transaction, the script is not provided because the public key that should be included
+        // is not known at this stage. This will only be known later. For now,
+        // we include a default public key to ensure that the script size is correct.
         let (mut script, use_stealth_address) = match recipient_script {
             Some(s) => (s, false),
             None => (push_pubkey_script(&Default::default()), true),
