@@ -339,6 +339,7 @@ impl Wallet {
                 fee_per_gram,
                 CString::new(message).unwrap().into_raw(),
                 one_sided,
+                CString::new("").unwrap().into_raw(),
                 &mut error,
             );
             if error > 0 {
