@@ -1335,7 +1335,7 @@ where
 
         // If the script is not provided, use the default script as we will replace this later on here with a stealth
         // one with the correct public key, for now we only care that the script size is correct
-        let (mut script, replace_script) = match recipient_script {
+        let (mut script, use_stealth_address) = match recipient_script {
             Some(s) => (s, false),
             None => (script!(PushPubKey(Box::new(Default::default()))), true),
         };
@@ -1383,7 +1383,7 @@ where
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
 
-        if replace_script {
+        if use_stealth_address {
             // lets fix the script with the correct one
             let c = self
                 .resources
@@ -1917,7 +1917,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            None,
+            None, // The stealth address for the script will be calculated in the next step
             payment_id,
         )
         .await
