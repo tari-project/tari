@@ -753,7 +753,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
         new_template: Some(block_template),
         coinbases: vec![
             NewBlockCoinbase {
-                address: TariAddress::from_hex("30a815df7b8d7f653ce3252f08a21d570b1ac44958cb4d7af0e0ef124f89b11943")
+                address: TariAddress::from_hex("2603025d6849dd3dcc42c59b4bbfed335a438a0538f0d46a12f5142fcded0159b34d42f59c53d2e9a9fa7b90d2baec1455a7ab1144c49d69599c52b8bd8e0bb3e32292")
                     .unwrap()
                     .to_hex(),
                 value: amount - 1000,
@@ -762,7 +762,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
                 coinbase_extra: Vec::new(),
             },
             NewBlockCoinbase {
-                address: TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0")
+                address: TariAddress::from_hex("2603cc911148f1a78fbf721e27c80d1717dcfe1e6750ffe60af2047bff1d4f066575e84190b0bc7e939d1998c6bbd81c8dfd654abaa7ffae6af295f1077124b5885751")
                     .unwrap()
                     .to_hex(),
                 value: 1000,
@@ -809,7 +809,7 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
         max_weight: 0,
         coinbases: vec![
             NewBlockCoinbase {
-                address: TariAddress::from_hex("30a815df7b8d7f653ce3252f08a21d570b1ac44958cb4d7af0e0ef124f89b11943")
+                address: TariAddress::from_hex("2603025d6849dd3dcc42c59b4bbfed335a438a0538f0d46a12f5142fcded0159b34d42f59c53d2e9a9fa7b90d2baec1455a7ab1144c49d69599c52b8bd8e0bb3e32292")
                     .unwrap()
                     .to_hex(),
                 value: 1,
@@ -818,7 +818,7 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
                 coinbase_extra: Vec::new(),
             },
             NewBlockCoinbase {
-                address: TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0")
+                address: TariAddress::from_hex("2603cc911148f1a78fbf721e27c80d1717dcfe1e6750ffe60af2047bff1d4f066575e84190b0bc7e939d1998c6bbd81c8dfd654abaa7ffae6af295f1077124b5885751")
                     .unwrap()
                     .to_hex(),
                 value: 2,
