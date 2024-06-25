@@ -40,27 +40,31 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{ComAndPubSignature, FixedHash, PrivateKey, PublicKey, Signature},
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::{
+    types::{CommsDHKE, CommsPublicKey},
+    NodeIdentity,
+};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{
-        secret_key_to_output_encryption_key,
+        public_key_to_output_encryption_key,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
     },
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
             CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
+            RangeProofType,
             Transaction,
             TransactionOutput,
             WalletOutputBuilder,
@@ -81,16 +85,7 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, push_pubkey_script, script, ExecutionStack, TariScript};
-use tari_script::{
-    inputs,
-    one_sided_payment_script,
-    script,
-    slice_to_boxed_message,
-    stealth_payment_script,
-    ExecutionStack,
-    TariScript,
-};
+use tari_script::{inputs, push_pubkey_script, script, slice_to_boxed_message, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -701,6 +696,7 @@ where
                 m,
                 public_keys,
                 message,
+                maturity,
             } => self
                 .create_aggregate_signature_utxo(
                     amount,
@@ -709,6 +705,7 @@ where
                     m,
                     public_keys,
                     message,
+                    maturity,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -718,22 +715,35 @@ where
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey,
-                total_offset_pubkey,
-                total_signature_nonce,
-                metadata_signature_nonce,
-                wallet_script_secret_key,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
             } => self
                 .encumber_aggregate_tx(
                     fee_per_gram,
                     output_hash,
-                    signatures,
-                    total_script_pubkey,
-                    total_offset_pubkey,
-                    total_signature_nonce,
-                    metadata_signature_nonce,
-                    wallet_script_secret_key,
+                    script_input_shares,
+                    script_public_key_shares,
+                    script_signature_shares,
+                    sender_offset_public_key_shares,
+                    metadata_ephemeral_public_key_shares,
+                    dh_shared_secret_shares
+                        .iter()
+                        .map(|v| CommsDHKE::new(&PrivateKey::default(), &v.clone()))
+                        .collect(),
+                    recipient_address,
+                    payment_id,
+                    maturity,
+                    range_proof_type,
+                    minimum_value_promise,
                 )
                 .await
                 .map(|(tx_id, tx, total_script_pubkey)| {
@@ -1169,6 +1179,7 @@ where
         m: u8,
         public_keys: Vec<PublicKey>,
         message: [u8; 32],
+        maturity: u64,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1176,13 +1187,13 @@ where
         let tx_id = TxId::new_random();
 
         let msg = slice_to_boxed_message(message.as_bytes());
-        let script = script!(CheckMultiSigVerifyAggregatePubKey(n, m, public_keys, msg));
+        let script = script!(CheckMultiSigVerifyAggregatePubKey(n, m, public_keys.clone(), msg));
 
         // Empty covenant
         let covenant = Covenant::default();
 
         // Default range proof
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = amount;
 
         // Prepare sender part of transaction
         let mut stp = self
@@ -1192,12 +1203,16 @@ where
                 tx_id,
                 amount,
                 UtxoSelectionCriteria::default(),
-                OutputFeatures::default(),
+                OutputFeatures {
+                    range_proof_type: RangeProofType::RevealedValue,
+                    maturity,
+                    ..Default::default()
+                },
                 fee_per_gram,
                 TransactionMetadata::default(),
                 "".to_string(),
                 script.clone(),
-                covenant,
+                covenant.clone(),
                 minimum_value_promise,
             )
             .await?;
@@ -1223,7 +1238,8 @@ where
 
         // In generating an aggregate public key utxo, we can use a randomly generated spend key
         let spending_key = PrivateKey::random(&mut OsRng);
-        let encryption_private_key = secret_key_to_output_encryption_key(&spending_key)?;
+        let sum_keys = public_keys.iter().fold(PublicKey::default(), |acc, x| acc + x);
+        let encryption_private_key = public_key_to_output_encryption_key(&sum_keys)?;
 
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key()
@@ -1251,8 +1267,6 @@ where
             .import_key(spending_key.clone())
             .await?;
 
-        let minimum_value_promise = MicroMinotari::zero();
-        let covenant = Covenant::default();
         let wallet_output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1275,12 +1289,11 @@ where
             )
             .await?
             .with_input_data(
-                // TODO: refactor this, when we have implemented the necessary logic
-                inputs!(PublicKey::from_secret_key(&spending_key)),
+                ExecutionStack::default(),
             )
             .with_covenant(covenant)
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_script_key(TariKeyId::default())
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver(
                 &self.resources.transaction_key_manager_service,
@@ -1373,12 +1386,17 @@ where
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: String,
-        signatures: Vec<Signature>,
-        total_script_pubkey: PublicKey,
-        total_offset_pubkey: PublicKey,
-        total_signature_nonce: PublicKey,
-        metadata_signature_nonce: PublicKey,
-        wallet_script_secret_key: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<CommsDHKE>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1389,12 +1407,17 @@ where
                 tx_id,
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey,
-                total_offset_pubkey,
-                total_signature_nonce,
-                metadata_signature_nonce,
-                wallet_script_secret_key,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
             )
             .await
         {
@@ -1462,7 +1485,7 @@ where
         )?;
         transaction.transaction.body.update_script_signature(
             &transaction.transaction.body.inputs()[0].commitment()?.clone(),
-            ComAndPubSignature::new(
+            &ComAndPubSignature::new(
                 transaction.transaction.body.inputs()[0]
                     .script_signature
                     .ephemeral_commitment()

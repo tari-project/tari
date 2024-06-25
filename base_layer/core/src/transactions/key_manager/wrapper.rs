@@ -40,7 +40,6 @@ use tari_key_manager::{
     },
 };
 use tokio::sync::RwLock;
-use zeroize::Zeroizing;
 
 use crate::transactions::{
     key_manager::{
@@ -303,11 +302,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         spend_key_id: &TariKeyId,
         value: &PrivateKey,
         challenge: &[u8; 64],
+        r_a: &PrivateKey,
+        r_x: &PrivateKey,
+        r_y: &PrivateKey,
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .get_script_signature_from_challenge(script_key_id, spend_key_id, value, challenge)
+            .get_script_signature_from_challenge(script_key_id, spend_key_id, value, challenge, r_a, r_x, r_y)
             .await
     }
 
@@ -435,6 +437,27 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn sign_message(&self, private_key_id: &TariKeyId, challenge: &[u8]) -> Result<Signature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .sign_message(private_key_id, challenge)
+            .await
+    }
+
+    async fn sign_with_nonce_and_message(
+        &self,
+        private_key_id: &TariKeyId,
+        nonce: &PrivateKey,
+        challenge: &[u8],
+    ) -> Result<Signature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .sign_with_nonce_and_message(private_key_id, nonce, challenge)
+            .await
+    }
+
     async fn get_receiver_partial_metadata_signature(
         &self,
         spend_key_id: &TariKeyId,
@@ -499,7 +522,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn create_key_pair<T: Into<String> + Send>(
         &self,
         branch: T,
-    ) -> Result<(Zeroizing<PrivateKey>, PublicKey), KeyManagerServiceError> {
+    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .write()
             .await

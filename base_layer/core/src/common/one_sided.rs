@@ -67,6 +67,16 @@ pub fn secret_key_to_output_encryption_key(secret_key: &PrivateKey) -> Result<Pr
     )
 }
 
+/// Generate an output encryption key from a public key
+pub fn public_key_to_output_encryption_key(public_key: &PublicKey) -> Result<PrivateKey, ByteArrayError> {
+    PrivateKey::from_uniform_bytes(
+        WalletOutputEncryptionKeysDomainHasher::new()
+            .chain(public_key.as_bytes())
+            .finalize()
+            .as_ref(),
+    )
+}
+
 /// Generate an output spending key from a Diffie-Hellman shared secret
 pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
     PrivateKey::from_uniform_bytes(

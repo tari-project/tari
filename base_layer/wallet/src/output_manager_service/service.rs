@@ -30,14 +30,19 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
     covenants::Covenant,
-    one_sided::{shared_secret_to_output_encryption_key, stealth_address_script_spending_key},
+    one_sided::{
+        public_key_to_output_encryption_key,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_spending_key,
+        stealth_address_script_spending_key,
+    },
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
@@ -48,6 +53,7 @@ use tari_core::{
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
+            RangeProofType,
             Transaction,
             TransactionError,
             TransactionOutput,
@@ -62,7 +68,16 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::SecretKey;
-use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
+use tari_script::{
+    inputs,
+    push_pubkey_script,
+    script,
+    CheckSigSchnorrSignature,
+    ExecutionStack,
+    Opcode,
+    StackItem,
+    TariScript,
+};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -233,23 +248,33 @@ where
                 tx_id,
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey,
-                total_offset_pubkey,
-                total_signature_nonce,
-                metadata_signature_nonce,
-                wallet_script_secret_key,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
                     fee_per_gram,
                     output_hash,
-                    signatures,
-                    total_script_pubkey,
-                    total_offset_pubkey,
-                    total_signature_nonce,
-                    metadata_signature_nonce,
-                    wallet_script_secret_key,
+                    script_input_shares,
+                    script_public_key_shares,
+                    script_signature_shares,
+                    sender_offset_public_key_shares,
+                    metadata_ephemeral_public_key_shares,
+                    dh_shared_secret_shares,
+                    recipient_address,
+                    payment_id,
+                    maturity,
+                    range_proof_type,
+                    minimum_value_promise,
                 )
                 .await
                 .map(OutputManagerResponse::EncumberAggregateUtxo),
@@ -1149,150 +1174,272 @@ where
         Ok((tx_id, stp.into_transaction()?))
     }
 
+    /// Create a partial transaction in order to prepare output
     #[allow(clippy::too_many_lines)]
     pub async fn encumber_aggregate_utxo(
         &mut self,
-        _tx_id: TxId,
-        _fee_per_gram: MicroMinotari,
-        _output_hash: String,
-        _signatures: Vec<Signature>,
-        _total_script_pubkey: PublicKey,
-        _total_offset_pubkey: PublicKey,
-        _total_signature_nonce: PublicKey,
-        _metadata_signature_nonce: PublicKey,
-        _wallet_script_secret_key: String,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<CommsDHKE>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
-        unimplemented!("encumber_aggregate_utxo");
+        // Fetch the output from the blockchain
+        let output_hash =
+            FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+        let output = self
+            .fetch_outputs_from_node(vec![output_hash])
+            .await?
+            .pop()
+            .ok_or_else(|| OutputManagerError::ServiceError(format!("Output not found (TxId: {})", tx_id)))?;
 
-        // let script = script!(Nop);
-        // let covenant = Covenant::default();
-        // let output_features = OutputFeatures::default();
-        //
-        // let metadata_byte_size = self
-        //     .resources
-        //     .consensus_constants
-        //     .transaction_weight_params()
-        //     .round_up_features_and_scripts_size(
-        //         output_features.get_serialized_size()? +
-        //             script.get_serialized_size()? +
-        //             covenant.get_serialized_size()?,
-        //     );
-        //
-        // let output_hash =
-        //     FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
-        // let db_input = self.resources.db.get_unspent_output(output_hash)?;
-        // let mut input: WalletOutput = db_input.clone().into();
-        //
-        // let mut script_signatures = Vec::new();
-        //
-        // for signature in &signatures {
-        //     script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(signature.get_public_nonce().
-        // clone(), signature.get_signature().clone()))); }
-        // input.input_data = ExecutionStack::new(script_signatures);
-        //
-        // let wallet_script_secret_key = PrivateKey::from_hex(&wallet_script_secret_key)
-        //     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
-        // let total_script_key = PublicKey::from_secret_key(&wallet_script_secret_key) + &total_script_pubkey;
-        // input.script_key_id = self.resources.key_manager.import_key(wallet_script_secret_key).await?;
-        //
-        // let offset = PrivateKey::random(&mut OsRng);
-        // let nonce = PrivateKey::random(&mut OsRng);
-        // let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-        //
-        // // Create builder with no recipients (other than ourselves)
-        // let mut builder = SenderTransactionProtocol::builder(self.resources.consensus_constants.clone(),
-        // self.resources.key_manager.clone()); builder
-        //     .with_fee_per_gram(fee_per_gram)
-        //     // .with_offset(offset.clone())
-        //     // .with_private_nonce(nonce.clone())
-        //     // .with_rewindable_outputs(self.resources.rewind_data.clone())
-        //     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-        //     .with_kernel_features(KernelFeatures::empty())
-        //     .with_tx_id(tx_id)
-        //     .with_lock_height(0)
-        //     // TODO: The input to this function has changed; it needs a `WalletOutput`, not a `TransactionInput`
-        //     .with_input(
-        //         input.clone().as_transaction_input_with_partial_signature(
-        //             &self.resources.factories.commitment,
-        //             total_script_pubkey,
-        //             total_signature_nonce,
-        //             &()
-        //         )?).await?;
-        //
-        //
-        //
-        // let fee = self.get_fee_calc();
-        // let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
-        // let amount = input.value - fee;
-        //
-        // let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        // let encrypted_value = EncryptedValue::default();
-        // let minimum_amount_promise = MicroTari::zero();
-        // let metadata_signature = TransactionOutput::create_metadata_signature(
-        //     TransactionOutputVersion::get_current_version(),
-        //     amount,
-        //     &spending_key,
-        //     &script,
-        //     &output_features,
-        //     &(&total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key)),
-        //     Some(&metadata_signature_nonce),
-        //     Some(&sender_offset_private_key),
-        //     &covenant,
-        //     &encrypted_value,
-        //     minimum_amount_promise,
-        // )?;
-        //
-        // let metadata_signature = ComSignature::new(
-        //     metadata_signature.public_nonce() + &metadata_signature_nonce,
-        //     metadata_signature.u().clone(),
-        //     metadata_signature.v().clone(),
-        // );
-        // let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
-        //     UnblindedOutput::new_current_version(
-        //         amount,
-        //         spending_key,
-        //         output_features,
-        //         script,
-        //         inputs!(PublicKey::from_secret_key(&script_private_key)),
-        //         script_private_key,
-        //         &total_offset_pubkey + &PublicKey::from_secret_key(&sender_offset_private_key),
-        //         metadata_signature,
-        //         u64::MAX,
-        //         covenant,
-        //         encrypted_value,
-        //         minimum_amount_promise,
-        //     ),
-        //     &self.resources.factories,
-        //     &self.resources.rewind_data,
-        //     None,
-        //     None,
-        //     OutputSource::default(),
-        // )?;
-        // builder
-        //     .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
-        //     .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        // let factories = CryptoFactories::default();
-        // let mut stp = builder
-        //     .build(
-        //         &self.resources.factories,
-        //         None,
-        //         self.last_seen_tip_height.unwrap_or(u64::MAX),
-        //     )
-        //     .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        //
-        // trace!(
-        //     target: LOG_TARGET,
-        //     "Encumber send to self transaction ({}) outputs.",
-        //     tx_id
-        // );
-        // self.resources.db.encumber_outputs(tx_id, vec![db_input], vec![utxo])?;
-        //
-        // trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        //
-        // stp.finalize(&self.resources.key_manager).await?;
-        // let tx = stp.take_transaction()?;
-        //
-        // Ok((tx, amount, fee, total_script_key))
+        // Retrieve the list of n public keys from the script
+        let public_keys =
+            if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
+                keys.clone()
+            } else {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Invalid script (TxId: {})",
+                    tx_id
+                )));
+            };
+        // Create a deterministic encryption key from the sum of the public keys
+        let sum_public_keys = public_keys
+            .iter()
+            .fold(tari_common_types::types::PublicKey::default(), |acc, x| acc + x);
+        let encryption_private_key = public_key_to_output_encryption_key(&sum_public_keys)?;
+        // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
+        let input = if let Ok((amount, spending_key, payment_id)) =
+            EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
+        {
+            if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
+                let mut script_signatures = Vec::new();
+                for signature in &script_input_shares {
+                    script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(
+                        signature.get_public_nonce().clone(),
+                        signature.get_signature().clone(),
+                    )));
+                }
+                let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                WalletOutput::new_with_rangeproof(
+                    output.version,
+                    amount,
+                    spending_key_id,
+                    output.features,
+                    output.script,
+                    ExecutionStack::new(script_signatures),
+                    self.resources.wallet_identity.wallet_node_key_id.clone(), // Only of the master wallet
+                    output.sender_offset_public_key,
+                    output.metadata_signature,
+                    0,
+                    output.covenant,
+                    output.encrypted_data,
+                    output.minimum_value_promise,
+                    output.proof,
+                    payment_id,
+                )
+            } else {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Could not verify mask (TxId: {})",
+                    tx_id
+                )));
+            }
+        } else {
+            return Err(OutputManagerError::ServiceError(format!(
+                "Could not decrypt output (TxId: {})",
+                tx_id
+            )));
+        };
+
+        // The entire input will be spent to a single recipient with no change
+        let output_features = OutputFeatures {
+            maturity,
+            range_proof_type,
+            ..Default::default()
+        };
+        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())));
+        let metadata_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight_params()
+            .round_up_features_and_scripts_size(
+                output_features.get_serialized_size()? +
+                    script.get_serialized_size()? +
+                    Covenant::default().get_serialized_size()?,
+            );
+        let fee = self.get_fee_calc();
+        let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
+        let amount = input.value - fee;
+
+        // Create sender transaction protocol builder with recipient data and no change
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_kernel_features(KernelFeatures::empty())
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_input(input.clone())
+            .await?
+            .with_recipient_data(
+                push_pubkey_script(recipient_address.public_spend_key()),
+                output_features,
+                Covenant::default(),
+                minimum_value_promise,
+                amount,
+            )
+            .await?
+            .with_change_data(
+                script!(PushPubKey(Box::default())),
+                ExecutionStack::default(),
+                TariKeyId::default(),
+                TariKeyId::default(),
+                Covenant::default(),
+            );
+        let mut stp = builder
+            .build()
+            .await
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used
+        let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
+
+        self.confirm_encumberance(tx_id)?;
+
+        // Prepare receiver part of the transaction
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+        // KDFs to produce the spending and encryption keys. All player's shares are added together to produce the
+        // shared secret.
+        let sender_offset_private_key_id_self =
+            stp.get_recipient_sender_offset_private_key()?
+                .ok_or(OutputManagerError::ServiceError(format!(
+                    "Missing sender offset private key ID (TxId: {})",
+                    tx_id
+                )))?;
+
+        let shared_secret = {
+            let mut key_sum = PublicKey::default();
+            for key in &dh_shared_secret_shares {
+                key_sum = key_sum + &PublicKey::from_vec(&key.as_bytes().to_vec())?;
+            }
+            let shared_secret_self = self
+                .resources
+                .key_manager
+                .get_diffie_hellman_shared_secret(
+                    &sender_offset_private_key_id_self,
+                    recipient_address
+                        .public_view_key()
+                        .ok_or(OutputManagerError::ServiceError(format!(
+                            "Missing public view key (TxId: {})",
+                            tx_id
+                        )))?,
+                )
+                .await?;
+            key_sum = key_sum + &PublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
+            CommsDHKE::new(&PrivateKey::default(), &key_sum)
+        };
+
+        let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;
+        let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key).await?;
+
+        let sender_offset_public_key_self = self
+            .resources
+            .key_manager
+            .get_public_key_at_key_id(&sender_offset_private_key_id_self)
+            .await?;
+        let sender_offset_public_key = sender_offset_public_key_shares
+            .iter()
+            .fold(sender_offset_public_key_self, |acc, x| acc + x);
+
+        let sender_message = TransactionSenderMessage::new_single_round_message(
+            stp.get_single_round_message(&self.resources.key_manager)
+                .await
+                .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
+        );
+
+        // Create the output with a partially signed metadata signature
+        let output = WalletOutputBuilder::new(amount, spending_key_id)
+            .with_features(
+                sender_message
+                    .single()
+                    .ok_or(
+                        OutputManagerError::InvalidSenderMessage)?
+                    .features
+                    .clone(),
+            )
+            .with_script(script)
+            .encrypt_data_for_recovery(
+                &self.resources.key_manager,
+                Some(&encryption_key_id),
+                payment_id.clone(),
+            )
+            .await?
+            .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_partial_as_sender_and_receiver(
+                &self.resources.key_manager,
+                &sender_offset_private_key_id_self,
+                &sender_offset_public_key_shares,
+                &metadata_ephemeral_public_key_shares,
+            )
+            .await
+            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
+            .try_build(&self.resources.key_manager)
+            .await
+            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+
+        // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
+        // signatures are not yet complete.
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            output,
+            &self.resources.key_manager,
+            &self.resources.consensus_constants.clone(),
+        )
+        .await;
+        let recipient_reply = rtp.get_signed_data()?.clone();
+        stp.add_presigned_recipient_info(recipient_reply)?;
+        stp.finalize(&self.resources.key_manager)
+            .await
+            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
+        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
+
+        // Update the input's script signature
+        let (updated_input, total_script_public_key) = input
+            .to_transaction_input_with_multi_party_script_signature(
+                &self.resources.factories.commitment,
+                &script_signature_shares,
+                &script_public_key_shares,
+                &self.resources.key_manager,
+            )
+            .await?;
+
+        let mut tx = stp.get_transaction()?.clone();
+        let mut tx_body = tx.body;
+        tx_body.update_script_signature(updated_input.commitment()?, &updated_input.script_signature.clone())?;
+        tx.body = tx_body;
+
+        let fee = stp.get_fee_amount()?;
+
+        Ok((tx, amount, fee, total_script_public_key))
     }
 
     async fn create_pay_to_self_transaction(
@@ -2629,6 +2776,14 @@ where
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight_params())
     }
+}
+
+fn service_error_with_id(tx_id: TxId, err: String, log_error: bool) -> OutputManagerError {
+    let err_str = format!("TxId: {} ({})", tx_id, err);
+    if log_error {
+        error!(target: LOG_TARGET, "{}", err_str);
+    }
+    OutputManagerError::ServiceError(err_str)
 }
 
 /// This struct holds the detailed balance of the Output Manager Service.

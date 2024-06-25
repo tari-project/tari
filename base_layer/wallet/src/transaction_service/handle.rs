@@ -46,6 +46,7 @@ use tari_core::{
             BuildInfo,
             CodeTemplateRegistration,
             OutputFeatures,
+            RangeProofType,
             TemplateType,
             Transaction,
             TransactionOutput,
@@ -107,16 +108,22 @@ pub enum TransactionServiceRequest {
         m: u8,
         public_keys: Vec<PublicKey>,
         message: [u8; 32],
+        maturity: u64,
     },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
         output_hash: String,
-        signatures: Vec<Signature>,
-        total_script_pubkey: PublicKey,
-        total_offset_pubkey: PublicKey,
-        total_signature_nonce: PublicKey,
-        metadata_signature_nonce: PublicKey,
-        wallet_script_secret_key: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<PublicKey>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
     },
     FinalizeSentAggregateTransaction {
         tx_id: u64,
@@ -219,6 +226,7 @@ impl fmt::Display for TransactionServiceRequest {
                 m,
                 public_keys: _,
                 message: _,
+                maturity: _,
             } => f.write_str(&format!(
                 "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
                 amount, n, m
@@ -226,23 +234,62 @@ impl fmt::Display for TransactionServiceRequest {
             Self::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey,
-                total_offset_pubkey,
-                total_signature_nonce,
-                metadata_signature_nonce,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
                 ..
             } => f.write_str(&format!(
-                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, signatures = {:?}, \
-                 total_script_pubkey = {}, total_offset_pubkey = {}, total_signature_nonce = {}, \
-                 metadata_signature_nonce = {}",
+                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, script_input_shares = {:?}, \
+                 script_public_key_shares = {:?}, script_signature_shares = {:?}, sender_offset_public_key_shares = \
+                 {:?}, metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address \
+                 = {}, payment_id = {}, maturity = {}, range_proof_type = {}, minimum_value_promise = {}",
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey.to_hex(),
-                total_offset_pubkey.to_hex(),
-                total_signature_nonce.to_hex(),
-                metadata_signature_nonce.to_hex(),
+                script_input_shares
+                    .iter()
+                    .map(|v| format!(
+                        "(sig: {}, nonce: {})",
+                        v.get_signature().to_hex(),
+                        v.get_public_nonce().to_hex()
+                    ))
+                    .collect::<Vec<String>>(),
+                script_public_key_shares
+                    .iter()
+                    .map(|v| v.to_hex())
+                    .collect::<Vec<String>>(),
+                script_signature_shares
+                    .iter()
+                    .map(|v| format!(
+                        "(sig: {}, nonce: {})",
+                        v.get_signature().to_hex(),
+                        v.get_public_nonce().to_hex()
+                    ))
+                    .collect::<Vec<String>>(),
+                sender_offset_public_key_shares
+                    .iter()
+                    .map(|v| v.to_hex())
+                    .collect::<Vec<String>>(),
+                metadata_ephemeral_public_key_shares
+                    .iter()
+                    .map(|v| v.to_hex())
+                    .collect::<Vec<String>>(),
+                dh_shared_secret_shares
+                    .iter()
+                    .map(|v| v.to_hex())
+                    .collect::<Vec<String>>(),
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
             )),
             Self::FinalizeSentAggregateTransaction {
                 tx_id,
@@ -677,6 +724,7 @@ impl TransactionServiceHandle {
         m: u8,
         public_keys: Vec<PublicKey>,
         message: [u8; 32],
+        maturity: u64,
     ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         match self
             .handle
@@ -687,6 +735,7 @@ impl TransactionServiceHandle {
                 m,
                 public_keys,
                 message,
+                maturity,
             })
             .await??
         {
@@ -699,24 +748,34 @@ impl TransactionServiceHandle {
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: String,
-        signatures: Vec<Signature>,
-        total_script_pubkey: PublicKey,
-        total_offset_pubkey: PublicKey,
-        total_signature_nonce: PublicKey,
-        metadata_signature_nonce: PublicKey,
-        wallet_script_secret_key: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<PublicKey>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey,
-                total_offset_pubkey,
-                total_signature_nonce,
-                metadata_signature_nonce,
-                wallet_script_secret_key,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
             })
             .await??
         {

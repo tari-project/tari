@@ -29,7 +29,6 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
-use zeroize::Zeroizing;
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
@@ -192,6 +191,9 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         spend_key_id: &TariKeyId,
         value: &PrivateKey,
         challenge: &[u8; 64],
+        r_a: &PrivateKey,
+        r_x: &PrivateKey,
+        r_y: &PrivateKey,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
     async fn get_partial_txo_kernel_signature(
@@ -256,6 +258,15 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn sign_message(&self, private_key_id: &TariKeyId, challenge: &[u8]) -> Result<Signature, TransactionError>;
+
+    async fn sign_with_nonce_and_message(
+        &self,
+        private_key_id: &TariKeyId,
+        nonce: &PrivateKey,
+        challenge: &[u8],
+    ) -> Result<Signature, TransactionError>;
+
     async fn get_receiver_partial_metadata_signature(
         &self,
         spend_key_id: &TariKeyId,
@@ -287,11 +298,55 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     async fn create_key_pair<T: Into<String> + Send>(
         &self,
         branch: T,
-    ) -> Result<(Zeroizing<PrivateKey>, PublicKey), KeyManagerServiceError>;
+    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]
 pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
     /// Gets the pedersen commitment for the specified index
     async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+}
+
+#[cfg(test)]
+mod test {
+    use core::iter;
+    use std::str::FromStr;
+
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+
+    use crate::transactions::key_manager::TariKeyId;
+
+    fn random_string(len: usize) -> String {
+        iter::repeat(())
+            .map(|_| OsRng.sample(Alphanumeric) as char)
+            .take(len)
+            .collect()
+    }
+
+    #[test]
+    fn key_id_converts_correctly() {
+        let managed_key_id: TariKeyId = TariKeyId::Managed {
+            branch: random_string(8),
+            index: {
+                let mut rng = rand::thread_rng();
+                let random_value: u64 = rng.gen();
+                random_value
+            },
+        };
+        let imported_key_id: TariKeyId = TariKeyId::Imported {
+            key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        };
+        let zero_key_id: TariKeyId = TariKeyId::Zero;
+
+        let managed_key_id_str = managed_key_id.to_string();
+        let imported_key_id_str = imported_key_id.to_string();
+        let zero_key_id_str = zero_key_id.to_string();
+
+        assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
+        println!("imported_key_id_str: {}", imported_key_id_str);
+        assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
+        assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
+    }
 }

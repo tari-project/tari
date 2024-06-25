@@ -35,7 +35,12 @@ use minotari_app_utilities::{
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
+use tari_core::transactions::{
+    key_manager::TariKeyId,
+    tari_amount,
+    tari_amount::MicroMinotari,
+    transaction_components::RangeProofType,
+};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -186,13 +191,15 @@ pub struct CreateAggregateSignatureUtxoArgs {
     #[clap(long)]
     pub message: String,
     #[clap(long)]
+    pub maturity: u64,
+    #[clap(long)]
     pub public_keys: Vec<UniPublicKey>,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct SignMessageArgs {
     #[clap(long)]
-    pub private_key: String,
+    pub private_key_id: TariKeyId,
     #[clap(long)]
     pub challenge: String,
 }
@@ -204,17 +211,27 @@ pub struct EncumberAggregateUtxoArgs {
     #[clap(long)]
     pub output_hash: String,
     #[clap(long)]
-    pub wallet_script_secret_key: String,
+    pub script_input_shares: Vec<UniSignature>,
     #[clap(long)]
-    pub script_pubkeys: Vec<UniPublicKey>,
+    pub script_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]
-    pub offset_pubkeys: Vec<UniPublicKey>,
+    pub script_signature_shares: Vec<UniSignature>,
     #[clap(long)]
-    pub script_signature_nonces: Vec<UniPublicKey>,
+    pub sender_offset_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]
-    pub metadata_signature_nonces: Vec<UniPublicKey>,
+    pub metadata_ephemeral_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]
-    pub signatures: Vec<UniSignature>,
+    pub dh_shared_secret_shares: Vec<UniPublicKey>,
+    #[clap(long)]
+    pub recipient_address: TariAddress,
+    #[clap(long)]
+    pub payment_id: String,
+    #[clap(long)]
+    pub maturity: u64,
+    #[clap(long)]
+    pub range_proof_type: RangeProofType,
+    #[clap(long)]
+    pub minimum_value_promise: MicroMinotari,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -232,7 +249,7 @@ pub struct SpendAggregateUtxoArgs {
 #[derive(Debug, Args, Clone)]
 pub struct CreateScriptSigArgs {
     #[clap(long)]
-    pub secret_key: String,
+    pub private_key_id: TariKeyId,
     #[clap(long)]
     pub secret_nonce: String,
     #[clap(long)]

@@ -46,7 +46,6 @@ use minotari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use tari_common_types::{
@@ -71,6 +70,7 @@ use tari_core::{
             encrypted_data::PaymentId,
             EncryptedData,
             OutputFeatures,
+            RangeProofType,
             Transaction,
             TransactionInput,
             TransactionInputVersion,
@@ -81,7 +81,7 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
@@ -147,38 +147,50 @@ pub async fn create_aggregate_signature_utxo(
     m: u8,
     public_keys: Vec<PublicKey>,
     message: String,
+    maturity: u64,
 ) -> Result<(TxId, FixedHash), CommandError> {
     let mut msg = [0u8; 32];
     msg.copy_from_slice(message.as_bytes());
 
     wallet_transaction_service
-        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg)
+        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg, maturity)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
 
 /// encumbers a n-of-m transaction
+#[allow(clippy::too_many_arguments)]
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
     output_hash: String,
-    signatures: Vec<Signature>,
-    total_script_pubkey: PublicKey,
-    total_offset_pubkey: PublicKey,
-    total_signature_nonce: PublicKey,
-    metadata_signature_nonce: PublicKey,
-    wallet_script_secret_key: String,
+    script_input_shares: Vec<Signature>,
+    script_public_key_shares: Vec<PublicKey>,
+    script_signature_shares: Vec<Signature>,
+    sender_offset_public_key_shares: Vec<PublicKey>,
+    metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+    dh_shared_secret_shares: Vec<PublicKey>,
+    recipient_address: TariAddress,
+    payment_id: PaymentId,
+    maturity: u64,
+    range_proof_type: RangeProofType,
+    minimum_value_promise: MicroMinotari,
 ) -> Result<(TxId, Transaction, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
             output_hash,
-            signatures,
-            total_script_pubkey,
-            total_offset_pubkey,
-            total_signature_nonce,
-            metadata_signature_nonce,
-            wallet_script_secret_key,
+            script_input_shares,
+            script_public_key_shares,
+            script_signature_shares,
+            sender_offset_public_key_shares,
+            metadata_ephemeral_public_key_shares,
+            dh_shared_secret_shares,
+            recipient_address,
+            payment_id,
+            maturity,
+            range_proof_type,
+            minimum_value_promise,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -319,18 +331,6 @@ pub async fn coin_split(
         .await?;
 
     Ok(tx_id)
-}
-
-pub fn sign_message(private_key: String, challenge: String) -> Result<Signature, CommandError> {
-    let private_key =
-        PrivateKey::from_hex(private_key.as_str()).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-    let challenge = challenge.as_bytes();
-
-    let nonce = PrivateKey::random(&mut OsRng);
-    let signature = Signature::sign_with_nonce_and_message(&private_key, nonce, challenge)
-        .map_err(CommandError::FailedSignature)?;
-
-    Ok(signature)
 }
 
 async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
@@ -740,12 +740,12 @@ pub async fn command_runner(
                 }
             },
             CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
-                Ok((sk, pk)) => {
+                Ok((key_id, pk)) => {
                     println!(
                         "New key pair:
-                                1. secret key: {},
+                                1. key id    : {},
                                 2. public key: {}",
-                        sk.to_hex(),
+                        key_id,
                         pk.to_hex()
                     )
                 },
@@ -761,7 +761,8 @@ pub async fn command_runner(
                     .iter()
                     .map(|pk| PublicKey::from(pk.clone()))
                     .collect::<Vec<_>>(),
-                args.message,
+                args.message, // 1. What is the message? => commitment
+                args.maturity,
             )
             .await
             {
@@ -777,45 +778,59 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
             },
-            SignMessage(args) => match sign_message(args.private_key, args.challenge) {
-                Ok(sgn) => {
-                    println!(
-                        "Sign message:
+            SignMessage(args) => {
+                match key_manager_service
+                    .sign_message(&args.private_key_id, args.challenge.as_bytes())
+                    .await
+                {
+                    // 1. What is the message/challenge? => commitment
+                    Ok(sgn) => {
+                        println!(
+                            "Sign message:
                                 1. signature: {},
                                 2. public nonce: {}",
-                        sgn.get_signature().to_hex(),
-                        sgn.get_public_nonce().to_hex(),
-                    )
-                },
-                Err(e) => eprintln!("SignMessage error! {}", e),
+                            sgn.get_signature().to_hex(),
+                            sgn.get_public_nonce().to_hex(),
+                        )
+                    },
+                    Err(e) => eprintln!("SignMessage error! {}", e),
+                }
             },
             EncumberAggregateUtxo(args) => {
-                let mut total_script_pub_key = PublicKey::default();
-                for sig in args.script_pubkeys {
-                    total_script_pub_key = sig.into();
-                }
-                let mut total_offset_pub_key = PublicKey::default();
-                for sig in args.offset_pubkeys {
-                    total_offset_pub_key = sig.into();
-                }
-                let mut total_sig_nonce = PublicKey::default();
-                for sig in args.script_signature_nonces {
-                    total_sig_nonce = sig.into();
-                }
-                let mut total_meta_nonce = PublicKey::default();
-                for sig in args.metadata_signature_nonces {
-                    total_meta_nonce = sig.into();
-                }
                 match encumber_aggregate_utxo(
                     transaction_service.clone(),
                     args.fee_per_gram,
                     args.output_hash,
-                    args.signatures.iter().map(|sgn| sgn.clone().into()).collect::<Vec<_>>(),
-                    total_script_pub_key,
-                    total_offset_pub_key,
-                    total_sig_nonce,
-                    total_meta_nonce,
-                    args.wallet_script_secret_key,
+                    args.script_input_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.script_public_key_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.script_signature_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.sender_offset_public_key_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.metadata_ephemeral_public_key_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.dh_shared_secret_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.recipient_address,
+                    PaymentId::from_bytes(args.payment_id.as_bytes())
+                        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+                    args.maturity,
+                    args.range_proof_type,
+                    args.minimum_value_promise,
                 )
                 .await
                 {
@@ -893,8 +908,6 @@ pub async fn command_runner(
                 }
             },
             CreateScriptSig(args) => {
-                let private_key =
-                    PrivateKey::from_hex(&args.secret_key).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let private_nonce = PrivateKey::from_hex(&args.secret_nonce)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let script = TariScript::from_hex(&args.input_script)
@@ -916,16 +929,22 @@ pub async fn command_runner(
                     &args.total_script_key.into(),
                     &commitment,
                 );
-                // TODO: Change to `ComAndPubSignature`
-                let signature = Signature::sign_with_nonce_and_message(&private_key, private_nonce, challenge)
-                    .map_err(CommandError::FailedSignature)?;
-                println!(
-                    "Sign script sig:
+
+                match key_manager_service
+                    .sign_with_nonce_and_message(&args.private_key_id, &private_nonce, challenge.as_slice())
+                    .await
+                {
+                    Ok(signature) => {
+                        println!(
+                            "Sign script sig:
                                 1. signature: {},
                                 2. public nonce: {}",
-                    signature.get_signature().to_hex(),
-                    signature.get_public_nonce().to_hex(),
-                )
+                            signature.get_signature().to_hex(),
+                            signature.get_public_nonce().to_hex(),
+                        )
+                    },
+                    Err(e) => eprintln!("SignMessage error! {}", e),
+                }
             },
             CreateMetaSig(args) => {
                 let private_key = PrivateKey::from_hex(&args.secret_offset_key)

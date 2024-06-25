@@ -150,6 +150,8 @@ pub enum OutputManagerError {
     RangeProofError(String),
     #[error("Transaction is over sized: `{0}`")]
     TooManyInputsToFulfillTransaction(String),
+    #[error("Std I/O error: {0}")]
+    StdIoError(#[from] std::io::Error),
 }
 
 impl From<RangeProofError> for OutputManagerError {

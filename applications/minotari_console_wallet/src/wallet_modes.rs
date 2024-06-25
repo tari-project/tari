@@ -498,24 +498,40 @@ mod test {
 
             create-key-pair --key-branch pie
 
-            create-aggregate-signature-utxo --amount 125T --m 2 --n 3 --fee-per-gram 1 --message ff \
+            create-aggregate-signature-utxo \
+                --amount 125T \
+                --fee-per-gram 1 \
+                --n 3 \
+                --m 2 \
+                --message ff \
+                --maturity 0 \
                 --public-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --public-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
+
+            sign-message \
+                --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+                --challenge f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
             encumber-aggregate-utxo \
                 --fee-per-gram 1 \
                 --output-hash f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --wallet-script-secret-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
-                --script-pubkeys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --script-pubkeys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --offset-pubkeys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --offset-pubkeys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --script-signature-nonces=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --script-signature-nonces=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --metadata-signature-nonces=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --metadata-signature-nonces=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c
+                --script-input-shares=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --script-input-shares=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
+                --script-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --script-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --script-signature-shares=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --script-signature-shares=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
+                --sender-offset-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --sender-offset-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --metadata-ephemeral-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --metadata-ephemeral-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --dh-shared-secret-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
+                --dh-shared-secret-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
+                --payment-id 156486946518564 \
+                --maturity 0 \
+                --range-proof-type revealed_value \
+                --minimum-value-promise 0
 
             spend-aggregate-utxo \
                 --tx-id 12345678 \
@@ -526,12 +542,8 @@ mod test {
                 --script-offset-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --script-offset-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            sign-message \
-                --private-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
-                --challenge f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
-
             create-script-sig \
-                --secret-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
+                --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
                 --secret-nonce 3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03 \
                 --input-script ae010268593ed2d36a2d95f0ffe0f41649b97cc36fc4ef0c8ecd6bd28f9d56c76b793b08691435a5c813578f8a7f4973166dc1c6c15f37aec2a7d65b1583c8b2129364c916d5986a0c1b3dac7d6efb94bed688ba52fa8b962cf27c0446e2fea6d66a04 \
                 --input-stack 050857c14f72cf885aac9f08c9484cb7cb06b6cc20eab68c9bee1e8d5a85649b0a6d31c5cc49afc1e03ebbcf55c82f47e8cbc796c33e96c17a31eab027ee821f00 \

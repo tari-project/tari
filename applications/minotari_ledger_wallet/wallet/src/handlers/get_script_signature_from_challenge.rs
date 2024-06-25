@@ -48,9 +48,12 @@ pub fn handler_get_script_signature_from_challenge(comm: &mut Comm) -> Result<()
     let mut challenge = [0u8; 64];
     challenge.clone_from_slice(&data[136..200]);
 
-    let r_a = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
-    let r_x = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
-    let r_y = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
+    let r_a: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[200..232])?.into();
+    let r_x: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[232..264])?.into();
+    let r_y: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[264..296])?.into();
 
     let factory = ExtendedPedersenCommitmentFactory::default();
 

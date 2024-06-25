@@ -23,14 +23,24 @@
 use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
+use tari_comms::types::CommsDHKE;
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionOutput,
+            WalletOutput,
+            WalletOutputBuilder,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -63,12 +73,17 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: String,
-        signatures: Vec<Signature>,
-        total_script_pubkey: PublicKey,
-        total_offset_pubkey: PublicKey,
-        total_signature_nonce: PublicKey,
-        metadata_signature_nonce: PublicKey,
-        wallet_script_secret_key: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<CommsDHKE>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
     },
     PrepareToSendTransaction {
         tx_id: TxId,
@@ -739,12 +754,17 @@ impl OutputManagerHandle {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: String,
-        signatures: Vec<Signature>,
-        total_script_pubkey: PublicKey,
-        total_offset_pubkey: PublicKey,
-        total_signature_nonce: PublicKey,
-        metadata_signature_nonce: PublicKey,
-        wallet_script_secret_key: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<CommsDHKE>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
         match self
             .handle
@@ -752,12 +772,17 @@ impl OutputManagerHandle {
                 tx_id,
                 fee_per_gram,
                 output_hash,
-                signatures,
-                total_script_pubkey,
-                total_offset_pubkey,
-                total_signature_nonce,
-                metadata_signature_nonce,
-                wallet_script_secret_key,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
             })
             .await??
         {
