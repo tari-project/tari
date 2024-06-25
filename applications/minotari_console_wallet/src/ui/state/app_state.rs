@@ -326,9 +326,6 @@ impl AppState {
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
-        let payment_id_u64: u64 = payment_id_hex
-            .parse::<u64>()
-            .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
         let payment_id = if payment_id_str.is_empty() {
             PaymentId::Empty
         } else {
