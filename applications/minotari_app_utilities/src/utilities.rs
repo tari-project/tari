@@ -120,7 +120,7 @@ impl FromStr for UniNodeId {
             Ok(Self::PublicKey(public_key))
         } else if let Ok(node_id) = NodeId::from_hex(key) {
             Ok(Self::NodeId(node_id))
-        } else if let Ok(tari_address) = TariAddress::from_hex(key) {
+        } else if let Ok(tari_address) = TariAddress::from_base58(key) {
             Ok(Self::TariAddress(tari_address))
         } else {
             Err(UniIdError::UnknownIdType)

@@ -123,7 +123,7 @@ impl Default for MinerConfig {
             network: Default::default(),
             wait_timeout_on_error: 10,
             config_dir: PathBuf::from("config/miner"),
-            wallet_payment_address: TariAddress::default().to_hex(),
+            wallet_payment_address: TariAddress::default().to_base58(),
             stealth_payment: true,
             range_proof_type: RangeProofType::RevealedValue,
         }

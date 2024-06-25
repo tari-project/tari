@@ -118,7 +118,7 @@ impl Default for MergeMiningProxyConfig {
             coinbase_extra: "tari_merge_mining_proxy".to_string(),
             network: Default::default(),
             config_dir: PathBuf::from("config/merge_mining_proxy"),
-            wallet_payment_address: TariAddress::default().to_hex(),
+            wallet_payment_address: TariAddress::default().to_base58(),
             stealth_payment: true,
             range_proof_type: RangeProofType::RevealedValue,
         }

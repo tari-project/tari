@@ -146,7 +146,7 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
         .into_inner()
         .address
         .to_hex();
-    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+    let wallet_b_address = TariAddress::from_base58(wallet_b_address.as_str()).unwrap();
 
     let mut cli = get_default_cli();
 
@@ -210,7 +210,7 @@ async fn make_it_rain(
         .into_inner()
         .address
         .to_hex();
-    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+    let wallet_b_address = TariAddress::from_base58(wallet_b_address.as_str()).unwrap();
 
     let mut cli = get_default_cli();
 

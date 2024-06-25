@@ -402,7 +402,9 @@ impl From<TariAddressError> for LibWalletError {
                 code: 701,
                 message: format!("{:?}", e),
             },
-            TariAddressError::CannotRecoverPublicKey => Self {
+            TariAddressError::CannotRecoverPublicKey |
+            TariAddressError::CannotRecoverFeature |
+            TariAddressError::CannotRecoverNetwork => Self {
                 code: 702,
                 message: format!("{:?}", e),
             },

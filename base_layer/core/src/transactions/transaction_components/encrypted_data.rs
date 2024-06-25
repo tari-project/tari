@@ -349,9 +349,14 @@ mod test {
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
-            PaymentId::Address(DualAddress::from_hex("2603bc3d05fb55446f18031feb5494d19d6c795fc93d6218c65a285c7a88fd03917c72e4a70cbabcc52ad79cb2ac170df4a29912ffb345f20b0f8ae5524c749b9425f0").unwrap()),
+            PaymentId::Address(
+                DualAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+            ),
             PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-        PaymentId::Open(vec![1;256]),
+            PaymentId::Open(vec![1; 256]),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
@@ -364,7 +369,8 @@ mod test {
                 let encryption_key = PrivateKey::random(&mut OsRng);
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
-                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone()).unwrap();
+                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone())
+                        .unwrap();
                 let (decrypted_value, decrypted_mask, decrypted_payment_id) =
                     EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
                 assert_eq!(amount, decrypted_value);
@@ -390,9 +396,14 @@ mod test {
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
-            PaymentId::Address(DualAddress::from_hex("2603bc3d05fb55446f18031feb5494d19d6c795fc93d6218c65a285c7a88fd03917c72e4a70cbabcc52ad79cb2ac170df4a29912ffb345f20b0f8ae5524c749b9425f0").unwrap()),
-        PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-        PaymentId::Open(vec![1;256]),
+            PaymentId::Address(
+                DualAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+            ),
+            PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            PaymentId::Open(vec![1; 256]),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
@@ -405,7 +416,8 @@ mod test {
                 let encryption_key = PrivateKey::random(&mut OsRng);
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
-                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone()).unwrap();
+                    EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask, payment_id.clone())
+                        .unwrap();
                 let bytes = encrypted_data.to_byte_vec();
                 let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();
                 assert_eq!(encrypted_data, encrypted_data_from_bytes);

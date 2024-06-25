@@ -23,6 +23,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
+    str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -61,7 +62,7 @@ use tari_core::transactions::{
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{broadcast, watch, RwLock},
     task,
@@ -229,11 +230,7 @@ impl AppState {
     pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
-        let address = match TariAddress::from_emoji_string(&tari_emoji) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
 
         let contact = Contact::new(alias, address, None, None, false);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
@@ -246,26 +243,22 @@ impl AppState {
 
     // Return alias or pub key if the contact is not in the list.
     pub fn get_alias(&self, address: &TariAddress) -> String {
-        let address_hex = address.to_hex();
+        let address_string = address.to_base58();
 
         match self
             .cached_data
             .contacts
             .iter()
-            .find(|&contact| contact.address.eq(&address_hex))
+            .find(|&contact| contact.address.eq(&address_string))
         {
             Some(contact) => contact.alias.clone(),
-            None => address_hex,
+            None => address_string,
         }
     }
 
     pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&tari_emoji) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
 
         inner.wallet.contacts_service.remove_contact(address).await?;
 
@@ -301,11 +294,7 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&address) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -336,11 +325,7 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&address) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
         let payment_id_u64: u64 = payment_id_hex
             .parse::<u64>()
             .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
@@ -912,7 +897,7 @@ impl AppStateInner {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_id.network(),
-            wallet_id.address.to_hex()
+            wallet_id.address.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -924,7 +909,7 @@ impl AppStateInner {
             .skip(1)
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         let identity = MyIdentity {
-            tari_address: wallet_id.address.to_hex(),
+            tari_address: wallet_id.address.to_base58(),
             network_address: wallet_id
                 .node_identity
                 .public_addresses()
@@ -1249,7 +1234,7 @@ impl AppStateData {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network(),
-            wallet_identity.address.to_hex()
+            wallet_identity.address.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -1262,7 +1247,7 @@ impl AppStateData {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
-            tari_address: wallet_identity.address.to_hex(),
+            tari_address: wallet_identity.address.to_base58(),
             network_address: wallet_identity
                 .node_identity
                 .public_addresses()

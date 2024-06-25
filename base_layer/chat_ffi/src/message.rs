@@ -599,10 +599,14 @@ mod test {
 
     #[test]
     fn test_reading_message_address() {
-        let receiver_address =
-            TariAddress::from_hex("2602742c39084e62565e1416f9f97ff34bd91fc3ccd35bb7e6cf916cb757066c816966").unwrap();
-        let sender_address =
-            TariAddress::from_hex("2602764460f2fff434446cab6e03a5ea2a4c1dc4984c1749a4af8371ceecd8da1d0c01").unwrap();
+        let receiver_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+        let sender_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
         let message = MessageBuilder::new()
             .receiver_address(receiver_address.clone())
             .sender_address(sender_address.clone())
