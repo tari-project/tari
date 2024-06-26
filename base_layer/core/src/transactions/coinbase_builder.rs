@@ -21,15 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use chacha20poly1305::aead::OsRng;
 use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{Commitment, PrivateKey, PublicKey},
+    types::{Commitment, PrivateKey},
 };
-use tari_crypto::keys::PublicKey as PK;
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
-use tari_script::{one_sided_payment_script, stealth_payment_script, ExecutionStack, TariScript};
+use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
@@ -40,7 +38,6 @@ use crate::{
     },
     covenants::Covenant,
     one_sided::{
-        diffie_hellman_stealth_domain_hasher,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
@@ -462,20 +459,20 @@ pub async fn generate_coinbase_with_wallet_output(
 
     let spending_key_id = key_manager.import_key(spending_key).await?;
 
-    let script = if stealth_payment {
-        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-        let c = diffie_hellman_stealth_domain_hasher(
-            &nonce_private_key,
-            wallet_payment_address
-                .public_view_key()
-                .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
-        );
-        let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_spend_key());
-        stealth_payment_script(&nonce_public_key, &script_spending_key)
+    let script_spending_pubkey = if stealth_payment {
+        let c = key_manager
+            .get_diffie_hellman_stealth_domain_hasher(
+                &sender_offset_key_id,
+                wallet_payment_address
+                    .public_view_key()
+                    .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
+            )
+            .await?;
+        stealth_address_script_spending_key(&c, wallet_payment_address.public_spend_key())
     } else {
-        one_sided_payment_script(wallet_payment_address.public_spend_key())
+        wallet_payment_address.public_spend_key().clone()
     };
-
+    let script = push_pubkey_script(&script_spending_pubkey);
     let (transaction, wallet_output) = CoinbaseBuilder::new(key_manager.clone())
         .with_block_height(height)
         .with_fees(fee)
@@ -601,7 +598,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx, _unblinded_output) = builder
             .build(
@@ -656,7 +653,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
             .build(
@@ -695,7 +692,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
             .build(
@@ -714,7 +711,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx2, _) = builder
             .build(
@@ -750,7 +747,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx3, _) = builder
             .build(
@@ -771,7 +768,7 @@ mod test {
             .is_ok());
     }
     use tari_key_manager::key_manager_service::KeyManagerInterface;
-    use tari_script::one_sided_payment_script;
+    use tari_script::push_pubkey_script;
 
     use crate::transactions::{
         aggregated_body::AggregateBody,
@@ -804,7 +801,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (mut tx, _) = builder
             .build(
@@ -825,7 +822,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, output) = builder
             .build(
@@ -944,7 +941,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx1, wo1) = builder
             .build(
@@ -965,7 +962,7 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
             .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, wo2) = builder
             .build(

@@ -77,7 +77,7 @@ use tari_p2p::{
     PeerSeedsConfig,
     TransportType,
 };
-use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
+use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -166,9 +166,10 @@ where
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
-        wallet_type: WalletType,
+        wallet_type: Option<WalletType>,
         user_agent: String,
     ) -> Result<Self, WalletError> {
+        let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_database)?;
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
@@ -826,7 +827,7 @@ async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: &Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {
-    let script = one_sided_payment_script(node_identity.public_key());
+    let script = push_pubkey_script(node_identity.public_key());
     let wallet_node_key_id = TariKeyId::Imported {
         key: node_identity.public_key().clone(),
     };

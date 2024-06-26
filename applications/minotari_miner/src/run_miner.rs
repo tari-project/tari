@@ -396,7 +396,7 @@ async fn get_new_block_base_node(
         config.coinbase_extra.as_bytes(),
         key_manager,
         wallet_payment_address,
-        config.stealth_payment,
+        true,
         consensus_manager.consensus_constants(height),
         config.range_proof_type,
         PaymentId::Empty,
