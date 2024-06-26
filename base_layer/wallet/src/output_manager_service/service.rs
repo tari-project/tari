@@ -2322,41 +2322,26 @@ where
         let mut scanned_outputs = vec![];
 
         for output in outputs {
-            match output.script.as_slice() {
-                // ----------------------------------------------------------------------------
-                // simple one-sided address
-                [Opcode::PushPubKey(scanned_pk)] => {
-                    match known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
-                        // none of the keys match, skipping
-                        None => continue,
-
-                        // match found
-                        Some(matched_key) => {
-                            let shared_secret = self
-                                .resources
-                                .key_manager
-                                .get_diffie_hellman_shared_secret(&wallet_view_key, &output.sender_offset_public_key)
-                                .await?;
-                            scanned_outputs.push((
-                                output.clone(),
-                                OutputSource::OneSided,
-                                matched_key.1.clone(),
-                                shared_secret,
-                            ));
-                        },
-                    }
-                },
-
-                // ----------------------------------------------------------------------------
-                // one-sided stealth address
-                // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
-                // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
-                [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
-                    // matching spending (public) keys
+            if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
+                if let Some(matched_key) = known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
+                    let shared_secret = self
+                        .resources
+                        .key_manager
+                        .get_diffie_hellman_shared_secret(&wallet_view_key, &output.sender_offset_public_key)
+                        .await?;
+                    scanned_outputs.push((
+                        output.clone(),
+                        OutputSource::OneSided,
+                        matched_key.1.clone(),
+                        shared_secret,
+                    ));
+                }
+                // it is not some known key, so lets try and see if this is a stealth tx for us
+                else {
                     let stealth_address_hasher = self
                         .resources
                         .key_manager
-                        .get_diffie_hellman_stealth_domain_hasher(&wallet_view_key, nonce.as_ref())
+                        .get_diffie_hellman_stealth_domain_hasher(&wallet_view_key, &output.sender_offset_public_key)
                         .await?;
                     let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, &wallet_pk);
                     if &script_spending_key != scanned_pk.as_ref() {
@@ -2383,9 +2368,7 @@ where
                         stealth_key,
                         shared_secret,
                     ));
-                },
-
-                _ => {},
+                }
             }
         }
 

@@ -38,15 +38,7 @@ hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
 /// The type used for `CheckSig`, `CheckMultiSig`, and related opcodes' signatures
 pub type CheckSigSchnorrSignature = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, CheckSigHashDomain>;
 
-/// The standard payment script to be used for one-sided payment to stealth addresses
-pub fn stealth_payment_script(
-    nonce_public_key: &RistrettoPublicKey,
-    script_spending_key: &RistrettoPublicKey,
-) -> TariScript {
-    script!(PushPubKey(Box::new(nonce_public_key.clone())) Drop PushPubKey(Box::new(script_spending_key.clone())))
-}
-
 /// The standard payment script to be used for one-sided payment to public addresses
-pub fn one_sided_payment_script(destination_public_key: &RistrettoPublicKey) -> TariScript {
+pub fn push_pubkey_script(destination_public_key: &RistrettoPublicKey) -> TariScript {
     script!(PushPubKey(Box::new(destination_public_key.clone())))
 }

@@ -47,7 +47,6 @@ use tari_core::{
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{
-        diffie_hellman_stealth_domain_hasher,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
@@ -81,7 +80,7 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, ExecutionStack, TariScript};
+use tari_script::{inputs, push_pubkey_script, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -1329,11 +1328,18 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        script: TariScript,
+        recipient_script: Option<TariScript>,
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
 
+        // For a stealth transaction, the script is not provided because the public key that should be included
+        // is not known at this stage. This will only be known later. For now,
+        // we include a default public key to ensure that the script size is correct.
+        let (mut script, use_stealth_address) = match recipient_script {
+            Some(s) => (s, false),
+            None => (push_pubkey_script(&Default::default()), true),
+        };
         // Prepare sender part of the transaction
         let mut stp = self
             .resources
@@ -1353,7 +1359,8 @@ where
             .await?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used
+        // but the returned value is not used. We have to wait until the sender transaction protocol creates a
+        // sender_offset_private_key for us, so we can use it to create the shared secret
         let _single_round_sender_data = stp
             .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
@@ -1376,6 +1383,25 @@ where
                 tx_id,
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
+
+        if use_stealth_address {
+            // lets fix the script with the correct one
+            let c = self
+                .resources
+                .transaction_key_manager_service
+                .get_diffie_hellman_stealth_domain_hasher(
+                    &sender_offset_private_key,
+                    dest_address
+                        .public_view_key()
+                        .ok_or(TransactionServiceError::OneSidedTransactionError(
+                            "Missing public view key".to_string(),
+                        ))?,
+                )
+                .await?;
+
+            let script_spending_key = stealth_address_script_spending_key(&c, dest_address.public_spend_key());
+            script = push_pubkey_script(&script_spending_key);
+        }
 
         let shared_secret = self
             .resources
@@ -1552,7 +1578,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            one_sided_payment_script(&dest_pubkey),
+            Some(push_pubkey_script(&dest_pubkey)),
             payment_id,
         )
         .await
@@ -1871,25 +1897,6 @@ where
         if destination.network() != self.resources.wallet_identity.address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }
-        if self.resources.wallet_identity.node_identity.public_key() == destination.comms_public_key() {
-            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
-            return Err(TransactionServiceError::OneSidedTransactionError(
-                "One-sided-to-stealth-address spend-to-self transactions not supported".to_string(),
-            ));
-        }
-
-        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-
-        let c = diffie_hellman_stealth_domain_hasher(
-            &nonce_private_key,
-            destination
-                .public_view_key()
-                .ok_or(TransactionServiceError::OneSidedTransactionError(
-                    "Missing public view key".to_string(),
-                ))?,
-        );
-
-        let script_spending_key = stealth_address_script_spending_key(&c, destination.public_spend_key());
 
         self.send_one_sided_or_stealth(
             destination,
@@ -1899,7 +1906,7 @@ where
             fee_per_gram,
             message,
             transaction_broadcast_join_handles,
-            stealth_payment_script(&nonce_public_key, &script_spending_key),
+            None, // The stealth address for the script will be calculated in the next step
             payment_id,
         )
         .await
@@ -3057,53 +3064,4 @@ enum PowerMode {
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: TransactionStatus,
-}
-
-#[cfg(test)]
-mod tests {
-    use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_script::Opcode;
-
-    use super::*;
-
-    #[test]
-    fn test_stealth_addresses() {
-        // recipient's keys
-        let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
-        let (_b, big_b) = PublicKey::random_keypair(&mut OsRng);
-
-        // Sender generates a random nonce key-pair: R=r⋅G
-        let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
-
-        // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
-        // where H(⋅) is a cryptographic hash function
-        let c = diffie_hellman_stealth_domain_hasher(&r, &big_a);
-
-        // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
-        let sender_spending_key = stealth_address_script_spending_key(&c, &big_b);
-
-        let script = stealth_payment_script(&big_r, &sender_spending_key);
-
-        // ----------------------------------------------------------------------------
-        // imitating the receiving end, scanning and extraction
-
-        // Extracting the nonce R and a spending key from the script
-        if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
-        {
-            // calculating Ks with the provided R nonce from the script
-            let c = diffie_hellman_stealth_domain_hasher(&a, big_r);
-
-            // computing a spending key `Ks=(c+b)G` for comparison
-            let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);
-
-            // computing a scanning key `Ks=cG+B` for comparison
-            let scanning_key =
-                PublicKey::from_secret_key(&RistrettoSecretKey::from_uniform_bytes(c.as_ref()).unwrap()) + big_b;
-
-            assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
-            assert_eq!(receiver_spending_key, sender_spending_key);
-            assert_eq!(scanning_key, sender_spending_key);
-            assert_eq!(scanning_key, receiver_spending_key);
-        }
-    }
 }
