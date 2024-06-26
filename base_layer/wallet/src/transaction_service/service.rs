@@ -1359,7 +1359,7 @@ where
             .await?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used. We have to wait until the stp creates a sender_offset_private_key for us,
+        // but the returned value is not used. We have to wait until the sender transaction protocol creates a sender_offset_private_key for us,
         // so we can use it to create the shared secret
         let _single_round_sender_data = stp
             .build_single_round_message(&self.resources.transaction_key_manager_service)
