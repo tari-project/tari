@@ -430,7 +430,6 @@ pub async fn init_wallet(
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
-    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
 
     let node_identity = match config.wallet.identity_file.as_ref() {
         Some(identity_file) => {
@@ -476,7 +475,7 @@ pub async fn init_wallet(
         key_manager_backend,
         shutdown_signal,
         master_seed,
-        wallet_type.unwrap(),
+        wallet_type,
         user_agent,
     )
     .await
@@ -839,7 +838,7 @@ pub fn prompt_wallet_type(
 
             #[cfg(feature = "ledger")]
             {
-                if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
+                if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)") {
                     print!("Scanning for connected Ledger hardware device... ");
                     match get_transport() {
                         Ok(hid) => {

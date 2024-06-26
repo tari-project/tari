@@ -166,9 +166,10 @@ where
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
-        wallet_type: WalletType,
+        wallet_type: Option<WalletType>,
         user_agent: String,
     ) -> Result<Self, WalletError> {
+        let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_database)?;
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
