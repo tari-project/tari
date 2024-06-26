@@ -43,7 +43,6 @@ pub struct MergeMiningProxyProcess {
     pub port: u64,
     pub origin_submission: bool,
     id: u64,
-    pub stealth: bool,
 }
 
 pub async fn register_merge_mining_proxy_process(
@@ -52,7 +51,6 @@ pub async fn register_merge_mining_proxy_process(
     base_node_name: String,
     wallet_name: String,
     origin_submission: bool,
-    stealth: bool,
 ) {
     let merge_mining_proxy = MergeMiningProxyProcess {
         name: merge_mining_proxy_name.clone(),
@@ -61,7 +59,6 @@ pub async fn register_merge_mining_proxy_process(
         port: get_port(18000..18499).unwrap(),
         origin_submission,
         id: 0,
-        stealth,
     };
 
     merge_mining_proxy.start(world).await;
@@ -93,7 +90,6 @@ impl MergeMiningProxyProcess {
             .into_inner()
             .address;
         let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
-        let stealth = self.stealth;
         thread::spawn(move || {
             let cli = Cli {
                 common: CommonCliArgs {
@@ -132,9 +128,8 @@ impl MergeMiningProxyProcess {
                         ),
                         (
                             "merge_mining_proxy.wallet_payment_address".to_string(),
-                            wallet_payment_address.to_hex(),
+                            wallet_payment_address.to_base58(),
                         ),
-                        ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
                         (
                             "merge_mining_proxy.use_dynamic_fail_data".to_string(),
                             "false".to_string(),

@@ -42,11 +42,11 @@ impl WalletAddress {
         Self { ptr }
     }
 
-    pub fn from_hex(address: String) -> Self {
+    pub fn from_base58(address: String) -> Self {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::tari_address_from_hex(CString::new(address).unwrap().into_raw(), &mut error);
+            ptr = ffi_import::tari_address_from_base58(CString::new(address).unwrap().into_raw(), &mut error);
             if error > 0 {
                 println!("wallet_get_tari_address error {}", error);
             }

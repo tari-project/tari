@@ -29,6 +29,7 @@ use std::{
 use callbacks::Callbacks;
 use indexmap::IndexMap;
 use libc::{c_ulonglong, c_void};
+use tari_common_types::tari_address::TariAddress;
 
 use super::{
     ffi_import::{
@@ -216,10 +217,11 @@ impl Wallet {
     }
 
     pub fn add_liveness_data(&mut self, contact_liveness_data: ContactsLivenessData) {
-        self.liveness_data.lock().unwrap().insert(
-            contact_liveness_data.get_public_key().address().get_as_hex(),
-            contact_liveness_data,
-        );
+        let address = TariAddress::from_bytes(&contact_liveness_data.get_public_key().address().get_vec()).unwrap();
+        self.liveness_data
+            .lock()
+            .unwrap()
+            .insert(address.to_base58(), contact_liveness_data);
     }
 
     pub fn set_balance(&mut self, balance: Balance) {
@@ -333,7 +335,7 @@ impl Wallet {
         unsafe {
             tx_id = ffi_import::wallet_send_transaction(
                 self.ptr,
-                WalletAddress::from_hex(dest).get_ptr(),
+                WalletAddress::from_base58(dest).get_ptr(),
                 amount,
                 null_mut(),
                 fee_per_gram,

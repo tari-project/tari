@@ -24,7 +24,7 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_key_manager::key_manager_service::KeyId;
-use tari_script::{one_sided_payment_script, script};
+use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tokio::time::Instant;
 
@@ -250,7 +250,7 @@ async fn it_allows_multiple_coinbases() {
         .with_encryption_key_id(TariKeyId::default())
         .with_sender_offset_key_id(TariKeyId::default())
         .with_script_key_id(TariKeyId::default())
-        .with_script(one_sided_payment_script(wallet_payment_address.public_spend_key()))
+        .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
         .with_range_proof_type(RangeProofType::RevealedValue)
         .build_with_reward(
             blockchain.rules().consensus_constants(1),

@@ -127,9 +127,8 @@ impl MinerProcess {
                     ("miner.mine_on_tip_only".to_string(), "false".to_string()),
                     (
                         "miner.wallet_payment_address".to_string(),
-                        wallet_payment_address.to_hex(),
+                        wallet_payment_address.to_base58(),
                     ),
-                    ("miner.stealth_payment".to_string(), self.stealth.to_string()),
                 ],
                 network: Some(Network::LocalNet),
             },

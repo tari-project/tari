@@ -156,8 +156,10 @@ mod test {
 
     #[test]
     fn test_reading_address() {
-        let address =
-            TariAddress::from_hex("2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118").unwrap();
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
         let liveness = ContactsLivenessData::new(
             address.clone(),
             Default::default(),

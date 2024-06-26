@@ -335,7 +335,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_inner()
             .recipient
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
-        let address = TariAddress::from_hex(&message.address)
+        let address = TariAddress::from_base58(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
 
         let mut transaction_service = self.get_transaction_service();
@@ -496,7 +496,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
-                let address = TariAddress::from_hex(&dest.address)
+                let address = TariAddress::from_base58(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
                     dest.address,

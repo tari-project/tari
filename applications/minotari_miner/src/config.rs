@@ -85,8 +85,6 @@ pub struct MinerConfig {
     pub config_dir: PathBuf,
     /// The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
     pub wallet_payment_address: String,
-    /// Stealth payment yes or no
-    pub stealth_payment: bool,
     /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
 }
@@ -123,8 +121,7 @@ impl Default for MinerConfig {
             network: Default::default(),
             wait_timeout_on_error: 10,
             config_dir: PathBuf::from("config/miner"),
-            wallet_payment_address: TariAddress::default().to_hex(),
-            stealth_payment: true,
+            wallet_payment_address: TariAddress::default().to_base58(),
             range_proof_type: RangeProofType::RevealedValue,
         }
     }
