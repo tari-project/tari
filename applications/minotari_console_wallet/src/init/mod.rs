@@ -433,7 +433,7 @@ pub async fn init_wallet(
 
     let node_identity = {
         let comms_secret_key = match read_or_create_wallet_type(wallet_type.clone(), &wallet_db)? {
-            WalletType::Software(_) => derive_comms_secret_key(&master_seed)?,
+            WalletType::Software => derive_comms_secret_key(&master_seed)?,
             WalletType::Ledger(wallet) => wallet.view_key.ok_or(ExitError::new(
                 ExitCode::ConfigError,
                 "Ledger wallet requires a view key to be set in the config",

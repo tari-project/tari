@@ -26,55 +26,29 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use chacha20poly1305::aead::OsRng;
 #[cfg(feature = "ledger")]
 use ledger_transport::APDUCommand;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::ledger_wallet::{Command, Instruction};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::RistrettoPublicKey,
-};
+use tari_crypto::ristretto::RistrettoPublicKey;
 
-use crate::types::{PrivateKey, PublicKey};
+use crate::types::PrivateKey;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum WalletType {
-    Software(SoftwareWallet),
+    #[default]
+    Software,
     Ledger(LedgerWallet),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::Software(software_wallet) => write!(f, "Software({software_wallet})"),
+            WalletType::Software => write!(f, "Software"),
             WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
         }
-    }
-}
-
-impl Default for WalletType {
-    fn default() -> Self {
-        let k: PrivateKey = SecretKey::random(&mut OsRng);
-        WalletType::Software(SoftwareWallet {
-            private_alpha: k.clone(),
-            public_alpha: PublicKey::from_secret_key(&k),
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SoftwareWallet {
-    pub public_alpha: PublicKey,
-    pub private_alpha: PrivateKey,
-}
-
-impl Display for SoftwareWallet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "pubkey {}", self.public_alpha)?;
-        Ok(())
     }
 }
 
