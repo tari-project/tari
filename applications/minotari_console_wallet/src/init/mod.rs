@@ -824,18 +824,24 @@ pub fn prompt_wallet_type(
     }
 
     match boot_mode {
-        WalletBoot::New => {
+        WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
             return Some(WalletType::default());
 
             #[cfg(feature = "ledger")]
             {
-                if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)") {
+                let connected_hardware_msg = match boot_mode {
+                    WalletBoot::Recovery => {
+                        "\r\nWas your wallet connected to a hardware device? (Supported types: Ledger) (Y/n)"
+                    },
+                    _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)",
+                };
+                if prompt(connected_hardware_msg) {
                     print!("Scanning for connected Ledger hardware device... ");
                     match get_transport() {
                         Ok(hid) => {
                             println!("Device found.");
-                            let account = prompt_ledger_account().expect("An account value");
+                            let account = prompt_ledger_account(&boot_mode).expect("An account value");
                             let ledger = LedgerWallet::new(account, wallet_config.network, None, None);
                             match ledger
                                 .build_command(Instruction::GetPublicAlpha, vec![])
@@ -904,9 +910,14 @@ pub fn prompt_wallet_type(
     }
 }
 
-pub fn prompt_ledger_account() -> Option<u64> {
-    let question =
-        "\r\nPlease enter an account number for your ledger. A simple 1-9, easily remembered numbers are suggested.";
+pub fn prompt_ledger_account(boot_mode: &WalletBoot) -> Option<u64> {
+    let question = match boot_mode {
+        WalletBoot::Recovery => "\r\nPlease enter the account number you previously used for your device.",
+        _ => {
+            "\r\nPlease enter an account number for your device. A simple 1-9, easily remembered numbers are suggested."
+        },
+    };
+
     println!("{}", question);
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
