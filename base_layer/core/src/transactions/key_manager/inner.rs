@@ -247,7 +247,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             KeyId::Derived { branch, label, index } => {
                 let public_alpha = match &self.wallet_type {
-                    WalletType::Software(_k, pk) => pk,
+                    WalletType::Software(software_wallet) => &software_wallet.public_alpha,
                     WalletType::Ledger(ledger) => {
                         ledger.public_alpha.as_ref().ok_or(KeyManagerServiceError::LedgerError(
                             "Key manager set to use ledger, ledger alpha public key missing".to_string(),
@@ -455,7 +455,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             KeyId::Derived { branch, label, index } => match &self.wallet_type {
                 WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
-                WalletType::Software(private_alpha, _pk) => {
+                WalletType::Software(software_wallet) => {
                     let km = self
                         .key_managers
                         .get(branch)
@@ -468,7 +468,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
                         KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", label))
                     })?;
-                    let private_key = private_key + private_alpha;
+                    let private_key = private_key + &software_wallet.private_alpha;
                     Ok(private_key)
                 },
             },
@@ -861,7 +861,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     label: _,
                     index,
                 } => match &self.wallet_type {
-                    WalletType::Software(_, _) => {
+                    WalletType::Software(_software_wallet) => {
                         total_script_private_key =
                             total_script_private_key + self.get_private_key(script_key_id).await?;
                     },
@@ -882,7 +882,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
 
         match &self.wallet_type {
-            WalletType::Software(_, _) => {
+            WalletType::Software(_software_wallet) => {
                 let mut total_sender_offset_private_key = PrivateKey::default();
                 for sender_offset_key_id in sender_offset_key_ids {
                     total_sender_offset_private_key =
@@ -1167,7 +1167,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         match &self.wallet_type {
-            WalletType::Software(_, _) => {
+            WalletType::Software(_software_wallet) => {
                 let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
                 let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
                 let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger

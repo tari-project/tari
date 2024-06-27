@@ -42,15 +42,15 @@ use crate::types::{PrivateKey, PublicKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WalletType {
-    Software(PrivateKey, PublicKey),
+    Software(SoftwareWallet),
     Ledger(LedgerWallet),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::Software(_k, pk) => write!(f, "Software({:?})", pk),
-            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
+            WalletType::Software(software_wallet) => write!(f, "Software({software_wallet})"),
+            WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
         }
     }
 }
@@ -58,7 +58,23 @@ impl Display for WalletType {
 impl Default for WalletType {
     fn default() -> Self {
         let k: PrivateKey = SecretKey::random(&mut OsRng);
-        WalletType::Software(k.clone(), PublicKey::from_secret_key(&k))
+        WalletType::Software(SoftwareWallet {
+            private_alpha: k.clone(),
+            public_alpha: PublicKey::from_secret_key(&k),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoftwareWallet {
+    pub public_alpha: PublicKey,
+    pub private_alpha: PrivateKey,
+}
+
+impl Display for SoftwareWallet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "pubkey {}", self.public_alpha)?;
+        Ok(())
     }
 }
 

@@ -447,6 +447,7 @@ pub async fn init_wallet(
         },
         None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?,
     };
+    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
 
     let mut wallet_config = config.wallet.clone();
     if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
