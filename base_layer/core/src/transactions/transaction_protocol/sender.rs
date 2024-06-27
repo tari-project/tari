@@ -27,11 +27,10 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
+use tari_crypto::{ristretto::pedersen::PedersenCommitment};
 pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
-use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -774,16 +773,6 @@ impl fmt::Display for SenderTransactionProtocol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.state)
     }
-}
-
-pub fn calculate_tx_id(pub_nonce: &PublicKey, index: usize) -> TxId {
-    let hash = CalculateTxIdTransactionProtocolHasherBlake256::new()
-        .chain(pub_nonce.as_bytes())
-        .chain(index.to_le_bytes())
-        .finalize();
-    let mut bytes: [u8; 8] = [0u8; 8];
-    bytes.copy_from_slice(&hash.as_ref()[..8]);
-    u64::from_le_bytes(bytes).into()
 }
 
 //----------------------------------------      Sender State      ----------------------------------------------------//
