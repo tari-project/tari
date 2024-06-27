@@ -234,7 +234,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 Err(e) => return Err(KeyManagerServiceError::LedgerError(e.to_string())),
                             }
                         }
-                    } else if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                    }
+
+                    if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
                         let view_key = ledger
                             .view_key
                             .clone()
@@ -261,7 +263,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .read()
                             .await;
 
-                        PublicKey::from_secret_key(&km.get_private_key(0)?)
+                        km.derive_public_key(0)?.key
                     },
                     WalletType::Ledger(ledger) => {
                         ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
@@ -492,7 +494,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
                         KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", label))
                     })?;
-                    let private_key = private_key + &private_alpha;
+                    let private_key = private_key + private_alpha;
                     Ok(private_key)
                 },
             },

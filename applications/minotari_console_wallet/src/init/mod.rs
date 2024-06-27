@@ -841,7 +841,7 @@ pub fn prompt_wallet_type(
                     match get_transport() {
                         Ok(hid) => {
                             println!("Device found.");
-                            let account = prompt_ledger_account(&boot_mode).expect("An account value");
+                            let account = prompt_ledger_account(boot_mode).expect("An account value");
                             let ledger = LedgerWallet::new(account, wallet_config.network, None, None);
                             match ledger
                                 .build_command(Instruction::GetPublicAlpha, vec![])
@@ -910,7 +910,7 @@ pub fn prompt_wallet_type(
     }
 }
 
-pub fn prompt_ledger_account(boot_mode: &WalletBoot) -> Option<u64> {
+pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
     let question = match boot_mode {
         WalletBoot::Recovery => "\r\nPlease enter the account number you previously used for your device.",
         _ => {
