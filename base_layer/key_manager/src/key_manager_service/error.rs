@@ -51,8 +51,10 @@ pub enum KeyManagerServiceError {
     UnknownError(String),
     #[error("Ledger error: `{0}`")]
     LedgerError(String),
-    #[error("The Ledger private key cannot be access or read")]
+    #[error("The Ledger private key cannot be accessed or read")]
     LedgerPrivateKeyInaccessible,
+    #[error("The Ledger view key cannot be accessed or read")]
+    LedgerViewKeyInaccessible,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

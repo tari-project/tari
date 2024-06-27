@@ -67,6 +67,7 @@ pub struct LedgerWallet {
     account: u64,
     pub public_alpha: Option<RistrettoPublicKey>,
     pub network: Network,
+    pub view_key: Option<PrivateKey>,
 }
 
 impl Display for LedgerWallet {
@@ -81,11 +82,17 @@ impl Display for LedgerWallet {
 const WALLET_CLA: u8 = 0x80;
 
 impl LedgerWallet {
-    pub fn new(account: u64, network: Network, public_alpha: Option<RistrettoPublicKey>) -> Self {
+    pub fn new(
+        account: u64,
+        network: Network,
+        public_alpha: Option<RistrettoPublicKey>,
+        view_key: Option<PrivateKey>,
+    ) -> Self {
         Self {
             account,
             public_alpha,
             network,
+            view_key,
         }
     }
 

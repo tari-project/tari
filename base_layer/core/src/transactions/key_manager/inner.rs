@@ -434,6 +434,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
+                // In the event we're asking for the view key, and we use a ledger, reference the stored key
+                if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                    if let WalletType::Ledger(wallet) = &self.wallet_type {
+                        return wallet
+                            .view_key
+                            .clone()
+                            .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible);
+                    }
+                };
+
                 let km = self
                     .key_managers
                     .get(branch)

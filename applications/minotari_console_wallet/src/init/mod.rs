@@ -844,7 +844,7 @@ pub fn prompt_wallet_type(
                         Ok(hid) => {
                             println!("Device found.");
                             let account = prompt_ledger_account().expect("An account value");
-                            let ledger = LedgerWallet::new(account, wallet_config.network, None);
+                            let ledger = LedgerWallet::new(account, wallet_config.network, None, None);
                             match ledger
                                 .build_command(Instruction::GetPublicAlpha, vec![])
                                 .execute_with_transport(&hid)
@@ -860,13 +860,43 @@ pub fn prompt_wallet_type(
                                         );
                                     }
 
-                                    let key = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
+                                    let public_alpha = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
                                         Ok(k) => k,
                                         Err(e) => panic!("{}", e),
                                     };
 
-                                    let ledger = LedgerWallet::new(account, wallet_config.network, Some(key));
-                                    Some(WalletType::Ledger(ledger))
+                                    match ledger
+                                        .build_command(Instruction::GetViewKey, vec![])
+                                        .execute_with_transport(&hid)
+                                    {
+                                        Ok(result) => {
+                                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                                            if result.data().len() < 33 {
+                                                debug!(target: LOG_TARGET, "result less than 33");
+                                                panic!(
+                                                    "'get_view_key' insufficient data - expected 33 got {} bytes \
+                                                     ({:?})",
+                                                    result.data().len(),
+                                                    result
+                                                );
+                                            }
+
+                                            let view_key = match PrivateKey::from_canonical_bytes(&result.data()[1..33])
+                                            {
+                                                Ok(k) => k,
+                                                Err(e) => panic!("{}", e),
+                                            };
+
+                                            let ledger = LedgerWallet::new(
+                                                account,
+                                                wallet_config.network,
+                                                Some(public_alpha),
+                                                Some(view_key),
+                                            );
+                                            Some(WalletType::Ledger(ledger))
+                                        },
+                                        Err(e) => panic!("{}", e),
+                                    }
                                 },
                                 Err(e) => panic!("{}", e),
                             }
