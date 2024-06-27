@@ -27,7 +27,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::{ristretto::pedersen::PedersenCommitment};
+use tari_crypto::ristretto::pedersen::PedersenCommitment;
 pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
