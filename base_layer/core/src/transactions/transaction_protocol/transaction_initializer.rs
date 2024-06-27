@@ -49,7 +49,7 @@ use crate::{
             MAX_TRANSACTION_OUTPUTS,
         },
         transaction_protocol::{
-            sender::{calculate_tx_id, OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+            sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
             TransactionMetadata,
         },
@@ -526,18 +526,10 @@ where KM: TransactionKeyManagerInterface
             None => None,
         };
 
-        let spending_key = match self
-            .key_manager
-            .get_public_key_at_key_id(&self.inputs[0].output.spending_key_id)
-            .await
-        {
-            Ok(key) => key,
-            Err(e) => return self.build_err(&e.to_string()),
-        };
         // we need some random data here, the public excess of the commitment is random.
         let tx_id = match self.tx_id {
             Some(id) => id,
-            None => calculate_tx_id(&spending_key, 0),
+            None => TxId::new_random(),
         };
 
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
