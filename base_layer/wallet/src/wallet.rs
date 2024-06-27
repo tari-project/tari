@@ -54,7 +54,12 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
+        key_manager::{
+            SecretTransactionKeyManagerInterface,
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInitializer,
+        },
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
@@ -84,7 +89,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
-    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
+    config::WalletConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     consts,
     error::{WalletError, WalletStorageError},
@@ -814,7 +819,7 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager = KeyManager::<PublicKey, KeyDigest>::from(
         master_seed.clone(),
-        KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
+        TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
         0,
     );
     Ok(comms_key_manager.derive_key(0)?.key)

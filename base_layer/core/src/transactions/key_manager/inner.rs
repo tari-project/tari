@@ -1340,11 +1340,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // -----------------------------------------------------------------------------------------------------------------
 
     async fn get_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        let view_id = KeyId::Managed {
+        self.get_private_key(&TariKeyId::Managed {
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
-        };
-        self.get_private_key(&view_id).await
+        })
+        .await
     }
 
     pub async fn encrypt_data_for_recovery(
