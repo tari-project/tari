@@ -445,9 +445,17 @@ pub async fn init_wallet(
                 PeerFeatures::COMMUNICATION_CLIENT,
             )?
         },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?,
+        None => {
+            let comms_secret_keys = match read_or_create_wallet_type(wallet_type.clone(), &wallet_db)? {
+                WalletType::Software(_) => derive_comms_secret_key(&master_seed)?,
+                WalletType::Ledger(wallet) => wallet.view_key.ok_or(ExitError::new(
+                    ExitCode::ConfigError,
+                    "Ledger wallet requires a view key to be set in the config",
+                ))?,
+            };
+            setup_identity_from_db(&wallet_db, node_addresses.to_vec(), comms_secret_keys)?
+        },
     };
-    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
 
     let mut wallet_config = config.wallet.clone();
     if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
@@ -537,16 +545,14 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
 
 fn setup_identity_from_db<D: WalletBackend + 'static>(
     wallet_db: &WalletDatabase<D>,
-    master_seed: &CipherSeed,
     node_addresses: Vec<Multiaddr>,
+    comms_secret_key: PrivateKey,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     let node_features = wallet_db
         .get_node_features()?
         .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
 
     let identity_sig = wallet_db.get_comms_identity_signature()?;
-
-    let comms_secret_key = derive_comms_secret_key(master_seed)?;
 
     // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
     // to None
