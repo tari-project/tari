@@ -234,6 +234,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 Err(e) => return Err(KeyManagerServiceError::LedgerError(e.to_string())),
                             }
                         }
+                    } else if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                        let view_key = ledger
+                            .view_key
+                            .clone()
+                            .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible)?;
+                        return Ok(PublicKey::from_secret_key(&view_key));
                     }
                 }
 
