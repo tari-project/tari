@@ -82,6 +82,8 @@ pub enum TransactionError {
     LedgerNotSupported,
     #[error("Transaction has a zero weight, not possible")]
     ZeroWeight,
+    #[error("Output with commitment {0} not found in transaction body")]
+    OutputNotFound(String),
 }
 
 impl From<KeyManagerServiceError> for TransactionError {

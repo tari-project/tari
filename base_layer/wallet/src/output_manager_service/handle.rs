@@ -23,14 +23,24 @@
 use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, HashOutput, PublicKey},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
+use tari_comms::types::CommsDHKE;
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionOutput,
+            WalletOutput,
+            WalletOutputBuilder,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -59,6 +69,22 @@ pub enum OutputManagerRequest {
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     ConfirmPendingTransaction(TxId),
+    EncumberAggregateUtxo {
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<CommsDHKE>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
+    },
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroMinotari,
@@ -141,6 +167,11 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
+            EncumberAggregateUtxo { tx_id, output_hash, .. } => write!(
+                f,
+                "Encumber aggregate utxo with tx_id: {} and output_hash: {}",
+                tx_id, output_hash
+            ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { message, .. } => write!(f, "PrepareToSendTransaction ({})", message),
@@ -214,6 +245,7 @@ pub enum OutputManagerResponse {
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
+    EncumberAggregateUtxo((Transaction, MicroMinotari, MicroMinotari, PublicKey)),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
@@ -713,6 +745,50 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CreatePayToSelfWithOutputs { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn encumber_aggregate_utxo(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_shares: Vec<Signature>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<CommsDHKE>,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
+        maturity: u64,
+        range_proof_type: RangeProofType,
+        minimum_value_promise: MicroMinotari,
+    ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::EncumberAggregateUtxo {
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_shares,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+                payment_id,
+                maturity,
+                range_proof_type,
+                minimum_value_promise,
+            })
+            .await??
+        {
+            OutputManagerResponse::EncumberAggregateUtxo((transaction, amount, fee, total_script_key)) => {
+                Ok((transaction, amount, fee, total_script_key))
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -723,10 +723,8 @@ impl SenderTransactionProtocol {
     /// transaction was valid or not. If the result is false, the transaction will be in a Failed state. Calling
     /// finalize while in any other state will result in an error.
     ///
-    /// First we validate against internal sanity checks, then try build the transaction, and then
-    /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
-    /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
-    /// returns `Ok(false)` in this instance.
+    /// First we validate against internal sanity checks, then try build the transaction. If any step fails,
+    /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation.
     pub async fn finalize<KM: TransactionKeyManagerInterface>(&mut self, key_manager: &KM) -> Result<(), TPE> {
         match &self.state {
             SenderState::Finalizing(info) => {

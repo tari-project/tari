@@ -28,6 +28,7 @@ use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
     get_metadata_signature::handler_get_metadata_signature,
+    get_metadata_signature::handler_get_script_signature_from_challenge,
     get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
@@ -114,6 +115,7 @@ pub enum Instruction {
     GetScriptSignature,
     GetScriptOffset { chunk: u8, more: bool },
     GetMetadataSignature,
+    GetScriptSignatureFromChallenge,
 }
 
 const P2_MORE: u8 = 0x01;
@@ -168,6 +170,7 @@ impl TryFrom<ApduHeader> for Instruction {
                 more: value.p2 == P2_MORE,
             }),
             (7, 0, 0) => Ok(Instruction::GetMetadataSignature),
+            (8, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
             (6, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -214,5 +217,6 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
         Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),
+        Instruction::GetScriptSignatureFromChallenge => handler_get_script_signature_from_challenge(comm),
     }
 }

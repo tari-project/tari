@@ -459,6 +459,32 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
+    fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let tx = CompletedTransactionSql::find_by_cancelled(tx_id, false, &mut conn)?;
+
+        tx.delete(&mut conn)?;
+        let cipher = acquire_read_lock!(self.cipher);
+        let completed_tx = CompletedTransactionSql::try_from(transaction, &cipher)?;
+        completed_tx.commit(&mut conn)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - update_completed_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
+
     fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
         tx_id: TxId,

@@ -48,13 +48,12 @@ use minotari_wallet::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
-use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{
     burnt_proof::BurntProof,
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, Signature},
+    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -62,17 +61,28 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroMinotari, Minotari},
-    transaction_components::{
-        encrypted_data::PaymentId,
-        OutputFeatures,
-        TransactionOutput,
-        UnblindedOutput,
-        WalletOutput,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        key_manager::TransactionKeyManagerInterface,
+        tari_amount::{uT, MicroMinotari, Minotari},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            EncryptedData,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionInput,
+            TransactionInputVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+            WalletOutput,
+        },
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -86,34 +96,6 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
-
-/// Enum representing commands used by the wallet
-#[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
-#[strum(serialize_all = "kebab_case")]
-pub enum WalletCommand {
-    GetBalance,
-    SendTari,
-    SendOneSided,
-    MakeItRain,
-    CoinSplit,
-    DiscoverPeer,
-    Whois,
-    ExportUtxos,
-    ExportTx,
-    ImportTx,
-    ExportSpentUtxos,
-    CountUtxos,
-    SetBaseNode,
-    SetCustomBaseNode,
-    ClearCustomBaseNode,
-    InitShaAtomicSwap,
-    FinaliseShaAtomicSwap,
-    ClaimShaAtomicSwapRefund,
-    RegisterAsset,
-    MintTokens,
-    CreateInitialCheckpoint,
-    RevalidateWalletDb,
-}
 
 #[derive(Debug)]
 pub struct SentTransaction {}
@@ -153,6 +135,86 @@ pub async fn burn_tari(
             message,
             None,
         )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+pub async fn create_aggregate_signature_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    amount: MicroMinotari,
+    fee_per_gram: MicroMinotari,
+    n: u8,
+    m: u8,
+    public_keys: Vec<PublicKey>,
+    message: String,
+    maturity: u64,
+) -> Result<(TxId, FixedHash), CommandError> {
+    let mut msg = [0u8; 32];
+    msg.copy_from_slice(message.as_bytes());
+
+    wallet_transaction_service
+        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg, maturity)
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// encumbers a n-of-m transaction
+#[allow(clippy::too_many_arguments)]
+async fn encumber_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroMinotari,
+    output_hash: String,
+    script_input_shares: Vec<Signature>,
+    script_public_key_shares: Vec<PublicKey>,
+    script_signature_shares: Vec<Signature>,
+    sender_offset_public_key_shares: Vec<PublicKey>,
+    metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+    dh_shared_secret_shares: Vec<PublicKey>,
+    recipient_address: TariAddress,
+    payment_id: PaymentId,
+    maturity: u64,
+    range_proof_type: RangeProofType,
+    minimum_value_promise: MicroMinotari,
+) -> Result<(TxId, Transaction, PublicKey), CommandError> {
+    wallet_transaction_service
+        .encumber_aggregate_utxo(
+            fee_per_gram,
+            output_hash,
+            script_input_shares,
+            script_public_key_shares,
+            script_signature_shares,
+            sender_offset_public_key_shares,
+            metadata_ephemeral_public_key_shares,
+            dh_shared_secret_shares,
+            recipient_address,
+            payment_id,
+            maturity,
+            range_proof_type,
+            minimum_value_promise,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// finalises an already encumbered a n-of-m transaction
+async fn finalise_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    tx_id: u64,
+    meta_signatures: Vec<Signature>,
+    script_signatures: Vec<Signature>,
+    wallet_script_secret_key: PrivateKey,
+) -> Result<TxId, CommandError> {
+    let mut meta_sig = Signature::default();
+    for sig in &meta_signatures {
+        meta_sig = &meta_sig + sig;
+    }
+    let mut script_sig = Signature::default();
+    for sig in &script_signatures {
+        script_sig = &script_sig + sig;
+    }
+
+    wallet_transaction_service
+        .finalize_aggregate_utxo(tx_id, meta_sig, script_sig, wallet_script_secret_key)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -617,6 +679,7 @@ pub async fn command_runner(
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
+    let key_manager_service = wallet.key_manager_service.clone();
     let mut online = false;
 
     let mut tx_ids = Vec::new();
@@ -675,6 +738,273 @@ pub async fn command_runner(
                     },
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
+            },
+            CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
+                Ok((key_id, pk)) => {
+                    println!(
+                        "New key pair:
+                                1. key id    : {},
+                                2. public key: {}",
+                        key_id,
+                        pk.to_hex()
+                    )
+                },
+                Err(e) => eprintln!("CreateKeyPair error! {}", e),
+            },
+            CreateAggregateSignatureUtxo(args) => match create_aggregate_signature_utxo(
+                transaction_service.clone(),
+                args.amount,
+                args.fee_per_gram,
+                args.n,
+                args.m,
+                args.public_keys
+                    .iter()
+                    .map(|pk| PublicKey::from(pk.clone()))
+                    .collect::<Vec<_>>(),
+                args.message, // 1. What is the message? => commitment
+                args.maturity,
+            )
+            .await
+            {
+                Ok((tx_id, output_hash)) => {
+                    println!(
+                        "Created an utxo with n-of-m aggregate public key, with:
+                            1. n = {},
+                            2. m = {},
+                            3. tx id = {},
+                            4. output hash = {}",
+                        args.n, args.m, tx_id, output_hash
+                    )
+                },
+                Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
+            },
+            SignMessage(args) => {
+                match key_manager_service
+                    .sign_message(&args.private_key_id, args.challenge.as_bytes())
+                    .await
+                {
+                    // 1. What is the message/challenge? => commitment
+                    Ok(sgn) => {
+                        println!(
+                            "Sign message:
+                                1. signature: {},
+                                2. public nonce: {}",
+                            sgn.get_signature().to_hex(),
+                            sgn.get_public_nonce().to_hex(),
+                        )
+                    },
+                    Err(e) => eprintln!("SignMessage error! {}", e),
+                }
+            },
+            EncumberAggregateUtxo(args) => {
+                match encumber_aggregate_utxo(
+                    transaction_service.clone(),
+                    args.fee_per_gram,
+                    args.output_hash,
+                    args.script_input_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.script_public_key_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.script_signature_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.sender_offset_public_key_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.metadata_ephemeral_public_key_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.dh_shared_secret_shares
+                        .iter()
+                        .map(|v| v.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.recipient_address,
+                    PaymentId::from_bytes(args.payment_id.as_bytes())
+                        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+                    args.maturity,
+                    args.range_proof_type,
+                    args.minimum_value_promise,
+                )
+                .await
+                {
+                    Ok((tx_id, transaction, script_pubkey)) => {
+                        println!(
+                            "Encumber aggregate utxo:
+                            1.  Tx_id: {}
+                            2.  input_commitment: {},
+                            3.  input_stack: {},
+                            4.  input_script: {},
+                            5.  total_script_key: {},
+                            6.  script_signature_ephemeral_commitment: {},
+                            7.  script_signature_ephemeral_pubkey: {},
+                            8.  output_commitment: {},
+                            9.  output_hash: {},
+                            10. sender_offset_pubkey: {},
+                            11. meta_signature_ephemeral_commitment: {},
+                            12. meta_signature_ephemeral_pubkey: {},
+                            13. total_public_offset: {}",
+                            tx_id,
+                            transaction.body.inputs()[0].commitment().unwrap().to_hex(),
+                            transaction.body.inputs()[0].input_data.to_hex(),
+                            transaction.body.inputs()[0].script().unwrap().to_hex(),
+                            script_pubkey.to_hex(),
+                            transaction.body.inputs()[0]
+                                .script_signature
+                                .ephemeral_commitment()
+                                .to_hex(),
+                            transaction.body.inputs()[0]
+                                .script_signature
+                                .ephemeral_pubkey()
+                                .to_hex(),
+                            transaction.body.outputs()[0].commitment().to_hex(),
+                            transaction.body.outputs()[0].hash().to_hex(),
+                            transaction.body.outputs()[0].sender_offset_public_key.to_hex(),
+                            transaction.body.outputs()[0]
+                                .metadata_signature
+                                .ephemeral_commitment()
+                                .to_hex(),
+                            transaction.body.outputs()[0]
+                                .metadata_signature
+                                .ephemeral_pubkey()
+                                .to_hex(),
+                            transaction.script_offset.to_hex(),
+                        )
+                    },
+                    Err(e) => println!("Encumber aggregate transaction error! {}", e),
+                }
+            },
+            SpendAggregateUtxo(args) => {
+                let mut offset = PrivateKey::default();
+                for key in args.script_offset_keys {
+                    let secret_key =
+                        PrivateKey::from_hex(&key).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                    offset = &offset + &secret_key;
+                }
+
+                match finalise_aggregate_utxo(
+                    transaction_service.clone(),
+                    args.tx_id,
+                    args.meta_signatures
+                        .iter()
+                        .map(|sgn| sgn.clone().into())
+                        .collect::<Vec<_>>(),
+                    args.script_signatures
+                        .iter()
+                        .map(|sgn| sgn.clone().into())
+                        .collect::<Vec<_>>(),
+                    offset,
+                )
+                .await
+                {
+                    Ok(_v) => println!("Transactions successfully completed"),
+                    Err(e) => println!("Error completing transaction! {}", e),
+                }
+            },
+            CreateScriptSig(args) => {
+                let private_nonce = PrivateKey::from_hex(&args.secret_nonce)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let script = TariScript::from_hex(&args.input_script)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let input_data = ExecutionStack::from_hex(&args.input_stack)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let commitment =
+                    Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let ephemeral_pubkey = PublicKey::from_hex(&args.ephemeral_pubkey)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let challenge = TransactionInput::build_script_signature_challenge(
+                    &TransactionInputVersion::get_current_version(),
+                    &ephemeral_commitment,
+                    &ephemeral_pubkey,
+                    &script,
+                    &input_data,
+                    &args.total_script_key.into(),
+                    &commitment,
+                );
+
+                match key_manager_service
+                    .sign_with_nonce_and_message(&args.private_key_id, &private_nonce, challenge.as_slice())
+                    .await
+                {
+                    Ok(signature) => {
+                        println!(
+                            "Sign script sig:
+                                1. signature: {},
+                                2. public nonce: {}",
+                            signature.get_signature().to_hex(),
+                            signature.get_public_nonce().to_hex(),
+                        )
+                    },
+                    Err(e) => eprintln!("SignMessage error! {}", e),
+                }
+            },
+            CreateMetaSig(args) => {
+                let private_key = PrivateKey::from_hex(&args.secret_offset_key)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let private_script_key = PrivateKey::from_hex(&args.secret_script_key)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let private_nonce = PrivateKey::from_hex(&args.secret_nonce)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let offset = private_script_key - &private_key;
+                let script = script!(Nop);
+                let commitment =
+                    Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let covenant = Covenant::default();
+                let encrypted_data = EncryptedData::default();
+                let output_features = OutputFeatures::default();
+                let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let ephemeral_pubkey = PublicKey::from_hex(&args.ephemeral_pubkey)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let minimum_value_promise = MicroMinotari::zero();
+                trace!(
+                    target: LOG_TARGET,
+                    "version: {:?}",
+                    TransactionOutputVersion::get_current_version()
+                );
+                trace!(target: LOG_TARGET, "script: {:?}", script);
+                trace!(target: LOG_TARGET, "output features: {:?}", output_features);
+                let offsetkey: PublicKey = args.total_meta_key.clone().into();
+                trace!(target: LOG_TARGET, "sender_offset_public_key: {:?}", offsetkey);
+                trace!(target: LOG_TARGET, "ephemeral_commitment: {:?}", ephemeral_commitment);
+                trace!(target: LOG_TARGET, "ephemeral_pubkey: {:?}", ephemeral_pubkey);
+                trace!(target: LOG_TARGET, "commitment: {:?}", commitment);
+                trace!(target: LOG_TARGET, "covenant: {:?}", covenant);
+                trace!(target: LOG_TARGET, "encrypted_value: {:?}", encrypted_data);
+                trace!(target: LOG_TARGET, "minimum_value_promise: {:?}", minimum_value_promise);
+                let challenge = TransactionOutput::build_metadata_signature_challenge(
+                    &TransactionOutputVersion::get_current_version(),
+                    &script,
+                    &output_features,
+                    &args.total_meta_key.into(),
+                    &ephemeral_commitment,
+                    &ephemeral_pubkey,
+                    &commitment,
+                    &covenant,
+                    &encrypted_data,
+                    minimum_value_promise,
+                );
+                trace!(target: LOG_TARGET, "meta challange: {:?}", challenge);
+                // TODO: Change to `ComAndPubSignature`
+                let signature = Signature::sign_with_nonce_and_message(&private_key, private_nonce, challenge)
+                    .map_err(CommandError::FailedSignature)?;
+                println!(
+                    "Sign meta sig:
+                                1. signature: {},
+                                2. public nonce: {},
+                     Script offset: {}",
+                    signature.get_signature().to_hex(),
+                    signature.get_public_nonce().to_hex(),
+                    offset.to_hex(),
+                )
             },
             SendMinotari(args) => {
                 match send_tari(

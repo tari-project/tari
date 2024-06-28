@@ -3304,7 +3304,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.8",
  "strum",
- "strum_macros",
  "tari_common",
  "tari_common_types",
  "tari_comms",
