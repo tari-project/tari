@@ -255,10 +255,6 @@ where
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
@@ -271,10 +267,10 @@ where
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
                     recipient_address,
-                    payment_id,
-                    maturity,
-                    range_proof_type,
-                    minimum_value_promise,
+                    PaymentId::Empty,
+                    0,
+                    RangeProofType::BulletProofPlus,
+                    0.into(),
                 )
                 .await
                 .map(OutputManagerResponse::EncumberAggregateUtxo),
@@ -1186,7 +1182,7 @@ where
         script_signature_shares: Vec<Signature>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<CommsDHKE>,
+        dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         payment_id: PaymentId,
         maturity: u64,
@@ -1333,7 +1329,7 @@ where
         let shared_secret = {
             let mut key_sum = PublicKey::default();
             for key in &dh_shared_secret_shares {
-                key_sum = key_sum + &PublicKey::from_vec(&key.as_bytes().to_vec())?;
+                key_sum = key_sum + key;
             }
             let shared_secret_self = self
                 .resources
@@ -1349,7 +1345,7 @@ where
                 )
                 .await?;
             key_sum = key_sum + &PublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
-            CommsDHKE::new(&PrivateKey::default(), &key_sum)
+            CommsDHKE::from_canonical_bytes(key_sum.as_bytes())?
         };
 
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;

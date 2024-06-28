@@ -30,8 +30,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use blake2::Blake2b;
 use chrono::{DateTime, Utc};
-use digest::Digest;
+use digest::{consts::U32, Digest};
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
@@ -62,15 +63,16 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
+    consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
+    one_sided::FaucetHashDomain,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
             EncryptedData,
             OutputFeatures,
-            RangeProofType,
             Transaction,
             TransactionInput,
             TransactionInputVersion,
@@ -82,13 +84,13 @@ use tari_core::{
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-
 use super::error::CommandError;
 use crate::{
     cli::{CliCommands, MakeItRainTransactionType},
@@ -171,10 +173,6 @@ async fn encumber_aggregate_utxo(
     metadata_ephemeral_public_key_shares: Vec<PublicKey>,
     dh_shared_secret_shares: Vec<PublicKey>,
     recipient_address: TariAddress,
-    payment_id: PaymentId,
-    maturity: u64,
-    range_proof_type: RangeProofType,
-    minimum_value_promise: MicroMinotari,
 ) -> Result<(TxId, Transaction, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
@@ -187,10 +185,6 @@ async fn encumber_aggregate_utxo(
             metadata_ephemeral_public_key_shares,
             dh_shared_secret_shares,
             recipient_address,
-            payment_id,
-            maturity,
-            range_proof_type,
-            minimum_value_promise,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -796,6 +790,62 @@ pub async fn command_runner(
                     Err(e) => eprintln!("SignMessage error! {}", e),
                 }
             },
+            FaucetCreatePartyDetails(args) => {
+                let spend_key = wallet.get_wallet_id().await?.wallet_node_key_id.clone();
+                let public_spend_key = key_manager_service.get_public_key_at_key_id(&spend_key).await?;
+                let (script_nonce, public_script_nonce) = key_manager_service
+                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+                    .await?;
+
+                let (sender_offset_key, public_sender_offset_key) = key_manager_service
+                    .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+                    .await?;
+                let (sender_offset_nonce, public_sender_offset_nonce) = key_manager_service
+                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+                    .await?;
+
+                let commitment = Commitment::from_hex(&args.commitment)?;
+                let com_hash: [u8; 32] =
+                    DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
+                        .chain(&commitment)
+                        .finalize()
+                        .into();
+                let shared_secret = key_manager_service
+                    .get_diffie_hellman_shared_secret(
+                        &sender_offset_key,
+                        args.destination
+                            .public_view_key()
+                            .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
+                    )
+                    .await?;
+                let shared_secret_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
+
+                let signature = key_manager_service.sign_message(&spend_key, &com_hash).await?;
+
+                println!(
+                    "Sign message:
+                                1. signature: {},
+                                2. public nonce: {},
+                                3. public spend key: {},
+                                4. spend nonce key: {},
+                                4. public spend nonce key: {},
+                                5. sender offset key: {},
+                                6. public sender offset nonce key: {},
+                                5. sender offset key: {},
+                                6. public sender offset nonce key: {},
+                                7. shared secret: {}",
+                    signature.get_signature().to_hex(),
+                    signature.get_public_nonce().to_hex(),
+                    public_spend_key,
+                    script_nonce,
+                    public_script_nonce,
+                    sender_offset_key,
+                    public_sender_offset_key,
+                    sender_offset_nonce,
+                    public_sender_offset_nonce,
+                    shared_secret_key
+                );
+            },
             EncumberAggregateUtxo(args) => {
                 match encumber_aggregate_utxo(
                     transaction_service.clone(),
@@ -826,11 +876,6 @@ pub async fn command_runner(
                         .map(|v| v.clone().into())
                         .collect::<Vec<_>>(),
                     args.recipient_address,
-                    PaymentId::from_bytes(args.payment_id.as_bytes())
-                        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
-                    args.maturity,
-                    args.range_proof_type,
-                    args.minimum_value_promise,
                 )
                 .await
                 {
@@ -908,8 +953,6 @@ pub async fn command_runner(
                 }
             },
             CreateScriptSig(args) => {
-                let private_nonce = PrivateKey::from_hex(&args.secret_nonce)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let script = TariScript::from_hex(&args.input_script)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let input_data = ExecutionStack::from_hex(&args.input_stack)
@@ -918,8 +961,7 @@ pub async fn command_runner(
                     Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let ephemeral_pubkey = PublicKey::from_hex(&args.ephemeral_pubkey)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let ephemeral_pubkey = PublicKey::from(args.ephemeral_pubkey);
                 let challenge = TransactionInput::build_script_signature_challenge(
                     &TransactionInputVersion::get_current_version(),
                     &ephemeral_commitment,
@@ -931,7 +973,7 @@ pub async fn command_runner(
                 );
 
                 match key_manager_service
-                    .sign_with_nonce_and_message(&args.private_key_id, &private_nonce, challenge.as_slice())
+                    .sign_with_nonce_and_message(&args.private_key_id, &args.secret_nonce, challenge.as_slice())
                     .await
                 {
                     Ok(signature) => {
@@ -947,13 +989,11 @@ pub async fn command_runner(
                 }
             },
             CreateMetaSig(args) => {
-                let private_key = PrivateKey::from_hex(&args.secret_offset_key)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let private_script_key = PrivateKey::from_hex(&args.secret_script_key)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let private_nonce = PrivateKey::from_hex(&args.secret_nonce)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let offset = private_script_key - &private_key;
+                let offset = key_manager_service
+                    .get_script_offset(&vec![args.secret_script_key], &vec![args
+                        .secret_sender_offset_key
+                        .clone()])
+                    .await?;
                 let script = script!(Nop);
                 let commitment =
                     Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
@@ -993,18 +1033,27 @@ pub async fn command_runner(
                     minimum_value_promise,
                 );
                 trace!(target: LOG_TARGET, "meta challange: {:?}", challenge);
-                // TODO: Change to `ComAndPubSignature`
-                let signature = Signature::sign_with_nonce_and_message(&private_key, private_nonce, challenge)
-                    .map_err(CommandError::FailedSignature)?;
-                println!(
-                    "Sign meta sig:
+                match key_manager_service
+                    .sign_with_nonce_and_message(
+                        &args.secret_sender_offset_key,
+                        &args.secret_nonce,
+                        challenge.as_slice(),
+                    )
+                    .await
+                {
+                    Ok(signature) => {
+                        println!(
+                            "Sign meta sig:
                                 1. signature: {},
                                 2. public nonce: {},
-                     Script offset: {}",
-                    signature.get_signature().to_hex(),
-                    signature.get_public_nonce().to_hex(),
-                    offset.to_hex(),
-                )
+                            Script offset: {}",
+                            signature.get_signature().to_hex(),
+                            signature.get_public_nonce().to_hex(),
+                            offset.to_hex(),
+                        )
+                    },
+                    Err(e) => eprintln!("SignMessage error! {}", e),
+                }
             },
             SendMinotari(args) => {
                 match send_tari(

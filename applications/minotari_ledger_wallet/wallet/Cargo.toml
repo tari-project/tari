@@ -6,7 +6,7 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.2", default-features = false, features = ["borsh"] }
+tari_crypto = { version = "0.20.2", default-features = false, features = ["borsh"]}
 tari_hashing = { path = "../../../hashing", version = "1.0.0-pre.14" }
 
 blake2 = { version = "0.10", default-features = false }

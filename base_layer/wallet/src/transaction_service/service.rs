@@ -40,10 +40,7 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{ComAndPubSignature, FixedHash, PrivateKey, PublicKey, Signature},
 };
-use tari_comms::{
-    types::{CommsDHKE, CommsPublicKey},
-    NodeIdentity,
-};
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
@@ -722,10 +719,6 @@ where
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             } => self
                 .encumber_aggregate_tx(
                     fee_per_gram,
@@ -735,15 +728,8 @@ where
                     script_signature_shares,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
-                    dh_shared_secret_shares
-                        .iter()
-                        .map(|v| CommsDHKE::new(&PrivateKey::default(), &v.clone()))
-                        .collect(),
+                    dh_shared_secret_shares,
                     recipient_address,
-                    payment_id,
-                    maturity,
-                    range_proof_type,
-                    minimum_value_promise,
                 )
                 .await
                 .map(|(tx_id, tx, total_script_pubkey)| {
@@ -1391,12 +1377,8 @@ where
         script_signature_shares: Vec<Signature>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<CommsDHKE>,
+        dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
-        maturity: u64,
-        range_proof_type: RangeProofType,
-        minimum_value_promise: MicroMinotari,
     ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1414,10 +1396,6 @@ where
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             )
             .await
         {

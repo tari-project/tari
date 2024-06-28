@@ -46,7 +46,6 @@ use tari_core::{
             BuildInfo,
             CodeTemplateRegistration,
             OutputFeatures,
-            RangeProofType,
             TemplateType,
             Transaction,
             TransactionOutput,
@@ -120,10 +119,6 @@ pub enum TransactionServiceRequest {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
-        maturity: u64,
-        range_proof_type: RangeProofType,
-        minimum_value_promise: MicroMinotari,
     },
     FinalizeSentAggregateTransaction {
         tx_id: u64,
@@ -241,16 +236,12 @@ impl fmt::Display for TransactionServiceRequest {
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
                 ..
             } => f.write_str(&format!(
                 "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, script_input_shares = {:?}, \
                  script_public_key_shares = {:?}, script_signature_shares = {:?}, sender_offset_public_key_shares = \
                  {:?}, metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address \
-                 = {}, payment_id = {}, maturity = {}, range_proof_type = {}, minimum_value_promise = {}",
+                 = {}",
                 fee_per_gram,
                 output_hash,
                 script_input_shares
@@ -286,10 +277,6 @@ impl fmt::Display for TransactionServiceRequest {
                     .map(|v| v.to_hex())
                     .collect::<Vec<String>>(),
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             )),
             Self::FinalizeSentAggregateTransaction {
                 tx_id,
@@ -755,10 +742,6 @@ impl TransactionServiceHandle {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
-        maturity: u64,
-        range_proof_type: RangeProofType,
-        minimum_value_promise: MicroMinotari,
     ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         match self
             .handle
@@ -772,10 +755,6 @@ impl TransactionServiceHandle {
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             })
             .await??
         {

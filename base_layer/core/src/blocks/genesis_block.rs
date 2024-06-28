@@ -271,7 +271,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     let mut block = get_esmeralda_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
+    let add_faucet_utxos = true;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `esmeralda_genesis_sanity_check` must pass
@@ -283,9 +283,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("3f4011ec1e8ddfbd66fb7331c5623b38f529a66e81233d924df85f2070b2aacb").unwrap();
+            FixedHash::from_hex("a8270a7af6971d7313c6e71933dcbc60572d90ed507981e424561cc5a69e3351").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
+            FixedHash::from_hex("73f49a8fa74bd0d04c1cc55b3642d6cfa9e86cb42bd7c9f59929c12fa9303b01").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -421,7 +421,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 0, 0);
+        check_block(Network::Esmeralda, &block, 10, 1);
     }
 
     #[test]
