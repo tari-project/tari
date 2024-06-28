@@ -32,9 +32,8 @@ use ledger_transport::APDUCommand;
 use minotari_ledger_wallet_comms::ledger_wallet::{Command, Instruction};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_crypto::ristretto::RistrettoPublicKey;
 
-use crate::types::PrivateKey;
+use crate::types::{PrivateKey, PublicKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum WalletType {
@@ -55,7 +54,7 @@ impl Display for WalletType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerWallet {
     account: u64,
-    pub public_alpha: Option<RistrettoPublicKey>,
+    pub public_alpha: Option<PublicKey>,
     pub network: Network,
     pub view_key: Option<PrivateKey>,
 }
@@ -72,12 +71,7 @@ impl Display for LedgerWallet {
 const WALLET_CLA: u8 = 0x80;
 
 impl LedgerWallet {
-    pub fn new(
-        account: u64,
-        network: Network,
-        public_alpha: Option<RistrettoPublicKey>,
-        view_key: Option<PrivateKey>,
-    ) -> Self {
+    pub fn new(account: u64, network: Network, public_alpha: Option<PublicKey>, view_key: Option<PrivateKey>) -> Self {
         Self {
             account,
             public_alpha,
