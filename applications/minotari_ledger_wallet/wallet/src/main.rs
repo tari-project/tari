@@ -14,11 +14,13 @@ mod app_ui {
     pub mod menu;
 }
 mod handlers {
+    pub mod get_dh_shared_secret;
     pub mod get_metadata_signature;
     pub mod get_public_alpha;
     pub mod get_public_key;
     pub mod get_script_offset;
     pub mod get_script_signature;
+    pub mod get_script_signature_from_challenge;
     pub mod get_version;
     pub mod get_view_key;
 }
@@ -28,11 +30,13 @@ use core::mem::MaybeUninit;
 use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
-    get_metadata_signature::{handler_get_metadata_signature, handler_get_script_signature_from_challenge},
+    get_dh_shared_secret::handler_get_dh_shared_secret,
+    get_metadata_signature::handler_get_metadata_signature,
     get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::handler_get_script_signature,
+    get_script_signature_from_challenge::handler_get_script_signature_from_challenge,
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
@@ -118,6 +122,7 @@ pub enum Instruction {
     GetMetadataSignature,
     GetScriptSignatureFromChallenge,
     GetViewKey,
+    GetDHSharedSecret,
 }
 
 const P2_MORE: u8 = 0x01;
@@ -176,6 +181,7 @@ impl TryFrom<ApduHeader> for Instruction {
             (7, 0, 0) => Ok(Instruction::GetMetadataSignature),
             (8, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
             (9, 0, 0) => Ok(Instruction::GetViewKey),
+            (10, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (6, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -224,5 +230,6 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),
         Instruction::GetScriptSignatureFromChallenge => handler_get_script_signature_from_challenge(comm),
         Instruction::GetViewKey => handler_get_view_key(comm),
+        Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
     }
 }
