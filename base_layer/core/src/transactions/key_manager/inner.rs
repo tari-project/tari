@@ -451,29 +451,32 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
-                // In the event we're asking for the view key, and we use a ledger, reference the stored key
-                if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
-                    if let WalletType::Ledger(wallet) = &self.wallet_type {
+                if let WalletType::Ledger(wallet) = &self.wallet_type {
+                    // In the event we're asking for the view key, and we use a ledger, reference the stored key
+                    if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
                         return wallet
                             .view_key
                             .clone()
                             .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible);
                     }
+
+                    // If we're trying to access any of the private keys, just say no bueno
+                    if &TransactionKeyManagerBranch::Alpha.get_branch_key() == branch ||
+                        &TransactionKeyManagerBranch::SenderOffset.get_branch_key() == branch ||
+                        &TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key() == branch
+                    {
+                        return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
+                    }
                 };
 
-                match self.wallet_type {
-                    WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
-                    WalletType::Software => {
-                        let km = self
-                            .key_managers
-                            .get(branch)
-                            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                            .read()
-                            .await;
-                        let key = km.get_private_key(*index)?;
-                        Ok(key)
-                    },
-                }
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .read()
+                    .await;
+                let key = km.get_private_key(*index)?;
+                Ok(key)
             },
             KeyId::Derived { branch, label, index } => match &self.wallet_type {
                 WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
