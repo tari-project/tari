@@ -31,6 +31,8 @@ use minotari_ledger_wallet_comms::{
 };
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
+#[cfg(feature = "ledger")]
+use tari_common_types::wallet_types::LedgerWallet;
 use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
@@ -546,8 +548,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<CommsDHKE, TransactionError> {
-        // We need sender offset needs to be computed from the ledger
-
         #[allow(unused_variables)]
         if let WalletType::Ledger(ledger) = &self.wallet_type {
             if let KeyId::Managed { branch, index } = secret_key_id {
@@ -559,26 +559,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                     #[cfg(feature = "ledger")]
                     {
-                        let transport =
-                            get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                        let mut data = index.to_le_bytes().to_vec();
-                        let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
-                        data.extend_from_slice(&u64::from(branch_u8).to_le_bytes());
-                        data.extend_from_slice(public_key.as_bytes());
-                        let command = ledger.build_command(Instruction::GetDHSharedSecret, data);
-
-                        return match command.execute_with_transport(&transport) {
-                            Ok(result) => {
-                                debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                                if result.data().len() < 33 {
-                                    debug!(target: LOG_TARGET, "result less than 33");
-                                }
-
-                                CommsDHKE::from_canonical_bytes(&result.data()[1..33])
-                                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()).into())
-                            },
-                            Err(e) => Err(KeyManagerServiceError::LedgerError(e.to_string()).into()),
-                        };
+                        return self.device_diffie_hellman(ledger, branch, index, public_key).await;
                     }
                 }
             }
@@ -594,8 +575,59 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
+        #[allow(unused_variables)]
+        if let WalletType::Ledger(ledger) = &self.wallet_type {
+            if let KeyId::Managed { branch, index } = secret_key_id {
+                if branch == &TransactionKeyManagerBranch::SenderOffset.get_branch_key() {
+                    #[cfg(not(feature = "ledger"))]
+                    {
+                        return Err(TransactionError::LedgerNotSupported);
+                    }
+
+                    #[cfg(feature = "ledger")]
+                    {
+                        return self
+                            .device_diffie_hellman(ledger, branch, index, public_key)
+                            .await
+                            .map(diffie_hellman_stealth_domain_hasher);
+                    }
+                }
+            }
+        }
+
         let secret_key = self.get_private_key(secret_key_id).await?;
-        Ok(diffie_hellman_stealth_domain_hasher(&secret_key, public_key))
+        let dh = CommsDHKE::new(&secret_key, public_key);
+        Ok(diffie_hellman_stealth_domain_hasher(dh))
+    }
+
+    #[allow(unused_variables)] // conditionally compiled paths
+    #[cfg(feature = "ledger")]
+    async fn device_diffie_hellman(
+        &self,
+        ledger: &LedgerWallet,
+        branch: &str,
+        index: &u64,
+        public_key: &PublicKey,
+    ) -> Result<CommsDHKE, TransactionError> {
+        let transport = get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+        let mut data = index.to_le_bytes().to_vec();
+        let branch_u8 = TransactionKeyManagerBranch::from_key(branch).as_byte();
+        data.extend_from_slice(&u64::from(branch_u8).to_le_bytes());
+        data.extend_from_slice(public_key.as_bytes());
+        let command = ledger.build_command(Instruction::GetDHSharedSecret, data);
+
+        return match command.execute_with_transport(&transport) {
+            Ok(result) => {
+                debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                if result.data().len() < 33 {
+                    debug!(target: LOG_TARGET, "result less than 33");
+                }
+
+                return CommsDHKE::from_canonical_bytes(&result.data()[1..33])
+                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()).into());
+            },
+            Err(e) => Err(KeyManagerServiceError::LedgerError(e.to_string()).into()),
+        };
     }
 
     pub async fn import_add_offset_to_private_key(
