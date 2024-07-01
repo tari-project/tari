@@ -27,12 +27,12 @@ tokio = "1.23"
 openssl = { version = "0.10.55", features = ["vendored"] }
 
 [lib]
-crate-type = ["staticlib","cdylib"]
+crate-type = ["staticlib", "cdylib"]
 
 [dev-dependencies]
 chrono = { version = "0.4.19", default-features = false }
 rand = "0.8"
-tari_crypto = { version = "0.20.1" }
+tari_crypto = { version = "0.20.2" }
 
 [build-dependencies]
 cbindgen = "0.24.3"

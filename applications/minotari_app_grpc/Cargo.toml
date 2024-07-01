@@ -8,10 +8,10 @@ version = "1.0.0-pre.14"
 edition = "2018"
 
 [dependencies]
-tari_common_types = {  path = "../../base_layer/common_types" }
+tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { version = "0.20.1" }
+tari_crypto = { version = "0.20.2" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_utilities = { version = "0.7" }
 
@@ -27,7 +27,7 @@ rcgen = "0.11.3"
 subtle = "2.5.0"
 thiserror = "1"
 tokio = { version = "1.36", features = ["fs"] }
-tonic = { version = "0.8.3", features = ["tls"]}
+tonic = { version = "0.8.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
