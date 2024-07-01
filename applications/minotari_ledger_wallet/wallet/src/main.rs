@@ -169,20 +169,20 @@ impl TryFrom<ApduHeader> for Instruction {
     /// [`sample_main`] to have this verification automatically performed by the SDK.
     fn try_from(value: ApduHeader) -> Result<Self, Self::Error> {
         match (value.ins, value.p1, value.p2) {
-            (1, 0, 0) => Ok(Instruction::GetVersion),
-            (2, 0, 0) => Ok(Instruction::GetAppName),
-            (3, 0, 0) => Ok(Instruction::GetPublicAlpha),
-            (4, 0, 0) => Ok(Instruction::GetPublicKey),
-            (5, 0, 0) => Ok(Instruction::GetScriptSignature),
-            (6, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+            (0x01, 0, 0) => Ok(Instruction::GetVersion),
+            (0x02, 0, 0) => Ok(Instruction::GetAppName),
+            (0x03, 0, 0) => Ok(Instruction::GetPublicAlpha),
+            (0x04, 0, 0) => Ok(Instruction::GetPublicKey),
+            (0x05, 0, 0) => Ok(Instruction::GetScriptSignature),
+            (0x06, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (7, 0, 0) => Ok(Instruction::GetMetadataSignature),
-            (8, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
-            (9, 0, 0) => Ok(Instruction::GetViewKey),
-            (10, 0, 0) => Ok(Instruction::GetDHSharedSecret),
-            (6, _, _) => Err(AppSW::WrongP1P2),
+            (0x07, 0, 0) => Ok(Instruction::GetMetadataSignature),
+            (0x08, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
+            (0x09, 0, 0) => Ok(Instruction::GetViewKey),
+            (0x10, 0, 0) => Ok(Instruction::GetDHSharedSecret),
+            (0x06, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
