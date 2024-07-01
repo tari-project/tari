@@ -527,11 +527,7 @@ mod test {
                 --metadata-ephemeral-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --dh-shared-secret-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --dh-shared-secret-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
-                --payment-id 156486946518564 \
-                --maturity 0 \
-                --range-proof-type revealed_value \
-                --minimum-value-promise 0
+                --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA
 
             spend-aggregate-utxo \
                 --tx-id 12345678 \
@@ -544,7 +540,7 @@ mod test {
 
             create-script-sig \
                 --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-nonce 3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03 \
+                --secret-nonce imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
                 --input-script ae010268593ed2d36a2d95f0ffe0f41649b97cc36fc4ef0c8ecd6bd28f9d56c76b793b08691435a5c813578f8a7f4973166dc1c6c15f37aec2a7d65b1583c8b2129364c916d5986a0c1b3dac7d6efb94bed688ba52fa8b962cf27c0446e2fea6d66a04 \
                 --input-stack 050857c14f72cf885aac9f08c9484cb7cb06b6cc20eab68c9bee1e8d5a85649b0a6d31c5cc49afc1e03ebbcf55c82f47e8cbc796c33e96c17a31eab027ee821f00 \
                 --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
@@ -553,9 +549,9 @@ mod test {
                 --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67
 
             create-meta-sig \
-                --secret-script-key 2603fed9cf87097105913096da423ae4e3096e44a172185742ce5bc00d27016cd81118 \
-                --secret-offset-key 3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03 \
-                --secret-nonce 3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908 \
+                --secret-script-key imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+                --secret-sender-offset-key imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+                --secret-nonce imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
                 --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
                 --total-meta-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
@@ -632,6 +628,7 @@ mod test {
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
+                CliCommands::FaucetCreatePartyDetails(_) => {},
             }
         }
         assert!(

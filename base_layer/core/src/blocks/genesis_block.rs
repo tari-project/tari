@@ -283,9 +283,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("a8270a7af6971d7313c6e71933dcbc60572d90ed507981e424561cc5a69e3351").unwrap();
+            FixedHash::from_hex("761056745ba849c8e4353c7808ef12d96a6b877e30293dec66641419b32bdf84").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("73f49a8fa74bd0d04c1cc55b3642d6cfa9e86cb42bd7c9f59929c12fa9303b01").unwrap();
+            FixedHash::from_hex("577ba7b38f62190a9913ac32aeabefb2f4ec68c62c91a2f4a78f1d0a1c1b0c06").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -304,7 +304,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("03 Jun 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("01 Jul 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \

@@ -27,7 +27,6 @@ mod test {
     use blake2::Blake2b;
     use digest::consts::U32;
     use rand::rngs::OsRng;
-    use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
         types::{Commitment, PrivateKey, PublicKey, Signature},
@@ -147,22 +146,23 @@ mod test {
         (outputs, kernel)
     }
 
+    // Only run this when you want to create a new utxo file
+    #[ignore]
     #[tokio::test]
     async fn print_faucet() {
         let mut addresses = Vec::new();
-        for _ in 0..2 {
-            let address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                Network::LocalNet,
-            );
-            addresses.push(address);
+        addresses.push(TariAddress::from_base58("f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp").unwrap());
+        addresses.push(TariAddress::from_base58("f44jftbpTid23oDsEjTodayvMmudSr3g66R6scTJkB5911ZfJRq32FUJDD4CiQSkAPq574i8pMjqzm5RtzdH3Kuknwz").unwrap());
+        addresses.push(TariAddress::from_base58("f4GYN3QVRboH6uwG9oFj3LjmUd4XVd1VDYiT6rNd4gCpZF6pY7iuoCpoajfDfuPynS7kspXU5hKRMWLTP9CRjoe1hZU").unwrap());
+        for address in &addresses {
+            println!("{}", address.public_spend_key());
         }
         // lets create a faucet with 10 outputs of 1000T each
-        let (outputs, kernel) = create_faucets(MicroMinotari::from(1000_000_000), 10, 1, 5, addresses).await;
+        let (outputs, kernel) = create_faucets(MicroMinotari::from(1000_000_000), 10, 2, 5, addresses).await;
         let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
 
         for output in outputs {
+            dbg!(&output);
             let utxo_s = serde_json::to_string(&output).unwrap();
             utxo_file.write_all(format!("{}\n", utxo_s).as_bytes()).unwrap();
         }
