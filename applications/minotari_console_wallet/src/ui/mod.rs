@@ -49,7 +49,7 @@ use ui_error::UiError;
 
 use crate::utils::events::{Event, EventStream};
 
-pub const MAX_WIDTH: u16 = 157;
+pub const MAX_WIDTH: u16 = 167;
 
 pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
     let mut app = app;
