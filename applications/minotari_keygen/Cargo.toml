@@ -2,7 +2,7 @@
 name = "minotari_keygen"
 version = "1.0.0-pre.14"
 authors = ["The Tari Development Community"]
-edition = "2018"
+edition = "2021"
 license = "BSD-3-Clause"
 
 [dependencies]
