@@ -22,7 +22,7 @@
 #[cfg(test)]
 mod test {
 
-    use std::{fs::File, io::Write};
+    use std::{convert::TryFrom, fs::File, io::Write};
 
     use blake2::Blake2b;
     use digest::consts::U32;
@@ -79,7 +79,7 @@ mod test {
         }
         let view_key = public_key_to_output_encryption_key(&total_script_key).unwrap();
         let view_key_id = key_manager.import_key(view_key.clone()).await.unwrap();
-        let address_len = addresses.len() as u8;
+        let address_len = u8::try_from(addresses.len()).unwrap();
         let mut outputs = Vec::new();
         let mut total_private_key = PrivateKey::default();
 
@@ -150,30 +150,25 @@ mod test {
     #[ignore]
     #[tokio::test]
     async fn print_faucet() {
-        let mut addresses = Vec::new();
-        addresses.push(
+        let addresses = vec![
             TariAddress::from_base58(
                 "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
             )
             .unwrap(),
-        );
-        addresses.push(
             TariAddress::from_base58(
                 "f44jftbpTid23oDsEjTodayvMmudSr3g66R6scTJkB5911ZfJRq32FUJDD4CiQSkAPq574i8pMjqzm5RtzdH3Kuknwz",
             )
             .unwrap(),
-        );
-        addresses.push(
             TariAddress::from_base58(
                 "f4GYN3QVRboH6uwG9oFj3LjmUd4XVd1VDYiT6rNd4gCpZF6pY7iuoCpoajfDfuPynS7kspXU5hKRMWLTP9CRjoe1hZU",
             )
             .unwrap(),
-        );
+        ];
         for address in &addresses {
             println!("{}", address.public_spend_key());
         }
         // lets create a faucet with 10 outputs of 1000T each
-        let (outputs, kernel) = create_faucets(MicroMinotari::from(1000_000_000), 10, 2, 5, addresses).await;
+        let (outputs, kernel) = create_faucets(MicroMinotari::from(1_000_000_000), 10, 2, 5, addresses).await;
         let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
 
         for output in outputs {
