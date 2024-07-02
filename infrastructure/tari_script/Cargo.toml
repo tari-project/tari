@@ -11,7 +11,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_crypto = { version = "0.20.1" }
+tari_crypto = { version = "0.20.2" }
 tari_utilities = { version = "0.7" }
 
 blake2 = "0.10"

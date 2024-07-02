@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core", version = "1.0.0-pre.14" }
-tari_comms_dht = {  path = "../../comms/dht", version = "1.0.0-pre.14" }
-tari_common = {  path = "../../common", version = "1.0.0-pre.14" }
-tari_crypto = { version = "0.20.1" }
-tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.14" }
-tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.14" }
-tari_storage = {  path = "../../infrastructure/storage", version = "1.0.0-pre.14" }
+tari_comms = { path = "../../comms/core", version = "1.0.0-pre.14" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.14" }
+tari_common = { path = "../../common", version = "1.0.0-pre.14" }
+tari_crypto = { version = "0.20.2" }
+tari_service_framework = { path = "../service_framework", version = "1.0.0-pre.14" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-pre.14" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-pre.14" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"
@@ -39,14 +39,14 @@ trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"]
 webpki = "0.22"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 config = "0.14.0"
 clap = "3.2"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"], version = "1.0.0-pre.14" }
+tari_common = { path = "../../common", features = ["build"], version = "1.0.0-pre.14" }
 
 [features]
 test-mocks = []

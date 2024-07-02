@@ -57,6 +57,7 @@ pub enum TxoStage {
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
+    Alpha = 0x01,
     MetadataEphemeralNonce = 0x02,
     CommitmentMask = 0x03,
     Nonce = 0x04,
@@ -70,6 +71,7 @@ impl TransactionKeyManagerBranch {
     pub fn get_branch_key(self) -> String {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
+            TransactionKeyManagerBranch::Alpha => "alpha".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
             TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
@@ -81,6 +83,7 @@ impl TransactionKeyManagerBranch {
     pub fn from_key(key: &str) -> Self {
         match key {
             "data encryption" => TransactionKeyManagerBranch::DataEncryption,
+            "alpha" => TransactionKeyManagerBranch::Alpha,
             "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
             "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,

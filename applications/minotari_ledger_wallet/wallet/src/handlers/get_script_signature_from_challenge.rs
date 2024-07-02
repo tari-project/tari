@@ -3,9 +3,8 @@
 
 use alloc::format;
 
-use ledger_device_sdk::{io::Comm, random::Random, ui::gadgets::SingleMessage};
+use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::PublicKey,
     ristretto::{
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -36,14 +35,14 @@ pub fn handler_get_script_signature_from_challenge(comm: &mut Comm) -> Result<()
     let blinding_factor: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[8..40])?.into();
     let script_private_key = alpha_hasher(alpha, blinding_factor)?;
-    let script_public_key = RistrettoPublicKey::from_secret_key(&script_private_key);
+    let _script_public_key = RistrettoPublicKey::from_secret_key(&script_private_key);
 
     let value: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
     let spend_private_key: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[72..104])?.into();
 
-    let commitment: PedersenCommitment = get_key_from_canonical_bytes(&data[104..136])?;
+    let _commitment: PedersenCommitment = get_key_from_canonical_bytes(&data[104..136])?;
 
     let mut challenge = [0u8; 64];
     challenge.clone_from_slice(&data[136..200]);
