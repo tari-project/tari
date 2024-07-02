@@ -1,6 +1,6 @@
 [package]
 name = "tari_libtor"
-version = "1.0.0-pre.14"
+version = "1.0.0-pre.15"
 edition = "2021"
 license = "BSD-3-Clause"
 
