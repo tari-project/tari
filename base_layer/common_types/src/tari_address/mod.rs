@@ -24,6 +24,7 @@ pub mod dual_address;
 mod single_address;
 
 use std::{
+    fmt,
     fmt::{Display, Error, Formatter},
     str::FromStr,
 };
@@ -72,6 +73,18 @@ impl TariAddressFeatures {
 impl Default for TariAddressFeatures {
     fn default() -> TariAddressFeatures {
         TariAddressFeatures::INTERACTIVE | TariAddressFeatures::ONE_SIDED
+    }
+}
+
+impl fmt::Display for TariAddressFeatures {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.contains(TariAddressFeatures::INTERACTIVE) {
+            write!(f, "Interactive,")?;
+        }
+        if self.contains(TariAddressFeatures::ONE_SIDED) {
+            write!(f, "One-sided,")?;
+        }
+        Ok(())
     }
 }
 
@@ -163,6 +176,12 @@ impl TariAddress {
             TariAddress::Dual(v) => v.features(),
             TariAddress::Single(v) => v.features(),
         }
+    }
+
+    /// Gets the checksum from the Tari Address
+    pub fn checksum(&self) -> u8 {
+        let bytes = self.to_vec();
+        bytes[bytes.len()]
     }
 
     /// Convert Tari Address to an emoji string
