@@ -1,0 +1,20 @@
+[package]
+name = "minotari_keygen"
+version = "1.0.0-pre.14"
+authors = ["The Tari Development Community"]
+edition = "2018"
+license = "BSD-3-Clause"
+
+[dependencies]
+minotari_app_utilities = { path = "../minotari_app_utilities" }
+tari_common = { path = "../../common" }
+tari_core = { path = "../../base_layer/core", features = ["transactions"] }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_key_manager = { path = "../../base_layer/key_manager" }
+tari_crypto = { version = "0.20.1" }
+tari_utilities = "0.7.0"
+
+anyhow = "1.0.40"
+clap = { version = "3.2", features = ["derive", "env"] }
+log = { version = "0.4.8", features = ["std"] }
+tokio = { version = "1.36", features = [] }

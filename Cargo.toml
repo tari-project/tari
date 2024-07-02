@@ -33,6 +33,7 @@ members = [
     "applications/minotari_ledger_wallet/comms",
     "integration_tests",
     "hashing",
+    "applications/minotari_keygen",
 ]
 
 # Add here until we move to edition=2021

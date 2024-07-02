@@ -43,6 +43,7 @@ pub use inner::TransactionKeyManagerInner;
 pub use memory_db_key_manager::{
     create_memory_db_key_manager,
     create_memory_db_key_manager_with_range_proof_size,
+    create_memory_db_key_manager_from_seed,
     MemoryDbKeyManager,
 };
 
