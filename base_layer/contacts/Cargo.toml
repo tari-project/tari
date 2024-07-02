@@ -12,10 +12,10 @@ tari_common_sqlite = { path = "../../common_sqlite", version = "1.0.0-pre.14" }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.14" }
 tari_comms = { path = "../../comms/core", version = "1.0.0-pre.14" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.14" }
-tari_crypto = { version = "0.20.2" }
-tari_p2p = { path = "../p2p", features = ["auto-update"], version = "1.0.0-pre.14" }
-tari_service_framework = { path = "../service_framework", version = "1.0.0-pre.14" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-pre.14" }
+tari_crypto = { version = "0.20.3" }
+tari_p2p = {  path = "../p2p", features = ["auto-update"], version = "1.0.0-pre.14" }
+tari_service_framework = {  path = "../service_framework", version = "1.0.0-pre.14" }
+tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.0.0-pre.14" }
 tari_utilities = { version = "0.7" }
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }

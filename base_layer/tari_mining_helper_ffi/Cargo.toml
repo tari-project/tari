@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { path = "../../comms/core" }
-tari_crypto = { version = "0.20.2" }
+tari_crypto = { version = "0.20.3" }
 tari_common = { path = "../../common" }
 tari_core = { path = "../core", default-features = false, features = ["transactions", "base_node_proto", "base_node"] }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.14" }

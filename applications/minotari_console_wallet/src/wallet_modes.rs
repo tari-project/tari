@@ -519,8 +519,8 @@ mod test {
                 --script-input-shares=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
                 --script-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --script-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --script-signature-shares=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --script-signature-shares=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
+                --script-signature-public-nonces=8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
+                --script-signature-public-nonces=50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
                 --sender-offset-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --sender-offset-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --metadata-ephemeral-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \

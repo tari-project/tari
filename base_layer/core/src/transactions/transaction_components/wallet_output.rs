@@ -38,7 +38,6 @@ use tari_common_types::types::{
     PrivateKey,
     PublicKey,
     RangeProof,
-    Signature,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -253,12 +252,12 @@ impl WalletOutput {
         ))
     }
 
-    /// It creates a transaction input given an updated multi-party script signature. The inputs
-    /// `script_signature_shares` and `script_public_key_shares` exclude the caller's data.
+    /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs
+    /// `script_signature_public_nonces` and `script_public_key_shares` exclude the caller's data.
     pub async fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
         &self,
         factory: &CommitmentFactory,
-        script_signature_shares: &[Signature],
+        script_signature_public_nonces: &[PublicKey],
         script_public_key_shares: &[PublicKey],
         key_manager: &KM,
     ) -> Result<(TransactionInput, PublicKey), TransactionError> {
@@ -272,9 +271,9 @@ impl WalletOutput {
 
         let r_y = PrivateKey::random(&mut OsRng);
         let ephemeral_public_key_self = PublicKey::from_secret_key(&r_y);
-        let ephemeral_public_key = script_signature_shares
+        let ephemeral_public_key = script_signature_public_nonces
             .iter()
-            .fold(ephemeral_public_key_self, |acc, x| acc + x.get_public_nonce());
+            .fold(ephemeral_public_key_self, |acc, x| acc + x);
 
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
         let script_public_key = script_public_key_shares
@@ -301,20 +300,6 @@ impl WalletOutput {
                 &r_y,
             )
             .await?;
-        let multi_party_script_signature = ComAndPubSignature::new(
-            script_signature.ephemeral_commitment().clone(),
-            script_signature_shares
-                .iter()
-                .fold(script_signature.ephemeral_pubkey().clone(), |acc, x| {
-                    acc + x.get_public_nonce()
-                }),
-            script_signature.u_a().clone(),
-            script_signature.u_x().clone(),
-            script_signature_shares
-                .iter()
-                .fold(script_signature.u_y().clone(), |acc, x| acc + x.get_signature()),
-        );
-
         let input = TransactionInput::new_current_version(
             SpentOutput::OutputData {
                 features: self.features.clone(),
@@ -332,7 +317,7 @@ impl WalletOutput {
                 },
             },
             self.input_data.clone(),
-            multi_party_script_signature,
+            script_signature,
         );
 
         Ok((input, script_public_key))

@@ -219,7 +219,7 @@ pub struct EncumberAggregateUtxoArgs {
     #[clap(long)]
     pub script_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]
-    pub script_signature_shares: Vec<UniSignature>,
+    pub script_signature_public_nonces: Vec<UniPublicKey>,
     #[clap(long)]
     pub sender_offset_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]

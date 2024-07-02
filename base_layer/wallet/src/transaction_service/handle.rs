@@ -114,7 +114,7 @@ pub enum TransactionServiceRequest {
         output_hash: String,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
-        script_signature_shares: Vec<Signature>,
+        script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
@@ -231,7 +231,7 @@ impl fmt::Display for TransactionServiceRequest {
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
@@ -256,13 +256,9 @@ impl fmt::Display for TransactionServiceRequest {
                     .iter()
                     .map(|v| v.to_hex())
                     .collect::<Vec<String>>(),
-                script_signature_shares
+                script_signature_public_nonces
                     .iter()
-                    .map(|v| format!(
-                        "(sig: {}, nonce: {})",
-                        v.get_signature().to_hex(),
-                        v.get_public_nonce().to_hex()
-                    ))
+                    .map(|v| format!("(public nonce: {})", v.to_hex(),))
                     .collect::<Vec<String>>(),
                 sender_offset_public_key_shares
                     .iter()
@@ -737,7 +733,7 @@ impl TransactionServiceHandle {
         output_hash: String,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
-        script_signature_shares: Vec<Signature>,
+        script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
@@ -750,7 +746,7 @@ impl TransactionServiceHandle {
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,

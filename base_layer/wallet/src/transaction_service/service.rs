@@ -714,7 +714,7 @@ where
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
@@ -725,7 +725,7 @@ where
                     output_hash,
                     script_input_shares,
                     script_public_key_shares,
-                    script_signature_shares,
+                    script_signature_public_nonces,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
@@ -1374,7 +1374,7 @@ where
         output_hash: String,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
-        script_signature_shares: Vec<Signature>,
+        script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
@@ -1391,7 +1391,7 @@ where
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
@@ -1434,7 +1434,9 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
+        println!("searching for tx");
         let mut transaction = self.db.get_completed_transaction(tx_id)?;
+        println!("found tx");
 
         transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
 
@@ -1449,18 +1451,20 @@ where
                     .metadata_signature
                     .ephemeral_pubkey()
                     .clone(),
-                transaction.transaction.body.outputs()[0].metadata_signature.u_a() +
-                    total_meta_data_signature.get_signature(),
+                transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .u_a()
+                    .clone(),
                 transaction.transaction.body.outputs()[0]
                     .metadata_signature
                     .u_x()
                     .clone(),
-                transaction.transaction.body.outputs()[0]
-                    .metadata_signature
-                    .u_y()
-                    .clone(),
+                transaction.transaction.body.outputs()[0].metadata_signature.u_y() +
+                    total_meta_data_signature.get_signature(),
             ),
         )?;
+
+        println!("update meta signature");
         transaction.transaction.body.update_script_signature(
             &transaction.transaction.body.inputs()[0].commitment()?.clone(),
             &ComAndPubSignature::new(
@@ -1472,27 +1476,39 @@ where
                     .script_signature
                     .ephemeral_pubkey()
                     .clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_a() +
-                    total_script_data_signature.get_signature(),
+                transaction.transaction.body.inputs()[0].script_signature.u_a().clone(),
                 transaction.transaction.body.inputs()[0].script_signature.u_x().clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_y().clone(),
+                transaction.transaction.body.inputs()[0].script_signature.u_y() +
+                    total_script_data_signature.get_signature(),
             ),
         )?;
-        self.resources
+
+        println!("update script signature");
+        let res = self
+            .resources
             .output_manager_service
             .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone())
-            .await?;
+            .await;
+        dbg!(&res);
+        // res?;
+
+        println!("update oms db signature");
         self.db.update_completed_transaction(tx_id, transaction)?;
+        println!("update db signature");
 
         self.resources
             .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await?;
 
+        println!("confirm the tx");
+
         // Notify that the transaction was successfully resolved.
         let _size = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        println!("publish sent");
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,
@@ -1500,6 +1516,8 @@ where
             }),
             transaction_broadcast_join_handles,
         );
+
+        println!("complete the tx");
 
         Ok(tx_id)
     }

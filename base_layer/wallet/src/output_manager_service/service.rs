@@ -250,7 +250,7 @@ where
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
@@ -262,7 +262,7 @@ where
                     output_hash,
                     script_input_shares,
                     script_public_key_shares,
-                    script_signature_shares,
+                    script_signature_public_nonces,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
@@ -1179,7 +1179,7 @@ where
         output_hash: String,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
-        script_signature_shares: Vec<Signature>,
+        script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
@@ -1197,7 +1197,6 @@ where
             .await?
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError(format!("Output not found (TxId: {})", tx_id)))?;
-
         // Retrieve the list of n public keys from the script
         let public_keys =
             if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
@@ -1422,7 +1421,7 @@ where
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
                 &self.resources.factories.commitment,
-                &script_signature_shares,
+                &script_signature_public_nonces,
                 &script_public_key_shares,
                 &self.resources.key_manager,
             )

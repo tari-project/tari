@@ -151,9 +151,24 @@ mod test {
     #[tokio::test]
     async fn print_faucet() {
         let mut addresses = Vec::new();
-        addresses.push(TariAddress::from_base58("f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp").unwrap());
-        addresses.push(TariAddress::from_base58("f44jftbpTid23oDsEjTodayvMmudSr3g66R6scTJkB5911ZfJRq32FUJDD4CiQSkAPq574i8pMjqzm5RtzdH3Kuknwz").unwrap());
-        addresses.push(TariAddress::from_base58("f4GYN3QVRboH6uwG9oFj3LjmUd4XVd1VDYiT6rNd4gCpZF6pY7iuoCpoajfDfuPynS7kspXU5hKRMWLTP9CRjoe1hZU").unwrap());
+        addresses.push(
+            TariAddress::from_base58(
+                "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
+            )
+            .unwrap(),
+        );
+        addresses.push(
+            TariAddress::from_base58(
+                "f44jftbpTid23oDsEjTodayvMmudSr3g66R6scTJkB5911ZfJRq32FUJDD4CiQSkAPq574i8pMjqzm5RtzdH3Kuknwz",
+            )
+            .unwrap(),
+        );
+        addresses.push(
+            TariAddress::from_base58(
+                "f4GYN3QVRboH6uwG9oFj3LjmUd4XVd1VDYiT6rNd4gCpZF6pY7iuoCpoajfDfuPynS7kspXU5hKRMWLTP9CRjoe1hZU",
+            )
+            .unwrap(),
+        );
         for address in &addresses {
             println!("{}", address.public_spend_key());
         }

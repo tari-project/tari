@@ -283,9 +283,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("761056745ba849c8e4353c7808ef12d96a6b877e30293dec66641419b32bdf84").unwrap();
+            FixedHash::from_hex("f449a4b3f3235ce5c30a59a709552a0c7db6f3390f276fe1bd8624b4fcf86214").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("577ba7b38f62190a9913ac32aeabefb2f4ec68c62c91a2f4a78f1d0a1c1b0c06").unwrap();
+            FixedHash::from_hex("0413746378a8ac9b195cd9cb2edb0f883f3f8baec23309af05898afa6fe90ef3").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }

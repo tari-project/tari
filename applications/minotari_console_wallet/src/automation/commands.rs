@@ -91,6 +91,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
+
 use super::error::CommandError;
 use crate::{
     cli::{CliCommands, MakeItRainTransactionType},
@@ -168,7 +169,7 @@ async fn encumber_aggregate_utxo(
     output_hash: String,
     script_input_shares: Vec<Signature>,
     script_public_key_shares: Vec<PublicKey>,
-    script_signature_shares: Vec<Signature>,
+    script_signature_public_nonces: Vec<PublicKey>,
     sender_offset_public_key_shares: Vec<PublicKey>,
     metadata_ephemeral_public_key_shares: Vec<PublicKey>,
     dh_shared_secret_shares: Vec<PublicKey>,
@@ -180,7 +181,7 @@ async fn encumber_aggregate_utxo(
             output_hash,
             script_input_shares,
             script_public_key_shares,
-            script_signature_shares,
+            script_signature_public_nonces,
             sender_offset_public_key_shares,
             metadata_ephemeral_public_key_shares,
             dh_shared_secret_shares,
@@ -824,19 +825,20 @@ pub async fn command_runner(
 
                 println!(
                     "Sign message:
-                                1. signature: {},
-                                2. public nonce: {},
-                                3. public spend key: {},
+                                1. signature: ({},{}),
+                                2. public spend key: {},
+                                2. public spend key_id: {},
                                 4. spend nonce key: {},
-                                4. public spend nonce key: {},
-                                5. sender offset key: {},
-                                6. public sender offset nonce key: {},
-                                5. sender offset key: {},
-                                6. public sender offset nonce key: {},
-                                7. shared secret: {}",
+                                5. public spend nonce key: {},
+                                6. sender offset key: {},
+                                7. public sender offset key: {},
+                                8. sender offset nonce key: {},
+                                9. public sender offset nonce key: {},
+                                10. shared secret: {}",
                     signature.get_signature().to_hex(),
                     signature.get_public_nonce().to_hex(),
                     public_spend_key,
+                    spend_key,
                     script_nonce,
                     public_script_nonce,
                     sender_offset_key,
@@ -859,7 +861,7 @@ pub async fn command_runner(
                         .iter()
                         .map(|v| v.clone().into())
                         .collect::<Vec<_>>(),
-                    args.script_signature_shares
+                    args.script_signature_public_nonces
                         .iter()
                         .map(|v| v.clone().into())
                         .collect::<Vec<_>>(),
@@ -979,8 +981,7 @@ pub async fn command_runner(
                     Ok(signature) => {
                         println!(
                             "Sign script sig:
-                                1. signature: {},
-                                2. public nonce: {}",
+                                1. signature: ({},{})",
                             signature.get_signature().to_hex(),
                             signature.get_public_nonce().to_hex(),
                         )
@@ -1043,10 +1044,9 @@ pub async fn command_runner(
                 {
                     Ok(signature) => {
                         println!(
-                            "Sign meta sig:
-                                1. signature: {},
-                                2. public nonce: {},
-                            Script offset: {}",
+                            "1. Meta sig:
+                                signature: ({},{}),
+                             2. Script offset: {}",
                             signature.get_signature().to_hex(),
                             signature.get_public_nonce().to_hex(),
                             offset.to_hex(),

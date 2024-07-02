@@ -35,7 +35,7 @@ tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-p
 tari_comms = { path = "../../comms/core", version = "1.0.0-pre.14" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.14" }
 tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.14" }
-tari_crypto = { version = "0.20.2", features = ["borsh"] }
+tari_crypto = { version = "0.20.3", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.14" }
 tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.0.0-pre.14" }
 tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.14" }
