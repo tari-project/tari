@@ -250,15 +250,11 @@ where
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
@@ -266,15 +262,15 @@ where
                     output_hash,
                     script_input_shares,
                     script_public_key_shares,
-                    script_signature_shares,
+                    script_signature_public_nonces,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
                     recipient_address,
-                    payment_id,
-                    maturity,
-                    range_proof_type,
-                    minimum_value_promise,
+                    PaymentId::Empty,
+                    0,
+                    RangeProofType::BulletProofPlus,
+                    0.into(),
                 )
                 .await
                 .map(OutputManagerResponse::EncumberAggregateUtxo),
@@ -1183,10 +1179,10 @@ where
         output_hash: String,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
-        script_signature_shares: Vec<Signature>,
+        script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<CommsDHKE>,
+        dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         payment_id: PaymentId,
         maturity: u64,
@@ -1201,7 +1197,6 @@ where
             .await?
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError(format!("Output not found (TxId: {})", tx_id)))?;
-
         // Retrieve the list of n public keys from the script
         let public_keys =
             if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
@@ -1333,7 +1328,7 @@ where
         let shared_secret = {
             let mut key_sum = PublicKey::default();
             for key in &dh_shared_secret_shares {
-                key_sum = key_sum + &PublicKey::from_vec(&key.as_bytes().to_vec())?;
+                key_sum = key_sum + key;
             }
             let shared_secret_self = self
                 .resources
@@ -1349,7 +1344,7 @@ where
                 )
                 .await?;
             key_sum = key_sum + &PublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
-            CommsDHKE::new(&PrivateKey::default(), &key_sum)
+            CommsDHKE::from_canonical_bytes(key_sum.as_bytes())?
         };
 
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;
@@ -1426,7 +1421,7 @@ where
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
                 &self.resources.factories.commitment,
-                &script_signature_shares,
+                &script_signature_public_nonces,
                 &script_public_key_shares,
                 &self.resources.key_manager,
             )

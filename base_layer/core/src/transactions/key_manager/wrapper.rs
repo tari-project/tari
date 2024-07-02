@@ -448,7 +448,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn sign_with_nonce_and_message(
         &self,
         private_key_id: &TariKeyId,
-        nonce: &PrivateKey,
+        nonce: &TariKeyId,
         challenge: &[u8],
     ) -> Result<Signature, TransactionError> {
         self.transaction_key_manager_inner

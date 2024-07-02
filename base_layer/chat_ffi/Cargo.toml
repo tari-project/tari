@@ -32,7 +32,7 @@ crate-type = ["staticlib", "cdylib"]
 [dev-dependencies]
 chrono = { version = "0.4.19", default-features = false }
 rand = "0.8"
-tari_crypto = { version = "0.20.2" }
+tari_crypto = { version = "0.20.3" }
 
 [build-dependencies]
 cbindgen = "0.24.3"

@@ -40,10 +40,7 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{ComAndPubSignature, FixedHash, PrivateKey, PublicKey, Signature},
 };
-use tari_comms::{
-    types::{CommsDHKE, CommsPublicKey},
-    NodeIdentity,
-};
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
@@ -717,33 +714,22 @@ where
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             } => self
                 .encumber_aggregate_tx(
                     fee_per_gram,
                     output_hash,
                     script_input_shares,
                     script_public_key_shares,
-                    script_signature_shares,
+                    script_signature_public_nonces,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
-                    dh_shared_secret_shares
-                        .iter()
-                        .map(|v| CommsDHKE::new(&PrivateKey::default(), &v.clone()))
-                        .collect(),
+                    dh_shared_secret_shares,
                     recipient_address,
-                    payment_id,
-                    maturity,
-                    range_proof_type,
-                    minimum_value_promise,
                 )
                 .await
                 .map(|(tx_id, tx, total_script_pubkey)| {
@@ -1388,15 +1374,11 @@ where
         output_hash: String,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
-        script_signature_shares: Vec<Signature>,
+        script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<CommsDHKE>,
+        dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
-        maturity: u64,
-        range_proof_type: RangeProofType,
-        minimum_value_promise: MicroMinotari,
     ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1409,15 +1391,11 @@ where
                 output_hash,
                 script_input_shares,
                 script_public_key_shares,
-                script_signature_shares,
+                script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
-                payment_id,
-                maturity,
-                range_proof_type,
-                minimum_value_promise,
             )
             .await
         {
@@ -1471,18 +1449,19 @@ where
                     .metadata_signature
                     .ephemeral_pubkey()
                     .clone(),
-                transaction.transaction.body.outputs()[0].metadata_signature.u_a() +
-                    total_meta_data_signature.get_signature(),
+                transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .u_a()
+                    .clone(),
                 transaction.transaction.body.outputs()[0]
                     .metadata_signature
                     .u_x()
                     .clone(),
-                transaction.transaction.body.outputs()[0]
-                    .metadata_signature
-                    .u_y()
-                    .clone(),
+                transaction.transaction.body.outputs()[0].metadata_signature.u_y() +
+                    total_meta_data_signature.get_signature(),
             ),
         )?;
+
         transaction.transaction.body.update_script_signature(
             &transaction.transaction.body.inputs()[0].commitment()?.clone(),
             &ComAndPubSignature::new(
@@ -1494,16 +1473,19 @@ where
                     .script_signature
                     .ephemeral_pubkey()
                     .clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_a() +
-                    total_script_data_signature.get_signature(),
+                transaction.transaction.body.inputs()[0].script_signature.u_a().clone(),
                 transaction.transaction.body.inputs()[0].script_signature.u_x().clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_y().clone(),
+                transaction.transaction.body.inputs()[0].script_signature.u_y() +
+                    total_script_data_signature.get_signature(),
             ),
         )?;
-        self.resources
+
+        let _res = self
+            .resources
             .output_manager_service
             .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone())
-            .await?;
+            .await;
+
         self.db.update_completed_transaction(tx_id, transaction)?;
 
         self.resources
@@ -1515,6 +1497,7 @@ where
         let _size = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,

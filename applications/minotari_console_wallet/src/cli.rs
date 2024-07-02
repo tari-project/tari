@@ -35,12 +35,7 @@ use minotari_app_utilities::{
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{
-    key_manager::TariKeyId,
-    tari_amount,
-    tari_amount::MicroMinotari,
-    transaction_components::RangeProofType,
-};
+use tari_core::transactions::{key_manager::TariKeyId, tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -129,6 +124,7 @@ pub enum CliCommands {
     EncumberAggregateUtxo(EncumberAggregateUtxoArgs),
     SpendAggregateUtxo(SpendAggregateUtxoArgs),
     SignMessage(SignMessageArgs),
+    FaucetCreatePartyDetails(FaucetCreatePartyDetailsArgs),
     CreateScriptSig(CreateScriptSigArgs),
     CreateMetaSig(CreateMetaSigArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
@@ -197,6 +193,14 @@ pub struct CreateAggregateSignatureUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
+pub struct FaucetCreatePartyDetailsArgs {
+    #[clap(long)]
+    pub commitment: String,
+    #[clap(long)]
+    pub destination: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
 pub struct SignMessageArgs {
     #[clap(long)]
     pub private_key_id: TariKeyId,
@@ -215,7 +219,7 @@ pub struct EncumberAggregateUtxoArgs {
     #[clap(long)]
     pub script_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]
-    pub script_signature_shares: Vec<UniSignature>,
+    pub script_signature_public_nonces: Vec<UniPublicKey>,
     #[clap(long)]
     pub sender_offset_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]
@@ -224,14 +228,6 @@ pub struct EncumberAggregateUtxoArgs {
     pub dh_shared_secret_shares: Vec<UniPublicKey>,
     #[clap(long)]
     pub recipient_address: TariAddress,
-    #[clap(long)]
-    pub payment_id: String,
-    #[clap(long)]
-    pub maturity: u64,
-    #[clap(long)]
-    pub range_proof_type: RangeProofType,
-    #[clap(long)]
-    pub minimum_value_promise: MicroMinotari,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -251,7 +247,7 @@ pub struct CreateScriptSigArgs {
     #[clap(long)]
     pub private_key_id: TariKeyId,
     #[clap(long)]
-    pub secret_nonce: String,
+    pub secret_nonce: TariKeyId,
     #[clap(long)]
     pub input_script: String,
     #[clap(long)]
@@ -259,7 +255,7 @@ pub struct CreateScriptSigArgs {
     #[clap(long)]
     pub ephemeral_commitment: String,
     #[clap(long)]
-    pub ephemeral_pubkey: String,
+    pub ephemeral_pubkey: UniPublicKey,
     #[clap(long)]
     pub total_script_key: UniPublicKey,
     #[clap(long)]
@@ -269,11 +265,11 @@ pub struct CreateScriptSigArgs {
 #[derive(Debug, Args, Clone)]
 pub struct CreateMetaSigArgs {
     #[clap(long)]
-    pub secret_script_key: String,
+    pub secret_script_key: TariKeyId,
     #[clap(long)]
-    pub secret_offset_key: String,
+    pub secret_sender_offset_key: TariKeyId,
     #[clap(long)]
-    pub secret_nonce: String,
+    pub secret_nonce: TariKeyId,
     #[clap(long)]
     pub ephemeral_commitment: String,
     #[clap(long)]

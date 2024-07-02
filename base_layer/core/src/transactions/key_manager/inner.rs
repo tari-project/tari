@@ -1170,11 +1170,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn sign_with_nonce_and_message(
         &self,
         private_key_id: &TariKeyId,
-        nonce: &PrivateKey,
+        nonce: &TariKeyId,
         challenge: &[u8],
     ) -> Result<Signature, TransactionError> {
         let private_key = self.get_private_key(private_key_id).await?;
-        let signature = Signature::sign_with_nonce_and_message(&private_key, nonce.clone(), challenge)?;
+        let private_nonce = self.get_private_key(nonce).await?;
+        let signature = Signature::sign_with_nonce_and_message(&private_key, private_nonce, challenge)?;
 
         Ok(signature)
     }
