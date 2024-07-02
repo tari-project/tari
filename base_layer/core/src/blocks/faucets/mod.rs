@@ -177,7 +177,6 @@ mod test {
         let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
 
         for output in outputs {
-            dbg!(&output);
             let utxo_s = serde_json::to_string(&output).unwrap();
             utxo_file.write_all(format!("{}\n", utxo_s).as_bytes()).unwrap();
         }

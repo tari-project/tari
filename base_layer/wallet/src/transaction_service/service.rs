@@ -1434,9 +1434,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
-        println!("searching for tx");
         let mut transaction = self.db.get_completed_transaction(tx_id)?;
-        println!("found tx");
 
         transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
 
@@ -1464,7 +1462,6 @@ where
             ),
         )?;
 
-        println!("update meta signature");
         transaction.transaction.body.update_script_signature(
             &transaction.transaction.body.inputs()[0].commitment()?.clone(),
             &ComAndPubSignature::new(
@@ -1483,32 +1480,24 @@ where
             ),
         )?;
 
-        println!("update script signature");
-        let res = self
+        let _res = self
             .resources
             .output_manager_service
             .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone())
             .await;
-        dbg!(&res);
-        // res?;
 
-        println!("update oms db signature");
         self.db.update_completed_transaction(tx_id, transaction)?;
-        println!("update db signature");
 
         self.resources
             .output_manager_service
             .confirm_pending_transaction(tx_id)
             .await?;
 
-        println!("confirm the tx");
-
         // Notify that the transaction was successfully resolved.
         let _size = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-        println!("publish sent");
         self.complete_send_transaction_protocol(
             Ok(TransactionSendResult {
                 tx_id,
@@ -1516,8 +1505,6 @@ where
             }),
             transaction_broadcast_join_handles,
         );
-
-        println!("complete the tx");
 
         Ok(tx_id)
     }
