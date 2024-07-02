@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.15](https://github.com/tari-project/tari/compare/v1.0.0-pre.14...v1.0.0-pre.15) (2024-07-02)
+
+
+### ⚠ BREAKING CHANGES
+
+
+* faucet and new esme gen block (#6384)
+* add accessor functions for tari address in FFI (#6385)
+* make stealth one-sided tx's look the same as all other tx's (#6376)
+* change tar address to use base58 and not hex (#6372)
+* export unblinded outputs (#6361)
+
+### Features
+
+* add accessor functions for tari address in FFI ([#6385](https://github.com/tari-project/tari/issues/6385)) ([df5b057](https://github.com/tari-project/tari/commit/df5b05765df984e94be7097b60ab828c76cfd1d8))
+* change tari address to use base58 and not hex ([#6372](https://github.com/tari-project/tari/issues/6372)) ([f42a838](https://github.com/tari-project/tari/commit/f42a83882c8a824bf72c800c1018b4167c1a7d8c))
+* enlarge console wallet display ([#6382](https://github.com/tari-project/tari/issues/6382)) ([d62ab99](https://github.com/tari-project/tari/commit/d62ab999cda834af7c38d594cf06da24988bba5f))
+* export unblinded outputs ([#6361](https://github.com/tari-project/tari/issues/6361)) ([c444b4c](https://github.com/tari-project/tari/commit/c444b4c2cc326b6fe3ca37b10bf2d3728cdd9aca))
+* faucet and new esme gen block ([#6384](https://github.com/tari-project/tari/issues/6384)) ([075b1d4](https://github.com/tari-project/tari/commit/075b1d4ca5917cca6232ffde14d7dc51b797be1a))
+* ledger recovery ([#6383](https://github.com/tari-project/tari/issues/6383)) ([fb2de35](https://github.com/tari-project/tari/commit/fb2de353907402eb9fb8e56fc046f1a837fd8497))
+* m of n scripting poc ([#6377](https://github.com/tari-project/tari/issues/6377)) ([fc744d0](https://github.com/tari-project/tari/commit/fc744d0806e8fe15b657450c2a99ae9a488f14f6))
+* make console wallet ledger default ([#6362](https://github.com/tari-project/tari/issues/6362)) ([4ace36c](https://github.com/tari-project/tari/commit/4ace36c91d0955429f4350f9d4b9371de319984e))
+* make stealth one-sided tx's look the same as all other tx's ([#6376](https://github.com/tari-project/tari/issues/6376)) ([2bd58c2](https://github.com/tari-project/tari/commit/2bd58c235e6d89f5d836c66cc3e2e056fc40543d))
+* remove ablity to send 1-sided tx ([#6367](https://github.com/tari-project/tari/issues/6367)) ([b773173](https://github.com/tari-project/tari/commit/b773173decf6065de0f52dfa5b377c973fd97498))
+
+
+### Bug Fixes
+
+* improve key scanning ([#6374](https://github.com/tari-project/tari/issues/6374)) ([43b2317](https://github.com/tari-project/tari/commit/43b2317e8fea146d9446e150b97b09cfe41bea4d))
+* keep alpha key constant ([#6375](https://github.com/tari-project/tari/issues/6375)) ([f5e88e9](https://github.com/tari-project/tari/commit/f5e88e9e65d5253305691dcc1e9306185c2c3c1b))
+* make tx id random ([#6380](https://github.com/tari-project/tari/issues/6380)) ([59a3440](https://github.com/tari-project/tari/commit/59a344004e198eda77c9883d82dbc137741cebf4))
+* update curve library ([#6381](https://github.com/tari-project/tari/issues/6381)) ([498816d](https://github.com/tari-project/tari/commit/498816d8a8748af10e84122d39012b3a4d6b4a63))
+
 ## [1.0.0-pre.14](https://github.com/tari-project/tari/compare/v1.0.0-pre.13...v1.0.0-pre.14) (2024-06-03)
 
 
