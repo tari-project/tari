@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.14"
+version = "1.0.0-pre.15"
 edition = "2018"
 
 [features]
@@ -14,40 +14,40 @@ default = ["base_node"]
 transactions = []
 mempool_proto = []
 base_node = [
-  "tari_mmr",
-  "transactions",
-  "mempool_proto",
-  "base_node_proto",
-  "monero",
-  "randomx-rs",
+    "tari_mmr",
+    "transactions",
+    "mempool_proto",
+    "base_node_proto",
+    "monero",
+    "randomx-rs",
 ]
 base_node_proto = []
 benches = ["base_node"]
 ledger = [
-  "minotari_ledger_wallet_comms",
+    "minotari_ledger_wallet_comms",
 ]
 metrics = ["tari_metrics"]
 
 [dependencies]
-minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.14", optional = true }
-tari_common = { path = "../../common", version = "1.0.0-pre.14" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.14" }
-tari_comms = { path = "../../comms/core", version = "1.0.0-pre.14" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.14" }
-tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.14" }
-tari_crypto = { version = "0.20.1", features = ["borsh"] }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.14" }
-tari_mmr = { path = "../../base_layer/mmr", optional = true , version = "1.0.0-pre.14"}
-tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.14" }
-tari_script = { path = "../../infrastructure/tari_script", version = "1.0.0-pre.14" }
-tari_service_framework = { path = "../service_framework", version = "1.0.0-pre.14" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-pre.14" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-pre.14" }
-tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.0.0-pre.14" }
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.0.0-pre.15", optional = true }
+tari_common = { path = "../../common", version = "1.0.0-pre.15" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.0.0-pre.15" }
+tari_comms = { path = "../../comms/core", version = "1.0.0-pre.15" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.15" }
+tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.0.0-pre.15" }
+tari_crypto = { version = "0.20.3", features = ["borsh"] }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.0.0-pre.15" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.0.0-pre.15" }
+tari_p2p = { path = "../../base_layer/p2p", version = "1.0.0-pre.15" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.0.0-pre.15" }
+tari_service_framework = { path = "../service_framework", version = "1.0.0-pre.15" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.0.0-pre.15" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.0.0-pre.15" }
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.0.0-pre.15" }
 tari_utilities = { version = "0.7", features = ["borsh"] }
 tari_key_manager = { path = "../key_manager", features = [
-  "key_manager_service",
-], version = "1.0.0-pre.14" }
+    "key_manager_service",
+], version = "1.0.0-pre.15" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_hashing = { path = "../../hashing" }
 
@@ -91,7 +91,7 @@ tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
 tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
-  "keccak",
+    "keccak",
 ] }
 
 [dev-dependencies]
@@ -107,8 +107,8 @@ toml = { version = "0.5" }
 quickcheck = "1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build"], version = "1.0.0-pre.14" }
-tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.14" }
+tari_common = { path = "../../common", features = ["build"], version = "1.0.0-pre.15" }
+tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.15" }
 
 [[bench]]
 name = "mempool"

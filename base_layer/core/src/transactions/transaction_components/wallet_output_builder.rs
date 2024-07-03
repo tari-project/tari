@@ -27,7 +27,7 @@ use tari_script::{ExecutionStack, TariScript};
 use crate::{
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
+        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -49,6 +49,7 @@ pub struct WalletOutputBuilder {
     spending_key_id: TariKeyId,
     features: OutputFeatures,
     script: Option<TariScript>,
+    script_lock_height: u64,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
     script_key_id: Option<TariKeyId>,
@@ -71,6 +72,7 @@ impl WalletOutputBuilder {
             spending_key_id,
             features: OutputFeatures::default(),
             script: None,
+            script_lock_height: 0,
             covenant: Covenant::default(),
             input_data: None,
             script_key_id: None,
@@ -97,6 +99,11 @@ impl WalletOutputBuilder {
 
     pub fn with_script(mut self, script: TariScript) -> Self {
         self.script = Some(script);
+        self
+    }
+
+    pub fn with_script_lock_height(mut self, height: u64) -> Self {
+        self.script_lock_height = height;
         self
     }
 
@@ -193,6 +200,76 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
+    /// Sign a partial multi-party metadata signature as the sender and receiver - `sender_offset_public_key_shares` and
+    /// `ephemeral_pubkey_shares` from other participants are combined to enable creation of the challenge.
+    pub async fn sign_partial_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
+        mut self,
+        key_manager: &KM,
+        sender_offset_key_id: &TariKeyId,
+        sender_offset_public_key_shares: &[PublicKey],
+        ephemeral_public_key_shares: &[PublicKey],
+    ) -> Result<Self, TransactionError> {
+        let script = self
+            .script
+            .as_ref()
+            .ok_or_else(|| TransactionError::BuilderError("Cannot sign metadata without a script".to_string()))?;
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &self.version,
+            script,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            &self.minimum_value_promise,
+        );
+
+        let sender_offset_public_key_self = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
+        let aggregate_sender_offset_public_key = sender_offset_public_key_shares
+            .iter()
+            .fold(sender_offset_public_key_self, |acc, x| acc + x);
+
+        let (ephemeral_private_nonce_id, ephemeral_pubkey_self) = key_manager
+            .get_next_key(&TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
+            .await?;
+        let aggregate_ephemeral_pubkey = ephemeral_public_key_shares
+            .iter()
+            .fold(ephemeral_pubkey_self, |acc, x| acc + x);
+
+        let receiver_partial_metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &self.spending_key_id,
+                &self.value.into(),
+                &aggregate_sender_offset_public_key,
+                &aggregate_ephemeral_pubkey,
+                &TransactionOutputVersion::get_current_version(),
+                &metadata_message,
+                self.features.range_proof_type,
+            )
+            .await?;
+
+        let commitment = key_manager
+            .get_commitment(&self.spending_key_id, &self.value.into())
+            .await?;
+        let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
+        let sender_partial_metadata_signature_self = key_manager
+            .get_sender_partial_metadata_signature(
+                &ephemeral_private_nonce_id,
+                sender_offset_key_id,
+                &commitment,
+                ephemeral_commitment,
+                &TransactionOutputVersion::get_current_version(),
+                &metadata_message,
+            )
+            .await?;
+
+        let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature_self;
+
+        self.metadata_signature = Some(metadata_signature);
+        self.metadata_signed_by_receiver = true;
+        self.metadata_signed_by_sender = true;
+        self.sender_offset_public_key = Some(aggregate_sender_offset_public_key);
+        Ok(self)
+    }
+
     pub async fn try_build<KM: TransactionKeyManagerInterface>(
         self,
         key_manager: &KM,
@@ -222,7 +299,7 @@ impl WalletOutputBuilder {
                 .ok_or_else(|| TransactionError::BuilderError("sender_offset_public_key must be set".to_string()))?,
             self.metadata_signature
                 .ok_or_else(|| TransactionError::BuilderError("metadata_signature must be set".to_string()))?,
-            0,
+            self.script_lock_height,
             self.covenant,
             self.encrypted_data,
             self.minimum_value_promise,
@@ -239,7 +316,7 @@ mod test {
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;
-    use crate::transactions::key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch};
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {

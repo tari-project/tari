@@ -14,12 +14,15 @@ mod app_ui {
     pub mod menu;
 }
 mod handlers {
+    pub mod get_dh_shared_secret;
     pub mod get_metadata_signature;
     pub mod get_public_alpha;
     pub mod get_public_key;
     pub mod get_script_offset;
     pub mod get_script_signature;
+    pub mod get_script_signature_from_challenge;
     pub mod get_version;
+    pub mod get_view_key;
 }
 
 use core::mem::MaybeUninit;
@@ -27,12 +30,15 @@ use core::mem::MaybeUninit;
 use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
+    get_dh_shared_secret::handler_get_dh_shared_secret,
     get_metadata_signature::handler_get_metadata_signature,
     get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::handler_get_script_signature,
+    get_script_signature_from_challenge::handler_get_script_signature_from_challenge,
     get_version::handler_get_version,
+    get_view_key::handler_get_view_key,
 };
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
@@ -114,10 +120,14 @@ pub enum Instruction {
     GetScriptSignature,
     GetScriptOffset { chunk: u8, more: bool },
     GetMetadataSignature,
+    GetScriptSignatureFromChallenge,
+    GetViewKey,
+    GetDHSharedSecret,
 }
 
 const P2_MORE: u8 = 0x01;
 const STATIC_ALPHA_INDEX: u64 = 42;
+const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
 const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
@@ -126,6 +136,7 @@ pub enum KeyType {
     Nonce = 0x02,
     Recovery = 0x03,
     SenderOffset = 0x04,
+    ViewKey = 0x05,
 }
 
 impl KeyType {
@@ -158,17 +169,20 @@ impl TryFrom<ApduHeader> for Instruction {
     /// [`sample_main`] to have this verification automatically performed by the SDK.
     fn try_from(value: ApduHeader) -> Result<Self, Self::Error> {
         match (value.ins, value.p1, value.p2) {
-            (1, 0, 0) => Ok(Instruction::GetVersion),
-            (2, 0, 0) => Ok(Instruction::GetAppName),
-            (3, 0, 0) => Ok(Instruction::GetPublicAlpha),
-            (4, 0, 0) => Ok(Instruction::GetPublicKey),
-            (5, 0, 0) => Ok(Instruction::GetScriptSignature),
-            (6, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+            (0x01, 0, 0) => Ok(Instruction::GetVersion),
+            (0x02, 0, 0) => Ok(Instruction::GetAppName),
+            (0x03, 0, 0) => Ok(Instruction::GetPublicAlpha),
+            (0x04, 0, 0) => Ok(Instruction::GetPublicKey),
+            (0x05, 0, 0) => Ok(Instruction::GetScriptSignature),
+            (0x06, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (7, 0, 0) => Ok(Instruction::GetMetadataSignature),
-            (6, _, _) => Err(AppSW::WrongP1P2),
+            (0x07, 0, 0) => Ok(Instruction::GetMetadataSignature),
+            (0x08, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
+            (0x09, 0, 0) => Ok(Instruction::GetViewKey),
+            (0x10, 0, 0) => Ok(Instruction::GetDHSharedSecret),
+            (0x06, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -187,7 +201,7 @@ extern "C" fn sample_main() {
     #[cfg(feature = "pending_review_screen")]
     display_pending_review(&mut comm);
 
-    // This is long lived over the span the ledger app is open, across multiple interactions
+    // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
 
     loop {
@@ -214,5 +228,8 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
         Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),
+        Instruction::GetScriptSignatureFromChallenge => handler_get_script_signature_from_challenge(comm),
+        Instruction::GetViewKey => handler_get_view_key(comm),
+        Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
     }
 }

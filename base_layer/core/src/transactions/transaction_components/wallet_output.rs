@@ -28,8 +28,21 @@ use std::{
     fmt::{Debug, Formatter},
 };
 
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
+use tari_common_types::types::{
+    ComAndPubSignature,
+    Commitment,
+    CommitmentFactory,
+    FixedHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PK, SecretKey},
+};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
@@ -237,6 +250,77 @@ impl WalletOutput {
             self.input_data.clone(),
             script_signature,
         ))
+    }
+
+    /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs
+    /// `script_signature_public_nonces` and `script_public_key_shares` exclude the caller's data.
+    pub async fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
+        &self,
+        factory: &CommitmentFactory,
+        script_signature_public_nonces: &[PublicKey],
+        script_public_key_shares: &[PublicKey],
+        key_manager: &KM,
+    ) -> Result<(TransactionInput, PublicKey), TransactionError> {
+        let value = self.value.into();
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+        let version = TransactionInputVersion::get_current_version();
+
+        let r_a = PrivateKey::random(&mut OsRng);
+        let r_x = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = factory.commit(&r_x, &r_a);
+
+        let r_y = PrivateKey::random(&mut OsRng);
+        let ephemeral_public_key_self = PublicKey::from_secret_key(&r_y);
+        let ephemeral_public_key = script_signature_public_nonces
+            .iter()
+            .fold(ephemeral_public_key_self, |acc, x| acc + x);
+
+        let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
+        let script_public_key = script_public_key_shares
+            .iter()
+            .fold(script_public_key_self, |acc, x| acc + x);
+
+        let challenge = TransactionInput::build_script_signature_challenge(
+            &version,
+            &ephemeral_commitment,
+            &ephemeral_public_key,
+            &self.script,
+            &self.input_data,
+            &script_public_key,
+            &commitment,
+        );
+        let script_signature = key_manager
+            .get_script_signature_from_challenge(
+                &self.script_key_id,
+                &self.spending_key_id,
+                &value,
+                &challenge,
+                &r_a,
+                &r_x,
+                &r_y,
+            )
+            .await?;
+        let input = TransactionInput::new_current_version(
+            SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
+                encrypted_data: self.encrypted_data.clone(),
+                metadata_signature: self.metadata_signature.clone(),
+                version: self.version,
+                minimum_value_promise: self.minimum_value_promise,
+                rangeproof_hash: match &self.range_proof {
+                    Some(rp) => rp.hash(),
+                    None => FixedHash::zero(),
+                },
+            },
+            self.input_data.clone(),
+            script_signature,
+        );
+
+        Ok((input, script_public_key))
     }
 
     /// Commits an WalletOutput into a TransactionInput that only contains the hash of the spent output data

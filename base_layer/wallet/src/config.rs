@@ -43,8 +43,6 @@ use crate::{
     transaction_service::config::TransactionServiceConfig,
 };
 
-pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
-
 fn deserialize_safe_password_option<'de, D>(deserializer: D) -> Result<Option<SafePassword>, D::Error>
 where D: serde::Deserializer<'de> {
     let password: Option<String> = Deserialize::deserialize(deserializer)?;

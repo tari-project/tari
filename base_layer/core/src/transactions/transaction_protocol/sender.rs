@@ -27,11 +27,10 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
+use tari_crypto::ristretto::pedersen::PedersenCommitment;
 pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
-use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -724,10 +723,8 @@ impl SenderTransactionProtocol {
     /// transaction was valid or not. If the result is false, the transaction will be in a Failed state. Calling
     /// finalize while in any other state will result in an error.
     ///
-    /// First we validate against internal sanity checks, then try build the transaction, and then
-    /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
-    /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
-    /// returns `Ok(false)` in this instance.
+    /// First we validate against internal sanity checks, then try build the transaction. If any step fails,
+    /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation.
     pub async fn finalize<KM: TransactionKeyManagerInterface>(&mut self, key_manager: &KM) -> Result<(), TPE> {
         match &self.state {
             SenderState::Finalizing(info) => {
@@ -774,16 +771,6 @@ impl fmt::Display for SenderTransactionProtocol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.state)
     }
-}
-
-pub fn calculate_tx_id(pub_nonce: &PublicKey, index: usize) -> TxId {
-    let hash = CalculateTxIdTransactionProtocolHasherBlake256::new()
-        .chain(pub_nonce.as_bytes())
-        .chain(index.to_le_bytes())
-        .finalize();
-    let mut bytes: [u8; 8] = [0u8; 8];
-    bytes.copy_from_slice(&hash.as_ref()[..8]);
-    u64::from_le_bytes(bytes).into()
 }
 
 //----------------------------------------      Sender State      ----------------------------------------------------//

@@ -128,7 +128,7 @@ where
         let rewind_time = start.elapsed();
         trace!(
             target: LOG_TARGET,
-            "bulletproof rewind profile - rewound {} outputs in {} ms",
+            "UTXO recovery - checked {} outputs in {} ms",
             outputs_length,
             rewind_time.as_millis(),
         );

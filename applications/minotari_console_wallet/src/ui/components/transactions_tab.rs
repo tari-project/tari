@@ -157,7 +157,7 @@ impl TransactionsTab {
             .highlight_style(styles::highlight())
             .heading_style(styles::header_row())
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination address"), Some(69), column0_items)
+            .add_column(Some("Source/Destination address"), Some(95), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
@@ -265,7 +265,7 @@ impl TransactionsTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Address"), Some(69), column0_items)
+            .add_column(Some("Source/Destination Address"), Some(95), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);

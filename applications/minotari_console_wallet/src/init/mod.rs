@@ -431,22 +431,7 @@ pub async fn init_wallet(
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
 
-    let node_identity = match config.wallet.identity_file.as_ref() {
-        Some(identity_file) => {
-            warn!(
-                target: LOG_TARGET,
-                "Node identity overridden by file {}",
-                identity_file.to_string_lossy()
-            );
-            setup_node_identity(
-                identity_file,
-                node_addresses.to_vec(),
-                true,
-                PeerFeatures::COMMUNICATION_CLIENT,
-            )?
-        },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?,
-    };
+    let node_identity = setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?;
 
     let mut wallet_config = config.wallet.clone();
     if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
@@ -832,19 +817,25 @@ pub fn prompt_wallet_type(
     }
 
     match boot_mode {
-        WalletBoot::New => {
+        WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
             return Some(WalletType::default());
 
             #[cfg(feature = "ledger")]
             {
-                if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)") {
+                let connected_hardware_msg = match boot_mode {
+                    WalletBoot::Recovery => {
+                        "\r\nWas your wallet connected to a hardware device? (Supported types: Ledger) (Y/n)"
+                    },
+                    _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)",
+                };
+                if prompt(connected_hardware_msg) {
                     print!("Scanning for connected Ledger hardware device... ");
                     match get_transport() {
                         Ok(hid) => {
                             println!("Device found.");
-                            let account = prompt_ledger_account().expect("An account value");
-                            let ledger = LedgerWallet::new(account, wallet_config.network, None);
+                            let account = prompt_ledger_account(boot_mode).expect("An account value");
+                            let ledger = LedgerWallet::new(account, wallet_config.network, None, None);
                             match ledger
                                 .build_command(Instruction::GetPublicAlpha, vec![])
                                 .execute_with_transport(&hid)
@@ -860,13 +851,43 @@ pub fn prompt_wallet_type(
                                         );
                                     }
 
-                                    let key = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
+                                    let public_alpha = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
                                         Ok(k) => k,
                                         Err(e) => panic!("{}", e),
                                     };
 
-                                    let ledger = LedgerWallet::new(account, wallet_config.network, Some(key));
-                                    Some(WalletType::Ledger(ledger))
+                                    match ledger
+                                        .build_command(Instruction::GetViewKey, vec![])
+                                        .execute_with_transport(&hid)
+                                    {
+                                        Ok(result) => {
+                                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                                            if result.data().len() < 33 {
+                                                debug!(target: LOG_TARGET, "result less than 33");
+                                                panic!(
+                                                    "'get_view_key' insufficient data - expected 33 got {} bytes \
+                                                     ({:?})",
+                                                    result.data().len(),
+                                                    result
+                                                );
+                                            }
+
+                                            let view_key = match PrivateKey::from_canonical_bytes(&result.data()[1..33])
+                                            {
+                                                Ok(k) => k,
+                                                Err(e) => panic!("{}", e),
+                                            };
+
+                                            let ledger = LedgerWallet::new(
+                                                account,
+                                                wallet_config.network,
+                                                Some(public_alpha),
+                                                Some(view_key),
+                                            );
+                                            Some(WalletType::Ledger(ledger))
+                                        },
+                                        Err(e) => panic!("{}", e),
+                                    }
                                 },
                                 Err(e) => panic!("{}", e),
                             }
@@ -882,9 +903,14 @@ pub fn prompt_wallet_type(
     }
 }
 
-pub fn prompt_ledger_account() -> Option<u64> {
-    let question =
-        "\r\nPlease enter an account number for your ledger. A simple 1-9, easily remembered numbers are suggested.";
+pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
+    let question = match boot_mode {
+        WalletBoot::Recovery => "\r\nPlease enter the account number you previously used for your device.",
+        _ => {
+            "\r\nPlease enter an account number for your device. A simple 1-9, easily remembered numbers are suggested."
+        },
+    };
+
     println!("{}", question);
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();

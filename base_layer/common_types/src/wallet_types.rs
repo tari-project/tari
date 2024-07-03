@@ -26,47 +26,37 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use chacha20poly1305::aead::OsRng;
 #[cfg(feature = "ledger")]
 use ledger_transport::APDUCommand;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::ledger_wallet::{Command, Instruction};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::RistrettoPublicKey,
-};
 
 use crate::types::{PrivateKey, PublicKey};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum WalletType {
-    Software(PrivateKey, PublicKey),
+    #[default]
+    Software,
     Ledger(LedgerWallet),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::Software(_k, pk) => write!(f, "Software({:?})", pk),
-            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
+            WalletType::Software => write!(f, "Software"),
+            WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
         }
-    }
-}
-
-impl Default for WalletType {
-    fn default() -> Self {
-        let k: PrivateKey = SecretKey::random(&mut OsRng);
-        WalletType::Software(k.clone(), PublicKey::from_secret_key(&k))
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerWallet {
     account: u64,
-    pub public_alpha: Option<RistrettoPublicKey>,
+    pub public_alpha: Option<PublicKey>,
     pub network: Network,
+    pub view_key: Option<PrivateKey>,
 }
 
 impl Display for LedgerWallet {
@@ -81,11 +71,12 @@ impl Display for LedgerWallet {
 const WALLET_CLA: u8 = 0x80;
 
 impl LedgerWallet {
-    pub fn new(account: u64, network: Network, public_alpha: Option<RistrettoPublicKey>) -> Self {
+    pub fn new(account: u64, network: Network, public_alpha: Option<PublicKey>, view_key: Option<PrivateKey>) -> Self {
         Self {
             account,
             public_alpha,
             network,
+            view_key,
         }
     }
 

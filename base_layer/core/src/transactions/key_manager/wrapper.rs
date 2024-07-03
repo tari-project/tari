@@ -296,6 +296,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_script_signature_from_challenge(
+        &self,
+        script_key_id: &TariKeyId,
+        spend_key_id: &TariKeyId,
+        value: &PrivateKey,
+        challenge: &[u8; 64],
+        r_a: &PrivateKey,
+        r_x: &PrivateKey,
+        r_y: &PrivateKey,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_script_signature_from_challenge(script_key_id, spend_key_id, value, challenge, r_a, r_x, r_y)
+            .await
+    }
+
     async fn get_partial_txo_kernel_signature(
         &self,
         spend_key_id: &TariKeyId,
@@ -420,6 +437,27 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn sign_message(&self, private_key_id: &TariKeyId, challenge: &[u8]) -> Result<Signature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .sign_message(private_key_id, challenge)
+            .await
+    }
+
+    async fn sign_with_nonce_and_message(
+        &self,
+        private_key_id: &TariKeyId,
+        nonce: &TariKeyId,
+        challenge: &[u8],
+    ) -> Result<Signature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .sign_with_nonce_and_message(private_key_id, nonce, challenge)
+            .await
+    }
+
     async fn get_receiver_partial_metadata_signature(
         &self,
         spend_key_id: &TariKeyId,
@@ -478,6 +516,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
+            .await
+    }
+
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .write()
+            .await
+            .create_key_pair(&branch.into())
             .await
     }
 }

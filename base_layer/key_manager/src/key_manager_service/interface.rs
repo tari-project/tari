@@ -25,10 +25,27 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::key_manager_service::error::KeyManagerServiceError;
+
+#[repr(u8)]
+#[derive(Clone, Copy, EnumIter)]
+pub enum KeyManagerBranch {
+    Comms,
+}
+
+impl KeyManagerBranch {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(self) -> String {
+        match self {
+            KeyManagerBranch::Comms => "comms".to_string(),
+        }
+    }
+}
 
 /// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created,
 /// otherwise `NewEntry` is returned.

@@ -1,6 +1,6 @@
 [package]
 name = "tari_hashing"
-version = "1.0.0-pre.14"
+version = "1.0.0-pre.15"
 edition = "2021"
 description = "Tari hash domains"
 authors = ["The Tari Development Community"]
@@ -12,7 +12,7 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_crypto = { version = "0.20.1", default-features = false, features = ["borsh"]}
+tari_crypto = { version = "0.20.3", default-features = false, features = ["borsh"]}
 borsh = { version = "1.2", default-features = false }
 digest = { version = "0.10", default-features = false }
 

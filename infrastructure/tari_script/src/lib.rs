@@ -23,7 +23,16 @@ mod serde;
 mod stack;
 
 pub use error::ScriptError;
-pub use op_codes::{slice_to_boxed_hash, slice_to_hash, HashValue, Message, Opcode, OpcodeVersion, ScalarValue};
+pub use op_codes::{
+    slice_to_boxed_hash,
+    slice_to_boxed_message,
+    slice_to_hash,
+    HashValue,
+    Message,
+    Opcode,
+    OpcodeVersion,
+    ScalarValue,
+};
 pub use script::TariScript;
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};

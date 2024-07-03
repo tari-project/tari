@@ -38,7 +38,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -47,19 +47,21 @@ use tari_core::{
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{
+        public_key_to_output_encryption_key,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
     },
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
             CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
+            RangeProofType,
             Transaction,
             TransactionOutput,
             WalletOutputBuilder,
@@ -80,7 +82,7 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, push_pubkey_script, script, ExecutionStack, TariScript};
+use tari_script::{inputs, push_pubkey_script, script, slice_to_boxed_message, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -684,6 +686,74 @@ where
                     tx_id,
                     proof: Box::new(proof),
                 }),
+            TransactionServiceRequest::CreateNMUtxo {
+                amount,
+                fee_per_gram,
+                n,
+                m,
+                public_keys,
+                message,
+                maturity,
+            } => self
+                .create_aggregate_signature_utxo(
+                    amount,
+                    fee_per_gram,
+                    n,
+                    m,
+                    public_keys,
+                    message,
+                    maturity,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(|(tx_id, output_hash)| {
+                    TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash)
+                }),
+            TransactionServiceRequest::EncumberAggregateUtxo {
+                fee_per_gram,
+                output_hash,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_public_nonces,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+            } => self
+                .encumber_aggregate_tx(
+                    fee_per_gram,
+                    output_hash,
+                    script_input_shares,
+                    script_public_key_shares,
+                    script_signature_public_nonces,
+                    sender_offset_public_key_shares,
+                    metadata_ephemeral_public_key_shares,
+                    dh_shared_secret_shares,
+                    recipient_address,
+                )
+                .await
+                .map(|(tx_id, tx, total_script_pubkey)| {
+                    TransactionServiceResponse::EncumberAggregateUtxo(
+                        tx_id,
+                        Box::new(tx),
+                        Box::new(total_script_pubkey),
+                    )
+                }),
+            TransactionServiceRequest::FinalizeSentAggregateTransaction {
+                tx_id,
+                total_meta_data_signature,
+                total_script_data_signature,
+                script_offset,
+            } => Ok(TransactionServiceResponse::TransactionSent(
+                self.finalized_aggregate_encumbed_tx(
+                    tx_id.into(),
+                    total_meta_data_signature,
+                    total_script_data_signature,
+                    script_offset,
+                    transaction_broadcast_join_handles,
+                )
+                .await?,
+            )),
             TransactionServiceRequest::RegisterValidatorNode {
                 amount,
                 validator_node_public_key,
@@ -1083,6 +1153,360 @@ where
         join_handles.push(join_handle);
 
         Ok(())
+    }
+
+    /// Creates a utxo with aggregate public key out of m-of-n public keys
+    #[allow(clippy::too_many_lines)]
+    pub async fn create_aggregate_signature_utxo(
+        &mut self,
+        amount: MicroMinotari,
+        fee_per_gram: MicroMinotari,
+        n: u8,
+        m: u8,
+        public_keys: Vec<PublicKey>,
+        message: [u8; 32],
+        maturity: u64,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        let msg = slice_to_boxed_message(message.as_bytes());
+        let script = script!(CheckMultiSigVerifyAggregatePubKey(n, m, public_keys.clone(), msg));
+
+        // Empty covenant
+        let covenant = Covenant::default();
+
+        // Default range proof
+        let minimum_value_promise = amount;
+
+        // Prepare sender part of transaction
+        let mut stp = self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures {
+                    range_proof_type: RangeProofType::RevealedValue,
+                    maturity,
+                    ..Default::default()
+                },
+                fee_per_gram,
+                TransactionMetadata::default(),
+                "".to_string(),
+                script.clone(),
+                covenant.clone(),
+                minimum_value_promise,
+            )
+            .await?;
+        let sender_message = TransactionSenderMessage::new_single_round_message(
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
+                .await?,
+        );
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `CollectingSingleSignature`,
+        // but the returned value is not used
+        let _single_round_sender_data = stp
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Prepare receiver part of the transaction
+
+        // In generating an aggregate public key utxo, we can use a randomly generated spend key
+        let spending_key = PrivateKey::random(&mut OsRng);
+        let sum_keys = public_keys.iter().fold(PublicKey::default(), |acc, x| acc + x);
+        let encryption_private_key = public_key_to_output_encryption_key(&sum_keys)?;
+
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
+            .ok_or(TransactionServiceProtocolError::new(
+                tx_id,
+                TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
+            ))?;
+
+        let encryption_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(encryption_private_key)
+            .await?;
+
+        let sender_offset_public_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_public_key_at_key_id(&sender_offset_private_key)
+            .await?;
+
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(spending_key.clone())
+            .await?;
+
+        let wallet_output = WalletOutputBuilder::new(amount, spending_key_id)
+            .with_features(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .features
+                    .clone(),
+            )
+            .with_script(script)
+            // We don't want the given utxo to be spendable as an input to a later transaction, so we set
+            // spendable height of the current utxo to be u64::MAx
+            .with_script_lock_height(u64::MAX)
+            .encrypt_data_for_recovery(
+                &self.resources.transaction_key_manager_service,
+                Some(&encryption_key_id),
+                PaymentId::Empty,
+            )
+            .await?
+            .with_input_data(
+                ExecutionStack::default(),
+            )
+            .with_covenant(covenant)
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(TariKeyId::default())
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
+            .await
+            .unwrap()
+            .try_build(&self.resources.transaction_key_manager_service)
+            .await
+            .unwrap();
+
+        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            wallet_output.clone(),
+            &self.resources.transaction_key_manager_service,
+            consensus_constants,
+        )
+        .await;
+        let recipient_reply = rtp.get_signed_data()?.clone();
+
+        // Start finalize
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize:
+        stp.finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
+        info!(
+            target: LOG_TARGET,
+            "Finalized create n of m transaction TxId: {}", tx_id
+        );
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast create n of m aggregate public key transaction
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.resources
+            .output_manager_service
+            .add_output_with_tx_id(tx_id, wallet_output.clone(), Some(SpendingPriority::Normal))
+            .await?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.wallet_identity.address.clone(),
+                self.resources.wallet_identity.address.clone(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                "".to_string(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                None,
+            )
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?,
+        )
+        .await?;
+
+        // we want to print out the hash of the utxo
+        let output_hash = wallet_output
+            .hash(&self.resources.transaction_key_manager_service)
+            .await?;
+        Ok((tx_id, output_hash))
+    }
+
+    /// Creates an encumbered uninitialized transaction
+    pub async fn encumber_aggregate_tx(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        output_hash: String,
+        script_input_shares: Vec<Signature>,
+        script_public_key_shares: Vec<PublicKey>,
+        script_signature_public_nonces: Vec<PublicKey>,
+        sender_offset_public_key_shares: Vec<PublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+        dh_shared_secret_shares: Vec<PublicKey>,
+        recipient_address: TariAddress,
+    ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        match self
+            .resources
+            .output_manager_service
+            .encumber_aggregate_utxo(
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                script_input_shares,
+                script_public_key_shares,
+                script_signature_public_nonces,
+                sender_offset_public_key_shares,
+                metadata_ephemeral_public_key_shares,
+                dh_shared_secret_shares,
+                recipient_address,
+            )
+            .await
+        {
+            Ok((transaction, amount, fee, total_script_key)) => {
+                let completed_tx = CompletedTransaction::new(
+                    tx_id,
+                    self.resources.wallet_identity.address.clone(),
+                    self.resources.wallet_identity.address.clone(),
+                    amount,
+                    fee,
+                    transaction.clone(),
+                    TransactionStatus::Completed,
+                    "claimed n-of-m utxo".to_string(),
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
+                    None,
+                    None,
+                    None,
+                )
+                .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+                self.db.insert_completed_transaction(tx_id, completed_tx)?;
+                Ok((tx_id, transaction, total_script_key))
+            },
+            Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Creates an encumbered uninitialized transaction
+    pub async fn finalized_aggregate_encumbed_tx(
+        &mut self,
+        tx_id: TxId,
+        total_meta_data_signature: Signature,
+        total_script_data_signature: Signature,
+        script_offset: PrivateKey,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let mut transaction = self.db.get_completed_transaction(tx_id)?;
+
+        transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
+
+        transaction.transaction.body.update_metadata_signature(
+            &transaction.transaction.body.outputs()[0].commitment.clone(),
+            ComAndPubSignature::new(
+                transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .ephemeral_commitment()
+                    .clone(),
+                transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .ephemeral_pubkey()
+                    .clone(),
+                transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .u_a()
+                    .clone(),
+                transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .u_x()
+                    .clone(),
+                transaction.transaction.body.outputs()[0].metadata_signature.u_y() +
+                    total_meta_data_signature.get_signature(),
+            ),
+        )?;
+
+        transaction.transaction.body.update_script_signature(
+            &transaction.transaction.body.inputs()[0].commitment()?.clone(),
+            &ComAndPubSignature::new(
+                transaction.transaction.body.inputs()[0]
+                    .script_signature
+                    .ephemeral_commitment()
+                    .clone(),
+                transaction.transaction.body.inputs()[0]
+                    .script_signature
+                    .ephemeral_pubkey()
+                    .clone(),
+                transaction.transaction.body.inputs()[0].script_signature.u_a().clone(),
+                transaction.transaction.body.inputs()[0].script_signature.u_x().clone(),
+                transaction.transaction.body.inputs()[0].script_signature.u_y() +
+                    total_script_data_signature.get_signature(),
+            ),
+        )?;
+
+        let _res = self
+            .resources
+            .output_manager_service
+            .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone())
+            .await;
+
+        self.db.update_completed_transaction(tx_id, transaction)?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await?;
+
+        // Notify that the transaction was successfully resolved.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        self.complete_send_transaction_protocol(
+            Ok(TransactionSendResult {
+                tx_id,
+                transaction_status: TransactionStatus::Completed,
+            }),
+            transaction_broadcast_join_handles,
+        );
+
+        Ok(tx_id)
     }
 
     /// broadcasts a SHA-XTR atomic swap transaction

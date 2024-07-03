@@ -1256,6 +1256,157 @@ pub unsafe extern "C" fn tari_address_network(address: *mut TariWalletAddress, e
     CString::into_raw(result)
 }
 
+/// Returns the u8 representation of a TariWalletAddress's network
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `u8` - Returns u8 representing the network. On failure, returns 0. This may be valid so always check the error out
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_network_u8(address: *mut TariWalletAddress, error_out: *mut c_int) -> u8 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    address
+        .as_ref()
+        .expect("Address should not be empty")
+        .network()
+        .as_byte()
+}
+
+/// Returns the u8 representation of a TariWalletAddress's checksum
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `u8` - Returns u8 representing the checksum.. On failure, returns 0. This may be valid so always check the error out
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_checksum_u8(address: *mut TariWalletAddress, error_out: *mut c_int) -> u8 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    address.as_ref().expect("Address should not be empty").checksum()
+}
+
+/// Creates a char array from a TariWalletAddress's features
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+/// if there was an error from TariWalletAddress
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_features(address: *mut TariWalletAddress, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let network_string = address
+        .as_ref()
+        .expect("Address should not be empty")
+        .features()
+        .to_string();
+    result = CString::new(network_string).expect("string will not fail.");
+    CString::into_raw(result)
+}
+
+/// Creates a public key from a TariWalletAddress's view key
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_view_key(
+    address: *mut TariWalletAddress,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let view_key = address.as_ref().expect("Address should not be empty").public_view_key();
+    match view_key {
+        Some(key) => Box::into_raw(Box::new(key.clone())),
+        None => {
+            error!(target: LOG_TARGET, "Error reading view key from Tari Address");
+            error = 1;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a public key from a TariWalletAddress's spend key
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_spend_key(
+    address: *mut TariWalletAddress,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let spend_key = address
+        .as_ref()
+        .expect("Address should not be empty")
+        .public_spend_key();
+    Box::into_raw(Box::new(spend_key.clone()))
+}
+
 /// Creates a TariWalletAddress from a char array in emoji format
 ///
 /// ## Arguments
@@ -4913,7 +5064,6 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 /// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
 /// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
-/// `network`: name of network to connect to. Valid values are: esmeralda, dibbler, igor, localnet, mainnet, stagenet
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///

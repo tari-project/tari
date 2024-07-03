@@ -57,6 +57,7 @@ pub enum TxoStage {
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
+    Alpha = 0x01,
     MetadataEphemeralNonce = 0x02,
     CommitmentMask = 0x03,
     Nonce = 0x04,
@@ -70,6 +71,7 @@ impl TransactionKeyManagerBranch {
     pub fn get_branch_key(self) -> String {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
+            TransactionKeyManagerBranch::Alpha => "alpha".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
             TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
@@ -81,6 +83,7 @@ impl TransactionKeyManagerBranch {
     pub fn from_key(key: &str) -> Self {
         match key {
             "data encryption" => TransactionKeyManagerBranch::DataEncryption,
+            "alpha" => TransactionKeyManagerBranch::Alpha,
             "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
             "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
@@ -185,6 +188,17 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn get_script_signature_from_challenge(
+        &self,
+        script_key_id: &TariKeyId,
+        spend_key_id: &TariKeyId,
+        value: &PrivateKey,
+        challenge: &[u8; 64],
+        r_a: &PrivateKey,
+        r_x: &PrivateKey,
+        r_y: &PrivateKey,
+    ) -> Result<ComAndPubSignature, TransactionError>;
+
     async fn get_partial_txo_kernel_signature(
         &self,
         spend_key_id: &TariKeyId,
@@ -247,6 +261,15 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn sign_message(&self, private_key_id: &TariKeyId, challenge: &[u8]) -> Result<Signature, TransactionError>;
+
+    async fn sign_with_nonce_and_message(
+        &self,
+        private_key_id: &TariKeyId,
+        nonce: &TariKeyId,
+        challenge: &[u8],
+    ) -> Result<Signature, TransactionError>;
+
     async fn get_receiver_partial_metadata_signature(
         &self,
         spend_key_id: &TariKeyId,
@@ -274,10 +297,59 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
+
+    async fn create_key_pair<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]
 pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
     /// Gets the pedersen commitment for the specified index
     async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+}
+
+#[cfg(test)]
+mod test {
+    use core::iter;
+    use std::str::FromStr;
+
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+
+    use crate::transactions::key_manager::TariKeyId;
+
+    fn random_string(len: usize) -> String {
+        iter::repeat(())
+            .map(|_| OsRng.sample(Alphanumeric) as char)
+            .take(len)
+            .collect()
+    }
+
+    #[test]
+    fn key_id_converts_correctly() {
+        let managed_key_id: TariKeyId = TariKeyId::Managed {
+            branch: random_string(8),
+            index: {
+                let mut rng = rand::thread_rng();
+                let random_value: u64 = rng.gen();
+                random_value
+            },
+        };
+        let imported_key_id: TariKeyId = TariKeyId::Imported {
+            key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        };
+        let zero_key_id: TariKeyId = TariKeyId::Zero;
+
+        let managed_key_id_str = managed_key_id.to_string();
+        let imported_key_id_str = imported_key_id.to_string();
+        let zero_key_id_str = zero_key_id.to_string();
+
+        assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
+        println!("imported_key_id_str: {}", imported_key_id_str);
+        assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
+        assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
+    }
 }

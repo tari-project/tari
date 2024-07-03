@@ -39,6 +39,9 @@ pub enum Instruction {
     GetScriptSignature = 0x05,
     GetScriptOffset = 0x06,
     GetMetadataSignature = 0x07,
+    GetScriptSignatureFromChallenge = 0x08,
+    GetViewKey = 0x09,
+    GetDHSharedSecret = 0x10,
 }
 
 impl Instruction {
