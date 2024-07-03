@@ -1148,6 +1148,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 &commitment,
                 ephemeral_commitment,
                 txo_version,
+                None,
+                None,
                 metadata_signature_message,
             )
             .await?;
@@ -1214,6 +1216,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 &commitment,
                 ephemeral_commitment,
                 txo_version,
+                None,
+                None,
                 metadata_signature_message,
             )
             .await?;
@@ -1240,6 +1244,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);
         let spend_private_key = self.get_private_key(spend_key_id).await?;
         let commitment = self.crypto_factories.commitment.commit(&spend_private_key, value);
+        dbg!(&txo_version);
+        dbg!(sender_offset_public_key.to_hex());
+        dbg!(ephemeral_commitment.to_hex());
+        dbg!(ephemeral_pubkey.to_hex());
+        dbg!(commitment.to_hex());
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
             txo_version,
             sender_offset_public_key,
@@ -1248,6 +1257,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             &commitment,
             metadata_signature_message,
         );
+        dbg!(&challenge.to_hex());
 
         let metadata_signature = ComAndPubSignature::sign(
             value,
@@ -1262,6 +1272,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
+    // In the case where the sender is an aggregated signer, we need to parse in the total public key shares, this is
+    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    // signers, this can be left as none
     pub async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
@@ -1269,14 +1282,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
+        aggregated_sender_offset_public_keys: Option<&PublicKey>,
+        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         match &self.wallet_type {
             WalletType::Software => {
                 let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-                let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
+                let ephemeral_pubkey = match aggregated_ephemeral_public_keys {
+                    Some(agg) => agg.clone(),
+                    None => PublicKey::from_secret_key(&ephemeral_private_key),
+                };
+                PublicKey::from_secret_key(&ephemeral_private_key);
                 let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
-                let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+                let sender_offset_public_key = match aggregated_sender_offset_public_keys {
+                    Some(agg) => agg.clone(),
+                    None => PublicKey::from_secret_key(&sender_offset_private_key),
+                };
 
                 let challenge = TransactionOutput::finalize_metadata_signature_challenge(
                     txo_version,

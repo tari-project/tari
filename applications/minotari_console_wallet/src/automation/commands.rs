@@ -174,7 +174,7 @@ async fn encumber_aggregate_utxo(
     metadata_ephemeral_public_key_shares: Vec<PublicKey>,
     dh_shared_secret_shares: Vec<PublicKey>,
     recipient_address: TariAddress,
-) -> Result<(TxId, Transaction, PublicKey), CommandError> {
+) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
@@ -881,7 +881,13 @@ pub async fn command_runner(
                 )
                 .await
                 {
-                    Ok((tx_id, transaction, script_pubkey)) => {
+                    Ok((
+                        tx_id,
+                        transaction,
+                        script_pubkey,
+                        total_metadata_ephemeral_public_key,
+                        total_script_nonce,
+                    )) => {
                         println!(
                             "Encumber aggregate utxo:
                             1.  Tx_id: {}
@@ -896,7 +902,9 @@ pub async fn command_runner(
                             10. sender_offset_pubkey: {},
                             11. meta_signature_ephemeral_commitment: {},
                             12. meta_signature_ephemeral_pubkey: {},
-                            13. total_public_offset: {}",
+                            13. total_public_offset: {},
+                            14. encrypted_data: {},
+                            15. output_features: {}",
                             tx_id,
                             transaction.body.inputs()[0].commitment().unwrap().to_hex(),
                             transaction.body.inputs()[0].input_data.to_hex(),
@@ -906,10 +914,7 @@ pub async fn command_runner(
                                 .script_signature
                                 .ephemeral_commitment()
                                 .to_hex(),
-                            transaction.body.inputs()[0]
-                                .script_signature
-                                .ephemeral_pubkey()
-                                .to_hex(),
+                            total_script_nonce.to_hex(),
                             transaction.body.outputs()[0].commitment().to_hex(),
                             transaction.body.outputs()[0].hash().to_hex(),
                             transaction.body.outputs()[0].sender_offset_public_key.to_hex(),
@@ -917,11 +922,11 @@ pub async fn command_runner(
                                 .metadata_signature
                                 .ephemeral_commitment()
                                 .to_hex(),
-                            transaction.body.outputs()[0]
-                                .metadata_signature
-                                .ephemeral_pubkey()
-                                .to_hex(),
+                            total_metadata_ephemeral_public_key.to_hex(),
                             transaction.script_offset.to_hex(),
+                            transaction.body.outputs()[0].encrypted_data.to_hex(),
+                            serde_json::to_string(&transaction.body.outputs()[0].features)
+                                .unwrap_or("Could not serialize output features".to_string())
                         )
                     },
                     Err(e) => println!("Encumber aggregate transaction error! {}", e),
@@ -995,12 +1000,14 @@ pub async fn command_runner(
                         .secret_sender_offset_key
                         .clone()])
                     .await?;
-                let script = script!(Nop);
+                let script = script!(PushPubKey(Box::new(args.recipient_address.public_spend_key().clone())));
                 let commitment =
                     Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let covenant = Covenant::default();
-                let encrypted_data = EncryptedData::default();
-                let output_features = OutputFeatures::default();
+                let encrypted_data = EncryptedData::from_hex(&args.encrypted_data)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let output_features = serde_json::from_str(&args.output_features)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let ephemeral_pubkey = PublicKey::from_hex(&args.ephemeral_pubkey)
@@ -1033,6 +1040,7 @@ pub async fn command_runner(
                     &encrypted_data,
                     minimum_value_promise,
                 );
+                dbg!(&challenge.to_hex());
                 trace!(target: LOG_TARGET, "meta challange: {:?}", challenge);
                 match key_manager_service
                     .sign_with_nonce_and_message(

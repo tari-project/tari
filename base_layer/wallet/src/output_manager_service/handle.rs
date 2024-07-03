@@ -232,7 +232,16 @@ pub enum OutputManagerResponse {
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
-    EncumberAggregateUtxo((Transaction, MicroMinotari, MicroMinotari, PublicKey)),
+    EncumberAggregateUtxo(
+        (
+            Transaction,
+            MicroMinotari,
+            MicroMinotari,
+            PublicKey,
+            PublicKey,
+            PublicKey,
+        ),
+    ),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
@@ -251,8 +260,13 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures { output: Box<WalletOutputBuilder> },
-    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
+    CreateOutputWithFeatures {
+        output: Box<WalletOutputBuilder>,
+    },
+    CreatePayToSelfWithOutputs {
+        transaction: Box<Transaction>,
+        tx_id: TxId,
+    },
     ReinstatedCancelledInboundTx,
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
@@ -748,7 +762,17 @@ impl OutputManagerHandle {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-    ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
+    ) -> Result<
+        (
+            Transaction,
+            MicroMinotari,
+            MicroMinotari,
+            PublicKey,
+            PublicKey,
+            PublicKey,
+        ),
+        OutputManagerError,
+    > {
         match self
             .handle
             .call(OutputManagerRequest::EncumberAggregateUtxo {
@@ -765,9 +789,21 @@ impl OutputManagerHandle {
             })
             .await??
         {
-            OutputManagerResponse::EncumberAggregateUtxo((transaction, amount, fee, total_script_key)) => {
-                Ok((transaction, amount, fee, total_script_key))
-            },
+            OutputManagerResponse::EncumberAggregateUtxo((
+                transaction,
+                amount,
+                fee,
+                total_script_key,
+                total_metadata_ephemeral_public_key,
+                total_script_nonce,
+            )) => Ok((
+                transaction,
+                amount,
+                fee,
+                total_script_key,
+                total_metadata_ephemeral_public_key,
+                total_script_nonce,
+            )),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

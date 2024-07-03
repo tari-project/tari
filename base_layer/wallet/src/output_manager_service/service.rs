@@ -1187,7 +1187,17 @@ where
         maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
+    ) -> Result<
+        (
+            Transaction,
+            MicroMinotari,
+            MicroMinotari,
+            PublicKey,
+            PublicKey,
+            PublicKey,
+        ),
+        OutputManagerError,
+    > {
         // Fetch the output from the blockchain
         let output_hash =
             FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
@@ -1366,7 +1376,12 @@ where
                 .await
                 .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
         );
-
+        let aggregated_sender_offset_public_key_shares = sender_offset_public_key_shares
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
+        let aggregated_metadata_ephemeral_public_key_shares = metadata_ephemeral_public_key_shares
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
@@ -1391,14 +1406,16 @@ where
             .sign_partial_as_sender_and_receiver(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self,
-                &sender_offset_public_key_shares,
-                &metadata_ephemeral_public_key_shares,
+                &aggregated_sender_offset_public_key_shares,
+                &aggregated_metadata_ephemeral_public_key_shares,
             )
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+        let total_metadata_ephemeral_public_key =
+            aggregated_metadata_ephemeral_public_key_shares + output.metadata_signature.ephemeral_pubkey();
 
         // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
         // signatures are not yet complete.
@@ -1416,24 +1433,39 @@ where
             .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
 
+        let aggregated_script_signature_public_nonces = script_signature_public_nonces
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
+        let aggregated_script_public_key_shares = script_public_key_shares
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
         // Update the input's script signature
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
                 &self.resources.factories.commitment,
-                &script_signature_public_nonces,
-                &script_public_key_shares,
+                &aggregated_script_signature_public_nonces,
+                &aggregated_script_public_key_shares,
                 &self.resources.key_manager,
             )
             .await?;
 
+        let total_script_nonce =
+            aggregated_script_signature_public_nonces + updated_input.script_signature.ephemeral_pubkey();
         let mut tx = stp.get_transaction()?.clone();
         let mut tx_body = tx.body;
-        tx_body.update_script_signature(updated_input.commitment()?, &updated_input.script_signature.clone())?;
+        tx_body.update_script_signature(updated_input.commitment()?, updated_input.script_signature.clone())?;
         tx.body = tx_body;
 
         let fee = stp.get_fee_amount()?;
 
-        Ok((tx, amount, fee, total_script_public_key))
+        Ok((
+            tx,
+            amount,
+            fee,
+            total_script_public_key,
+            total_metadata_ephemeral_public_key,
+            total_script_nonce,
+        ))
     }
 
     async fn create_pay_to_self_transaction(

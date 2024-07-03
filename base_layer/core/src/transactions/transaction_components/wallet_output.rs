@@ -257,28 +257,27 @@ impl WalletOutput {
     pub async fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
         &self,
         factory: &CommitmentFactory,
-        script_signature_public_nonces: &[PublicKey],
-        script_public_key_shares: &[PublicKey],
+        aggregated_script_signature_public_nonces: &PublicKey,
+        aggregated_script_public_key_shares: &PublicKey,
         key_manager: &KM,
     ) -> Result<(TransactionInput, PublicKey), TransactionError> {
         let value = self.value.into();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
         let version = TransactionInputVersion::get_current_version();
 
+        // TODO this is bad and insecure, we need to fix this, the nonces should live in the key manager and or only in
+        // the ledger.
         let r_a = PrivateKey::random(&mut OsRng);
         let r_x = PrivateKey::random(&mut OsRng);
         let ephemeral_commitment = factory.commit(&r_x, &r_a);
 
         let r_y = PrivateKey::random(&mut OsRng);
         let ephemeral_public_key_self = PublicKey::from_secret_key(&r_y);
-        let ephemeral_public_key = script_signature_public_nonces
-            .iter()
-            .fold(ephemeral_public_key_self, |acc, x| acc + x);
+
+        let ephemeral_public_key = aggregated_script_signature_public_nonces + ephemeral_public_key_self;
 
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
-        let script_public_key = script_public_key_shares
-            .iter()
-            .fold(script_public_key_self, |acc, x| acc + x);
+        let script_public_key = aggregated_script_public_key_shares + script_public_key_self;
 
         let challenge = TransactionInput::build_script_signature_challenge(
             &version,

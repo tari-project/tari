@@ -281,6 +281,9 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
+    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    // signers, this can be left as none
     async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
@@ -288,6 +291,8 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
+        aggregated_sender_offset_public_keys: Option<&PublicKey>,
+        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 

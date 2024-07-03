@@ -278,6 +278,12 @@ pub struct CreateMetaSigArgs {
     pub total_meta_key: UniPublicKey,
     #[clap(long)]
     pub commitment: String,
+    #[clap(long)]
+    pub encrypted_data: String,
+    #[clap(long)]
+    pub output_features: String,
+    #[clap(long)]
+    pub recipient_address: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]

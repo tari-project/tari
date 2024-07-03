@@ -38,7 +38,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{ComAndPubSignature, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -732,13 +732,17 @@ where
                     recipient_address,
                 )
                 .await
-                .map(|(tx_id, tx, total_script_pubkey)| {
-                    TransactionServiceResponse::EncumberAggregateUtxo(
-                        tx_id,
-                        Box::new(tx),
-                        Box::new(total_script_pubkey),
-                    )
-                }),
+                .map(
+                    |(tx_id, tx, total_script_pubkey, total_metadata_ephemeral_public_key, total_script_nonce)| {
+                        TransactionServiceResponse::EncumberAggregateUtxo(
+                            tx_id,
+                            Box::new(tx),
+                            Box::new(total_script_pubkey),
+                            Box::new(total_metadata_ephemeral_public_key),
+                            Box::new(total_script_nonce),
+                        )
+                    },
+                ),
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
@@ -1373,7 +1377,7 @@ where
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-    ) -> Result<(TxId, Transaction, PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
         match self
@@ -1393,7 +1397,14 @@ where
             )
             .await
         {
-            Ok((transaction, amount, fee, total_script_key)) => {
+            Ok((
+                transaction,
+                amount,
+                fee,
+                total_script_key,
+                total_metadata_ephemeral_public_key,
+                total_script_nonce,
+            )) => {
                 let completed_tx = CompletedTransaction::new(
                     tx_id,
                     self.resources.wallet_identity.address.clone(),
@@ -1411,7 +1422,13 @@ where
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
-                Ok((tx_id, transaction, total_script_key))
+                Ok((
+                    tx_id,
+                    transaction,
+                    total_script_key,
+                    total_metadata_ephemeral_public_key,
+                    total_script_nonce,
+                ))
             },
             Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
         }
@@ -1433,45 +1450,13 @@ where
         transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
 
         transaction.transaction.body.update_metadata_signature(
-            &transaction.transaction.body.outputs()[0].commitment.clone(),
-            ComAndPubSignature::new(
-                transaction.transaction.body.outputs()[0]
-                    .metadata_signature
-                    .ephemeral_commitment()
-                    .clone(),
-                transaction.transaction.body.outputs()[0]
-                    .metadata_signature
-                    .ephemeral_pubkey()
-                    .clone(),
-                transaction.transaction.body.outputs()[0]
-                    .metadata_signature
-                    .u_a()
-                    .clone(),
-                transaction.transaction.body.outputs()[0]
-                    .metadata_signature
-                    .u_x()
-                    .clone(),
-                transaction.transaction.body.outputs()[0].metadata_signature.u_y() +
-                    total_meta_data_signature.get_signature(),
-            ),
+            &(transaction.transaction.body.outputs()[0].commitment.clone()),
+            &transaction.transaction.body.outputs()[0].metadata_signature + &total_meta_data_signature,
         )?;
 
         transaction.transaction.body.update_script_signature(
-            &transaction.transaction.body.inputs()[0].commitment()?.clone(),
-            &ComAndPubSignature::new(
-                transaction.transaction.body.inputs()[0]
-                    .script_signature
-                    .ephemeral_commitment()
-                    .clone(),
-                transaction.transaction.body.inputs()[0]
-                    .script_signature
-                    .ephemeral_pubkey()
-                    .clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_a().clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_x().clone(),
-                transaction.transaction.body.inputs()[0].script_signature.u_y() +
-                    total_script_data_signature.get_signature(),
-            ),
+            &(transaction.transaction.body.inputs()[0].commitment()?.clone()),
+            &transaction.transaction.body.inputs()[0].script_signature + &total_script_data_signature,
         )?;
 
         let _res = self

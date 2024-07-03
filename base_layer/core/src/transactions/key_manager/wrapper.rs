@@ -483,6 +483,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
+    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    // signers, this can be left as none
     async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
@@ -490,6 +493,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
+        aggregated_sender_offset_public_keys: Option<&PublicKey>,
+        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
@@ -501,6 +506,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 commitment,
                 ephemeral_commitment,
                 txo_version,
+                aggregated_sender_offset_public_keys,
+                aggregated_ephemeral_public_keys,
                 metadata_signature_message,
             )
             .await
