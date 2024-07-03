@@ -96,6 +96,8 @@ async fn main_inner() -> Result<(), anyhow::Error> {
         TariAddress::new_dual_address_with_default_features(view_key_pub.clone(), comms_pub_key.clone(), network);
 
     println!("Tari Address: {}", tari_address.to_hex());
+    println!("Comms secret: {}", comms_key.to_hex());
+    println!("Comms key: {}", comms_pub_key.to_hex());
     println!("View key: {}", view_key_pub.to_hex());
     println!("View key secret: {}", tx_key_manager.get_private_key(&view_key).await?.to_hex());
     Ok(())
