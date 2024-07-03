@@ -25,7 +25,13 @@ use std::{net::SocketAddr, str::FromStr};
 use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{base_node_client::BaseNodeClient, Block, NewBlockTemplate, NewBlockTemplateRequest},
+    tari_rpc::{
+        base_node_client::BaseNodeClient,
+        sha_p2_pool_client::ShaP2PoolClient,
+        Block,
+        NewBlockTemplate,
+        NewBlockTemplateRequest,
+    },
 };
 use tari_common::configuration::{
     bootstrap::{grpc_default_port, ApplicationType},
@@ -35,7 +41,6 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use thiserror::Error;
 use tonic::{codegen::InterceptedService, transport::Channel, Code};
-use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 
 /// Error parsing input
 #[derive(Debug, Error)]
