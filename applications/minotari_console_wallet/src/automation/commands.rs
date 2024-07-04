@@ -775,7 +775,7 @@ pub async fn command_runner(
             },
             SignMessage(args) => {
                 match key_manager_service
-                    .sign_message(&args.private_key_id, args.challenge.as_bytes())
+                    .sign_script_message(&args.private_key_id, args.challenge.as_bytes())
                     .await
                 {
                     // 1. What is the message/challenge? => commitment
@@ -821,7 +821,7 @@ pub async fn command_runner(
                     .await?;
                 let shared_secret_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
 
-                let signature = key_manager_service.sign_message(&spend_key, &com_hash).await?;
+                let signature = key_manager_service.sign_script_message(&spend_key, &com_hash).await?;
 
                 println!(
                     "Sign message:

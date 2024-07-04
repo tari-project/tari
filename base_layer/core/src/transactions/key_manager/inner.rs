@@ -63,6 +63,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
+use tari_script::CheckSigSchnorrSignature;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::RwLock;
 
@@ -1157,14 +1158,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
-    pub async fn sign_message(
+    pub async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
         challenge: &[u8],
-    ) -> Result<Signature, TransactionError> {
+    ) -> Result<CheckSigSchnorrSignature, TransactionError> {
         let private_key = self.get_private_key(private_key_id).await?;
-        let nonce = PrivateKey::random(&mut OsRng);
-        let signature = Signature::sign_with_nonce_and_message(&private_key, nonce, challenge)?;
+        let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut OsRng)?;
 
         Ok(signature)
     }

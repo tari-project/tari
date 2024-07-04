@@ -20,11 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chacha20poly1305::aead::OsRng;
 use derivative::Derivative;
-use tari_common_types::types::{ComAndPubSignature, CommitmentFactory, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, PublicKey};
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::hex::Hex;
 
 use crate::{
     covenants::Covenant,

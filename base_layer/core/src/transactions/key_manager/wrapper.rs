@@ -39,6 +39,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
+use tari_script::CheckSigSchnorrSignature;
 use tokio::sync::RwLock;
 
 use crate::transactions::{
@@ -437,11 +438,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn sign_message(&self, private_key_id: &TariKeyId, challenge: &[u8]) -> Result<Signature, TransactionError> {
+    async fn sign_script_message(
+        &self,
+        private_key_id: &TariKeyId,
+        challenge: &[u8],
+    ) -> Result<CheckSigSchnorrSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .sign_message(private_key_id, challenge)
+            .sign_script_message(private_key_id, challenge)
             .await
     }
 
