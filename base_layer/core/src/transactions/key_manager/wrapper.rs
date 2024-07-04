@@ -449,7 +449,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
-        challenge: &[u8],
+        challenge: &[u8; 64],
     ) -> Result<Signature, TransactionError> {
         self.transaction_key_manager_inner
             .read()

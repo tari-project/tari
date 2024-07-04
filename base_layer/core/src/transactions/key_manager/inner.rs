@@ -1173,11 +1173,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
-        challenge: &[u8],
+        challenge: &[u8; 64],
     ) -> Result<Signature, TransactionError> {
         let private_key = self.get_private_key(private_key_id).await?;
         let private_nonce = self.get_private_key(nonce).await?;
-        let signature = Signature::sign_with_nonce_and_message(&private_key, private_nonce, challenge)?;
+        let signature = Signature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
 
         Ok(signature)
     }
@@ -1244,11 +1244,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);
         let spend_private_key = self.get_private_key(spend_key_id).await?;
         let commitment = self.crypto_factories.commitment.commit(&spend_private_key, value);
-        dbg!(&txo_version);
-        dbg!(sender_offset_public_key.to_hex());
-        dbg!(ephemeral_commitment.to_hex());
-        dbg!(ephemeral_pubkey.to_hex());
-        dbg!(commitment.to_hex());
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
             txo_version,
             sender_offset_public_key,
@@ -1257,7 +1252,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             &commitment,
             metadata_signature_message,
         );
-        dbg!(&challenge.to_hex());
 
         let metadata_signature = ComAndPubSignature::sign(
             value,

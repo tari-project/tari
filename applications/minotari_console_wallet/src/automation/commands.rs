@@ -802,7 +802,7 @@ pub async fn command_runner(
                     .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                     .await?;
                 let (sender_offset_nonce, public_sender_offset_nonce) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+                    .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
                     .await?;
 
                 let commitment = Commitment::from_hex(&args.commitment)?;
@@ -980,7 +980,7 @@ pub async fn command_runner(
                 );
 
                 match key_manager_service
-                    .sign_with_nonce_and_message(&args.private_key_id, &args.secret_nonce, challenge.as_slice())
+                    .sign_with_nonce_and_message(&args.private_key_id, &args.secret_nonce, &challenge)
                     .await
                 {
                     Ok(signature) => {
@@ -1040,14 +1040,9 @@ pub async fn command_runner(
                     &encrypted_data,
                     minimum_value_promise,
                 );
-                dbg!(&challenge.to_hex());
                 trace!(target: LOG_TARGET, "meta challange: {:?}", challenge);
                 match key_manager_service
-                    .sign_with_nonce_and_message(
-                        &args.secret_sender_offset_key,
-                        &args.secret_nonce,
-                        challenge.as_slice(),
-                    )
+                    .sign_with_nonce_and_message(&args.secret_sender_offset_key, &args.secret_nonce, &challenge)
                     .await
                 {
                     Ok(signature) => {

@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chacha20poly1305::aead::OsRng;
 use derivative::Derivative;
-use tari_common_types::types::{ComAndPubSignature, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, CommitmentFactory, PublicKey};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
@@ -222,18 +223,16 @@ impl WalletOutputBuilder {
             &self.encrypted_data,
             &self.minimum_value_promise,
         );
-        dbg!(&metadata_message);
 
         let sender_offset_public_key_self = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
         let aggregate_sender_offset_public_key =
-            aggregated_sender_offset_public_key_shares + sender_offset_public_key_self;
+            aggregated_sender_offset_public_key_shares + &sender_offset_public_key_self;
 
-        dbg!(&aggregate_sender_offset_public_key.to_hex());
         let (ephemeral_private_nonce_id, ephemeral_pubkey_self) = key_manager
             .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
         let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + ephemeral_pubkey_self;
-        dbg!(&aggregate_ephemeral_pubkey.to_hex());
+
         let receiver_partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
                 &self.spending_key_id,

@@ -267,7 +267,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
-        challenge: &[u8],
+        challenge: &[u8; 64],
     ) -> Result<Signature, TransactionError>;
 
     async fn get_receiver_partial_metadata_signature(

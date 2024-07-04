@@ -1367,18 +1367,17 @@ where
             .key_manager
             .get_public_key_at_key_id(&sender_offset_private_key_id_self)
             .await?;
-        let sender_offset_public_key = sender_offset_public_key_shares
+        let aggregated_sender_offset_public_key_shares = sender_offset_public_key_shares
             .iter()
-            .fold(sender_offset_public_key_self, |acc, x| acc + x);
+            .fold(PublicKey::default(), |acc, x| acc + x);
+        let sender_offset_public_key = &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.key_manager)
                 .await
                 .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
         );
-        let aggregated_sender_offset_public_key_shares = sender_offset_public_key_shares
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
+
         let aggregated_metadata_ephemeral_public_key_shares = metadata_ephemeral_public_key_shares
             .iter()
             .fold(PublicKey::default(), |acc, x| acc + x);

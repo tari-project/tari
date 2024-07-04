@@ -405,12 +405,6 @@ impl TransactionOutput {
             encrypted_data,
             &minimum_value_promise,
         );
-        dbg!(&message.to_hex());
-        dbg!(&version);
-        dbg!(sender_offset_public_key.to_hex());
-        dbg!(ephemeral_commitment.to_hex());
-        dbg!(ephemeral_pubkey.to_hex());
-        dbg!(commitment.to_hex());
         TransactionOutput::finalize_metadata_signature_challenge(
             version,
             sender_offset_public_key,

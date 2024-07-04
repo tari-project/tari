@@ -1393,7 +1393,7 @@ where
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
-                recipient_address,
+                recipient_address.clone(),
             )
             .await
         {
@@ -1408,14 +1408,14 @@ where
                 let completed_tx = CompletedTransaction::new(
                     tx_id,
                     self.resources.wallet_identity.address.clone(),
-                    self.resources.wallet_identity.address.clone(),
+                    recipient_address,
                     amount,
                     fee,
                     transaction.clone(),
-                    TransactionStatus::Completed,
+                    TransactionStatus::Pending,
                     "claimed n-of-m utxo".to_string(),
                     Utc::now().naive_utc(),
-                    TransactionDirection::Inbound,
+                    TransactionDirection::Outbound,
                     None,
                     None,
                     None,
