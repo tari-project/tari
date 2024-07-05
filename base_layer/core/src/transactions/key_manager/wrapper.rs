@@ -120,6 +120,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_random_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner.read().await.get_random_key().await
+    }
+
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()

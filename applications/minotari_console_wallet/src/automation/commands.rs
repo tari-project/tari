@@ -794,16 +794,12 @@ pub async fn command_runner(
             FaucetCreatePartyDetails(args) => {
                 let spend_key = wallet.get_wallet_id().await?.wallet_node_key_id.clone();
                 let public_spend_key = key_manager_service.get_public_key_at_key_id(&spend_key).await?;
-                let (script_nonce, public_script_nonce) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
-                    .await?;
+                let (script_nonce, public_script_nonce) = key_manager_service.get_random_key().await?;
 
                 let (sender_offset_key, public_sender_offset_key) = key_manager_service
                     .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                     .await?;
-                let (sender_offset_nonce, public_sender_offset_nonce) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
-                    .await?;
+                let (sender_offset_nonce, public_sender_offset_nonce) = key_manager_service.get_random_key().await?;
 
                 let commitment = Commitment::from_hex(&args.commitment)?;
                 let com_hash: [u8; 32] =

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{convert::TryInto, fmt, sync::Arc};
-use tari_core::one_sided::FaucetHashDomain;
+
 use blake2::Blake2b;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use digest::consts::U32;
@@ -44,6 +44,7 @@ use tari_core::{
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
+        FaucetHashDomain,
     },
     proto::base_node::FetchMatchingUtxos,
     transactions::{

@@ -193,6 +193,9 @@ where
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
     async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError>;
 
+    /// Gets a randomly generated key, which the key manager will manage
+    async fn get_random_key(&self) -> Result<(KeyId<PK>, PK), KeyManagerServiceError>;
+
     /// Gets the fixed key id from the branch. This will use the branch key with index 0
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
 

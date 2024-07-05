@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::collections::HashMap;
 
+use argon2::password_hash::rand_core::OsRng;
 use blake2::Blake2b;
 use digest::consts::U64;
 use futures::lock::Mutex;
@@ -113,6 +114,13 @@ where
             },
             key,
         ))
+    }
+
+    pub async fn get_random_key(&self) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
+        let random_private_key = PK::K::random(&mut OsRng);
+        let key_id = self.import_key(random_private_key).await?;
+        let public_key = self.get_public_key_at_key_id(&key_id).await?;
+        Ok((key_id, public_key))
     }
 
     pub async fn get_static_key(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {

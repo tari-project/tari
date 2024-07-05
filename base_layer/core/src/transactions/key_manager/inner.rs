@@ -182,6 +182,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok((key_id, key))
     }
 
+    pub async fn get_random_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        let random_private_key = PrivateKey::random(&mut OsRng);
+        let key_id = self.import_key(random_private_key).await?;
+        let public_key = self.get_public_key_at_key_id(&key_id).await?;
+        Ok((key_id, public_key))
+    }
+
     pub async fn create_key_pair(&mut self, branch: &str) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
         self.add_key_manager_branch(branch)?;
         let (key_id, public_key) = self.get_next_key(branch).await?;
