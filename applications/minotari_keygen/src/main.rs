@@ -49,18 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Ok(_) => process::exit(0),
         Err(err) => {
             eprintln!("{}", err);
-            // let exit_code = err.exit_code;
-            // if let Some(hint) = exit_code.hint() {
-            //     eprintln!();
-            //     eprintln!("{}", hint);
-            //     eprintln!();
-            // }
-            //
-            // error!(
-            //     target: LOG_TARGET,
-            //     "Exiting with code ({}): {:?}: {}", exit_code as i32, exit_code, err
-            // );
-            // process::exit(exit_code as i32)
+            process::exit(500)
         },
     }
     Ok(())
@@ -76,16 +65,16 @@ async fn main_inner() -> Result<(), anyhow::Error> {
     )?;
     let seed = CipherSeed::new();
 
-    let seed_words = seed.to_mnemonic(MnemonicLanguage::English, None).unwrap();
+    let seed_words = seed.to_mnemonic(MnemonicLanguage::English, None)?;
     for i in 0..seed_words.len() {
-        println!("{}: {}", i + 1, seed_words.get_word(i).unwrap());
+        println!("{}: {}", i + 1, seed_words.get_word(i)?);
     }
     let comms_key_manager = KeyManager::<PublicKey, KeyDigest>::from(
         seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );
-    let comms_key = comms_key_manager.derive_key(0).unwrap().key;
+    let comms_key = comms_key_manager.derive_key(0)?.key;
     let comms_pub_key = PublicKey::from_secret_key(&comms_key);
     let network = Network::default();
 
