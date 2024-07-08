@@ -555,7 +555,10 @@ mod test {
                 --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
                 --total-meta-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67
+                --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67 \
+                --encrypted-data 6a7aa2053ae187f60f27df0e10184bf93d02a84cd9548320ec7da546185fc23c6daa720974007c6106cfb0361eb9828e1af979b69fff724d2bcd0d86d5b9675ef1f65b424b22bee06e52fcaf4fd2a2ed \
+                --output-features 'features' \
+                --recipient-address f4FB7HhYCmLw4PsivjG8bAgUuxyPS6GTjFkhMWx6d9Nv4aoBESyaH5TdS1dAkSCg4qXqehpjZU9QrSUP2Ec7v4Gj8wf
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
