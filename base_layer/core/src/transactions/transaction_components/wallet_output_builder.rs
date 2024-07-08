@@ -417,6 +417,8 @@ mod test {
                         &commitment,
                         receiver_metadata_signature.ephemeral_commitment(),
                         &wallet_output.version,
+                        None,
+                        None,
                         &metadata_message,
                     )
                     .await

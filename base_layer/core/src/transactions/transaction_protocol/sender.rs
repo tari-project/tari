@@ -1020,6 +1020,8 @@ mod test {
                 &output.commitment,
                 partial_metadata_signature.ephemeral_commitment(),
                 &txo_version,
+                None,
+                None,
                 &metadata_message,
             )
             .await
