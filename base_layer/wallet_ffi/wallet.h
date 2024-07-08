@@ -900,12 +900,10 @@ TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
                                             int *error_out);
 
 /**
- * Creates a char array from a TariWalletAddress in emoji format
+ * Does a lookup of the emoji character for a byte, using the emoji encoding of tari
  *
  * ## Arguments
- * `address` - The pointer to a TariWalletAddress
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * `byte` - u8 byte to lookup the emoji for
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
