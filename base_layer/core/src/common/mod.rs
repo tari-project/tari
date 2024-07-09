@@ -28,7 +28,6 @@ use crate::consensus::DomainSeparatedConsensusHasher;
 
 pub mod borsh;
 pub mod byte_counter;
-// pub mod limited_reader;
 pub mod one_sided;
 
 #[cfg(feature = "base_node")]

@@ -2965,9 +2965,9 @@ TariBalance *wallet_get_balance(struct TariWallet *wallet,
  * * `page_size` - A number of items per page,
  * * `sorting` - An enum representing desired sorting,
  * * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
- * result.
+ *   result.
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- * Functions as an out parameter.
+ *   Functions as an out parameter.
  *
  * ## Returns
  * `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
