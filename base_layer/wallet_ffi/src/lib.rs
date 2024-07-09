@@ -983,6 +983,35 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out:
     Box::into_raw(Box::new(bytes))
 }
 
+/// Converts public key to emoji encding
+///
+/// ## Arguments
+/// `pk` - The pointer to a TariPublicKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+/// if emoji is null or if there was an error creating the emoji string from public key
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn public_key_get_emoji_encoding(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if pk.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let pk_bytes = (*pk).to_vec();
+    let emoji_string = pk_bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>();
+    result = CString::new(emoji_string).expect("Emoji will not fail.");
+    CString::into_raw(result)
+}
+
 /// Creates a TariPublicKey from a TariPrivateKey
 ///
 /// ## Arguments
@@ -1379,7 +1408,7 @@ pub unsafe extern "C" fn tari_address_features_u8(address: *mut TariWalletAddres
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null if there is no key present
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
@@ -1399,9 +1428,7 @@ pub unsafe extern "C" fn tari_address_view_key(
     match view_key {
         Some(key) => Box::into_raw(Box::new(key.clone())),
         None => {
-            error!(target: LOG_TARGET, "Error reading view key from Tari Address");
-            error = 1;
-            ptr::swap(error_out, &mut error as *mut c_int);
+            debug!(target: LOG_TARGET, "No view key present on Tari Address");
             ptr::null_mut()
         },
     }
@@ -9741,6 +9768,14 @@ mod test {
             assert_eq!(error, 0);
             let public_key_length = byte_vector_get_length(public_bytes, error_ptr);
             assert_eq!(error, 0);
+            let public_key_emoji = public_key_get_emoji_encoding(public_key, error_ptr);
+            assert_eq!(error, 0);
+            let emoji = CStr::from_ptr(public_key_emoji);
+            let rust_string = emoji.to_str().unwrap().to_string();
+            let chars = rust_string.chars().collect::<Vec<char>>();
+
+            assert_eq!(chars.len(), 32);
+
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
             assert_ne!((*private_bytes), (*public_bytes));
