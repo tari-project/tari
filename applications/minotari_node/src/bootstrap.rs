@@ -20,11 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp,
-    str::FromStr,
-    sync::{Arc, RwLock},
-};
+use std::{cmp, str::FromStr, sync::Arc};
 
 use log::*;
 use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
@@ -56,7 +52,6 @@ use tari_core::{
     mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
-    OutputSmt,
 };
 use tari_p2p::{
     auto_update::SoftwareUpdaterService,
@@ -86,7 +81,6 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub factories: CryptoFactories,
     pub randomx_factory: RandomXFactory,
     pub interrupt_signal: ShutdownSignal,
-    pub smt: Arc<RwLock<OutputSmt>>,
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>

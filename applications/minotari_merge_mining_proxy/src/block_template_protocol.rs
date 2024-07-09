@@ -271,7 +271,7 @@ impl BlockTemplateProtocol<'_> {
         let grpc::NewBlockTemplateResponse {
             miner_data,
             new_block_template: template,
-            initial_sync_achieved,
+            initial_sync_achieved: _,
         } = self
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
@@ -289,11 +289,7 @@ impl BlockTemplateProtocol<'_> {
 
         let miner_data = miner_data.ok_or(MmProxyError::GrpcResponseMissingField("miner_data"))?;
         let template = template.ok_or(MmProxyError::GrpcResponseMissingField("new_block_template"))?;
-        Ok(NewBlockTemplateData {
-            template,
-            miner_data,
-            initial_sync_achieved,
-        })
+        Ok(NewBlockTemplateData { template, miner_data })
     }
 
     /// Check if the height is more than the actual tip. So if still makes sense to compute block for that height.
@@ -439,7 +435,6 @@ fn add_monero_data(
 pub struct NewBlockTemplateData {
     pub template: grpc::NewBlockTemplate,
     pub miner_data: grpc::MinerData,
-    pub initial_sync_achieved: bool,
 }
 
 impl NewBlockTemplateData {

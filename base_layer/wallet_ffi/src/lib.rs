@@ -6046,9 +6046,9 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// * `page_size` - A number of items per page,
 /// * `sorting` - An enum representing desired sorting,
 /// * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
-/// result.
+///   result.
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
-/// Functions as an out parameter.
+///   Functions as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
@@ -6135,11 +6135,11 @@ pub unsafe extern "C" fn wallet_get_utxos(
 /// ## Arguments
 /// * `wallet` - The TariWallet pointer,
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
-/// Functions as an out parameter.
+///   Functions as an out parameter.
 ///
 /// ## Returns
 /// `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
-/// after use).
+///     after use).
 ///
 /// ## States
 /// 0 - Unspent
@@ -6209,7 +6209,7 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
 /// * `number_of_splits` - The number of times to split the amount
 /// * `fee_per_gram` - The transaction fee
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
-/// Functions as an out parameter.
+///   Functions as an out parameter.
 ///
 /// ## Returns
 /// `c_ulonglong` - Returns the transaction id.
@@ -6279,7 +6279,7 @@ pub unsafe extern "C" fn wallet_coin_split(
 ///   (see `Commitment::to_hex()`)
 /// * `fee_per_gram` - The transaction fee
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
-/// Functions as an out parameter.
+///   Functions as an out parameter.
 ///
 /// ## Returns
 /// `TariVector` - Returns the transaction id.

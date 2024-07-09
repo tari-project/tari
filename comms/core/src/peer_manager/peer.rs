@@ -375,7 +375,7 @@ mod test {
             Default::default(),
         );
         assert!(!peer.is_banned());
-        peer.ban_for(Duration::from_millis(std::u64::MAX), "Very long manual ban".to_string());
+        peer.ban_for(Duration::from_millis(u64::MAX), "Very long manual ban".to_string());
         assert_eq!(peer.reason_banned(), &"Very long manual ban".to_string());
         assert!(peer.is_banned());
         peer.ban_for(Duration::from_millis(0), "".to_string());

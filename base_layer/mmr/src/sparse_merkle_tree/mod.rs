@@ -22,8 +22,8 @@
 //!  * B: 01011111 (95 in decimal)
 //!  * C: 11100000 (224 in decimal)
 //!  * D: 11110000 (240 in decimal)
-//! you will notice that they the first two diverge at the first bit, while the first and last pairs differ at the
-//! fourth bit. This results in a SMT that looks like this:
+//!  * you will notice that they the first two diverge at the first bit, while the first and last pairs differ at the
+//!  * fourth bit. This results in a SMT that looks like this:
 //!
 //! r###"                     ┌──────┐                            "###
 //! r###"               ┌─────┤ root ├─────┐                      "###

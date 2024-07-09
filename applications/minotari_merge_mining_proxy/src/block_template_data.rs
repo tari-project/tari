@@ -221,6 +221,7 @@ pub struct BlockTemplateData {
     pub monero_difficulty: u64,
     pub tari_difficulty: u64,
     pub tari_merge_mining_hash: FixedHash,
+    #[allow(dead_code)]
     pub aux_chain_hashes: Vec<monero::Hash>,
     pub new_block_template: grpc::NewBlockTemplate,
 }

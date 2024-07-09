@@ -919,49 +919,6 @@ mod test {
         ConsensusConstants::mainnet();
     }
 
-    // Comment out the feature flag to run this test
-    #[test]
-    #[cfg(feature = "schedule_get_constants")]
-    fn esmeralda_schedule_get_constants() {
-        let mut esmeralda = ConsensusConstants::esmeralda();
-        loop {
-            let schedule = EmissionSchedule::new(
-                esmeralda[0].emission_initial,
-                esmeralda[0].emission_decay,
-                esmeralda[0].emission_tail,
-            );
-            // No genesis block coinbase
-            assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-            // Coinbases starts at block 1
-            let coinbase_offset = 1;
-            let first_reward = schedule.block_reward(coinbase_offset);
-            assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
-            assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-            // Tail emission starts after block 3,255,552 + coinbase_offset
-            let mut rewards = schedule
-                .iter()
-                .skip(3_255_552 + usize::try_from(coinbase_offset).unwrap());
-            let supply = loop {
-                let (block_num, reward, supply) = rewards.next().unwrap();
-                let total_supply = supply + esmeralda[0].faucet_value;
-                println!(
-                    "Initial: {}, Block: {}, Reward: {}, Supply: {}, Total supply: {}",
-                    esmeralda[0].emission_initial, block_num, reward, supply, total_supply
-                );
-                if reward == esmeralda[0].emission_tail {
-                    break supply;
-                }
-            };
-            let total_supply_up_to_tail_emission = supply + esmeralda[0].faucet_value;
-            if total_supply_up_to_tail_emission >= 21_000_000_800_000_000 * uT {
-                println!("Total supply up to tail emission: {}", total_supply_up_to_tail_emission);
-                break;
-            }
-            esmeralda[0].emission_initial = esmeralda[0].emission_initial + MicroMinotari(1);
-        }
-        panic!("\n\nThis test may not pass in CI\n\n");
-    }
-
     #[test]
     fn esmeralda_schedule() {
         let esmeralda = ConsensusConstants::esmeralda();

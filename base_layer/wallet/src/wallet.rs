@@ -357,8 +357,6 @@ where
             db: wallet_database,
             output_db: output_manager_database,
             factories,
-            #[cfg(feature = "test_harness")]
-            transaction_backend: transaction_backend_handle,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,

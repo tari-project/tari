@@ -33,6 +33,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::dedup_cache";
 
+#[allow(dead_code)]
 #[derive(Queryable, PartialEq, Eq, Debug)]
 struct DedupCacheEntry {
     body_hash: String,

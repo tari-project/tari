@@ -228,7 +228,7 @@ impl WalletOutputBuilder {
             .fold(sender_offset_public_key_self, |acc, x| acc + x);
 
         let (ephemeral_private_nonce_id, ephemeral_pubkey_self) = key_manager
-            .get_next_key(&TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
         let aggregate_ephemeral_pubkey = ephemeral_public_key_shares
             .iter()

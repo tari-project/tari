@@ -56,7 +56,6 @@ pub struct MiningReport {
     /// Will be set for when mined header is matching required difficulty
     pub header: Option<BlockHeader>,
     pub height: u64,
-    pub last_nonce: u64,
 }
 
 /// Miner is starting number of mining threads and implements Stream for async reports polling
@@ -212,7 +211,6 @@ pub fn mining_task(
                 hashes: hasher.hashes,
                 elapsed: start.elapsed(),
                 height: hasher.height(),
-                last_nonce: hasher.header.nonce,
                 header: Some(hasher.create_header()),
                 target_difficulty,
             }) {
@@ -235,7 +233,6 @@ pub fn mining_task(
                 hashes: hasher.hashes,
                 elapsed: start.elapsed(),
                 header: None,
-                last_nonce: hasher.header.nonce,
                 height: hasher.height(),
                 target_difficulty,
             });

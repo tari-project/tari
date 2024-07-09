@@ -38,6 +38,7 @@ use crate::{
 /// * Checks the input for validity
 /// * Constructs his output, range proof and partial signature
 /// * Constructs the reply
+///
 /// If any step fails, an error is returned.
 pub struct SingleReceiverTransactionProtocol {}
 

@@ -371,7 +371,7 @@ where KM: TransactionKeyManagerInterface
                         let change_key_id = change_data.change_spending_key_id.clone();
                         let (sender_offset_key_id, sender_offset_public_key) = self
                             .key_manager
-                            .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+                            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                             .await
                             .map_err(|e| e.to_string())?;
                         let input_data = change_data.change_input_data.clone();

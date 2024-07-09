@@ -409,7 +409,7 @@ pub async fn make_it_rain(
     // - If a slower rate is requested as what is achievable, transactions will be delayed to match the rate.
     // - If a faster rate is requested as what is achievable, the maximum rate will be that of the integrated system.
     // - The default value of 25/s may not be achievable.
-    let transactions_per_second = transactions_per_second.abs().max(0.01).min(250.0);
+    let transactions_per_second = transactions_per_second.abs().clamp(0.01, 250.0);
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time

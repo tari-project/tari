@@ -43,7 +43,7 @@ futures = { version = "^0.3.16", default-features = false, features = [
 ] }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
 log = { version = "0.4.8", features = ["std"] }
-log4rs = { version = "1.3.0", default_features = false, features = [
+log4rs = { version = "1.3.0", default-features = false, features = [
     "config_parsing",
     "threshold_filter",
     "yaml_format",

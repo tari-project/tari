@@ -47,6 +47,7 @@ pub enum InterfaceError {
 #[derive(Debug, Clone)]
 pub struct LibChatError {
     pub code: i32,
+    #[allow(dead_code)]
     pub message: String,
 }
 

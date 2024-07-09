@@ -209,7 +209,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     let passphrase = SafePassword::from("My lovely secret passphrase");
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
-    let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 1.into(), 0).unwrap();
+    let metadata = ChainMetadata::new(i64::MAX as u64, FixedHash::zero(), 0, 0, 1.into(), 0).unwrap();
 
     db.set_chain_metadata(metadata).unwrap();
 
@@ -500,18 +500,16 @@ fn try_decode_transaction_reply_message(bytes: Vec<u8>) -> Option<RecipientSigne
 
 fn try_decode_finalized_transaction_message(bytes: Vec<u8>) -> Option<proto::TransactionFinalizedMessage> {
     let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
-    match envelope_body.decode_part::<proto::TransactionFinalizedMessage>(1) {
-        Err(_) => None,
-        Ok(d) => d,
-    }
+    envelope_body
+        .decode_part::<proto::TransactionFinalizedMessage>(1)
+        .unwrap_or_default()
 }
 
 fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::TransactionCancelledMessage> {
     let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
-    match envelope_body.decode_part::<proto::TransactionCancelledMessage>(1) {
-        Err(_) => None,
-        Ok(d) => d,
-    }
+    envelope_body
+        .decode_part::<proto::TransactionCancelledMessage>(1)
+        .unwrap_or_default()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

@@ -13,14 +13,11 @@ pub struct NegativeDurationError {
 }
 
 /// The function compared two non-leap UTC timestamps.
-/// 1. `chrono` uses `SystemTime` and will never
-/// produce leap-seconds.
-/// 2. `chrono` supports leap seconds that can be read from
-/// the string format (as `60` second), because it's required by the standard (ISO 8601).
-/// 3. Leap-second handled automatically by NTP and we
-/// could ignore it as soon as `chrono` doesn't handle
-/// them accurately. No guarantees and only the one
-/// second handeled.
+/// 1. `chrono` uses `SystemTime` and will never produce leap-seconds.
+/// 2. `chrono` supports leap seconds that can be read from the string format (as `60` second), because it's required by
+///    the standard (ISO 8601).
+/// 3. Leap-second handled automatically by NTP and we could ignore it as soon as `chrono` doesn't handle them
+///    accurately. No guarantees and only the one second handeled.
 pub fn utc_duration_since(since: &NaiveDateTime) -> Result<Duration, NegativeDurationError> {
     let now_ms = Utc::now().naive_utc().timestamp_millis();
     let since_ms = since.timestamp_millis();
