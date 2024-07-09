@@ -640,6 +640,24 @@ struct ByteVector *public_key_get_bytes(TariPublicKey *pk,
                                         int *error_out);
 
 /**
+ * Converts public key to emoji encding
+ *
+ * ## Arguments
+ * `pk` - The pointer to a TariPublicKey
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+ * if emoji is null or if there was an error creating the emoji string from public key
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *public_key_get_emoji_encoding(TariPublicKey *pk,
+                                    int *error_out);
+
+/**
  * Creates a TariPublicKey from a TariPrivateKey
  *
  * ## Arguments
@@ -857,7 +875,7 @@ uint8_t tari_address_features_u8(TariWalletAddress *address,
  * as an out parameter.
  *
  * ## Returns
- * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
+ * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null if there is no key present
  *
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
