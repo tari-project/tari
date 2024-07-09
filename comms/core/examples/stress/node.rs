@@ -90,9 +90,8 @@ pub async fn create(
     .parse::<Multiaddr>()
     .unwrap();
     let node_identity = node_identity
-        .map(|ni| {
+        .inspect(|ni| {
             ni.add_public_address(public_addr.clone());
-            ni
         })
         .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));
 

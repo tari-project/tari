@@ -56,3 +56,6 @@ env_logger = "0.7.1"
 cbindgen = "0.24.3"
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
 tari_features = { path = "../../common/tari_features", version = "1.0.0-pre.15" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tari_target_network_mainnet)', 'cfg(tari_target_network_nextnet)', 'cfg(tari_target_network_testnet)'] }

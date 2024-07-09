@@ -63,6 +63,7 @@ pub enum InterfaceError {
 #[derive(Debug, Clone)]
 pub struct LibWalletError {
     pub code: i32,
+    #[allow(dead_code)]
     pub message: String,
 }
 

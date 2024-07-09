@@ -642,11 +642,12 @@ impl InnerService {
         };
 
         // Query the list twice before giving up, starting after the last used entry
-        let pos = if let Some(index) = self.config.monerod_url.iter().position(|x| x == &last_used_url) {
-            index
-        } else {
-            0
-        };
+        let pos = self
+            .config
+            .monerod_url
+            .iter()
+            .position(|x| x == &last_used_url)
+            .unwrap_or(0);
         let (left, right) = self.config.monerod_url.split_at(pos);
         let left = left.to_vec();
         let right = right.to_vec();

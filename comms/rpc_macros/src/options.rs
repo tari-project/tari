@@ -28,6 +28,7 @@ use syn::{
     Token,
 };
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct RpcTraitOptions {
     pub protocol_name: syn::LitByteStr,

@@ -58,7 +58,7 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + C
 {
     /// Creates a new sql backend from provided wallet db connection
     /// * `cipher` is used to encrypt the sensitive fields in the database, a cipher is derived
-    /// from a provided password, which we enforce for class instantiation
+    /// * from a provided password, which we enforce for class instantiation
     fn new(database_connection: TKeyManagerDbConnection, cipher: XChaCha20Poly1305) -> Self {
         Self {
             database_connection: Arc::new(database_connection),

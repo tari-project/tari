@@ -1445,7 +1445,7 @@ impl LMDBDatabase {
         seed: &[u8],
         height: u64,
     ) -> Result<(), ChainStorageError> {
-        let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(std::u64::MAX);
+        let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(u64::MAX);
         if height < current_height {
             lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
         };

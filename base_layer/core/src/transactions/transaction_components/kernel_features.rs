@@ -81,7 +81,7 @@ mod test {
         );
         let x = super::KernelFeatures::from_bits(4);
         assert_eq!(x, None);
-        for i in 5..=u8::max_value() {
+        for i in 5..=u8::MAX {
             assert_eq!(None, super::KernelFeatures::from_bits(i));
         }
     }

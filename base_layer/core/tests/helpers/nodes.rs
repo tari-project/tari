@@ -78,6 +78,7 @@ use tari_shutdown::Shutdown;
 use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
+#[allow(dead_code)]
 pub struct NodeInterfaces {
     pub node_identity: Arc<NodeIdentity>,
     pub outbound_nci: OutboundNodeCommsInterface,

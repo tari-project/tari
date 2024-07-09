@@ -58,6 +58,7 @@ use crate::{
 pub const LOG_TARGET: &str = "wallet::ui::app";
 
 pub struct App<B: Backend> {
+    #[allow(dead_code)]
     pub title: String,
     pub should_quit: bool,
     // Cached state this will need to be cleaned up into a threadsafe container

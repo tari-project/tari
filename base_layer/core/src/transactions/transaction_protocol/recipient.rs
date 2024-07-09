@@ -25,7 +25,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{PrivateKey, PublicKey, Signature},
 };
 
 use crate::{
@@ -61,25 +61,6 @@ impl fmt::Display for RecipientState {
             Failed(err) => write!(f, "Failed({:?})", err),
         }
     }
-}
-
-/// An enum describing the types of information that a recipient can send back to the receiver
-#[derive(Debug, Clone, PartialEq)]
-pub(super) enum RecipientInfo {
-    Single(Option<Box<RecipientSignedMessage>>),
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for RecipientInfo {
-    fn default() -> Self {
-        RecipientInfo::Single(None)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct MultiRecipientInfo {
-    pub commitment: FixedHash,
-    pub data: RecipientSignedMessage,
 }
 
 /// This is the message containing the public data that the Receiver will send back to the Sender

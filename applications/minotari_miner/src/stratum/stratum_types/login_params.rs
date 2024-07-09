@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 pub struct LoginParams {
     pub login: String,
     #[derivative(Debug = "ignore")]
+    #[allow(dead_code)]
     #[serde(skip_serializing)]
     pub pass: String,
     pub agent: String,

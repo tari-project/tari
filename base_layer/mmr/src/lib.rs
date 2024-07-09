@@ -112,7 +112,7 @@
 //!
 //! * _All_ indices are numbered starting from zero.
 //! * MMR nodes refer to all the nodes in the Merkle Mountain Range and are ordered in the canonical mmr ordering
-//! described above.
+//! * described above.
 //! * Leaf nodes are numbered counting from zero and increment by one each time a leaf is added.
 //!
 //! To illustrate, consider this MMR:

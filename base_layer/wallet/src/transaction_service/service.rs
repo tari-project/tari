@@ -952,9 +952,8 @@ where
 
         // If the individual handlers did not already send the API response then do it here.
         if let Some(rp) = reply_channel {
-            let _result = rp.send(response).map_err(|e| {
+            let _result = rp.send(response).inspect_err(|_| {
                 warn!(target: LOG_TARGET, "Failed to send reply");
-                e
             });
         }
         Ok(())
@@ -1031,10 +1030,7 @@ where
         if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
             let db = self.db.clone();
             let output_manager_handle = self.resources.output_manager_service.clone();
-            let metadata = match self.wallet_db.get_chain_metadata() {
-                Ok(data) => data,
-                Err(_) => None,
-            };
+            let metadata = self.wallet_db.get_chain_metadata().unwrap_or_default();
             let tip_height = match metadata {
                 Some(val) => val.best_block_height(),
                 None => 0u64,
@@ -1075,9 +1071,8 @@ where
         if destination.network() != self.resources.wallet_identity.address.network() {
             let _result = reply_channel
                 .send(Err(TransactionServiceError::InvalidNetwork))
-                .map_err(|e| {
+                .inspect_err(|_| {
                     warn!(target: LOG_TARGET, "Failed to send service reply");
-                    e
                 });
             return Err(TransactionServiceError::InvalidNetwork);
         }
@@ -1121,9 +1116,8 @@ where
 
             let _result = reply_channel
                 .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
-                .map_err(|e| {
+                .inspect_err(|_| {
                     warn!(target: LOG_TARGET, "Failed to send service reply");
-                    e
                 });
 
             return Ok(());

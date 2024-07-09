@@ -31,7 +31,7 @@ pub enum ProtocolError {
     IoError(#[from] io::Error),
     #[error("Invalid flag: {0}")]
     InvalidFlag(String),
-    #[error("The ProtocolId was longer than {}", u8::max_value())]
+    #[error("The ProtocolId was longer than {}", u8::MAX)]
     ProtocolIdTooLong,
     #[error("Protocol negotiation failed because the peer did not accept any of the given protocols: {protocols}")]
     ProtocolOutboundNegotiationFailed { protocols: String },

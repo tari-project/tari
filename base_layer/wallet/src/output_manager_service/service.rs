@@ -213,9 +213,8 @@ where
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
                         e
                     });
-                    let _result = reply_tx.send(response).map_err(|e| {
+                    let _result = reply_tx.send(response).inspect_err(|_| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        e
                     });
                 },
                 _ = shutdown.wait() => {
@@ -1119,7 +1118,7 @@ where
             let (sender_offset_key_id, _) = self
                 .resources
                 .key_manager
-                .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+                .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await?;
             wallet_output = wallet_output
                 .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key_id)
@@ -2230,7 +2229,7 @@ where
         let (sender_offset_key_id, sender_offset_public_key) = self
             .resources
             .key_manager
-            .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
         let metadata_signature = self
             .resources

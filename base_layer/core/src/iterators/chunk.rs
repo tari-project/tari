@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, fmt::Display};
+use std::{cmp, convert::TryFrom, fmt::Display};
 
 /// Iterator that produces non-overlapping integer vectors.
 /// This is similar to `Vec::chunks` except it does not require a complete vector of integers to produce chunks
@@ -98,7 +98,10 @@ macro_rules! non_overlapping_iter_impl {
                 if self.current == self.end {
                     return None;
                 }
-                let size = self.size as $ty;
+                let size = match <$ty>::try_from(self.size) {
+                    Ok(size) => size,
+                    Err(_) => return None,
+                };
                 match self.current.checked_add(size) {
                     Some(next) => {
                         let next = cmp::min(next, self.end);
@@ -128,7 +131,10 @@ macro_rules! non_overlapping_iter_impl {
                     return None;
                 }
 
-                let size = self.size as $ty;
+                let size = match <$ty>::try_from(self.size) {
+                    Ok(size) => size,
+                    Err(_) => return None,
+                };
                 // Is this the first iteration?
                 if self.end == self.current_end {
                     let rem = (self.end - self.current) % size;

@@ -49,6 +49,7 @@ pub const CANCELLED: &str = "cancelled";
 
 #[derive(Clone)]
 // FIXME
+#[allow(dead_code)]
 #[allow(clippy::large_enum_variant)]
 pub enum WalletEventMessage {
     Completed {

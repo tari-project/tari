@@ -28,9 +28,8 @@
 //!
 //! The protocol functions as follows:
 //! 1. Broadcast an encrypted [Discovery](crate::envelope::DhtMessageType) message destined for the peer containing the
-//! necessary details to connect to this peer.
-//! 1. If the peer is online, it may decrypt the message and view the peer
-//! connection details.
+//!    necessary details to connect to this peer.
+//! 1. If the peer is online, it may decrypt the message and view the peer connection details.
 //! 1. The peer may then add the peer and attempt to connect to it.
 //! 1. Once a direct connection is established, the discovery is complete.
 

@@ -22,14 +22,11 @@
 // configuration management
 //! from [tari_common] crate, also extending with few
 //! specific options:
-//! - base_node_grpc_address - is IPv4/IPv6 address including port
-//! number, by which Minotari Base Node can be found
+//! - base_node_grpc_address - is IPv4/IPv6 address including port number, by which Minotari Base Node can be found
 //! - num_mining_threads - number of mining threads, defaults to number of cpu cores
 //! - mine_on_tip_only - will start mining only when node is reporting bootstrapped state
-//! - validate_tip_timeout_sec - will check tip with node every N seconds to validate that still
-//! mining on a tip
-//! All miner options configured under `[miner]` section of
-//! Minotari's `config.toml`.
+//! - validate_tip_timeout_sec - will check tip with node every N seconds to validate that still mining on a tip All
+//!   miner options configured under `[miner]` section of Minotari's `config.toml`.
 
 use std::{
     path::{Path, PathBuf},
