@@ -70,9 +70,6 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo format
         run: cargo fmt --all -- --check
-      - run: rustup update
-      - run: rustup default nightly-2024-07-07
-      - run: rustup update
       - name: Install cargo-lints
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
