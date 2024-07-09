@@ -100,7 +100,7 @@ macro_rules! non_overlapping_iter_impl {
                 }
                 let size = match <$ty>::try_from(self.size) {
                     Ok(size) => size,
-                    Err(_) => return None,
+                    Err(_) => <$ty>::MAX,
                 };
                 match self.current.checked_add(size) {
                     Some(next) => {
@@ -133,7 +133,7 @@ macro_rules! non_overlapping_iter_impl {
 
                 let size = match <$ty>::try_from(self.size) {
                     Ok(size) => size,
-                    Err(_) => return None,
+                    Err(_) => <$ty>::MAX,
                 };
                 // Is this the first iteration?
                 if self.end == self.current_end {
