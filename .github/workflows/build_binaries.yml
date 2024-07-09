@@ -26,7 +26,7 @@ env:
   TS_FEATURES: "default, safe"
   TS_LIBRARIES: "minotari_mining_helper_ffi"
   TARI_NETWORK_DIR: testnet
-  toolchain: nightly-2024-03-01
+  toolchain: nightly-2024-07-01
   matrix-json-file: ".github/workflows/build_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
