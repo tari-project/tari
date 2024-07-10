@@ -1045,7 +1045,7 @@ async fn receive_and_propagate_transaction() {
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network)
         .with_coinbase_lockheight(100)
         .build();
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
@@ -1711,7 +1711,7 @@ async fn block_event_and_reorg_event_handling() {
     // When block B2A is submitted, then both nodes have TX2A and TX3A in their reorg pools
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
     let network = Network::LocalNet;
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_coinbase_lockheight(1)
         .build();

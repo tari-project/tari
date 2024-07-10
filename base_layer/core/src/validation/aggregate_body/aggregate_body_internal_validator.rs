@@ -515,7 +515,7 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &key_manager,
@@ -577,7 +577,7 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let mut outputs = futures::stream::unfold((), |_| async {
                 let (o, _, _) = test_helpers::create_utxo(
                     100.into(),

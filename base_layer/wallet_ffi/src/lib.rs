@@ -11432,7 +11432,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),
@@ -11809,7 +11809,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),

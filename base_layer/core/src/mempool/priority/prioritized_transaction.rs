@@ -144,7 +144,7 @@ mod tests {
 
     #[tokio::test]
     async fn fee_increases_priority() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;
@@ -158,7 +158,7 @@ mod tests {
 
     #[tokio::test]
     async fn age_increases_priority() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;

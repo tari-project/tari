@@ -63,7 +63,7 @@ impl<'a> BlockTemplateProtocol<'a> {
         consensus_manager: ConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateProtocol<'a>, MmProxyError> {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager()?;
         Ok(Self {
             config,
             base_node_client,

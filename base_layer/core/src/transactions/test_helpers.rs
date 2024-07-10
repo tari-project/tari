@@ -334,7 +334,7 @@ pub async fn create_coinbase_wallet_output(
     range_proof_type: RangeProofType,
 ) -> WalletOutput {
     let rules = create_consensus_manager();
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let constants = rules.consensus_constants(height);
     test_params
         .create_output(

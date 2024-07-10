@@ -294,7 +294,7 @@ async fn generate_block_headers_and_utxos(
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -385,7 +385,7 @@ async fn test_utxo_scanner_recovery() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -562,7 +562,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -642,7 +642,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .filter(|u| u.height <= 4)
         .collect::<Vec<UtxosByBlock>>();
 
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let TestBlockData {
         block_headers: new_block_headers,
         wallet_outputs: new_wallet_outputs,
@@ -740,7 +740,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_scanned_block_cache_clearing() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     for h in 0u64..800u64 {
@@ -863,7 +863,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(
         key_manager.clone(),
         UtxoScannerMode::Scanning,
@@ -1081,7 +1081,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
 #[tokio::test]
 async fn test_birthday_timestamp_over_chain() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let test_interface = setup(key_manager, UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -1092,7 +1092,7 @@ async fn test_birthday_timestamp_over_chain() {
     const NUM_BLOCKS: u64 = 10;
     const BIRTHDAY_OFFSET: u64 = 5;
 
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let TestBlockData {
         block_headers,
         utxos_by_block,

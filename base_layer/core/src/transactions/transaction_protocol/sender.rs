@@ -894,7 +894,7 @@ mod test {
 
     #[tokio::test]
     async fn test_errors() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let stp = SenderTransactionProtocol {
             state: SenderState::Failed(TransactionProtocolError::InvalidStateError),
         };
@@ -939,7 +939,7 @@ mod test {
     #[tokio::test]
     async fn test_metadata_signature_finalize() {
         // Defaults
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
 
         // Sender data
         let (ephemeral_pubkey_id, ephemeral_pubkey) = key_manager
@@ -1028,7 +1028,7 @@ mod test {
 
     #[tokio::test]
     async fn zero_recipients() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p1 = TestParams::new(&key_manager).await;
         let p2 = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
@@ -1090,7 +1090,7 @@ mod test {
         let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         // Alice's parameters
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let a_change_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
@@ -1196,7 +1196,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient_with_change() {
         let rules = create_consensus_rules();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice_key = TestParams::new(&key_manager).await;
@@ -1310,7 +1310,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient_multiple_inputs_with_change() {
         let rules = create_consensus_rules();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
@@ -1420,7 +1420,7 @@ mod test {
     #[tokio::test]
     async fn disallow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
@@ -1458,7 +1458,7 @@ mod test {
     #[tokio::test]
     async fn allow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
@@ -1497,8 +1497,8 @@ mod test {
     #[tokio::test]
     async fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
         // Alice's parameters
-        let key_manager_alice = create_memory_db_key_manager();
-        let key_manager_bob = create_memory_db_key_manager();
+        let key_manager_alice = create_memory_db_key_manager().unwrap();
+        let key_manager_bob = create_memory_db_key_manager().unwrap();
         // Bob's parameters
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroMinotari(25000);

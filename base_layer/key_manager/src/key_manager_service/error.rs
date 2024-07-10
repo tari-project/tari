@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_sqlite::error::{SqliteStorageError, StorageError};
 use tari_crypto::errors::RangeProofError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
@@ -55,6 +55,8 @@ pub enum KeyManagerServiceError {
     LedgerPrivateKeyInaccessible,
     #[error("The Ledger view key cannot be accessed or read")]
     LedgerViewKeyInaccessible,
+    #[error("Tari Key Manager storage error: `{0}`")]
+    StorageError(#[from] StorageError),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

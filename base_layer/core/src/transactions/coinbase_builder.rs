@@ -528,7 +528,7 @@ mod test {
     ) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build().unwrap();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         (CoinbaseBuilder::new(key_manager.clone()), rules, factories, key_manager)
     }

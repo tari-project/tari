@@ -283,7 +283,7 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroMinotari::from(1000);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap()
     let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
@@ -589,7 +589,7 @@ async fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroMinotari::from(1000);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap()
     let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
@@ -733,7 +733,7 @@ async fn test_import_utxo() {
     let input = inputs!(claim);
     let temp_features = OutputFeatures::create_coinbase(50, None, RangeProofType::BulletProofPlus);
 
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap()
     let p = TestParams::new(&key_manager);
     let utxo = create_wallet_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
     let output = utxo.to_transaction_output(&key_manager).unwrap();

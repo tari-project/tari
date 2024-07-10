@@ -1498,7 +1498,7 @@ mod test {
         let mut outputs_spent = Vec::new();
         let mut outputs_unspent = Vec::new();
 
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         for _i in 0..2 {
             let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)

@@ -28,7 +28,10 @@ use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::wallet_types::WalletType;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    key_manager_service::storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
+    key_manager_service::{
+        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
+        KeyManagerServiceError,
+    },
 };
 
 use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
@@ -42,8 +45,10 @@ fn random_string(len: usize) -> String {
         .collect()
 }
 
-pub fn create_memory_db_key_manager_with_range_proof_size(size: usize) -> MemoryDbKeyManager {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
+pub fn create_memory_db_key_manager_with_range_proof_size(
+    size: usize,
+) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)))?;
     let cipher = CipherSeed::new();
 
     let mut key = [0u8; size_of::<Key>()];
@@ -58,9 +63,8 @@ pub fn create_memory_db_key_manager_with_range_proof_size(size: usize) -> Memory
         factory,
         WalletType::default(),
     )
-    .unwrap()
 }
 
-pub fn create_memory_db_key_manager() -> MemoryDbKeyManager {
+pub fn create_memory_db_key_manager() -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
     create_memory_db_key_manager_with_range_proof_size(64)
 }

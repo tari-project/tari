@@ -343,7 +343,14 @@ pub unsafe extern "C" fn inject_coinbase(
             return;
         },
     };
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = match create_memory_db_key_manager() {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::KeyManager(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
 
     let consensus_manager = match ConsensusManager::builder(network).build() {
         Ok(v) => v,

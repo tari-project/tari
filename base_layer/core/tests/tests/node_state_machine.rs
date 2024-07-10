@@ -70,7 +70,7 @@ use crate::helpers::{
 async fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -154,7 +154,7 @@ async fn test_listening_lagging() {
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)

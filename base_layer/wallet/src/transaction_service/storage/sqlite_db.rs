@@ -2249,7 +2249,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
