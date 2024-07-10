@@ -70,7 +70,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::SecretKey;
+use tari_crypto::{keys::SecretKey, ristretto::pedersen::PedersenCommitment};
 use tari_script::{
     inputs,
     push_pubkey_script,
@@ -250,6 +250,7 @@ where
                 tx_id,
                 fee_per_gram,
                 output_hash,
+                expected_commitment,
                 script_input_shares,
                 script_public_key_shares,
                 script_signature_public_nonces,
@@ -262,6 +263,7 @@ where
                     tx_id,
                     fee_per_gram,
                     output_hash,
+                    expected_commitment,
                     script_input_shares,
                     script_public_key_shares,
                     script_signature_public_nonces,
@@ -499,7 +501,7 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
-            .fetch_outputs_from_node(vec![output_hash])
+            .fetch_unspent_outputs_from_node(vec![output_hash])
             .await?
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
@@ -1179,6 +1181,7 @@ where
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: String,
+        expected_commitment: PedersenCommitment,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1205,10 +1208,16 @@ where
         let output_hash =
             FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let output = self
-            .fetch_outputs_from_node(vec![output_hash])
+            .fetch_unspent_outputs_from_node(vec![output_hash])
             .await?
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError(format!("Output not found (TxId: {})", tx_id)))?;
+        if output.commitment != expected_commitment {
+            return Err(OutputManagerError::ServiceError(format!(
+                "Output commitment does not match expected commitment (TxId: {})",
+                tx_id
+            )));
+        }
         // Retrieve the list of n public keys from the script
         let public_keys =
             if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
@@ -2424,7 +2433,7 @@ where
         Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
     }
 
-    async fn fetch_outputs_from_node(
+    async fn fetch_unspent_outputs_from_node(
         &mut self,
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, OutputManagerError> {

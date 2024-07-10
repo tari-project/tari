@@ -119,14 +119,14 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    CreateKeyPair(CreateKeyPairArgs),
-    CreateAggregateSignatureUtxo(CreateAggregateSignatureUtxoArgs),
-    EncumberAggregateUtxo(EncumberAggregateUtxoArgs),
-    SpendAggregateUtxo(SpendAggregateUtxoArgs),
-    SignMessage(SignMessageArgs),
+    FaucetCreateKeyPair(FaucetCreateKeyPairArgs),
+    FaucetCreateAggregateSignatureUtxo(FaucetCreateAggregateSignatureUtxoArgs),
+    FaucetEncumberAggregateUtxo(FaucetEncumberAggregateUtxoArgs),
+    FaucetSpendAggregateUtxo(FaucetSpendAggregateUtxoArgs),
+    FaucetSignMessage(FaucetSignMessageArgs),
     FaucetCreatePartyDetails(FaucetCreatePartyDetailsArgs),
-    CreateScriptSig(CreateScriptSigArgs),
-    CreateMetaSig(CreateMetaSigArgs),
+    FaucetCreateScriptSig(FaucetCreateScriptSigArgs),
+    FaucetCreateMetaSig(FaucetCreateMetaSigArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -169,13 +169,13 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateKeyPairArgs {
+pub struct FaucetCreateKeyPairArgs {
     #[clap(long)]
     pub key_branch: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateAggregateSignatureUtxoArgs {
+pub struct FaucetCreateAggregateSignatureUtxoArgs {
     #[clap(long)]
     pub amount: MicroMinotari,
     #[clap(long)]
@@ -197,11 +197,11 @@ pub struct FaucetCreatePartyDetailsArgs {
     #[clap(long)]
     pub commitment: String,
     #[clap(long)]
-    pub destination: TariAddress,
+    pub recipient_address: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct SignMessageArgs {
+pub struct FaucetSignMessageArgs {
     #[clap(long)]
     pub private_key_id: TariKeyId,
     #[clap(long)]
@@ -209,9 +209,11 @@ pub struct SignMessageArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct EncumberAggregateUtxoArgs {
+pub struct FaucetEncumberAggregateUtxoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub commitment: String,
     #[clap(long)]
     pub output_hash: String,
     #[clap(long)]
@@ -231,7 +233,7 @@ pub struct EncumberAggregateUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct SpendAggregateUtxoArgs {
+pub struct FaucetSpendAggregateUtxoArgs {
     #[clap(long)]
     pub tx_id: u64,
     #[clap(long)]
@@ -243,11 +245,11 @@ pub struct SpendAggregateUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateScriptSigArgs {
+pub struct FaucetCreateScriptSigArgs {
     #[clap(long)]
     pub private_key_id: TariKeyId,
     #[clap(long)]
-    pub secret_nonce: TariKeyId,
+    pub secret_nonce_key_id: TariKeyId,
     #[clap(long)]
     pub input_script: String,
     #[clap(long)]
@@ -263,13 +265,13 @@ pub struct CreateScriptSigArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct CreateMetaSigArgs {
+pub struct FaucetCreateMetaSigArgs {
     #[clap(long)]
-    pub secret_script_key: TariKeyId,
+    pub secret_script_key_id: TariKeyId,
     #[clap(long)]
-    pub secret_sender_offset_key: TariKeyId,
+    pub secret_sender_offset_key_id: TariKeyId,
     #[clap(long)]
-    pub secret_nonce: TariKeyId,
+    pub secret_nonce_key_id: TariKeyId,
     #[clap(long)]
     pub ephemeral_commitment: String,
     #[clap(long)]

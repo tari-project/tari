@@ -78,6 +78,7 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::{PublicKey as PKtrait, SecretKey},
+    ristretto::pedersen::PedersenCommitment,
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
@@ -712,6 +713,7 @@ where
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
+                expected_commitment,
                 script_input_shares,
                 script_public_key_shares,
                 script_signature_public_nonces,
@@ -723,6 +725,7 @@ where
                 .encumber_aggregate_tx(
                     fee_per_gram,
                     output_hash,
+                    expected_commitment,
                     script_input_shares,
                     script_public_key_shares,
                     script_signature_public_nonces,
@@ -1370,6 +1373,7 @@ where
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: String,
+        expected_commitment: PedersenCommitment,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1387,6 +1391,7 @@ where
                 tx_id,
                 fee_per_gram,
                 output_hash,
+                expected_commitment,
                 script_input_shares,
                 script_public_key_shares,
                 script_signature_public_nonces,
@@ -1430,7 +1435,7 @@ where
                     total_script_nonce,
                 ))
             },
-            Err(_) => Err(TransactionServiceError::UnexpectedApiResponse),
+            Err(e) => Err(e.into()),
         }
     }
 
