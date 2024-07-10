@@ -52,6 +52,7 @@ use tari_core::{
         },
     },
 };
+use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -112,6 +113,7 @@ pub enum TransactionServiceRequest {
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
         output_hash: String,
+        expected_commitment: PedersenCommitment,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -229,6 +231,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
+                expected_commitment,
                 script_input_shares,
                 script_public_key_shares,
                 script_signature_public_nonces,
@@ -238,12 +241,13 @@ impl fmt::Display for TransactionServiceRequest {
                 recipient_address,
                 ..
             } => f.write_str(&format!(
-                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, script_input_shares = {:?}, \
-                 script_public_key_shares = {:?}, script_signature_shares = {:?}, sender_offset_public_key_shares = \
-                 {:?}, metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address \
-                 = {}",
+                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, \
+                 script_input_shares = {:?}, script_public_key_shares = {:?}, script_signature_shares = {:?}, \
+                 sender_offset_public_key_shares = {:?}, metadata_ephemeral_public_key_shares = {:?}, \
+                 dh_shared_secret_shares = {:?}, recipient_address = {}",
                 fee_per_gram,
                 output_hash,
+                expected_commitment.to_hex(),
                 script_input_shares
                     .iter()
                     .map(|v| format!(
@@ -731,6 +735,7 @@ impl TransactionServiceHandle {
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: String,
+        expected_commitment: PedersenCommitment,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -744,6 +749,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
                 output_hash,
+                expected_commitment,
                 script_input_shares,
                 script_public_key_shares,
                 script_signature_public_nonces,

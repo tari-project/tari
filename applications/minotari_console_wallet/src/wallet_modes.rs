@@ -496,9 +496,9 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            create-key-pair --key-branch pie
+            faucet-create-key-pair --key-branch pie
 
-            create-aggregate-signature-utxo \
+            faucet-create-aggregate-signature-utxo \
                 --amount 125T \
                 --fee-per-gram 1 \
                 --n 3 \
@@ -508,13 +508,14 @@ mod test {
                 --public-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --public-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            sign-message \
+            faucet-sign-message \
                 --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
                 --challenge f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            encumber-aggregate-utxo \
+            faucet-encumber-aggregate-utxo \
                 --fee-per-gram 1 \
                 --output-hash f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --script-input-shares=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
                 --script-input-shares=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
                 --script-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
@@ -529,7 +530,7 @@ mod test {
                 --dh-shared-secret-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA
 
-            spend-aggregate-utxo \
+            faucet-spend-aggregate-utxo \
                 --tx-id 12345678 \
                 --meta-signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
                 --meta-signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
@@ -538,9 +539,13 @@ mod test {
                 --script-offset-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --script-offset-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            create-script-sig \
+            faucet-create-party-details \
+                --commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
+                --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA
+
+            faucet-create-script-sig \
                 --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-nonce imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+                --secret-nonce-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
                 --input-script ae010268593ed2d36a2d95f0ffe0f41649b97cc36fc4ef0c8ecd6bd28f9d56c76b793b08691435a5c813578f8a7f4973166dc1c6c15f37aec2a7d65b1583c8b2129364c916d5986a0c1b3dac7d6efb94bed688ba52fa8b962cf27c0446e2fea6d66a04 \
                 --input-stack 050857c14f72cf885aac9f08c9484cb7cb06b6cc20eab68c9bee1e8d5a85649b0a6d31c5cc49afc1e03ebbcf55c82f47e8cbc796c33e96c17a31eab027ee821f00 \
                 --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
@@ -548,10 +553,10 @@ mod test {
                 --total-script-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
                 --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67
 
-            create-meta-sig \
-                --secret-script-key imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-sender-offset-key imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-nonce imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+            faucet-create-meta-sig \
+                --secret-script-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+                --secret-sender-offset-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
+                --secret-nonce-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
                 --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
                 --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
                 --total-meta-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
@@ -579,13 +584,14 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut create_key_pair = false;
-        let mut create_aggregate_signature_utxo = false;
-        let mut encumber_aggregate_utxo = false;
-        let mut spend_aggregate_utxo = false;
-        let mut sign_message = false;
-        let mut create_script_sig = false;
-        let mut create_meta_sig = false;
+        let mut faucet_create_key_pair = false;
+        let mut faucet_create_aggregate_signature_utxo = false;
+        let mut faucet_encumber_aggregate_utxo = false;
+        let mut faucet_spend_aggregate_utxo = false;
+        let mut faucet_sign_message = false;
+        let mut faucet_create_party_details = false;
+        let mut faucet_create_script_sig = false;
+        let mut faucet_create_meta_sig = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -597,13 +603,14 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::CreateKeyPair(_) => create_key_pair = true,
-                CliCommands::CreateAggregateSignatureUtxo(_) => create_aggregate_signature_utxo = true,
-                CliCommands::EncumberAggregateUtxo(_) => encumber_aggregate_utxo = true,
-                CliCommands::SpendAggregateUtxo(_) => spend_aggregate_utxo = true,
-                CliCommands::SignMessage(_) => sign_message = true,
-                CliCommands::CreateScriptSig(_) => create_script_sig = true,
-                CliCommands::CreateMetaSig(_) => create_meta_sig = true,
+                CliCommands::FaucetCreateKeyPair(_) => faucet_create_key_pair = true,
+                CliCommands::FaucetCreateAggregateSignatureUtxo(_) => faucet_create_aggregate_signature_utxo = true,
+                CliCommands::FaucetEncumberAggregateUtxo(_) => faucet_encumber_aggregate_utxo = true,
+                CliCommands::FaucetSpendAggregateUtxo(_) => faucet_spend_aggregate_utxo = true,
+                CliCommands::FaucetSignMessage(_) => faucet_sign_message = true,
+                CliCommands::FaucetCreatePartyDetails(_) => faucet_create_party_details = true,
+                CliCommands::FaucetCreateScriptSig(_) => faucet_create_script_sig = true,
+                CliCommands::FaucetCreateMetaSig(_) => faucet_create_meta_sig = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
@@ -631,20 +638,20 @@ mod test {
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
-                CliCommands::FaucetCreatePartyDetails(_) => {},
             }
         }
         assert!(
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                create_key_pair &&
-                create_aggregate_signature_utxo &&
-                encumber_aggregate_utxo &&
-                spend_aggregate_utxo &&
-                sign_message &&
-                create_script_sig &&
-                create_meta_sig &&
+                faucet_create_key_pair &&
+                faucet_create_aggregate_signature_utxo &&
+                faucet_encumber_aggregate_utxo &&
+                faucet_spend_aggregate_utxo &&
+                faucet_sign_message &&
+                faucet_create_party_details &&
+                faucet_create_script_sig &&
+                faucet_create_meta_sig &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&
