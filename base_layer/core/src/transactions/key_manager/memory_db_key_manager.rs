@@ -33,7 +33,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
 
@@ -52,12 +52,11 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
     let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)))?;
     let cipher = CipherSeed::new();
 
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
+    let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
+    OsRng.fill_bytes(key.as_mut());
+    let key_ga = Key::from_slice(key.as_ref());
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(size);
-    key.zeroize();
     TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
