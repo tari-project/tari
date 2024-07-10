@@ -496,22 +496,6 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            faucet-create-key-pair --key-branch pie
-
-            faucet-create-aggregate-signature-utxo \
-                --amount 125T \
-                --fee-per-gram 1 \
-                --n 3 \
-                --m 2 \
-                --message ff \
-                --maturity 0 \
-                --public-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --public-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
-
-            faucet-sign-message \
-                --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --challenge f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
-
             faucet-encumber-aggregate-utxo \
                 --fee-per-gram 1 \
                 --output-hash f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
@@ -584,11 +568,8 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut faucet_create_key_pair = false;
-        let mut faucet_create_aggregate_signature_utxo = false;
         let mut faucet_encumber_aggregate_utxo = false;
         let mut faucet_spend_aggregate_utxo = false;
-        let mut faucet_sign_message = false;
         let mut faucet_create_party_details = false;
         let mut faucet_create_script_sig = false;
         let mut faucet_create_meta_sig = false;
@@ -603,11 +584,8 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::FaucetCreateKeyPair(_) => faucet_create_key_pair = true,
-                CliCommands::FaucetCreateAggregateSignatureUtxo(_) => faucet_create_aggregate_signature_utxo = true,
                 CliCommands::FaucetEncumberAggregateUtxo(_) => faucet_encumber_aggregate_utxo = true,
                 CliCommands::FaucetSpendAggregateUtxo(_) => faucet_spend_aggregate_utxo = true,
-                CliCommands::FaucetSignMessage(_) => faucet_sign_message = true,
                 CliCommands::FaucetCreatePartyDetails(_) => faucet_create_party_details = true,
                 CliCommands::FaucetCreateScriptSig(_) => faucet_create_script_sig = true,
                 CliCommands::FaucetCreateMetaSig(_) => faucet_create_meta_sig = true,
@@ -644,11 +622,8 @@ mod test {
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                faucet_create_key_pair &&
-                faucet_create_aggregate_signature_utxo &&
                 faucet_encumber_aggregate_utxo &&
                 faucet_spend_aggregate_utxo &&
-                faucet_sign_message &&
                 faucet_create_party_details &&
                 faucet_create_script_sig &&
                 faucet_create_meta_sig &&

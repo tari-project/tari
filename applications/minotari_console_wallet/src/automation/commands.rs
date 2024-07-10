@@ -67,7 +67,7 @@ use tari_core::{
     covenants::Covenant,
     one_sided::FaucetHashDomain,
     transactions::{
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -138,25 +138,6 @@ pub async fn burn_tari(
             message,
             None,
         )
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
-
-pub async fn create_aggregate_signature_utxo(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    amount: MicroMinotari,
-    fee_per_gram: MicroMinotari,
-    n: u8,
-    m: u8,
-    public_keys: Vec<PublicKey>,
-    message: String,
-    maturity: u64,
-) -> Result<(TxId, FixedHash), CommandError> {
-    let mut msg = [0u8; 32];
-    msg.copy_from_slice(message.as_bytes());
-
-    wallet_transaction_service
-        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg, maturity)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -736,63 +717,6 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
-            FaucetCreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
-                Ok((key_id, pk)) => {
-                    println!(
-                        "New key pair:
-                            1. key id    : {},
-                            2. public key: {}",
-                        key_id,
-                        pk.to_hex()
-                    )
-                },
-                Err(e) => eprintln!("CreateKeyPair error! {}", e),
-            },
-            FaucetCreateAggregateSignatureUtxo(args) => match create_aggregate_signature_utxo(
-                transaction_service.clone(),
-                args.amount,
-                args.fee_per_gram,
-                args.n,
-                args.m,
-                args.public_keys
-                    .iter()
-                    .map(|pk| PublicKey::from(pk.clone()))
-                    .collect::<Vec<_>>(),
-                args.message, // 1. What is the message? => commitment
-                args.maturity,
-            )
-            .await
-            {
-                Ok((tx_id, output_hash)) => {
-                    println!(
-                        "Created a UTXO with n-of-m aggregate public key, with:
-                            1. n = {},
-                            2. m = {},
-                            3. tx id = {},
-                            4. output hash = {}",
-                        args.n, args.m, tx_id, output_hash
-                    )
-                },
-                Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
-            },
-            FaucetSignMessage(args) => {
-                match key_manager_service
-                    .sign_script_message(&args.private_key_id, args.challenge.as_bytes())
-                    .await
-                {
-                    // 1. What is the message/challenge? => commitment
-                    Ok(sgn) => {
-                        println!(
-                            "Signed message:
-                            1. signature: {},
-                            2. public nonce: {}",
-                            sgn.get_signature().to_hex(),
-                            sgn.get_public_nonce().to_hex(),
-                        )
-                    },
-                    Err(e) => eprintln!("SignMessage error! {}", e),
-                }
-            },
             FaucetCreatePartyDetails(args) => {
                 let wallet_spend_key_id = wallet.get_wallet_id().await?.wallet_node_key_id.clone();
                 let wallet_public_spend_key = key_manager_service
@@ -800,9 +724,8 @@ pub async fn command_runner(
                     .await?;
                 let (script_nonce_key_id, public_script_nonce) = key_manager_service.get_random_key().await?;
 
-                let (sender_offset_key_id, public_sender_offset_key) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-                    .await?;
+                let (sender_offset_key_id, public_sender_offset_key) = key_manager_service.get_random_key().await?;
+
                 let (sender_offset_nonce_key_id, public_sender_offset_nonce) =
                     key_manager_service.get_random_key().await?;
 
