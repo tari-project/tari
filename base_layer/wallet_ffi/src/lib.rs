@@ -983,7 +983,7 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out:
     Box::into_raw(Box::new(bytes))
 }
 
-/// Converts public key to emoji encding
+/// Converts public key to emoji encoding
 ///
 /// ## Arguments
 /// `pk` - The pointer to a TariPublicKey
