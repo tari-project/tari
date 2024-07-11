@@ -68,6 +68,10 @@ impl TariAddressFeatures {
     pub fn create_interactive_and_one_sided() -> TariAddressFeatures {
         TariAddressFeatures::INTERACTIVE | TariAddressFeatures::ONE_SIDED
     }
+
+    pub fn as_u8(&self) -> u8 {
+        self.0
+    }
 }
 
 impl Default for TariAddressFeatures {
@@ -179,9 +183,10 @@ impl TariAddress {
     }
 
     /// Gets the checksum from the Tari Address
-    pub fn checksum(&self) -> u8 {
+    pub fn calculate_checksum(&self) -> u8 {
         let bytes = self.to_vec();
-        bytes[bytes.len()]
+        // -1 is safe as this the len will always be greater than 0
+        bytes[bytes.len() - 1]
     }
 
     /// Convert Tari Address to an emoji string

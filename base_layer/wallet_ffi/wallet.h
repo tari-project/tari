@@ -640,6 +640,24 @@ struct ByteVector *public_key_get_bytes(TariPublicKey *pk,
                                         int *error_out);
 
 /**
+ * Converts public key to emoji encding
+ *
+ * ## Arguments
+ * `pk` - The pointer to a TariPublicKey
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+ * if emoji is null or if there was an error creating the emoji string from public key
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *public_key_get_emoji_encoding(TariPublicKey *pk,
+                                    int *error_out);
+
+/**
  * Creates a TariPublicKey from a TariPrivateKey
  *
  * ## Arguments
@@ -832,6 +850,23 @@ char *tari_address_features(TariWalletAddress *address,
                             int *error_out);
 
 /**
+ * Creates a char array from a TariWalletAddress's features
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariWalletAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * u8` - Returns u8 representing the features. On failure, returns 0. This may be valid so always check the error out
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+uint8_t tari_address_features_u8(TariWalletAddress *address,
+                                 int *error_out);
+
+/**
  * Creates a public key from a TariWalletAddress's view key
  *
  * ## Arguments
@@ -840,7 +875,7 @@ char *tari_address_features(TariWalletAddress *address,
  * as an out parameter.
  *
  * ## Returns
- * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
+ * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null if there is no key present
  *
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
@@ -881,6 +916,21 @@ TariPublicKey *tari_address_spend_key(TariWalletAddress *address,
  */
 TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
                                             int *error_out);
+
+/**
+ * Does a lookup of the emoji character for a byte, using the emoji encoding of tari
+ *
+ * ## Arguments
+ * `byte` - u8 byte to lookup the emoji for
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+ * if emoji is null or if there was an error creating the emoji string from TariWalletAddress
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *byte_to_emoji(uint8_t byte);
 
 /**
  * -------------------------------------------------------------------------------------------- ///

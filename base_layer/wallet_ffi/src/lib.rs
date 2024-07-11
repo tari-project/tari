@@ -118,7 +118,7 @@ use tari_common::{
     network_check::set_network_if_choice_valid,
 };
 use tari_common_types::{
-    emoji::emoji_set,
+    emoji::{emoji_set, EMOJI},
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{ComAndPubSignature, Commitment, PublicKey, RangeProof, SignatureWithDomain},
@@ -983,6 +983,35 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out:
     Box::into_raw(Box::new(bytes))
 }
 
+/// Converts public key to emoji encoding
+///
+/// ## Arguments
+/// `pk` - The pointer to a TariPublicKey
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+/// if emoji is null or if there was an error creating the emoji string from public key
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn public_key_get_emoji_encoding(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut c_char {
+    let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if pk.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let pk_bytes = (*pk).to_vec();
+    let emoji_string = pk_bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>();
+    result = CString::new(emoji_string).expect("Emoji will not fail.");
+    CString::into_raw(result)
+}
+
 /// Creates a TariPublicKey from a TariPrivateKey
 ///
 /// ## Arguments
@@ -1305,7 +1334,10 @@ pub unsafe extern "C" fn tari_address_checksum_u8(address: *mut TariWalletAddres
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    address.as_ref().expect("Address should not be empty").checksum()
+    address
+        .as_ref()
+        .expect("Address should not be empty")
+        .calculate_checksum()
 }
 
 /// Creates a char array from a TariWalletAddress's features
@@ -1331,13 +1363,41 @@ pub unsafe extern "C" fn tari_address_features(address: *mut TariWalletAddress, 
         ptr::swap(error_out, &mut error as *mut c_int);
         return CString::into_raw(result);
     }
-    let network_string = address
+    let features_string = address
         .as_ref()
         .expect("Address should not be empty")
         .features()
         .to_string();
-    result = CString::new(network_string).expect("string will not fail.");
+    result = CString::new(features_string).expect("string will not fail.");
     CString::into_raw(result)
+}
+
+/// Creates a char array from a TariWalletAddress's features
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// u8` - Returns u8 representing the features. On failure, returns 0. This may be valid so always check the error out
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_features_u8(address: *mut TariWalletAddress, error_out: *mut c_int) -> u8 {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    address
+        .as_ref()
+        .expect("Address should not be empty")
+        .features()
+        .as_u8()
 }
 
 /// Creates a public key from a TariWalletAddress's view key
@@ -1348,7 +1408,7 @@ pub unsafe extern "C" fn tari_address_features(address: *mut TariWalletAddress, 
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null if there is no key present
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
@@ -1368,9 +1428,7 @@ pub unsafe extern "C" fn tari_address_view_key(
     match view_key {
         Some(key) => Box::into_raw(Box::new(key.clone())),
         None => {
-            error!(target: LOG_TARGET, "Error reading view key from Tari Address");
-            error = 1;
-            ptr::swap(error_out, &mut error as *mut c_int);
+            debug!(target: LOG_TARGET, "No view key present on Tari Address");
             ptr::null_mut()
         },
     }
@@ -1444,6 +1502,24 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
             ptr::null_mut()
         },
     }
+}
+
+/// Does a lookup of the emoji character for a byte, using the emoji encoding of tari
+///
+/// ## Arguments
+/// `byte` - u8 byte to lookup the emoji for
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
+/// if emoji is null or if there was an error creating the emoji string from TariWalletAddress
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn byte_to_emoji(byte: u8) -> *mut c_char {
+    let emoji = EMOJI[byte as usize].to_string();
+    let result = CString::new(emoji).expect("Emoji will not fail.");
+    CString::into_raw(result)
 }
 
 /// -------------------------------------------------------------------------------------------- ///
@@ -9144,7 +9220,7 @@ mod test {
         transaction_service::handle::TransactionSendStatus,
     };
     use once_cell::sync::Lazy;
-    use tari_common_types::emoji;
+    use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
     use tari_contacts::contacts_service::types::{Direction, Message, MessageMetadata};
     use tari_core::{
@@ -9444,6 +9520,62 @@ mod test {
     }
 
     #[test]
+    fn test_emoji_convert() {
+        unsafe {
+            let byte = 0 as u8;
+            let emoji_ptr = byte_to_emoji(byte);
+            let emoji = CStr::from_ptr(emoji_ptr);
+
+            assert_eq!(emoji.to_str().unwrap(), EMOJI[0].to_string());
+
+            let byte = 50 as u8;
+            let emoji_ptr = byte_to_emoji(byte);
+            let emoji = CStr::from_ptr(emoji_ptr);
+
+            assert_eq!(emoji.to_str().unwrap(), EMOJI[50].to_string());
+
+            let byte = 125 as u8;
+            let emoji_ptr = byte_to_emoji(byte);
+            let emoji = CStr::from_ptr(emoji_ptr);
+
+            assert_eq!(emoji.to_str().unwrap(), EMOJI[125].to_string());
+        }
+    }
+
+    #[test]
+    fn test_address_getters() {
+        unsafe {
+            let mut rng = rand::thread_rng();
+            let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+            let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+
+            let address = TariAddress::new_dual_address(
+                view_key.clone(),
+                spend_key.clone(),
+                Network::Esmeralda,
+                TariAddressFeatures::create_one_sided_only(),
+            );
+            let test_address = Box::into_raw(Box::new(address.clone()));
+
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let ffi_features = tari_address_features_u8(test_address, error_ptr);
+            assert_eq!(address.features().as_u8(), ffi_features);
+            assert_eq!(*error_ptr, 0, "No error expected");
+
+            let ffi_checksum = tari_address_checksum_u8(test_address, error_ptr);
+            assert_eq!(address.calculate_checksum(), ffi_checksum);
+            assert_eq!(*error_ptr, 0, "No error expected");
+
+            let ffi_network = tari_address_network_u8(test_address, error_ptr);
+            assert_eq!(address.network() as u8, ffi_network);
+            assert_eq!(*error_ptr, 0, "No error expected");
+
+            tari_address_destroy(test_address);
+        }
+    }
+
+    #[test]
     fn test_emoji_set() {
         unsafe {
             let emoji_set = get_emoji_set();
@@ -9636,6 +9768,14 @@ mod test {
             assert_eq!(error, 0);
             let public_key_length = byte_vector_get_length(public_bytes, error_ptr);
             assert_eq!(error, 0);
+            let public_key_emoji = public_key_get_emoji_encoding(public_key, error_ptr);
+            assert_eq!(error, 0);
+            let emoji = CStr::from_ptr(public_key_emoji);
+            let rust_string = emoji.to_str().unwrap().to_string();
+            let chars = rust_string.chars().collect::<Vec<char>>();
+
+            assert_eq!(chars.len(), 32);
+
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
             assert_ne!((*private_bytes), (*public_bytes));
