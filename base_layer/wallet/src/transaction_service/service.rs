@@ -38,7 +38,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -83,7 +83,15 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, push_pubkey_script, script, slice_to_boxed_message, ExecutionStack, TariScript};
+use tari_script::{
+    inputs,
+    push_pubkey_script,
+    script,
+    slice_to_boxed_message,
+    ExecutionStack,
+    ScriptContext,
+    TariScript,
+};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -1452,6 +1460,7 @@ where
     ) -> Result<TxId, TransactionServiceError> {
         let mut transaction = self.db.get_completed_transaction(tx_id)?;
 
+        // Add the aggregate signature components
         transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
 
         transaction.transaction.body.update_metadata_signature(
@@ -1464,6 +1473,38 @@ where
             &transaction.transaction.body.inputs()[0].script_signature + &total_script_data_signature,
         )?;
 
+        // Validate the aggregate signatures and script offset
+        let factory = CommitmentFactory::default();
+        let mut input_keys = PublicKey::default();
+        for input in transaction.transaction.body.inputs() {
+            let context = ScriptContext::new(
+                0,
+                &[0; 32],
+                input
+                    .commitment()
+                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?,
+            );
+            input_keys = input_keys +
+                input
+                    .run_and_verify_script(&factory, Some(context))
+                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?;
+        }
+        let mut output_keys = PublicKey::default();
+        for output in transaction.transaction.body.outputs() {
+            output
+                .verify_metadata_signature()
+                .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?;
+            output_keys = output_keys + output.sender_offset_public_key.clone();
+        }
+        let lhs = input_keys - output_keys;
+        if lhs != PublicKey::from_secret_key(&transaction.transaction.script_offset) {
+            return Err(TransactionServiceError::ServiceError(format!(
+                "Invalid script offset (TxId: {})",
+                tx_id
+            )));
+        }
+
+        // Update the wallet database
         let _res = self
             .resources
             .output_manager_service
