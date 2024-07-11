@@ -84,7 +84,12 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     config.set_base_path(cli.common.get_base_path());
 
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().map_err(|err| {
+        ExitError::new(
+            ExitCode::KeyManagerServiceError,
+            "'wallet_payment_address' ".to_owned() + &err.to_string(),
+        )
+    })?;
     let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)
         .map_err(|err| {
             ExitError::new(

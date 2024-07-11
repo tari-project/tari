@@ -606,7 +606,7 @@ mod test {
     #[tokio::test]
     async fn no_receivers() -> std::io::Result<()> {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         // Start the builder
         let builder = SenderTransactionInitializer::new(&create_consensus_constants(0), key_manager.clone());
@@ -683,7 +683,7 @@ mod test {
     #[tokio::test]
     async fn no_change_or_receivers() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![]).await;
         let constants = create_consensus_constants(0);
@@ -734,7 +734,7 @@ mod test {
     #[allow(clippy::identity_op)]
     async fn change_edge_case() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let constants = create_consensus_constants(0);
         let weighting = constants.transaction_weight_params();
@@ -789,7 +789,7 @@ mod test {
     #[tokio::test]
     async fn too_many_inputs() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
@@ -821,7 +821,7 @@ mod test {
     #[tokio::test]
     async fn fee_too_low() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let tx_fee = p.fee().calculate(
             MicroMinotari(1),
@@ -866,7 +866,7 @@ mod test {
     #[tokio::test]
     async fn not_enough_funds() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
         let script = script!(Nop);
@@ -918,7 +918,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
         let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;

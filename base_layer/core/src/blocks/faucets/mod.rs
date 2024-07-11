@@ -72,7 +72,7 @@ mod test {
     ) -> (Vec<TransactionOutput>, TransactionKernel) {
         let mut list_of_spend_keys = Vec::new();
         let mut total_script_key = PublicKey::default();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         for address in &addresses {
             list_of_spend_keys.push(address.public_spend_key().clone());
             total_script_key = total_script_key + address.public_spend_key();

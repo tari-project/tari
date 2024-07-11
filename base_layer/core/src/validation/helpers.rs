@@ -573,10 +573,10 @@ mod test {
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let coinbase = block_on(test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
@@ -597,7 +597,7 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase =
@@ -621,7 +621,7 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(

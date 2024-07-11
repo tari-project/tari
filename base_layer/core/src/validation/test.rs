@@ -173,7 +173,7 @@ async fn chain_balance_validation() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (faucet_utxo, faucet_key_id, _) = create_utxo(
         faucet_value,
         &key_manager,
@@ -356,7 +356,7 @@ async fn chain_balance_validation_burned() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (faucet_utxo, faucet_key_id, _) = create_utxo(
         faucet_value,
         &key_manager,
@@ -514,7 +514,7 @@ mod transaction_validator {
 
     #[tokio::test]
     async fn it_rejects_coinbase_outputs() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
@@ -536,7 +536,7 @@ mod transaction_validator {
 
     #[tokio::test]
     async fn coinbase_extra_must_be_empty() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();

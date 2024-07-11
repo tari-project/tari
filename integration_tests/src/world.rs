@@ -138,7 +138,7 @@ impl Default for TariWorld {
             errors: Default::default(),
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
-            key_manager: create_memory_db_key_manager(),
+            key_manager: create_memory_db_key_manager().unwrap(),
             wallet_private_key,
             default_payment_address,
             consensus_manager: ConsensusManager::builder(Network::LocalNet).build().unwrap(),

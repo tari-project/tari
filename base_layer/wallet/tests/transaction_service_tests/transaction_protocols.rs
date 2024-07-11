@@ -147,7 +147,7 @@ pub async fn setup() -> (
 
     let (oms_event_publisher, _) = broadcast::channel(200);
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
-    let core_key_manager_service_handle = create_memory_db_key_manager();
+    let core_key_manager_service_handle = create_memory_db_key_manager().unwrap();
 
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
     let outbound_mock_state = mock_outbound_service.get_state();
@@ -207,7 +207,7 @@ pub async fn add_transaction_to_database(
     status: Option<TransactionStatus>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
-    let key_manager_handle = create_memory_db_key_manager();
+    let key_manager_handle = create_memory_db_key_manager().unwrap();
     let uo0 = make_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
     let (txs1, _uou1) = schema_to_transaction(
         &[txn_schema!(from: vec![uo0.clone()], to: vec![amount])],

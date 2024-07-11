@@ -44,6 +44,8 @@ pub enum InterfaceError {
     InvalidAddress(String),
     #[error("An invalid network was passed in: `{0}`")]
     InvalidNetwork(String),
+    #[error("KeyManager encountered an error: `{0}`")]
+    KeyManager(String),
 }
 
 /// This struct is meant to hold an error for use by Miningcore. The error has an integer code and string
@@ -96,6 +98,10 @@ impl From<InterfaceError> for MiningHelperError {
             },
             InterfaceError::InvalidNetwork(_) => Self {
                 code: 10,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::KeyManager(_) => Self {
+                code: 11,
                 message: format!("{:?}", v),
             },
         }

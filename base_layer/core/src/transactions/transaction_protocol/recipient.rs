@@ -199,7 +199,7 @@ mod test {
 
     #[tokio::test]
     async fn single_round_recipient() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         let sender_test_params = TestParams::new(&key_manager).await;
         let m = TransactionMetadata::new(MicroMinotari(125), 0);

@@ -437,7 +437,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
     let mut block_hashes = HashMap::new();
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-    let km = create_memory_db_key_manager();
+    let km = create_memory_db_key_manager().unwrap();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
     let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
@@ -550,7 +550,7 @@ impl TestBlockchain {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        let km = create_memory_db_key_manager();
+        let km = create_memory_db_key_manager().unwrap();
         let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
         let mut blockchain = Self {
             db,
