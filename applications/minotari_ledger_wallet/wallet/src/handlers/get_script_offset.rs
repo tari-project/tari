@@ -1,6 +1,7 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use alloc::vec::Vec;
 use core::ops::Deref;
 
 use ledger_device_sdk::io::Comm;
@@ -15,12 +16,15 @@ use crate::{
     STATIC_ALPHA_INDEX,
 };
 
+const MIN_UNIQUE_KEYS: usize = 2;
+
 pub struct ScriptOffsetCtx {
     total_sender_offset_private_key: Zeroizing<RistrettoSecretKey>,
     total_script_private_key: Zeroizing<RistrettoSecretKey>,
     account: u64,
     total_offset_indexes: u64,
     total_commitment_keys: u64,
+    all_keys: Vec<Zeroizing<RistrettoSecretKey>>,
 }
 
 // Implement constructor for TxInfo with default values
@@ -32,6 +36,7 @@ impl ScriptOffsetCtx {
             account: 0,
             total_offset_indexes: 0,
             total_commitment_keys: 0,
+            all_keys: Vec::new(),
         }
     }
 
@@ -42,6 +47,19 @@ impl ScriptOffsetCtx {
         self.account = 0;
         self.total_offset_indexes = 0;
         self.total_commitment_keys = 0;
+        self.all_keys = Vec::new();
+    }
+
+    fn count_unique(&self) -> usize {
+        let mut unique = Vec::with_capacity(self.all_keys.len());
+
+        for item in self.all_keys.iter() {
+            if !unique.contains(item) {
+                unique.push(item.clone());
+            }
+        }
+
+        unique.len()
     }
 }
 
@@ -99,6 +117,7 @@ pub fn handler_get_script_offset(
         let index = u64::from_le_bytes(index_bytes);
 
         let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::SenderOffset)?;
+        offset_ctx.all_keys.push(offset.clone());
         offset_ctx.total_sender_offset_private_key =
             Zeroizing::new(offset_ctx.total_sender_offset_private_key.deref() + offset.deref());
     }
@@ -111,11 +130,17 @@ pub fn handler_get_script_offset(
             get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
         let k = alpha_hasher(alpha, blinding_factor)?;
+
+        offset_ctx.all_keys.push(k.clone());
         offset_ctx.total_script_private_key = Zeroizing::new(offset_ctx.total_script_private_key.deref() + k.deref());
     }
 
     if more {
         return Ok(());
+    }
+
+    if offset_ctx.count_unique() < MIN_UNIQUE_KEYS {
+        return Err(AppSW::ScriptOffsetNotUnique);
     }
 
     let script_offset = Zeroizing::new(
