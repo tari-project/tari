@@ -1471,7 +1471,6 @@ where
         // Update the input's script signature
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
-                &self.resources.factories.commitment,
                 &aggregated_script_signature_public_nonces,
                 &aggregated_script_public_key_shares,
                 &self.resources.key_manager,

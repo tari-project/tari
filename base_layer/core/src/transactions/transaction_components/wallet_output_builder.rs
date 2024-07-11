@@ -247,18 +247,30 @@ impl WalletOutputBuilder {
             .get_commitment(&self.spending_key_id, &self.value.into())
             .await?;
         let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
+        let sender_offset_public_key = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
+        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+            &TransactionOutputVersion::get_current_version(),
+            &sender_offset_public_key,
+            &ephemeral_commitment,
+            &aggregate_ephemeral_pubkey,
+            &commitment,
+            &metadata_message,
+        );
         let sender_partial_metadata_signature_self = key_manager
-            .get_sender_partial_metadata_signature(
-                &ephemeral_private_nonce_id,
-                sender_offset_key_id,
-                &commitment,
-                ephemeral_commitment,
-                &TransactionOutputVersion::get_current_version(),
-                Some(&aggregate_sender_offset_public_key),
-                Some(&aggregate_ephemeral_pubkey),
-                &metadata_message,
-            )
+            .sign_with_nonce_and_message(&sender_offset_key_id, &ephemeral_private_nonce_id, &challenge)
             .await?;
+        // let sender_partial_metadata_signature_self = key_manager
+        //     .get_sender_partial_metadata_signature(
+        //         &ephemeral_private_nonce_id,
+        //         sender_offset_key_id,
+        //         &commitment,
+        //         ephemeral_commitment,
+        //         &TransactionOutputVersion::get_current_version(),
+        //         Some(&aggregate_sender_offset_public_key),
+        //         Some(&aggregate_ephemeral_pubkey),
+        //         &metadata_message,
+        //     )
+        //     .await?;
 
         let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature_self;
 

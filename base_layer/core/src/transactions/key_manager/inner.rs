@@ -793,106 +793,41 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    pub async fn get_script_signature_from_challenge(
+    pub async fn get_partial_script_signature(
         &self,
-        script_key_id: &TariKeyId,
-        spend_key_id: &TariKeyId,
+        commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
-        challenge: &[u8; 64],
-        r_a: &PrivateKey,
-        r_x: &PrivateKey,
-        r_y: &PrivateKey,
+        txi_version: &TransactionInputVersion,
+        ephemeral_pubkey: &PublicKey,
+        script_public_key: &PublicKey,
+        script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let spend_private_key = self.get_private_key(spend_key_id).await?;
+        let private_commitment_mask = self.get_private_key(commitment_mask_id).await?;
+        let commitment = self.get_commitment(commitment_mask_id, value).await?;
+        let r_a = PrivateKey::random(&mut OsRng);
+        let r_x = PrivateKey::random(&mut OsRng);
+        let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
+        let challenge = TransactionInput::finalize_script_signature_challenge(
+            txi_version,
+            &ephemeral_commitment,
+            &ephemeral_pubkey,
+            script_public_key,
+            &commitment,
+            script_message,
+        );
 
-        #[allow(unused_variables)] // When ledger isn't enabled
-        match (&self.wallet_type, script_key_id) {
-            (
-                WalletType::Ledger(ledger),
-                KeyId::Derived {
-                    branch,
-                    label: _,
-                    index,
-                },
-            ) => {
-                #[cfg(not(feature = "ledger"))]
-                {
-                    Err(TransactionError::LedgerNotSupported)
-                }
+        let script_signature = ComAndPubSignature::sign(
+            value,
+            &private_commitment_mask,
+            &PrivateKey::default(),
+            &r_a,
+            &r_x,
+            &PrivateKey::default(),
+            &challenge,
+            &*self.crypto_factories.commitment,
+        )?;
+        Ok(script_signature)
 
-                #[cfg(feature = "ledger")]
-                {
-                    let km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                        .read()
-                        .await;
-                    let branch_key = km
-                        .get_private_key(*index)
-                        .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
-
-                    let mut data = branch_key.as_bytes().to_vec();
-                    data.extend_from_slice(value.as_bytes());
-                    data.extend_from_slice(spend_private_key.as_bytes());
-                    data.extend_from_slice(challenge);
-                    data.extend_from_slice(r_a.as_bytes());
-                    data.extend_from_slice(r_x.as_bytes());
-                    data.extend_from_slice(r_y.as_bytes());
-
-                    let command = ledger.build_command(Instruction::GetScriptSignatureFromChallenge, data);
-                    let transport = get_transport()?;
-
-                    match command.execute_with_transport(&transport) {
-                        Ok(result) => {
-                            if result.data().len() < 161 {
-                                debug!(target: LOG_TARGET, "result less than 161");
-                                return Err(LedgerDeviceError::Processing(format!(
-                                    "'get_script_signature' insufficient data - expected 161 got {} bytes ({:?})",
-                                    result.data().len(),
-                                    result
-                                ))
-                                .into());
-                            }
-                            let data = result.data();
-                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                            Ok(ComAndPubSignature::new(
-                                Commitment::from_canonical_bytes(&data[1..33])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PublicKey::from_canonical_bytes(&data[33..65])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PrivateKey::from_canonical_bytes(&data[65..97])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PrivateKey::from_canonical_bytes(&data[97..129])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PrivateKey::from_canonical_bytes(&data[129..161])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            ))
-                        },
-                        Err(e) => Err(LedgerDeviceError::Instruction(format!(
-                            "GetScriptSignatureFromChallenge: {}",
-                            e
-                        ))
-                        .into()),
-                    }
-                }
-            },
-            (_, _) => {
-                let script_private_key = self.get_private_key(script_key_id).await?;
-
-                let script_signature = ComAndPubSignature::sign(
-                    value,
-                    &spend_private_key,
-                    &script_private_key,
-                    r_a,
-                    r_x,
-                    r_y,
-                    challenge.as_slice(),
-                    &*self.crypto_factories.commitment,
-                )?;
-                Ok(script_signature)
-            },
-        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -1124,46 +1059,46 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(self.crypto_factories.commitment.commit(&nonce_b, &nonce_a))
     }
 
-    pub async fn get_metadata_signature_raw(
-        &self,
-        spending_key_id: &TariKeyId,
-        value_as_private_key: &PrivateKey,
-        ephemeral_private_nonce_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
-        ephemeral_pubkey: &PublicKey,
-        ephemeral_commitment: &Commitment,
-        txo_version: &TransactionOutputVersion,
-        metadata_signature_message: &[u8; 32],
-        range_proof_type: RangeProofType,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
-        let receiver_partial_metadata_signature = self
-            .get_receiver_partial_metadata_signature(
-                spending_key_id,
-                value_as_private_key,
-                &sender_offset_public_key,
-                ephemeral_pubkey,
-                txo_version,
-                metadata_signature_message,
-                range_proof_type,
-            )
-            .await?;
-        let commitment = self.get_commitment(spending_key_id, value_as_private_key).await?;
-        let sender_partial_metadata_signature = self
-            .get_sender_partial_metadata_signature(
-                ephemeral_private_nonce_id,
-                sender_offset_key_id,
-                &commitment,
-                ephemeral_commitment,
-                txo_version,
-                None,
-                None,
-                metadata_signature_message,
-            )
-            .await?;
-        let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature;
-        Ok(metadata_signature)
-    }
+    // pub async fn get_metadata_signature_raw(
+    //     &self,
+    //     spending_key_id: &TariKeyId,
+    //     value_as_private_key: &PrivateKey,
+    //     ephemeral_private_nonce_id: &TariKeyId,
+    //     sender_offset_key_id: &TariKeyId,
+    //     ephemeral_pubkey: &PublicKey,
+    //     ephemeral_commitment: &Commitment,
+    //     txo_version: &TransactionOutputVersion,
+    //     metadata_signature_message: &[u8; 32],
+    //     range_proof_type: RangeProofType,
+    // ) -> Result<ComAndPubSignature, TransactionError> {
+    //     let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
+    //     let receiver_partial_metadata_signature = self
+    //         .get_receiver_partial_metadata_signature(
+    //             spending_key_id,
+    //             value_as_private_key,
+    //             &sender_offset_public_key,
+    //             ephemeral_pubkey,
+    //             txo_version,
+    //             metadata_signature_message,
+    //             range_proof_type,
+    //         )
+    //         .await?;
+    //     let commitment = self.get_commitment(spending_key_id, value_as_private_key).await?;
+    //     let sender_partial_metadata_signature = self
+    //         .get_sender_partial_metadata_signature(
+    //             ephemeral_private_nonce_id,
+    //             sender_offset_key_id,
+    //             &commitment,
+    //             ephemeral_commitment,
+    //             txo_version,
+    //             None,
+    //             None,
+    //             metadata_signature_message,
+    //         )
+    //         .await?;
+    //     let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature;
+    //     Ok(metadata_signature)
+    // }
 
     pub async fn sign_script_message(
         &self,

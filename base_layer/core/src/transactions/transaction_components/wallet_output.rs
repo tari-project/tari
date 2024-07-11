@@ -28,21 +28,15 @@ use std::{
     fmt::{Debug, Formatter},
 };
 
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     ComAndPubSignature,
     Commitment,
-    CommitmentFactory,
     FixedHash,
-    PrivateKey,
     PublicKey,
     RangeProof,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PK, SecretKey},
-};
+
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
@@ -256,49 +250,41 @@ impl WalletOutput {
     /// `script_signature_public_nonces` and `script_public_key_shares` exclude the caller's data.
     pub async fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
         &self,
-        factory: &CommitmentFactory,
         aggregated_script_signature_public_nonces: &PublicKey,
         aggregated_script_public_key_shares: &PublicKey,
         key_manager: &KM,
     ) -> Result<(TransactionInput, PublicKey), TransactionError> {
         let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
         let version = TransactionInputVersion::get_current_version();
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
 
-        // TODO this is bad and insecure, we need to fix this, the nonces should live in the key manager and or only in
-        // the ledger.
-        let r_a = PrivateKey::random(&mut OsRng);
-        let r_x = PrivateKey::random(&mut OsRng);
-        let ephemeral_commitment = factory.commit(&r_x, &r_a);
-
-        let r_y = PrivateKey::random(&mut OsRng);
-        let ephemeral_public_key_self = PublicKey::from_secret_key(&r_y);
-
-        let ephemeral_public_key = aggregated_script_signature_public_nonces + ephemeral_public_key_self;
-
+        let message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        let (ephemeral_public_key_id, ephemeral_public_key_self) = key_manager.get_random_key().await?;
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
         let script_public_key = aggregated_script_public_key_shares + script_public_key_self;
 
-        let challenge = TransactionInput::build_script_signature_challenge(
+        let total_ephemeral_public_key = aggregated_script_signature_public_nonces + ephemeral_public_key_self;
+        let commitment_partial_script_signature = key_manager.get_partial_script_signature(
+            &self.spending_key_id,
+            &value,
             &version,
-            &ephemeral_commitment,
-            &ephemeral_public_key,
-            &self.script,
-            &self.input_data,
+            &total_ephemeral_public_key,
+            &script_public_key,
+            &message,
+        ).await?;
+        let challenge = TransactionInput::finalize_script_signature_challenge(
+            &version,
+            commitment_partial_script_signature.ephemeral_commitment(),
+            &total_ephemeral_public_key,
             &script_public_key,
             &commitment,
+            &message,
         );
-        let script_signature = key_manager
-            .get_script_signature_from_challenge(
-                &self.script_key_id,
-                &self.spending_key_id,
-                &value,
-                &challenge,
-                &r_a,
-                &r_x,
-                &r_y,
-            )
+        let script_key_partial_script_signature = key_manager
+            .sign_with_nonce_and_message(&self.script_key_id, &ephemeral_public_key_id, &challenge)
             .await?;
+        let script_signature  = &commitment_partial_script_signature + &script_key_partial_script_signature;
+
         let input = TransactionInput::new_current_version(
             SpentOutput::OutputData {
                 features: self.features.clone(),
