@@ -1478,7 +1478,7 @@ where
         let mut input_keys = PublicKey::default();
         for input in transaction.transaction.body.inputs() {
             let context = ScriptContext::new(
-                0,
+                self.last_seen_tip_height.unwrap_or(0),
                 &[0; 32],
                 input
                     .commitment()
