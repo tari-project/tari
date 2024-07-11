@@ -64,6 +64,7 @@ pub enum TransactionKeyManagerBranch {
     Nonce = 0x04,
     KernelNonce = 0x05,
     SenderOffset = 0x06,
+    SenderOffsetLedger = 0x07,
 }
 
 impl TransactionKeyManagerBranch {
@@ -78,6 +79,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
+            TransactionKeyManagerBranch::SenderOffsetLedger => "sender offset ledger".to_string(),
         }
     }
 
@@ -89,6 +91,7 @@ impl TransactionKeyManagerBranch {
             "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
             "sender offset" => TransactionKeyManagerBranch::SenderOffset,
+            "sender offset ledger" => TransactionKeyManagerBranch::SenderOffsetLedger,
             "nonce" => TransactionKeyManagerBranch::Nonce,
             _ => TransactionKeyManagerBranch::Nonce,
         }

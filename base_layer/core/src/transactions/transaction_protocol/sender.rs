@@ -342,6 +342,22 @@ impl SenderTransactionProtocol {
         }
     }
 
+    pub fn change_recipient_sender_offset_private_key(&mut self, key_id: TariKeyId) -> Result<(), TPE> {
+        match &mut self.state {
+            SenderState::Initializing(ref mut info) |
+            SenderState::Finalizing(ref mut info) |
+            SenderState::SingleRoundMessageReady(ref mut info) |
+            SenderState::CollectingSingleSignature(ref mut info) => {
+                if let Some(ref mut v) = info.recipient_data {
+                    v.recipient_sender_offset_key_id = key_id;
+                }
+            },
+            SenderState::FinalizedTransaction(_) | SenderState::Failed(_) => return Err(TPE::InvalidStateError),
+        }
+
+        Ok(())
+    }
+
     /// This function will return the value of the fee of this transaction
     pub fn get_fee_amount(&self) -> Result<MicroMinotari, TPE> {
         match &self.state {
