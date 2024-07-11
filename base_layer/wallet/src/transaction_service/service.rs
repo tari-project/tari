@@ -88,6 +88,7 @@ use tari_script::{
     push_pubkey_script,
     script,
     slice_to_boxed_message,
+    CheckSigSchnorrSignature,
     ExecutionStack,
     ScriptContext,
     TariScript,
@@ -723,7 +724,6 @@ where
                 output_hash,
                 expected_commitment,
                 script_input_shares,
-                script_public_key_shares,
                 script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
@@ -735,7 +735,6 @@ where
                     output_hash,
                     expected_commitment,
                     script_input_shares,
-                    script_public_key_shares,
                     script_signature_public_nonces,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
@@ -1377,13 +1376,13 @@ where
     }
 
     /// Creates an encumbered uninitialized transaction
+    #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_tx(
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: String,
         expected_commitment: PedersenCommitment,
-        script_input_shares: Vec<Signature>,
-        script_public_key_shares: Vec<PublicKey>,
+        script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
@@ -1401,7 +1400,6 @@ where
                 output_hash,
                 expected_commitment,
                 script_input_shares,
-                script_public_key_shares,
                 script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,

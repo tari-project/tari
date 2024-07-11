@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     convert::TryInto,
     fs,
     fs::File,
@@ -85,7 +86,7 @@ use tari_core::{
 };
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{script, ExecutionStack, TariScript};
+use tari_script::{script, CheckSigSchnorrSignature, ExecutionStack, TariScript};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -144,13 +145,13 @@ pub async fn burn_tari(
 
 /// encumbers a n-of-m transaction
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::mutable_key_type)]
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
     output_hash: String,
     expected_commitment: PedersenCommitment,
-    script_input_shares: Vec<Signature>,
-    script_public_key_shares: Vec<PublicKey>,
+    script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
     script_signature_public_nonces: Vec<PublicKey>,
     sender_offset_public_key_shares: Vec<PublicKey>,
     metadata_ephemeral_public_key_shares: Vec<PublicKey>,
@@ -163,7 +164,6 @@ async fn encumber_aggregate_utxo(
             output_hash,
             expected_commitment,
             script_input_shares,
-            script_public_key_shares,
             script_signature_public_nonces,
             sender_offset_public_key_shares,
             metadata_ephemeral_public_key_shares,
@@ -751,8 +751,7 @@ pub async fn command_runner(
 
                 println!(
                     "Party details created with:
-                        1.  script input signature: ({},{}),
-                        2.  wallet public spend key: {},
+                        1.  script input share: ({},{},{}),
                         3.  wallet public spend key_id: {},
                         4.  spend nonce key_id: {},
                         5.  public spend nonce key: {},
@@ -761,9 +760,9 @@ pub async fn command_runner(
                         8.  sender offset nonce key_id: {},
                         9.  public sender offset nonce key: {},
                         10. public shared secret: {}",
+                    wallet_public_spend_key,
                     script_input_signature.get_signature().to_hex(),
                     script_input_signature.get_public_nonce().to_hex(),
-                    wallet_public_spend_key,
                     wallet_spend_key_id,
                     script_nonce_key_id,
                     public_script_nonce,
@@ -775,19 +774,23 @@ pub async fn command_runner(
                 );
             },
             FaucetEncumberAggregateUtxo(args) => {
+                #[allow(clippy::mutable_key_type)]
+                let mut input_shares = HashMap::new();
+                for share in args.script_input_shares {
+                    let data = share.split(',').collect::<Vec<_>>();
+                    let public_key = PublicKey::from_hex(data[0])?;
+                    let signature = PrivateKey::from_hex(data[1])?;
+                    let public_nonce = PublicKey::from_hex(data[2])?;
+                    let sig = CheckSigSchnorrSignature::new(public_nonce, signature);
+                    input_shares.insert(public_key, sig);
+                }
+
                 match encumber_aggregate_utxo(
                     transaction_service.clone(),
                     args.fee_per_gram,
                     args.output_hash,
                     Commitment::from_hex(&args.commitment)?,
-                    args.script_input_shares
-                        .iter()
-                        .map(|v| v.clone().into())
-                        .collect::<Vec<_>>(),
-                    args.script_public_key_shares
-                        .iter()
-                        .map(|v| v.clone().into())
-                        .collect::<Vec<_>>(),
+                    input_shares,
                     args.script_signature_public_nonces
                         .iter()
                         .map(|v| v.clone().into())

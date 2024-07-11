@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, fmt, sync::Arc};
+use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 
 use blake2::Blake2b;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
@@ -252,7 +252,6 @@ where
                 output_hash,
                 expected_commitment,
                 script_input_shares,
-                script_public_key_shares,
                 script_signature_public_nonces,
                 sender_offset_public_key_shares,
                 metadata_ephemeral_public_key_shares,
@@ -265,7 +264,6 @@ where
                     output_hash,
                     expected_commitment,
                     script_input_shares,
-                    script_public_key_shares,
                     script_signature_public_nonces,
                     sender_offset_public_key_shares,
                     metadata_ephemeral_public_key_shares,
@@ -1176,14 +1174,14 @@ where
 
     /// Create a partial transaction in order to prepare output
     #[allow(clippy::too_many_lines)]
+    #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_utxo(
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: String,
         expected_commitment: PedersenCommitment,
-        script_input_shares: Vec<Signature>,
-        script_public_key_shares: Vec<PublicKey>,
+        mut script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
@@ -1233,6 +1231,7 @@ where
             .iter()
             .fold(tari_common_types::types::PublicKey::default(), |acc, x| acc + x);
         let encryption_private_key = public_key_to_output_encryption_key(&sum_public_keys)?;
+        let mut aggregated_script_public_key_shares = PublicKey::default();
         // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
         let input = if let Ok((amount, spending_key, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
@@ -1250,15 +1249,21 @@ where
                     .key_manager
                     .sign_script_message(&self.resources.wallet_identity.wallet_node_key_id, &script_challange)
                     .await?;
-                script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(
-                    self_signature.get_public_nonce().clone(),
-                    self_signature.get_signature().clone(),
-                )));
-                for signature in &script_input_shares {
-                    script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(
-                        signature.get_public_nonce().clone(),
-                        signature.get_signature().clone(),
-                    )));
+                script_input_shares.insert(
+                    self.resources.wallet_identity.address.public_spend_key().clone(),
+                    self_signature,
+                );
+
+                // the order here is important, we need to add the signatures in the same order as public keys where
+                // added to the script originally
+                for key in public_keys {
+                    if let Some(signature) = script_input_shares.get(&key) {
+                        script_signatures.push(StackItem::Signature(signature.clone()));
+                        // our own key should not be added yet, it will be added with the script signing
+                        if &key != self.resources.wallet_identity.address.public_spend_key() {
+                            aggregated_script_public_key_shares = aggregated_script_public_key_shares + key;
+                        }
+                    }
                 }
                 let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
                 WalletOutput::new_with_rangeproof(
@@ -1462,9 +1467,7 @@ where
         let aggregated_script_signature_public_nonces = script_signature_public_nonces
             .iter()
             .fold(PublicKey::default(), |acc, x| acc + x);
-        let aggregated_script_public_key_shares = script_public_key_shares
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
+
         // Update the input's script signature
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
