@@ -214,7 +214,7 @@ pub struct FaucetEncumberAggregateUtxoArgs {
     #[clap(long)]
     pub output_hash: String,
     #[clap(long)]
-    pub script_input_shares: Vec<UniSignature>,
+    pub script_input_shares: Vec<String>,
     #[clap(long)]
     pub script_public_key_shares: Vec<UniPublicKey>,
     #[clap(long)]

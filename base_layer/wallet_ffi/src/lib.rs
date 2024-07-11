@@ -9522,19 +9522,19 @@ mod test {
     #[test]
     fn test_emoji_convert() {
         unsafe {
-            let byte = 0 as u8;
+            let byte = 0u8;
             let emoji_ptr = byte_to_emoji(byte);
             let emoji = CStr::from_ptr(emoji_ptr);
 
             assert_eq!(emoji.to_str().unwrap(), EMOJI[0].to_string());
 
-            let byte = 50 as u8;
+            let byte = 50u8;
             let emoji_ptr = byte_to_emoji(byte);
             let emoji = CStr::from_ptr(emoji_ptr);
 
             assert_eq!(emoji.to_str().unwrap(), EMOJI[50].to_string());
 
-            let byte = 125 as u8;
+            let byte = 125u8;
             let emoji_ptr = byte_to_emoji(byte);
             let emoji = CStr::from_ptr(emoji_ptr);
 
