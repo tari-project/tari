@@ -405,7 +405,6 @@ impl TransactionOutput {
             encrypted_data,
             &minimum_value_promise,
         );
-
         TransactionOutput::finalize_metadata_signature_challenge(
             version,
             sender_offset_public_key,

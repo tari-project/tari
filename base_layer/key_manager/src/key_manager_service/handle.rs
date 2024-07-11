@@ -84,6 +84,11 @@ where
             .await
     }
 
+    /// Gets a randomly generated key, which the key manager will manage
+    async fn get_random_key(&self) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
+        (*self.key_manager_inner).read().await.get_random_key().await
+    }
+
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()

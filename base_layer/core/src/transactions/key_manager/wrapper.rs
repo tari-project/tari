@@ -39,6 +39,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
+use tari_script::CheckSigSchnorrSignature;
 use tokio::sync::RwLock;
 
 use crate::transactions::{
@@ -117,6 +118,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
             .get_next_key(&branch.into())
             .await
+    }
+
+    async fn get_random_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner.read().await.get_random_key().await
     }
 
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyId, KeyManagerServiceError> {
@@ -437,11 +442,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn sign_message(&self, private_key_id: &TariKeyId, challenge: &[u8]) -> Result<Signature, TransactionError> {
+    async fn sign_script_message(
+        &self,
+        private_key_id: &TariKeyId,
+        challenge: &[u8],
+    ) -> Result<CheckSigSchnorrSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .sign_message(private_key_id, challenge)
+            .sign_script_message(private_key_id, challenge)
             .await
     }
 
@@ -449,7 +458,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
-        challenge: &[u8],
+        challenge: &[u8; 64],
     ) -> Result<Signature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -483,6 +492,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
+    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    // signers, this can be left as none
     async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
@@ -490,6 +502,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
+        aggregated_sender_offset_public_keys: Option<&PublicKey>,
+        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
@@ -501,6 +515,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 commitment,
                 ephemeral_commitment,
                 txo_version,
+                aggregated_sender_offset_public_keys,
+                aggregated_ephemeral_public_keys,
                 metadata_signature_message,
             )
             .await

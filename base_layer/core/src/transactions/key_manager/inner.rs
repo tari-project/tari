@@ -63,6 +63,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
+use tari_script::CheckSigSchnorrSignature;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::RwLock;
 
@@ -179,6 +180,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         };
         let key = self.get_public_key_at_key_id(&key_id).await?;
         Ok((key_id, key))
+    }
+
+    pub async fn get_random_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        let random_private_key = PrivateKey::random(&mut OsRng);
+        let key_id = self.import_key(random_private_key).await?;
+        let public_key = self.get_public_key_at_key_id(&key_id).await?;
+        Ok((key_id, public_key))
     }
 
     pub async fn create_key_pair(&mut self, branch: &str) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
@@ -1148,6 +1156,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 &commitment,
                 ephemeral_commitment,
                 txo_version,
+                None,
+                None,
                 metadata_signature_message,
             )
             .await?;
@@ -1155,14 +1165,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
-    pub async fn sign_message(
+    pub async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
         challenge: &[u8],
-    ) -> Result<Signature, TransactionError> {
+    ) -> Result<CheckSigSchnorrSignature, TransactionError> {
         let private_key = self.get_private_key(private_key_id).await?;
-        let nonce = PrivateKey::random(&mut OsRng);
-        let signature = Signature::sign_with_nonce_and_message(&private_key, nonce, challenge)?;
+        let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut OsRng)?;
 
         Ok(signature)
     }
@@ -1171,11 +1180,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
-        challenge: &[u8],
+        challenge: &[u8; 64],
     ) -> Result<Signature, TransactionError> {
         let private_key = self.get_private_key(private_key_id).await?;
         let private_nonce = self.get_private_key(nonce).await?;
-        let signature = Signature::sign_with_nonce_and_message(&private_key, private_nonce, challenge)?;
+        let signature = Signature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
 
         Ok(signature)
     }
@@ -1214,6 +1223,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 &commitment,
                 ephemeral_commitment,
                 txo_version,
+                None,
+                None,
                 metadata_signature_message,
             )
             .await?;
@@ -1262,6 +1273,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
+    // In the case where the sender is an aggregated signer, we need to parse in the total public key shares, this is
+    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    // signers, this can be left as none
     pub async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
@@ -1269,14 +1283,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
+        aggregated_sender_offset_public_keys: Option<&PublicKey>,
+        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         match &self.wallet_type {
             WalletType::Software => {
                 let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-                let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
+                let ephemeral_pubkey = match aggregated_ephemeral_public_keys {
+                    Some(agg) => agg.clone(),
+                    None => PublicKey::from_secret_key(&ephemeral_private_key),
+                };
+                PublicKey::from_secret_key(&ephemeral_private_key);
                 let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
-                let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+                let sender_offset_public_key = match aggregated_sender_offset_public_keys {
+                    Some(agg) => agg.clone(),
+                    None => PublicKey::from_secret_key(&sender_offset_private_key),
+                };
 
                 let challenge = TransactionOutput::finalize_metadata_signature_challenge(
                     txo_version,

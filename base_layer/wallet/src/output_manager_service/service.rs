@@ -22,7 +22,9 @@
 
 use std::{convert::TryInto, fmt, sync::Arc};
 
+use blake2::Blake2b;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use digest::consts::U32;
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
@@ -35,13 +37,14 @@ use tari_common_types::{
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
     borsh::SerializedSize,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
     covenants::Covenant,
     one_sided::{
         public_key_to_output_encryption_key,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
+        FaucetHashDomain,
     },
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -67,7 +70,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::SecretKey;
+use tari_crypto::{keys::SecretKey, ristretto::pedersen::PedersenCommitment};
 use tari_script::{
     inputs,
     push_pubkey_script,
@@ -247,6 +250,7 @@ where
                 tx_id,
                 fee_per_gram,
                 output_hash,
+                expected_commitment,
                 script_input_shares,
                 script_public_key_shares,
                 script_signature_public_nonces,
@@ -259,6 +263,7 @@ where
                     tx_id,
                     fee_per_gram,
                     output_hash,
+                    expected_commitment,
                     script_input_shares,
                     script_public_key_shares,
                     script_signature_public_nonces,
@@ -496,7 +501,7 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
-            .fetch_outputs_from_node(vec![output_hash])
+            .fetch_unspent_outputs_from_node(vec![output_hash])
             .await?
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
@@ -1176,6 +1181,7 @@ where
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: String,
+        expected_commitment: PedersenCommitment,
         script_input_shares: Vec<Signature>,
         script_public_key_shares: Vec<PublicKey>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1187,15 +1193,31 @@ where
         maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(Transaction, MicroMinotari, MicroMinotari, PublicKey), OutputManagerError> {
+    ) -> Result<
+        (
+            Transaction,
+            MicroMinotari,
+            MicroMinotari,
+            PublicKey,
+            PublicKey,
+            PublicKey,
+        ),
+        OutputManagerError,
+    > {
         // Fetch the output from the blockchain
         let output_hash =
             FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let output = self
-            .fetch_outputs_from_node(vec![output_hash])
+            .fetch_unspent_outputs_from_node(vec![output_hash])
             .await?
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError(format!("Output not found (TxId: {})", tx_id)))?;
+        if output.commitment != expected_commitment {
+            return Err(OutputManagerError::ServiceError(format!(
+                "Output commitment does not match expected commitment (TxId: {})",
+                tx_id
+            )));
+        }
         // Retrieve the list of n public keys from the script
         let public_keys =
             if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
@@ -1217,6 +1239,21 @@ where
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
                 let mut script_signatures = Vec::new();
+                // lets add our own signature to the list
+                let script_challange: [u8; 32] =
+                    DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
+                        .chain(output.commitment())
+                        .finalize()
+                        .into();
+                let self_signature = self
+                    .resources
+                    .key_manager
+                    .sign_script_message(&self.resources.wallet_identity.wallet_node_key_id, &script_challange)
+                    .await?;
+                script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(
+                    self_signature.get_public_nonce().clone(),
+                    self_signature.get_signature().clone(),
+                )));
                 for signature in &script_input_shares {
                     script_signatures.push(StackItem::Signature(CheckSigSchnorrSignature::new(
                         signature.get_public_nonce().clone(),
@@ -1357,9 +1394,10 @@ where
             .key_manager
             .get_public_key_at_key_id(&sender_offset_private_key_id_self)
             .await?;
-        let sender_offset_public_key = sender_offset_public_key_shares
+        let aggregated_sender_offset_public_key_shares = sender_offset_public_key_shares
             .iter()
-            .fold(sender_offset_public_key_self, |acc, x| acc + x);
+            .fold(PublicKey::default(), |acc, x| acc + x);
+        let sender_offset_public_key = &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.key_manager)
@@ -1367,6 +1405,9 @@ where
                 .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
         );
 
+        let aggregated_metadata_ephemeral_public_key_shares = metadata_ephemeral_public_key_shares
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
@@ -1391,14 +1432,16 @@ where
             .sign_partial_as_sender_and_receiver(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self,
-                &sender_offset_public_key_shares,
-                &metadata_ephemeral_public_key_shares,
+                &aggregated_sender_offset_public_key_shares,
+                &aggregated_metadata_ephemeral_public_key_shares,
             )
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+        let total_metadata_ephemeral_public_key =
+            aggregated_metadata_ephemeral_public_key_shares + output.metadata_signature.ephemeral_pubkey();
 
         // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
         // signatures are not yet complete.
@@ -1416,24 +1459,39 @@ where
             .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
 
+        let aggregated_script_signature_public_nonces = script_signature_public_nonces
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
+        let aggregated_script_public_key_shares = script_public_key_shares
+            .iter()
+            .fold(PublicKey::default(), |acc, x| acc + x);
         // Update the input's script signature
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
                 &self.resources.factories.commitment,
-                &script_signature_public_nonces,
-                &script_public_key_shares,
+                &aggregated_script_signature_public_nonces,
+                &aggregated_script_public_key_shares,
                 &self.resources.key_manager,
             )
             .await?;
 
+        let total_script_nonce =
+            aggregated_script_signature_public_nonces + updated_input.script_signature.ephemeral_pubkey();
         let mut tx = stp.get_transaction()?.clone();
         let mut tx_body = tx.body;
-        tx_body.update_script_signature(updated_input.commitment()?, &updated_input.script_signature.clone())?;
+        tx_body.update_script_signature(updated_input.commitment()?, updated_input.script_signature.clone())?;
         tx.body = tx_body;
 
         let fee = stp.get_fee_amount()?;
 
-        Ok((tx, amount, fee, total_script_public_key))
+        Ok((
+            tx,
+            amount,
+            fee,
+            total_script_public_key,
+            total_metadata_ephemeral_public_key,
+            total_script_nonce,
+        ))
     }
 
     async fn create_pay_to_self_transaction(
@@ -2375,7 +2433,7 @@ where
         Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
     }
 
-    async fn fetch_outputs_from_node(
+    async fn fetch_unspent_outputs_from_node(
         &mut self,
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, OutputManagerError> {

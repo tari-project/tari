@@ -67,7 +67,7 @@ use tari_core::{
     covenants::Covenant,
     one_sided::FaucetHashDomain,
     transactions::{
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -83,7 +83,7 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_utilities::{hex::Hex, ByteArray};
@@ -142,31 +142,13 @@ pub async fn burn_tari(
         .map_err(CommandError::TransactionServiceError)
 }
 
-pub async fn create_aggregate_signature_utxo(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    amount: MicroMinotari,
-    fee_per_gram: MicroMinotari,
-    n: u8,
-    m: u8,
-    public_keys: Vec<PublicKey>,
-    message: String,
-    maturity: u64,
-) -> Result<(TxId, FixedHash), CommandError> {
-    let mut msg = [0u8; 32];
-    msg.copy_from_slice(message.as_bytes());
-
-    wallet_transaction_service
-        .create_aggregate_signature_utxo(amount, fee_per_gram, n, m, public_keys, msg, maturity)
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
-
 /// encumbers a n-of-m transaction
 #[allow(clippy::too_many_arguments)]
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
     output_hash: String,
+    expected_commitment: PedersenCommitment,
     script_input_shares: Vec<Signature>,
     script_public_key_shares: Vec<PublicKey>,
     script_signature_public_nonces: Vec<PublicKey>,
@@ -174,11 +156,12 @@ async fn encumber_aggregate_utxo(
     metadata_ephemeral_public_key_shares: Vec<PublicKey>,
     dh_shared_secret_shares: Vec<PublicKey>,
     recipient_address: TariAddress,
-) -> Result<(TxId, Transaction, PublicKey), CommandError> {
+) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
             output_hash,
+            expected_commitment,
             script_input_shares,
             script_public_key_shares,
             script_signature_public_nonces,
@@ -734,125 +717,69 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
-            CreateKeyPair(args) => match key_manager_service.create_key_pair(args.key_branch).await {
-                Ok((key_id, pk)) => {
-                    println!(
-                        "New key pair:
-                                1. key id    : {},
-                                2. public key: {}",
-                        key_id,
-                        pk.to_hex()
-                    )
-                },
-                Err(e) => eprintln!("CreateKeyPair error! {}", e),
-            },
-            CreateAggregateSignatureUtxo(args) => match create_aggregate_signature_utxo(
-                transaction_service.clone(),
-                args.amount,
-                args.fee_per_gram,
-                args.n,
-                args.m,
-                args.public_keys
-                    .iter()
-                    .map(|pk| PublicKey::from(pk.clone()))
-                    .collect::<Vec<_>>(),
-                args.message, // 1. What is the message? => commitment
-                args.maturity,
-            )
-            .await
-            {
-                Ok((tx_id, output_hash)) => {
-                    println!(
-                        "Created an utxo with n-of-m aggregate public key, with:
-                            1. n = {},
-                            2. m = {},
-                            3. tx id = {},
-                            4. output hash = {}",
-                        args.n, args.m, tx_id, output_hash
-                    )
-                },
-                Err(e) => eprintln!("CreateAggregateSignatureUtxo error! {}", e),
-            },
-            SignMessage(args) => {
-                match key_manager_service
-                    .sign_message(&args.private_key_id, args.challenge.as_bytes())
-                    .await
-                {
-                    // 1. What is the message/challenge? => commitment
-                    Ok(sgn) => {
-                        println!(
-                            "Sign message:
-                                1. signature: {},
-                                2. public nonce: {}",
-                            sgn.get_signature().to_hex(),
-                            sgn.get_public_nonce().to_hex(),
-                        )
-                    },
-                    Err(e) => eprintln!("SignMessage error! {}", e),
-                }
-            },
             FaucetCreatePartyDetails(args) => {
-                let spend_key = wallet.get_wallet_id().await?.wallet_node_key_id.clone();
-                let public_spend_key = key_manager_service.get_public_key_at_key_id(&spend_key).await?;
-                let (script_nonce, public_script_nonce) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+                let wallet_spend_key_id = wallet.get_wallet_id().await?.wallet_node_key_id.clone();
+                let wallet_public_spend_key = key_manager_service
+                    .get_public_key_at_key_id(&wallet_spend_key_id)
                     .await?;
+                let (script_nonce_key_id, public_script_nonce) = key_manager_service.get_random_key().await?;
 
-                let (sender_offset_key, public_sender_offset_key) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-                    .await?;
-                let (sender_offset_nonce, public_sender_offset_nonce) = key_manager_service
-                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
-                    .await?;
+                let (sender_offset_key_id, public_sender_offset_key) = key_manager_service.get_random_key().await?;
+
+                let (sender_offset_nonce_key_id, public_sender_offset_nonce) =
+                    key_manager_service.get_random_key().await?;
 
                 let commitment = Commitment::from_hex(&args.commitment)?;
-                let com_hash: [u8; 32] =
+                let commitment_hash: [u8; 32] =
                     DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
                         .chain(&commitment)
                         .finalize()
                         .into();
                 let shared_secret = key_manager_service
                     .get_diffie_hellman_shared_secret(
-                        &sender_offset_key,
-                        args.destination
+                        &sender_offset_key_id,
+                        args.recipient_address
                             .public_view_key()
                             .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
                     )
                     .await?;
-                let shared_secret_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
+                let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
 
-                let signature = key_manager_service.sign_message(&spend_key, &com_hash).await?;
+                let script_input_signature = key_manager_service
+                    .sign_script_message(&wallet_spend_key_id, &commitment_hash)
+                    .await?;
 
                 println!(
-                    "Sign message:
-                                1. signature: ({},{}),
-                                2. public spend key: {},
-                                2. public spend key_id: {},
-                                4. spend nonce key: {},
-                                5. public spend nonce key: {},
-                                6. sender offset key: {},
-                                7. public sender offset key: {},
-                                8. sender offset nonce key: {},
-                                9. public sender offset nonce key: {},
-                                10. shared secret: {}",
-                    signature.get_signature().to_hex(),
-                    signature.get_public_nonce().to_hex(),
-                    public_spend_key,
-                    spend_key,
-                    script_nonce,
+                    "Party details created with:
+                        1.  script input signature: ({},{}),
+                        2.  wallet public spend key: {},
+                        3.  wallet public spend key_id: {},
+                        4.  spend nonce key_id: {},
+                        5.  public spend nonce key: {},
+                        6.  sender offset key_id: {},
+                        7.  public sender offset key: {},
+                        8.  sender offset nonce key_id: {},
+                        9.  public sender offset nonce key: {},
+                        10. public shared secret: {}",
+                    script_input_signature.get_signature().to_hex(),
+                    script_input_signature.get_public_nonce().to_hex(),
+                    wallet_public_spend_key,
+                    wallet_spend_key_id,
+                    script_nonce_key_id,
                     public_script_nonce,
-                    sender_offset_key,
+                    sender_offset_key_id,
                     public_sender_offset_key,
-                    sender_offset_nonce,
+                    sender_offset_nonce_key_id,
                     public_sender_offset_nonce,
-                    shared_secret_key
+                    shared_secret_public_key
                 );
             },
-            EncumberAggregateUtxo(args) => {
+            FaucetEncumberAggregateUtxo(args) => {
                 match encumber_aggregate_utxo(
                     transaction_service.clone(),
                     args.fee_per_gram,
                     args.output_hash,
+                    Commitment::from_hex(&args.commitment)?,
                     args.script_input_shares
                         .iter()
                         .map(|v| v.clone().into())
@@ -881,22 +808,30 @@ pub async fn command_runner(
                 )
                 .await
                 {
-                    Ok((tx_id, transaction, script_pubkey)) => {
+                    Ok((
+                        tx_id,
+                        transaction,
+                        script_pubkey,
+                        total_metadata_ephemeral_public_key,
+                        total_script_nonce,
+                    )) => {
                         println!(
-                            "Encumber aggregate utxo:
-                            1.  Tx_id: {}
-                            2.  input_commitment: {},
-                            3.  input_stack: {},
-                            4.  input_script: {},
-                            5.  total_script_key: {},
-                            6.  script_signature_ephemeral_commitment: {},
-                            7.  script_signature_ephemeral_pubkey: {},
-                            8.  output_commitment: {},
-                            9.  output_hash: {},
-                            10. sender_offset_pubkey: {},
-                            11. meta_signature_ephemeral_commitment: {},
-                            12. meta_signature_ephemeral_pubkey: {},
-                            13. total_public_offset: {}",
+                            "Encumbered aggregate UTXO:
+                                1.  tx_id: {},
+                                2.  input_commitment: {},
+                                3.  input_stack: {},
+                                4.  input_script: {},
+                                5.  total_script_key: {},
+                                6.  script_signature_ephemeral_commitment: {},
+                                7.  script_signature_ephemeral_pubkey: {},
+                                8.  output_commitment: {},
+                                9.  output_hash: {},
+                                10. sender_offset_pubkey: {},
+                                11. meta_signature_ephemeral_commitment: {},
+                                12. meta_signature_ephemeral_pubkey: {},
+                                13. total_public_offset: {},
+                                14. encrypted_data: {},
+                                15. output_features: {}",
                             tx_id,
                             transaction.body.inputs()[0].commitment().unwrap().to_hex(),
                             transaction.body.inputs()[0].input_data.to_hex(),
@@ -906,10 +841,7 @@ pub async fn command_runner(
                                 .script_signature
                                 .ephemeral_commitment()
                                 .to_hex(),
-                            transaction.body.inputs()[0]
-                                .script_signature
-                                .ephemeral_pubkey()
-                                .to_hex(),
+                            total_script_nonce.to_hex(),
                             transaction.body.outputs()[0].commitment().to_hex(),
                             transaction.body.outputs()[0].hash().to_hex(),
                             transaction.body.outputs()[0].sender_offset_public_key.to_hex(),
@@ -917,17 +849,17 @@ pub async fn command_runner(
                                 .metadata_signature
                                 .ephemeral_commitment()
                                 .to_hex(),
-                            transaction.body.outputs()[0]
-                                .metadata_signature
-                                .ephemeral_pubkey()
-                                .to_hex(),
+                            total_metadata_ephemeral_public_key.to_hex(),
                             transaction.script_offset.to_hex(),
+                            transaction.body.outputs()[0].encrypted_data.to_hex(),
+                            serde_json::to_string(&transaction.body.outputs()[0].features)
+                                .unwrap_or("Could not serialize output features".to_string())
                         )
                     },
                     Err(e) => println!("Encumber aggregate transaction error! {}", e),
                 }
             },
-            SpendAggregateUtxo(args) => {
+            FaucetSpendAggregateUtxo(args) => {
                 let mut offset = PrivateKey::default();
                 for key in args.script_offset_keys {
                     let secret_key =
@@ -954,7 +886,7 @@ pub async fn command_runner(
                     Err(e) => println!("Error completing transaction! {}", e),
                 }
             },
-            CreateScriptSig(args) => {
+            FaucetCreateScriptSig(args) => {
                 let script = TariScript::from_hex(&args.input_script)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let input_data = ExecutionStack::from_hex(&args.input_stack)
@@ -975,12 +907,12 @@ pub async fn command_runner(
                 );
 
                 match key_manager_service
-                    .sign_with_nonce_and_message(&args.private_key_id, &args.secret_nonce, challenge.as_slice())
+                    .sign_with_nonce_and_message(&args.private_key_id, &args.secret_nonce_key_id, &challenge)
                     .await
                 {
                     Ok(signature) => {
                         println!(
-                            "Sign script sig:
+                            "Script signature created:
                                 1. signature: ({},{})",
                             signature.get_signature().to_hex(),
                             signature.get_public_nonce().to_hex(),
@@ -989,18 +921,20 @@ pub async fn command_runner(
                     Err(e) => eprintln!("SignMessage error! {}", e),
                 }
             },
-            CreateMetaSig(args) => {
+            FaucetCreateMetaSig(args) => {
                 let offset = key_manager_service
-                    .get_script_offset(&vec![args.secret_script_key], &vec![args
-                        .secret_sender_offset_key
+                    .get_script_offset(&vec![args.secret_script_key_id], &vec![args
+                        .secret_sender_offset_key_id
                         .clone()])
                     .await?;
-                let script = script!(Nop);
+                let script = script!(PushPubKey(Box::new(args.recipient_address.public_spend_key().clone())));
                 let commitment =
                     Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let covenant = Covenant::default();
-                let encrypted_data = EncryptedData::default();
-                let output_features = OutputFeatures::default();
+                let encrypted_data = EncryptedData::from_hex(&args.encrypted_data)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+                let output_features = serde_json::from_str(&args.output_features)
+                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
                     .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
                 let ephemeral_pubkey = PublicKey::from_hex(&args.ephemeral_pubkey)
@@ -1033,20 +967,20 @@ pub async fn command_runner(
                     &encrypted_data,
                     minimum_value_promise,
                 );
-                trace!(target: LOG_TARGET, "meta challange: {:?}", challenge);
+                trace!(target: LOG_TARGET, "meta challenge: {:?}", challenge);
                 match key_manager_service
                     .sign_with_nonce_and_message(
-                        &args.secret_sender_offset_key,
-                        &args.secret_nonce,
-                        challenge.as_slice(),
+                        &args.secret_sender_offset_key_id,
+                        &args.secret_nonce_key_id,
+                        &challenge,
                     )
                     .await
                 {
                     Ok(signature) => {
                         println!(
-                            "1. Meta sig:
-                                signature: ({},{}),
-                             2. Script offset: {}",
+                            "Metadata signature created:
+                            1. signature: ({},{}),
+                            2. script offset: {}",
                             signature.get_signature().to_hex(),
                             signature.get_public_nonce().to_hex(),
                             offset.to_hex(),

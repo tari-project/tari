@@ -109,7 +109,7 @@ impl AggregateBody {
     pub fn update_script_signature(
         &mut self,
         commitment: &Commitment,
-        script_signature: &ComAndPubSignature,
+        script_signature: ComAndPubSignature,
     ) -> Result<(), TransactionError> {
         let input = self
             .inputs
@@ -119,7 +119,7 @@ impl AggregateBody {
                 Err(_) => false,
             })
             .ok_or(TransactionError::OutputNotFound(commitment.to_hex()))?;
-        input.script_signature = script_signature.clone();
+        input.script_signature = script_signature;
 
         Ok(())
     }
