@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "A Merkle Mountain Range implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.15"
+version = "1.0.0-pre.16"
 edition = "2018"
 
 [features]
@@ -13,7 +13,7 @@ default = []
 [dependencies]
 tari_utilities = { version = "0.7" }
 tari_crypto = { version = "0.20.3" }
-tari_common = { path = "../../common", version = "1.0.0-pre.15" }
+tari_common = { path = "../../common", version = "1.0.0-pre.16" }
 thiserror = "1.0"
 borsh = "1.2"
 digest = "0.10"

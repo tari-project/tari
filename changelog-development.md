@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.16](https://github.com/tari-project/tari/compare/v1.0.0-pre.15...v1.0.0-pre.16) (2024-07-12)
+
+### Features
+
+* add ffi features ([#6390](https://github.com/tari-project/tari/issues/6390)) ([c0c27a5](https://github.com/tari-project/tari/commit/c0c27a53f4b176db9991c097ab03589e9b1f430b))
+* **miner:** add SHA P2Pool mining related configuration and changes ([#6370](https://github.com/tari-project/tari/issues/6370)) ([cb1eb63](https://github.com/tari-project/tari/commit/cb1eb6383a0887c95f869146b94c0da00f3faffd))
+* simplify leader sig generation ([#6399](https://github.com/tari-project/tari/issues/6399)) ([22c8e33](https://github.com/tari-project/tari/commit/22c8e332d169723ced70811b08ac8cce5a4d0575))
+
+
+### Bug Fixes
+
+* claim n of m faucet ([#6389](https://github.com/tari-project/tari/issues/6389)) ([2700a46](https://github.com/tari-project/tari/commit/2700a467e3444df60fb7df71efdd54d50769a7ce))
+* script dependance on party order ([#6398](https://github.com/tari-project/tari/issues/6398)) ([2b22c1a](https://github.com/tari-project/tari/commit/2b22c1ad8c70350e838db979d008f1369552fbc4))
+
 ## [1.0.0-pre.15](https://github.com/tari-project/tari/compare/v1.0.0-pre.14...v1.0.0-pre.15) (2024-07-02)
 
 
