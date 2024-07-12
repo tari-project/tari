@@ -1179,7 +1179,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         match &self.wallet_type {
             WalletType::Software => {
                 let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-                let ephemeral_pubkey =PublicKey::from_secret_key(&ephemeral_private_key);
+                let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
                 PublicKey::from_secret_key(&ephemeral_private_key);
                 let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
                 let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
