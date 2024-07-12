@@ -168,7 +168,7 @@ mod test {
             println!("{}", address.public_spend_key());
         }
         // lets create a faucet with 10 outputs of 1000T each
-        let (outputs, kernel) = create_faucets(MicroMinotari::from(1_000_000_000), 10, 2, 5, addresses).await;
+        let (outputs, kernel) = create_faucets(MicroMinotari::from(2_000_000_000), 20, 2, 5, addresses).await;
         let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
 
         for output in outputs {
