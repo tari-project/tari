@@ -810,7 +810,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let challenge = TransactionInput::finalize_script_signature_challenge(
             txi_version,
             &ephemeral_commitment,
-            &ephemeral_pubkey,
+            ephemeral_pubkey,
             script_public_key,
             &commitment,
             script_message,
@@ -827,7 +827,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             &*self.crypto_factories.commitment,
         )?;
         Ok(script_signature)
-
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -1059,47 +1058,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(self.crypto_factories.commitment.commit(&nonce_b, &nonce_a))
     }
 
-    // pub async fn get_metadata_signature_raw(
-    //     &self,
-    //     spending_key_id: &TariKeyId,
-    //     value_as_private_key: &PrivateKey,
-    //     ephemeral_private_nonce_id: &TariKeyId,
-    //     sender_offset_key_id: &TariKeyId,
-    //     ephemeral_pubkey: &PublicKey,
-    //     ephemeral_commitment: &Commitment,
-    //     txo_version: &TransactionOutputVersion,
-    //     metadata_signature_message: &[u8; 32],
-    //     range_proof_type: RangeProofType,
-    // ) -> Result<ComAndPubSignature, TransactionError> {
-    //     let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
-    //     let receiver_partial_metadata_signature = self
-    //         .get_receiver_partial_metadata_signature(
-    //             spending_key_id,
-    //             value_as_private_key,
-    //             &sender_offset_public_key,
-    //             ephemeral_pubkey,
-    //             txo_version,
-    //             metadata_signature_message,
-    //             range_proof_type,
-    //         )
-    //         .await?;
-    //     let commitment = self.get_commitment(spending_key_id, value_as_private_key).await?;
-    //     let sender_partial_metadata_signature = self
-    //         .get_sender_partial_metadata_signature(
-    //             ephemeral_private_nonce_id,
-    //             sender_offset_key_id,
-    //             &commitment,
-    //             ephemeral_commitment,
-    //             txo_version,
-    //             None,
-    //             None,
-    //             metadata_signature_message,
-    //         )
-    //         .await?;
-    //     let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature;
-    //     Ok(metadata_signature)
-    // }
-
     pub async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
@@ -1158,8 +1116,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 &commitment,
                 ephemeral_commitment,
                 txo_version,
-                None,
-                None,
                 metadata_signature_message,
             )
             .await?;
@@ -1218,23 +1174,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
-        aggregated_sender_offset_public_keys: Option<&PublicKey>,
-        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         match &self.wallet_type {
             WalletType::Software => {
                 let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-                let ephemeral_pubkey = match aggregated_ephemeral_public_keys {
-                    Some(agg) => agg.clone(),
-                    None => PublicKey::from_secret_key(&ephemeral_private_key),
-                };
+                let ephemeral_pubkey =PublicKey::from_secret_key(&ephemeral_private_key);
                 PublicKey::from_secret_key(&ephemeral_private_key);
                 let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
-                let sender_offset_public_key = match aggregated_sender_offset_public_keys {
-                    Some(agg) => agg.clone(),
-                    None => PublicKey::from_secret_key(&sender_offset_private_key),
-                };
+                let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
 
                 let challenge = TransactionOutput::finalize_metadata_signature_challenge(
                     txo_version,

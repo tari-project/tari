@@ -189,7 +189,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 
-     async fn get_partial_script_signature(
+    async fn get_partial_script_signature(
         &self,
         commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
@@ -295,8 +295,6 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
-        aggregated_sender_offset_public_keys: Option<&PublicKey>,
-        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 

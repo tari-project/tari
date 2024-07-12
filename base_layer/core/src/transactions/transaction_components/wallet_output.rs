@@ -29,14 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    ComAndPubSignature,
-    Commitment,
-    FixedHash,
-    PublicKey,
-    RangeProof,
-};
-
+use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
@@ -264,14 +257,16 @@ impl WalletOutput {
         let script_public_key = aggregated_script_public_key_shares + script_public_key_self;
 
         let total_ephemeral_public_key = aggregated_script_signature_public_nonces + ephemeral_public_key_self;
-        let commitment_partial_script_signature = key_manager.get_partial_script_signature(
-            &self.spending_key_id,
-            &value,
-            &version,
-            &total_ephemeral_public_key,
-            &script_public_key,
-            &message,
-        ).await?;
+        let commitment_partial_script_signature = key_manager
+            .get_partial_script_signature(
+                &self.spending_key_id,
+                &value,
+                &version,
+                &total_ephemeral_public_key,
+                &script_public_key,
+                &message,
+            )
+            .await?;
         let challenge = TransactionInput::finalize_script_signature_challenge(
             &version,
             commitment_partial_script_signature.ephemeral_commitment(),
@@ -283,7 +278,7 @@ impl WalletOutput {
         let script_key_partial_script_signature = key_manager
             .sign_with_nonce_and_message(&self.script_key_id, &ephemeral_public_key_id, &challenge)
             .await?;
-        let script_signature  = &commitment_partial_script_signature + &script_key_partial_script_signature;
+        let script_signature = &commitment_partial_script_signature + &script_key_partial_script_signature;
 
         let input = TransactionInput::new_current_version(
             SpentOutput::OutputData {
