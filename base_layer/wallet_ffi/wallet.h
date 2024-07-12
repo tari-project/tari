@@ -640,7 +640,7 @@ struct ByteVector *public_key_get_bytes(TariPublicKey *pk,
                                         int *error_out);
 
 /**
- * Converts public key to emoji encding
+ * Converts public key to emoji encoding
  *
  * ## Arguments
  * `pk` - The pointer to a TariPublicKey

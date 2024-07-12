@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsDHKE, NodeIdentity};
 use tari_core::{
@@ -1179,7 +1179,7 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: String,
+        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         mut script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1203,13 +1203,17 @@ where
         OutputManagerError,
     > {
         // Fetch the output from the blockchain
-        let output_hash =
-            FixedHash::from_hex(&output_hash).map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let output = self
             .fetch_unspent_outputs_from_node(vec![output_hash])
             .await?
             .pop()
-            .ok_or_else(|| OutputManagerError::ServiceError(format!("Output not found (TxId: {})", tx_id)))?;
+            .ok_or_else(|| {
+                OutputManagerError::ServiceError(format!(
+                    "Output with hash {} not found in blockchain (TxId: {})",
+                    output_hash.to_hex(),
+                    tx_id
+                ))
+            })?;
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {})",

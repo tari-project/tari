@@ -38,7 +38,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{CommitmentFactory, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{CommitmentFactory, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -52,7 +52,7 @@ use tari_core::{
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
     },
-    proto::base_node as base_node_proto,
+    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
@@ -753,6 +753,10 @@ where
                         )
                     },
                 ),
+            TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
+                let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
+                Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
+            },
             TransactionServiceRequest::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
@@ -1375,12 +1379,40 @@ where
         Ok((tx_id, output_hash))
     }
 
+    async fn fetch_unspent_outputs_from_node(
+        &mut self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionOutput>, TransactionServiceError> {
+        // lets get the output from the blockchain
+        let req = FetchMatchingUtxos {
+            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
+        };
+        let results: Vec<TransactionOutput> = self
+            .resources
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .ok_or_else(|| {
+                TransactionServiceError::ServiceError("Could not connect to base node rpc client".to_string())
+            })?
+            .fetch_matching_utxos(req)
+            .await?
+            .outputs
+            .into_iter()
+            .filter_map(|o| match o.try_into() {
+                Ok(output) => Some(output),
+                _ => None,
+            })
+            .collect();
+        Ok(results)
+    }
+
     /// Creates an encumbered uninitialized transaction
     #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_tx(
         &mut self,
         fee_per_gram: MicroMinotari,
-        output_hash: String,
+        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,

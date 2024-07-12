@@ -32,7 +32,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -113,7 +113,7 @@ pub enum TransactionServiceRequest {
     },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
-        output_hash: String,
+        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -121,6 +121,9 @@ pub enum TransactionServiceRequest {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
+    },
+    FetchUnspentOutputs {
+        output_hashes: Vec<HashOutput>,
     },
     FinalizeSentAggregateTransaction {
         tx_id: u64,
@@ -244,7 +247,7 @@ impl fmt::Display for TransactionServiceRequest {
                  script_input_shares = {:?},, script_signature_shares = {:?}, sender_offset_public_key_shares = {:?}, \
                  metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address = {}",
                 fee_per_gram,
-                output_hash,
+                output_hash.to_hex(),
                 expected_commitment.to_hex(),
                 script_input_shares
                     .iter()
@@ -273,6 +276,13 @@ impl fmt::Display for TransactionServiceRequest {
                     .collect::<Vec<String>>(),
                 recipient_address,
             )),
+            Self::FetchUnspentOutputs { output_hashes } => {
+                write!(
+                    f,
+                    "FetchUnspentOutputs({:?})",
+                    output_hashes.iter().map(|v| v.to_hex()).collect::<Vec<String>>()
+                )
+            },
             Self::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
@@ -358,6 +368,7 @@ pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionSentWithOutputHash(TxId, FixedHash),
     EncumberAggregateUtxo(TxId, Box<Transaction>, Box<PublicKey>, Box<PublicKey>, Box<PublicKey>),
+    UnspentOutputs(Vec<TransactionOutput>),
     TransactionImported(TxId),
     BurntTransactionSent {
         tx_id: TxId,
@@ -730,7 +741,7 @@ impl TransactionServiceHandle {
     pub async fn encumber_aggregate_utxo(
         &mut self,
         fee_per_gram: MicroMinotari,
-        output_hash: String,
+        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -767,6 +778,20 @@ impl TransactionServiceHandle {
                 *total_metadata_ephemeral_public_key,
                 *total_script_nonce,
             )),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn fetch_unspent_outputs(
+        &mut self,
+        output_hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionOutput>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::FetchUnspentOutputs { output_hashes })
+            .await??
+        {
+            TransactionServiceResponse::UnspentOutputs(outputs) => Ok(outputs),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

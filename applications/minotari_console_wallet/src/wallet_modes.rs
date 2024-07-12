@@ -144,14 +144,12 @@ pub(crate) fn command_mode(
     wallet: WalletSqlite,
     command: CliCommands,
 ) -> Result<(), ExitError> {
-    let commands = vec![command];
-
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Command mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    handle.block_on(command_runner(config, commands, wallet.clone()))?;
+    handle.block_on(command_runner(config, vec![command.clone()], wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Command mode completed)";
@@ -159,7 +157,25 @@ pub(crate) fn command_mode(
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet)
+    wallet_or_exit(
+        handle,
+        cli,
+        config,
+        base_node_config,
+        wallet,
+        force_exit_for_faucet_commands(&command),
+    )
+}
+
+fn force_exit_for_faucet_commands(command: &CliCommands) -> bool {
+    matches!(
+        command,
+        CliCommands::FaucetGenerateSessionInfo(_) |
+            CliCommands::FaucetEncumberAggregateUtxo(_) |
+            CliCommands::FaucetSpendAggregateUtxo(_) |
+            CliCommands::FaucetCreatePartyDetails(_) |
+            CliCommands::FaucetCreateInputOutputSigs(_)
+    )
 }
 
 pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, ExitError> {
@@ -206,22 +222,33 @@ pub(crate) fn script_mode(
 
     println!("Parsing commands...");
     let commands = parse_command_file(script)?;
-    println!("{} commands parsed successfully.", commands.len());
+    let mut exit_wallet = false;
+    for command in &commands {
+        if force_exit_for_faucet_commands(command) {
+            println!("Faucet commands may not run in script mode!");
+            exit_wallet = true;
+            break;
+        }
+    }
 
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Script mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER_A);
+    if !exit_wallet {
+        println!("{} commands parsed successfully.", commands.len());
 
-    println!("Starting the command runner!");
-    handle.block_on(command_runner(config, commands, wallet.clone()))?;
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Script mode started)";
+        println!("{}", CUCUMBER_TEST_MARKER_A);
 
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Script mode completed)";
-    println!("{}", CUCUMBER_TEST_MARKER_B);
+        println!("Starting the command runner!");
+        handle.block_on(command_runner(config, commands, wallet.clone()))?;
 
-    info!(target: LOG_TARGET, "Completed wallet script mode");
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Script mode completed)";
+        println!("{}", CUCUMBER_TEST_MARKER_B);
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet)
+        info!(target: LOG_TARGET, "Completed wallet script mode");
+    }
+
+    wallet_or_exit(handle, cli, config, base_node_config, wallet, exit_wallet)
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -231,9 +258,14 @@ fn wallet_or_exit(
     config: &WalletConfig,
     base_node_config: &PeerConfig,
     wallet: WalletSqlite,
+    force_exit: bool,
 ) -> Result<(), ExitError> {
     if cli.command_mode_auto_exit {
         info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
+        return Ok(());
+    }
+    if force_exit {
+        info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
         return Ok(());
     }
 
@@ -482,7 +514,8 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn clap_parses_user_defined_commands_as_expected() {
-        let script = "
+        let script =
+            "
             # Beginning of script file
 
             get-balance
@@ -492,68 +525,31 @@ mod test {
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
             send-minotari --message Our_secret! 125T \
-                      f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
+             f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            faucet-encumber-aggregate-utxo \
-                --fee-per-gram 1 \
-                --output-hash f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --script-input-shares=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --script-input-shares=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
-                --script-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --script-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --script-signature-public-nonces=8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --script-signature-public-nonces=50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
-                --sender-offset-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --sender-offset-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --metadata-ephemeral-public-key-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --metadata-ephemeral-public-key-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --dh-shared-secret-shares=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --dh-shared-secret-shares=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA
+            faucet-generate-session-info --fee-per-gram 2 --commitment \
+             f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --output-hash \
+             f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --recipient-address \
+             f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
+             --verify-unspent-outputs
 
-            faucet-spend-aggregate-utxo \
-                --tx-id 12345678 \
-                --meta-signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --meta-signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
-                --script-signatures=3ddde10d0775c20fb25015546c6a8068812044e7ca4ee1057e84ec9ab6705d03,8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --script-signatures=3edf1ed103b0ac0bbad6a6de8369808d14dfdaaf294fe660646875d749a1f908,50a26c646db951720c919f59cd7a34600a7fc3ee978c64fbcce0ad184c46844c \
-                --script-offset-keys=5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --script-offset-keys=f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
+            faucet-create-party-details --session-id ee1643655c --input-file ./step_1_session_info.txt --alias alice
 
-            faucet-create-party-details \
-                --commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --recipient-address f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA
+            faucet-encumber-aggregate-utxo --session-id ee1643655c --input-file-names=step_2_for_leader_from_alice.txt \
+             --input-file-names=step_2_for_leader_from_bob.txt --input-file-names=step_2_for_leader_from_carol.txt
 
-            faucet-create-script-sig \
-                --private-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-nonce-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --input-script ae010268593ed2d36a2d95f0ffe0f41649b97cc36fc4ef0c8ecd6bd28f9d56c76b793b08691435a5c813578f8a7f4973166dc1c6c15f37aec2a7d65b1583c8b2129364c916d5986a0c1b3dac7d6efb94bed688ba52fa8b962cf27c0446e2fea6d66a04 \
-                --input-stack 050857c14f72cf885aac9f08c9484cb7cb06b6cc20eab68c9bee1e8d5a85649b0a6d31c5cc49afc1e03ebbcf55c82f47e8cbc796c33e96c17a31eab027ee821f00 \
-                --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --total-script-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67
+            faucet-create-input-output-sigs --session-id ee1643655c
 
-            faucet-create-meta-sig \
-                --secret-script-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-sender-offset-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --secret-nonce-key-id imported.96159b07298a453c9f514f5307f70659c7561dd6d9ed376854c5cb573cb2e311 \
-                --ephemeral-commitment f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 \
-                --ephemeral-pubkey 8a55d1cb503be36875d38f2dc6abac7b23445bbd7253684a1506f5ee1855cd58 \
-                --total-meta-key 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61 \
-                --commitment 94966b4f1b5dc050df1109cf07a516ae85912c82503b1a8c1625986a569fae67 \
-                --encrypted-data 6a7aa2053ae187f60f27df0e10184bf93d02a84cd9548320ec7da546185fc23c6daa720974007c6106cfb0361eb9828e1af979b69fff724d2bcd0d86d5b9675ef1f65b424b22bee06e52fcaf4fd2a2ed \
-                --output-features 'features' \
-                --recipient-address f4FB7HhYCmLw4PsivjG8bAgUuxyPS6GTjFkhMWx6d9Nv4aoBESyaH5TdS1dAkSCg4qXqehpjZU9QrSUP2Ec7v4Gj8wf
+            faucet-spend-aggregate-utxo --session-id ee1643655c --input-file-names=step_4_for_leader_from_alice.txt \
+             --input-file-names=step_4_for_leader_from_bob.txt --input-file-names=step_4_for_leader_from_carol.txt
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
-                      --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
-                      f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
+             --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
+             f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
 
             export-tx 123456789 --output-file pie.txt
 
@@ -561,18 +557,18 @@ mod test {
 
             # End of script file
             "
-        .to_string();
+            .to_string();
 
         let commands = parse_command_file(script).unwrap();
 
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
+        let mut faucet_generate_session_info = false;
         let mut faucet_encumber_aggregate_utxo = false;
         let mut faucet_spend_aggregate_utxo = false;
         let mut faucet_create_party_details = false;
-        let mut faucet_create_script_sig = false;
-        let mut faucet_create_meta_sig = false;
+        let mut faucet_create_input_output_sigs = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -584,11 +580,11 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
+                CliCommands::FaucetGenerateSessionInfo(_) => faucet_generate_session_info = true,
                 CliCommands::FaucetEncumberAggregateUtxo(_) => faucet_encumber_aggregate_utxo = true,
                 CliCommands::FaucetSpendAggregateUtxo(_) => faucet_spend_aggregate_utxo = true,
                 CliCommands::FaucetCreatePartyDetails(_) => faucet_create_party_details = true,
-                CliCommands::FaucetCreateScriptSig(_) => faucet_create_script_sig = true,
-                CliCommands::FaucetCreateMetaSig(_) => faucet_create_meta_sig = true,
+                CliCommands::FaucetCreateInputOutputSigs(_) => faucet_create_input_output_sigs = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
@@ -622,11 +618,11 @@ mod test {
             get_balance &&
                 send_tari &&
                 burn_tari &&
+                faucet_generate_session_info &&
                 faucet_encumber_aggregate_utxo &&
                 faucet_spend_aggregate_utxo &&
                 faucet_create_party_details &&
-                faucet_create_script_sig &&
-                faucet_create_meta_sig &&
+                faucet_create_input_output_sigs &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&
