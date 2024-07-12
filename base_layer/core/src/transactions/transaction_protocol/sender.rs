@@ -558,8 +558,6 @@ impl SenderTransactionProtocol {
                 &received_output.commitment,
                 received_output.metadata_signature.ephemeral_commitment(),
                 &version,
-                None,
-                None,
                 &metadata_message,
             )
             .await?;
@@ -1020,8 +1018,6 @@ mod test {
                 &output.commitment,
                 partial_metadata_signature.ephemeral_commitment(),
                 &txo_version,
-                None,
-                None,
                 &metadata_message,
             )
             .await

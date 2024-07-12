@@ -301,20 +301,26 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_script_signature_from_challenge(
+    async fn get_partial_script_signature(
         &self,
-        script_key_id: &TariKeyId,
-        spend_key_id: &TariKeyId,
+        commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
-        challenge: &[u8; 64],
-        r_a: &PrivateKey,
-        r_x: &PrivateKey,
-        r_y: &PrivateKey,
+        txi_version: &TransactionInputVersion,
+        ephemeral_pubkey: &PublicKey,
+        script_public_key: &PublicKey,
+        script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .get_script_signature_from_challenge(script_key_id, spend_key_id, value, challenge, r_a, r_x, r_y)
+            .get_partial_script_signature(
+                commitment_mask_id,
+                value,
+                txi_version,
+                ephemeral_pubkey,
+                script_public_key,
+                script_message,
+            )
             .await
     }
 
@@ -502,8 +508,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
-        aggregated_sender_offset_public_keys: Option<&PublicKey>,
-        aggregated_ephemeral_public_keys: Option<&PublicKey>,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
@@ -515,8 +519,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 commitment,
                 ephemeral_commitment,
                 txo_version,
-                aggregated_sender_offset_public_keys,
-                aggregated_ephemeral_public_keys,
                 metadata_signature_message,
             )
             .await

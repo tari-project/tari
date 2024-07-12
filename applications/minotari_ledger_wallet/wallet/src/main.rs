@@ -20,7 +20,6 @@ mod handlers {
     pub mod get_public_key;
     pub mod get_script_offset;
     pub mod get_script_signature;
-    pub mod get_script_signature_from_challenge;
     pub mod get_version;
     pub mod get_view_key;
 }
@@ -120,7 +119,6 @@ pub enum Instruction {
     GetScriptSignature,
     GetScriptOffset { chunk: u8, more: bool },
     GetMetadataSignature,
-    GetScriptSignatureFromChallenge,
     GetViewKey,
     GetDHSharedSecret,
 }
