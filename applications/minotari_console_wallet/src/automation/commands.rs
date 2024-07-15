@@ -104,6 +104,7 @@ use crate::{
             out_dir,
             read_and_verify,
             read_session_info,
+            read_verify_session_info,
             write_json_object_to_file_as_line,
             write_to_json_file,
         },
@@ -816,7 +817,7 @@ pub async fn command_runner(
                     key_manager_service.get_random_key().await?;
 
                 // Read session info
-                let session_info = read_session_info(&args.session_id, Some(args.input_file.clone()))?;
+                let session_info = read_session_info(args.input_file.clone())?;
 
                 let commitment = Commitment::from_hex(&session_info.commitment_to_spend)?;
                 let commitment_hash: [u8; 32] =
@@ -839,7 +840,7 @@ pub async fn command_runner(
                     .sign_script_message(&wallet_spend_key_id, &commitment_hash)
                     .await?;
 
-                let out_dir = out_dir(&args.session_id)?;
+                let out_dir = out_dir(&session_info.session_id)?;
                 let step_2_outputs_for_leader = Step2OutputsForLeader {
                     script_input_signature,
                     wallet_public_spend_key,
@@ -860,13 +861,13 @@ pub async fn command_runner(
                     sender_offset_nonce_key_id,
                 };
                 let out_file_self = out_dir.join(get_file_name(STEP_2_SELF, None));
-                write_json_object_to_file_as_line(&out_file_self, true, session_info)?;
+                write_json_object_to_file_as_line(&out_file_self, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file_self, false, step_2_outputs_for_self)?;
 
                 println!();
                 println!("Concluded step 2 'faucet-create-party-details'");
                 println!("Your session's output directory is '{}'", out_dir.display());
-                move_session_file_to_session_dir(&args.session_id, &args.input_file)?;
+                move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
                 println!(
                     "Send '{}' to leader for step 3",
                     get_file_name(STEP_2_LEADER, Some(args.alias))
@@ -875,7 +876,7 @@ pub async fn command_runner(
             },
             FaucetEncumberAggregateUtxo(args) => {
                 // Read session info
-                let session_info = read_session_info(&args.session_id, None)?;
+                let session_info = read_verify_session_info(&args.session_id)?;
 
                 #[allow(clippy::mutable_key_type)]
                 let mut input_shares = HashMap::new();
@@ -944,18 +945,18 @@ pub async fn command_runner(
                         let out_file = out_dir.join(get_file_name(STEP_3_PARTIES, None));
                         write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
                         write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_parties)?;
-                    },
-                    Err(e) => eprintln!("Error: Encumber aggregate transaction error! {}", e),
-                }
 
-                println!();
-                println!("Concluded step 3 'faucet-encumber-aggregate-utxo'");
-                println!("Send '{}' to parties for step 4", get_file_name(STEP_3_PARTIES, None));
-                println!();
+                        println!();
+                        println!("Concluded step 3 'faucet-encumber-aggregate-utxo'");
+                        println!("Send '{}' to parties for step 4", get_file_name(STEP_3_PARTIES, None));
+                        println!();
+                    },
+                    Err(e) => eprintln!("\nError: Encumber aggregate transaction error! {}\n", e),
+                }
             },
             FaucetCreateInputOutputSigs(args) => {
                 // Read session info
-                let session_info = read_session_info(&args.session_id, None)?;
+                let session_info = read_verify_session_info(&args.session_id)?;
                 // Read leader input
                 let leader_info = read_and_verify::<Step3OutputsForParties>(
                     &args.session_id,
@@ -992,7 +993,7 @@ pub async fn command_runner(
                     Ok(signature) => {
                         script_signature = signature;
                     },
-                    Err(e) => eprintln!("Error: Script signature SignMessage error! {}", e),
+                    Err(e) => eprintln!("\nError: Script signature SignMessage error! {}\n", e),
                 }
 
                 // Metadata signature
@@ -1028,13 +1029,13 @@ pub async fn command_runner(
                     Ok(signature) => {
                         metadata_signature = signature;
                     },
-                    Err(e) => eprintln!("Error: Metadata signature SignMessage error! {}", e),
+                    Err(e) => eprintln!("\nError: Metadata signature SignMessage error! {}\n", e),
                 }
 
                 if script_signature.get_signature() == Signature::default().get_signature() ||
                     metadata_signature.get_signature() == Signature::default().get_signature()
                 {
-                    eprintln!("Error: Script and/or metadata signatures not created!")
+                    eprintln!("\nError: Script and/or metadata signatures not created!\n")
                 } else {
                     let step_4_outputs_for_leader = Step4OutputsForLeader {
                         script_signature,
@@ -1058,7 +1059,7 @@ pub async fn command_runner(
             },
             FaucetSpendAggregateUtxo(args) => {
                 // Read session info
-                let session_info = read_session_info(&args.session_id, None)?;
+                let session_info = read_verify_session_info(&args.session_id)?;
 
                 let mut metadata_signatures = Vec::with_capacity(args.input_file_names.len());
                 let mut script_signatures = Vec::with_capacity(args.input_file_names.len());
@@ -1093,7 +1094,7 @@ pub async fn command_runner(
                         println!("Concluded step 5 'faucet-spend-aggregate-utxo'");
                         println!();
                     },
-                    Err(e) => println!("Error: Error completing transaction! {}", e),
+                    Err(e) => println!("\nError: Error completing transaction! {}\n", e),
                 }
             },
             SendMinotari(args) => {

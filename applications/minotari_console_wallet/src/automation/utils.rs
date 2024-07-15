@@ -150,16 +150,9 @@ pub(crate) fn move_session_file_to_session_dir(session_id: &str, input_file: &Pa
     Ok(())
 }
 
-/// Read the session info from the session directory
-pub(crate) fn read_session_info(
-    session_id: &str,
-    session_file: Option<PathBuf>,
-) -> Result<Step1SessionInfo, CommandError> {
-    let file_path = if let Some(file) = session_file {
-        file
-    } else {
-        out_dir(session_id)?.join(get_file_name(SESSION_INFO, None))
-    };
+/// Read the session info from the session directory and verify the supplied session ID
+pub(crate) fn read_verify_session_info(session_id: &str) -> Result<Step1SessionInfo, CommandError> {
+    let file_path = out_dir(session_id)?.join(get_file_name(SESSION_INFO, None));
     let session_info = json_from_file_single_object::<_, Step1SessionInfo>(&file_path, None)?;
     if session_info.session_id != session_id {
         return Err(CommandError::InvalidArgument(format!(
@@ -168,6 +161,11 @@ pub(crate) fn read_session_info(
         )));
     }
     Ok(session_info)
+}
+
+/// Read the session info from the session directory
+pub(crate) fn read_session_info(session_file: PathBuf) -> Result<Step1SessionInfo, CommandError> {
+    json_from_file_single_object::<_, Step1SessionInfo>(&session_file, None)
 }
 
 /// Read the inputs from the session directory and verify the header

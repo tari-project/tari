@@ -165,7 +165,7 @@ impl fmt::Display for OutputManagerRequest {
                 "Encumber aggregate utxo with tx_id: {} and output: ({},{})",
                 tx_id,
                 expected_commitment.to_hex(),
-                output_hash.to_hex()
+                output_hash
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),

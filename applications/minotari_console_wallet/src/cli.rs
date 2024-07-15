@@ -179,8 +179,6 @@ pub struct FaucetGenerateSessionInfoArgs {
 #[derive(Debug, Args, Clone)]
 pub struct FaucetCreatePartyDetailsArgs {
     #[clap(long)]
-    pub session_id: String,
-    #[clap(long)]
     pub input_file: PathBuf,
     #[clap(long)]
     pub alias: String,

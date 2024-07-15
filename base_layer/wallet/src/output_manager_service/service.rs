@@ -1210,8 +1210,7 @@ where
             .ok_or_else(|| {
                 OutputManagerError::ServiceError(format!(
                     "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash.to_hex(),
-                    tx_id
+                    output_hash, tx_id
                 ))
             })?;
         if output.commitment != expected_commitment {

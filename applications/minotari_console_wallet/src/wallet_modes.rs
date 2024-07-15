@@ -535,7 +535,7 @@ mod test {
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
              --verify-unspent-outputs
 
-            faucet-create-party-details --session-id ee1643655c --input-file ./step_1_session_info.txt --alias alice
+            faucet-create-party-details --input-file ./step_1_session_info.txt --alias alice
 
             faucet-encumber-aggregate-utxo --session-id ee1643655c --input-file-names=step_2_for_leader_from_alice.txt \
              --input-file-names=step_2_for_leader_from_bob.txt --input-file-names=step_2_for_leader_from_carol.txt

@@ -247,7 +247,7 @@ impl fmt::Display for TransactionServiceRequest {
                  script_input_shares = {:?},, script_signature_shares = {:?}, sender_offset_public_key_shares = {:?}, \
                  metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address = {}",
                 fee_per_gram,
-                output_hash.to_hex(),
+                output_hash,
                 expected_commitment.to_hex(),
                 script_input_shares
                     .iter()
