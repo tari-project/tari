@@ -7,10 +7,17 @@ edition = "2021"
 
 [dependencies]
 tari_crypto = { version = "0.20.2", default-features = false }
-tari_common_types = { path = "../../../base_layer/common_types", version = "1.0.0-pre.18" }
+tari_utilities = { version = "0.7" }
+tari_common = { path = "../../../common" }
+tari_common_types = { path = "../../../base_layer/common_types" }
+tari_script = { path = "../../../infrastructure/tari_script" }
+
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 num-derive = "0.4.2"
 num-traits = "0.2.15"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.26"
+
+rand = "0.9.0-alpha.1"
+once_cell = "1.19.0"

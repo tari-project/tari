@@ -23,6 +23,7 @@
 
 use log::*;
 use tari_common_types::{
+    key_manager::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{Commitment, PrivateKey},
 };
@@ -43,14 +44,7 @@ use crate::{
         stealth_address_script_spending_key,
     },
     transactions::{
-        key_manager::{
-            CoreKeyManagerError,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TxoStage,
-        },
+        key_manager::{CoreKeyManagerError, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -508,7 +502,7 @@ pub async fn generate_coinbase_with_wallet_output(
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::{tari_address::TariAddress, types::Commitment};
+    use tari_common_types::{key_manager::TransactionKeyManagerBranch, tari_address::TariAddress, types::Commitment};
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -779,7 +773,6 @@ mod test {
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TariKeyId,
-            TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
             TxoStage,
         },

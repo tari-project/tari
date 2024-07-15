@@ -24,7 +24,10 @@ use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    key_manager::TransactionKeyManagerBranch,
+    types::{Commitment, PrivateKey, PublicKey, Signature},
+};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
@@ -35,12 +38,7 @@ use tari_core::{
     proto,
     transactions::{
         fee::Fee,
-        key_manager::{
-            create_memory_db_key_manager,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TxoStage,
-        },
+        key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_wallet_output_with_data,

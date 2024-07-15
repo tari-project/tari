@@ -36,6 +36,7 @@ use minotari_app_grpc::{
 };
 use minotari_app_utilities::consts;
 use tari_common_types::{
+    key_manager::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
@@ -55,13 +56,7 @@ use tari_core::{
     proof_of_work::PowAlgorithm,
     transactions::{
         generate_coinbase_with_wallet_output,
-        key_manager::{
-            create_memory_db_key_manager,
-            TariKeyId,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TxoStage,
-        },
+        key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_components::{
             encrypted_data::PaymentId,
             KernelBuilder,

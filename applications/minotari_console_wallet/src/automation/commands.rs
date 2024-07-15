@@ -971,7 +971,7 @@ pub async fn command_runner(
 
                 let mut script_signature = Signature::default();
                 match key_manager_service
-                    .sign_with_nonce_and_message(
+                    .sign_with_challenge_and_message(
                         &party_info.wallet_spend_key_id,
                         &party_info.script_nonce_key_id,
                         &challenge,
@@ -1007,7 +1007,7 @@ pub async fn command_runner(
 
                 let mut metadata_signature = Signature::default();
                 match key_manager_service
-                    .sign_with_nonce_and_message(
+                    .sign_with_challenge_and_message(
                         &party_info.sender_offset_key_id,
                         &party_info.sender_offset_nonce_key_id,
                         &challenge,

@@ -102,7 +102,7 @@ where
         let mut km = self
             .key_managers
             .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
             .lock()
             .await;
         self.db.increment_key_index(branch)?;
@@ -130,7 +130,7 @@ where
 
     pub async fn get_static_key(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
-            None => Err(KeyManagerServiceError::UnknownKeyBranch),
+            None => Err(KeyManagerServiceError::UnknownKeyBranch(branch.to_string())),
             Some(_) => Ok(KeyId::Managed {
                 branch: branch.to_string(),
                 index: 0,
@@ -144,7 +144,7 @@ where
                 let km = self
                     .key_managers
                     .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
                     .lock()
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
@@ -153,7 +153,7 @@ where
                 let km = self
                     .key_managers
                     .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
                     .lock()
                     .await;
                 let branch_key = km.get_private_key(*index)?;
@@ -182,7 +182,7 @@ where
         let km = self
             .key_managers
             .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
             .lock()
             .await;
 
@@ -208,7 +208,7 @@ where
         let mut km = self
             .key_managers
             .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
             .lock()
             .await;
         let current_index = km.key_index();

@@ -276,7 +276,7 @@ impl WalletOutput {
             &message,
         );
         let script_key_partial_script_signature = key_manager
-            .sign_with_nonce_and_message(&self.script_key_id, &ephemeral_public_key_self.key_id, &challenge)
+            .sign_with_challenge_and_message(&self.script_key_id, &ephemeral_public_key_self.key_id, &challenge)
             .await?;
         let script_signature = &commitment_partial_script_signature + &script_key_partial_script_signature;
 

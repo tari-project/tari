@@ -24,11 +24,12 @@ use std::time::Instant;
 
 use log::*;
 use tari_common_types::{
+    key_manager::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,

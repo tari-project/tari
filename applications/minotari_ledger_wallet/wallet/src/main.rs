@@ -8,7 +8,7 @@
 extern crate alloc;
 
 mod hashing;
-mod utils;
+pub mod utils;
 
 mod app_ui {
     pub mod menu;
@@ -17,6 +17,7 @@ mod handlers {
     pub mod get_dh_shared_secret;
     pub mod get_public_key;
     pub mod get_public_spend_key;
+    pub mod get_schnorr_signature;
     pub mod get_script_offset;
     pub mod get_script_signature;
     pub mod get_version;
@@ -31,6 +32,7 @@ use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
+    get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::handler_get_script_signature,
     get_version::handler_get_version,
@@ -87,21 +89,24 @@ unsafe impl critical_section::Impl for MyCriticalSection {
 // Application status words.
 #[repr(u16)]
 pub enum AppSW {
-    Deny = 0x6985,
-    WrongP1P2 = 0x6A86,
-    InsNotSupported = 0x6D00,
-    ClaNotSupported = 0x6E00,
-    ScriptSignatureFail = 0xB001,
-    MetadataSignatureFail = 0xB002,
-    ScriptOffsetNotUnique = 0xB004,
-    BadBranchKey = 0xB005,
-    KeyDeriveFail = 0xB009,
-    KeyDeriveFromCanonical = 0xB010,
-    KeyDeriveFromUniform = 0xB011,
-    VersionParsingFail = 0xB00A,
-    TooManyPayloads = 0xB003,
-    WrongApduLength = StatusWords::BadLen as u16,
-    UserCancelled = StatusWords::UserCancelled as u16,
+    Deny = 0xB001,
+    WrongP1P2 = 0xB002,
+    InsNotSupported = 0xB003,
+    ClaNotSupported = 0xB004,
+    ScriptSignatureFail = 0xB005,
+    MetadataSignatureFail = 0xB006,
+    RawSchnorrSignatureFail = 0xB007,
+    SchnorrSignatureFail = 0xB008,
+    ScriptOffsetNotUnique = 0xB009,
+    KeyDeriveFail = 0xB00A,
+    KeyDeriveFromCanonical = 0xB00B,
+    KeyDeriveFromUniform = 0xB00C,
+    VersionParsingFail = 0xB00D,
+    TooManyPayloads = 0xB00E,
+    RandomNonceFail = 0xB00F,
+    BadBranchKey = 0xB010,
+    WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
 }
 
 impl From<AppSW> for Reply {
@@ -118,9 +123,10 @@ pub enum Instruction {
     GetPublicSpendKey,
     GetScriptSignature,
     GetScriptOffset { chunk: u8, more: bool },
-    GetScriptSignatureFromChallenge,
     GetViewKey,
     GetDHSharedSecret,
+    GetRawSchnorrSignature,
+    GetScriptSchnorrSignature,
 }
 
 const P2_MORE: u8 = 0x01;
@@ -129,11 +135,13 @@ const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number b
 const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
+#[derive(Debug)]
 pub enum KeyType {
     Spend = 0x01,
     Nonce = 0x02,
     ViewKey = 0x03,
     OneSidedSenderOffset = 0x04,
+    Random = 0x06,
 }
 
 impl KeyType {
@@ -144,9 +152,13 @@ impl KeyType {
     fn from_branch_key(n: u64) -> Result<Self, AppSW> {
         // These numbers need to match the TransactionKeyManagerBranches in:
         // base_layer/core/src/transactions/key_manager/interface.rs
+        // See `pub enum TransactionKeyManagerBranch` in
+        // `tari_wallet/src/transaction_service/transaction_key_manager.rs` for the mapping of the branch key to
+        // the key type.
         match n {
-            7 => Ok(Self::Spend),
             6 => Ok(Self::OneSidedSenderOffset),
+            7 => Ok(Self::Spend),
+            8 => Ok(Self::Random),
             _ => Err(AppSW::BadBranchKey),
         }
     }
@@ -177,9 +189,10 @@ impl TryFrom<ApduHeader> for Instruction {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (0x08, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
-            (0x09, 0, 0) => Ok(Instruction::GetViewKey),
-            (0x10, 0, 0) => Ok(Instruction::GetDHSharedSecret),
+            (0x07, 0, 0) => Ok(Instruction::GetViewKey),
+            (0x08, 0, 0) => Ok(Instruction::GetDHSharedSecret),
+            (0x09, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
+            (0x10, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
             (0x06, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -225,8 +238,9 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetPublicSpendKey => handler_get_public_spend_key(comm),
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
-        Instruction::GetScriptSignatureFromChallenge => handler_get_script_signature_from_challenge(comm),
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
+        Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),
+        Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
     }
 }

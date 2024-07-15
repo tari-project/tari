@@ -25,7 +25,10 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    key_manager::TransactionKeyManagerBranch,
+    types::{Commitment, PrivateKey, PublicKey, Signature},
+};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -42,7 +45,6 @@ use crate::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TariKeyId,
-            TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
             TransactionKeyManagerLabel,
             TransactionKeyManagerWrapper,

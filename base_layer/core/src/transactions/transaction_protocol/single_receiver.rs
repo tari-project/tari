@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::key_manager::TransactionKeyManagerBranch;
+
 use crate::{
     consensus::ConsensusConstants,
     transactions::{
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        key_manager::{TransactionKeyManagerInterface, TxoStage},
         transaction_components::{TransactionKernel, WalletOutput},
         transaction_protocol::{
             recipient::RecipientSignedMessage,

@@ -165,7 +165,7 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use tari_common_types::{key_manager::TransactionKeyManagerBranch, types::PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
     use tari_script::TariScript;
@@ -175,12 +175,7 @@ mod test {
         test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{
-                create_memory_db_key_manager,
-                TransactionKeyManagerBranch,
-                TransactionKeyManagerInterface,
-                TxoStage,
-            },
+            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{

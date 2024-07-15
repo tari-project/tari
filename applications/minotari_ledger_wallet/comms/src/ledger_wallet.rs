@@ -26,7 +26,8 @@ use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use tari_common_types::wallet_types::LedgerWallet;
+use once_cell::sync::Lazy;
+use tari_utilities::ByteArray;
 
 use crate::error::LedgerDeviceError;
 
@@ -39,11 +40,64 @@ pub enum Instruction {
     GetPublicKey = 0x04,
     GetScriptSignature = 0x05,
     GetScriptOffset = 0x06,
-    GetMetadataSignature = 0x07,
-    GetScriptSignatureFromChallenge = 0x08,
-    GetViewKey = 0x09,
-    GetDHSharedSecret = 0x10,
+    GetViewKey = 0x07,
+    GetDHSharedSecret = 0x08,
+    GetRawSchnorrSignature = 0x09,
+    GetScriptSchnorrSignature = 0x10,
 }
+
+#[repr(u16)]
+#[derive(FromPrimitive, Debug, Copy, Clone, PartialEq)]
+pub enum AppSW {
+    Deny = 0xB001,
+    WrongP1P2 = 0xB002,
+    InsNotSupported = 0xB003,
+    ClaNotSupported = 0xB004,
+    ScriptSignatureFail = 0xB005,
+    MetadataSignatureFail = 0xB006,
+    RawSchnorrSignatureFail = 0xB007,
+    SchnorrSignatureFail = 0xB008,
+    ScriptOffsetNotUnique = 0xB009,
+    KeyDeriveFail = 0xB00A,
+    KeyDeriveFromCanonical = 0xB00B,
+    KeyDeriveFromUniform = 0xB00C,
+    VersionParsingFail = 0xB00D,
+    TooManyPayloads = 0xB00E,
+    RandomNonceFail = 0xB00F,
+    BadBranchKey = 0xB010,
+    WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+}
+
+impl From<u16> for AppSW {
+    fn from(value: u16) -> Self {
+        match value {
+            0xB001 => AppSW::Deny,
+            0xB002 => AppSW::WrongP1P2,
+            0xB003 => AppSW::InsNotSupported,
+            0xB004 => AppSW::ClaNotSupported,
+            0xB005 => AppSW::ScriptSignatureFail,
+            0xB006 => AppSW::MetadataSignatureFail,
+            0xB007 => AppSW::RawSchnorrSignatureFail,
+            0xB008 => AppSW::SchnorrSignatureFail,
+            0xB009 => AppSW::ScriptOffsetNotUnique,
+            0xB00A => AppSW::KeyDeriveFail,
+            0xB00B => AppSW::KeyDeriveFromCanonical,
+            0xB00C => AppSW::KeyDeriveFromUniform,
+            0xB00D => AppSW::VersionParsingFail,
+            0xB00E => AppSW::TooManyPayloads,
+            0xB00F => AppSW::RandomNonceFail,
+            0xB010 => AppSW::BadBranchKey,
+            0x6e03 => AppSW::WrongApduLength,
+            0x6e04 => AppSW::UserCancelled,
+            _ => AppSW::Deny,
+        }
+    }
+}
+
+pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
+pub const EXPECTED_VERSION: &str = "1.0.0-pre.16";
+const WALLET_CLA: u8 = 0x80;
 
 impl Instruction {
     pub fn as_byte(self) -> u8 {
@@ -56,8 +110,16 @@ impl Instruction {
 }
 
 pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {
-    let hid = HidApi::new().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
-    TransportNativeHID::new(&hid).map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+    let hid = hidapi()?;
+    let transport = TransportNativeHID::new(hid).map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))?;
+    Ok(transport)
+}
+
+fn hidapi() -> Result<&'static HidApi, LedgerDeviceError> {
+    static HIDAPI: Lazy<Result<HidApi, String>> =
+        Lazy::new(|| HidApi::new().map_err(|e| format!("Unable to get HIDAPI: {}", e)));
+
+    HIDAPI.as_ref().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))
 }
 
 #[derive(Debug, Clone)]
@@ -84,18 +146,9 @@ impl<D: Deref<Target = [u8]>> Command<D> {
             .exchange(&self.inner)
             .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
     }
-}
 
-pub trait LedgerCommands {
-    fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>>;
-    fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>>;
-}
-
-const WALLET_CLA: u8 = 0x80;
-
-impl LedgerCommands for LedgerWallet {
-    fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
-        let mut base_data = self.account_bytes();
+    pub fn build_command(account: u64, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
+        let mut base_data = account.to_le_bytes().to_vec();
         base_data.extend_from_slice(&data);
 
         Command::new(APDUCommand {
@@ -107,7 +160,7 @@ impl LedgerCommands for LedgerWallet {
         })
     }
 
-    fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
+    pub fn chunk_command(account: u64, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
         let num_chunks = data.len();
         let mut more;
         let mut commands = vec![];
@@ -122,7 +175,7 @@ impl LedgerCommands for LedgerWallet {
             // Prepend the account on the first payload
             let mut base_data = vec![];
             if i == 0 {
-                base_data.extend_from_slice(&self.account_bytes());
+                base_data.extend_from_slice(&account.to_le_bytes().to_vec());
             }
             base_data.extend_from_slice(chunk);
 

@@ -36,6 +36,7 @@ use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
+    key_manager::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{CommitmentFactory, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
@@ -54,7 +55,7 @@ use tari_core::{
     },
     proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,

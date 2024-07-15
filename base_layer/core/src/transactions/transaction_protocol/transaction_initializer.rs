@@ -25,6 +25,7 @@ use std::fmt::{Debug, Error, Formatter};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    key_manager::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
@@ -37,7 +38,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
             encrypted_data::PaymentId,
