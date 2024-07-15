@@ -40,6 +40,7 @@ curve = ["ed25519"]
 flags = "0"
 path = ["44'/535348'"]
 name = "MinoTari Wallet"
+api_level = "1"
 
 [package.metadata.ledger.nanos]
 icon = "key.gif"

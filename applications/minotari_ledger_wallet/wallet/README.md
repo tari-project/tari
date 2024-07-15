@@ -1,5 +1,25 @@
 # Instructions
 
+## Setup
+
+Ledger does not build with the standard library, so we need to install `rust-src`. This can be done with:
+```
+rustup component add rust-src --toolchain nightly
+```
+
+For loading a BOLOS application to a Ledger device, Ledger has actually written a command, called
+[Cargo Ledger](https://github.com/LedgerHQ/cargo-ledger). This we need to install with:
+```
+cargo install --git https://github.com/LedgerHQ/cargo-ledger cargo-ledger
+```
+
+As per the [Cargo Ledger setup instructions](https://github.com/LedgerHQ/cargo-ledger#setup) run the following to add
+new build targets for the current rust toolchain:
+
+```
+cargo ledger setup
+```
+
 To control ledger devices we use the ledgerctl library.
 We install the supporting Python libraries from Ledger to control Ledger devices,
 [LedgerCTL](https://github.com/LedgerHQ/ledgerctl). This we do with:
@@ -24,6 +44,41 @@ ledgerctl install-ca <NAME>
 
 ## Building
 
+### Native
+
+Open a terminal in the subfolder `./applications/minotari_ledger_wallet/wallet`
+
+_**Note:** Windows users should start a "x64 Native Tools Command Prompt for VS 2019" to have the build tools available
+and then start a python shell within that terminal to have the Python libraries available._
+
+#### Build `ledger`
+
+This must be run from a Python shell (`pip3 --version` should work).
+
+To build, run
+
+```
+cargo ledger build {TARGET} -- "-Zbuild-std=std,alloc"
+```
+
+where TARGET = nanosplus, nanos, etc.
+
+#### Build and install `ledger`
+
+To build and load, run
+
+```
+cargo ledger build {TARGET} --load -- "-Zbuild-std=std,alloc"
+```
+
+where TARGET = nanosplus, nanos, etc.
+
+**Errors**
+
+If the auto-load does not work, try to do a manual installation.
+
+### Using Docker
+
 Ledger does not easily compile locally and it is easiest  to compile via docker using their provided [ledger-app-builder](https://github.com/LedgerHQ/ledger-app-builder/).
 See their readme for setup.
 Once installed you can build the Tari Wallet for ledger by navigating to `./applications/minotari_ledger_wallet` and running the docker command:
@@ -41,7 +96,7 @@ cargo ledger build {TARGET}
 
 Please note docker has no access to usb devices on MacOS. So the use of `cargo ledger build {TARGET} --load` will fail.
 
-### Install `ledger`
+### Manual installation
 
 - First delete the application if it was already installed
 
@@ -54,8 +109,9 @@ Please note docker has no access to usb devices on MacOS. So the use of `cargo l
 ```
 `ledgerctl install app_nanosplus.json`
 ```
+
 **Note:** In some cases the `cargo ledger build` action will invalidate `app_nanosplus.json` by setting the first line
-to `"apiLevel": "0",` - ensure it is set to `"apiLevel": "1",`
+to something other than `"apiLevel": "1",` - ensure it is set to `"apiLevel": "1",`
 
 ### Running the ledger application
 
