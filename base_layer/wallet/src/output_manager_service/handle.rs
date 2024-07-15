@@ -64,7 +64,7 @@ pub enum OutputManagerRequest {
     EncumberAggregateUtxo {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: String,
+        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -763,7 +763,7 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: String,
+        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,

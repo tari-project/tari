@@ -226,7 +226,6 @@ async fn make_it_rain(
         destination: wallet_b_address,
         start_time: None,
         one_sided: false,
-        stealth: false,
         burn_tari: false,
     };
 

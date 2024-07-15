@@ -33,7 +33,7 @@ use std::{
 
 use blake2::Blake2b;
 use chrono::{DateTime, Utc};
-use digest::{consts::U32, Digest};
+use digest::{consts::U32, crypto_common::rand_core::OsRng, Digest};
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
@@ -55,7 +55,7 @@ use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -72,7 +72,6 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
-            EncryptedData,
             OutputFeatures,
             Transaction,
             TransactionInput,
@@ -84,10 +83,13 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
+use tari_crypto::{
+    keys::SecretKey,
+    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
+};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{script, CheckSigSchnorrSignature, ExecutionStack, TariScript};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_script::{script, CheckSigSchnorrSignature};
+use tari_utilities::{encoding::Base58, hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -95,11 +97,37 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
+    automation::{
+        utils::{
+            get_file_name,
+            move_session_file_to_session_dir,
+            out_dir,
+            read_and_verify,
+            read_session_info,
+            read_verify_session_info,
+            write_json_object_to_file_as_line,
+            write_to_json_file,
+        },
+        Step1SessionInfo,
+        Step2OutputsForLeader,
+        Step2OutputsForSelf,
+        Step3OutputsForParties,
+        Step3OutputsForSelf,
+        Step4OutputsForLeader,
+    },
     cli::{CliCommands, MakeItRainTransactionType},
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
+// Faucet file names
+pub(crate) const FILE_EXTENSION: &str = "json";
+pub(crate) const SESSION_INFO: &str = "step_1_session_info";
+pub(crate) const STEP_2_LEADER: &str = "step_2_for_leader_from_";
+pub(crate) const STEP_2_SELF: &str = "step_2_for_self";
+pub(crate) const STEP_3_SELF: &str = "step_3_for_self";
+pub(crate) const STEP_3_PARTIES: &str = "step_3_for_parties";
+pub(crate) const STEP_4_LEADER: &str = "step_4_for_leader_from_";
 
 #[derive(Debug)]
 pub struct SentTransaction {}
@@ -149,7 +177,7 @@ pub async fn burn_tari(
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
-    output_hash: String,
+    output_hash: HashOutput,
     expected_commitment: PedersenCommitment,
     script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
     script_signature_public_nonces: Vec<PublicKey>,
@@ -717,19 +745,81 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
+            FaucetGenerateSessionInfo(args) => {
+                let commitment = if let Ok(val) = Commitment::from_hex(&args.commitment) {
+                    val
+                } else {
+                    eprintln!("\nError: Invalid 'commitment' provided!\n");
+                    continue;
+                };
+                let hash = if let Ok(val) = FixedHash::from_hex(&args.output_hash) {
+                    val
+                } else {
+                    eprintln!("\nError: Invalid 'output_hash' provided!\n");
+                    continue;
+                };
+
+                if args.verify_unspent_outputs {
+                    let unspent_outputs = transaction_service.fetch_unspent_outputs(vec![hash]).await?;
+                    if unspent_outputs.is_empty() {
+                        eprintln!(
+                            "\nError: Output with output_hash '{}' has already been spent!\n",
+                            args.output_hash
+                        );
+                        continue;
+                    }
+                    if unspent_outputs[0].commitment() != &commitment {
+                        eprintln!(
+                            "\nError: Mismatched commitment '{}' and output_hash '{}'; not for the same output!\n",
+                            args.commitment, args.output_hash
+                        );
+                        continue;
+                    }
+                }
+
+                let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
+                session_id.truncate(16);
+                let session_info = Step1SessionInfo {
+                    session_id: session_id.clone(),
+                    commitment_to_spend: args.commitment,
+                    output_hash: args.output_hash,
+                    recipient_address: args.recipient_address,
+                    fee_per_gram: args.fee_per_gram,
+                };
+                let out_dir = out_dir(&session_info.session_id)?;
+                let out_file = out_dir.join(get_file_name(SESSION_INFO, None));
+                write_to_json_file(&out_file, true, session_info)?;
+                println!();
+                println!("Concluded step 1 'faucet-generate-session-info'");
+                println!("Your session ID is:                 '{}'", session_id);
+                println!("Your session's output directory is: '{}'", out_dir.display());
+                println!("Session info saved to:              '{}'", out_file.display());
+                println!("Send '{}' to parties for step 2", get_file_name(SESSION_INFO, None));
+                println!();
+            },
             FaucetCreatePartyDetails(args) => {
+                if args.alias.is_empty() || args.alias.contains(" ") {
+                    eprintln!("\nError: Alias cannot contain spaces!\n");
+                    continue;
+                }
+                if args.alias.chars().any(|c| !c.is_alphanumeric() && c != '_') {
+                    eprintln!("\nError: Alias contains invalid characters! Only alphanumeric and '_' are allowed.\n");
+                    continue;
+                }
+
                 let wallet_spend_key_id = wallet.get_wallet_id().await?.wallet_node_key_id.clone();
                 let wallet_public_spend_key = key_manager_service
                     .get_public_key_at_key_id(&wallet_spend_key_id)
                     .await?;
-                let (script_nonce_key_id, public_script_nonce) = key_manager_service.get_random_key().await?;
-
+                let (script_nonce_key_id, public_script_nonce_key) = key_manager_service.get_random_key().await?;
                 let (sender_offset_key_id, public_sender_offset_key) = key_manager_service.get_random_key().await?;
-
-                let (sender_offset_nonce_key_id, public_sender_offset_nonce) =
+                let (sender_offset_nonce_key_id, public_sender_offset_nonce_key) =
                     key_manager_service.get_random_key().await?;
 
-                let commitment = Commitment::from_hex(&args.commitment)?;
+                // Read session info
+                let session_info = read_session_info(args.input_file.clone())?;
+
+                let commitment = Commitment::from_hex(&session_info.commitment_to_spend)?;
                 let commitment_hash: [u8; 32] =
                     DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
                         .chain(&commitment)
@@ -738,7 +828,8 @@ pub async fn command_runner(
                 let shared_secret = key_manager_service
                     .get_diffie_hellman_shared_secret(
                         &sender_offset_key_id,
-                        args.recipient_address
+                        session_info
+                            .recipient_address
                             .public_view_key()
                             .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
                     )
@@ -749,65 +840,73 @@ pub async fn command_runner(
                     .sign_script_message(&wallet_spend_key_id, &commitment_hash)
                     .await?;
 
-                println!(
-                    "Party details created with:
-                        1.  script input share: ({},{},{}),
-                        3.  wallet public spend key_id: {},
-                        4.  spend nonce key_id: {},
-                        5.  public spend nonce key: {},
-                        6.  sender offset key_id: {},
-                        7.  public sender offset key: {},
-                        8.  sender offset nonce key_id: {},
-                        9.  public sender offset nonce key: {},
-                        10. public shared secret: {}",
+                let out_dir = out_dir(&session_info.session_id)?;
+                let step_2_outputs_for_leader = Step2OutputsForLeader {
+                    script_input_signature,
                     wallet_public_spend_key,
-                    script_input_signature.get_signature().to_hex(),
-                    script_input_signature.get_public_nonce().to_hex(),
+                    public_script_nonce_key,
+                    public_sender_offset_key,
+                    public_sender_offset_nonce_key,
+                    dh_shared_secret_public_key: shared_secret_public_key,
+                };
+                let out_file_leader = out_dir.join(get_file_name(STEP_2_LEADER, Some(args.alias.clone())));
+                write_json_object_to_file_as_line(&out_file_leader, true, session_info.clone())?;
+                write_json_object_to_file_as_line(&out_file_leader, false, step_2_outputs_for_leader)?;
+
+                let step_2_outputs_for_self = Step2OutputsForSelf {
+                    alias: args.alias.clone(),
                     wallet_spend_key_id,
                     script_nonce_key_id,
-                    public_script_nonce,
                     sender_offset_key_id,
-                    public_sender_offset_key,
                     sender_offset_nonce_key_id,
-                    public_sender_offset_nonce,
-                    shared_secret_public_key
+                };
+                let out_file_self = out_dir.join(get_file_name(STEP_2_SELF, None));
+                write_json_object_to_file_as_line(&out_file_self, true, session_info.clone())?;
+                write_json_object_to_file_as_line(&out_file_self, false, step_2_outputs_for_self)?;
+
+                println!();
+                println!("Concluded step 2 'faucet-create-party-details'");
+                println!("Your session's output directory is '{}'", out_dir.display());
+                move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
+                println!(
+                    "Send '{}' to leader for step 3",
+                    get_file_name(STEP_2_LEADER, Some(args.alias))
                 );
+                println!();
             },
             FaucetEncumberAggregateUtxo(args) => {
+                // Read session info
+                let session_info = read_verify_session_info(&args.session_id)?;
+
                 #[allow(clippy::mutable_key_type)]
                 let mut input_shares = HashMap::new();
-                for share in args.script_input_shares {
-                    let data = share.split(',').collect::<Vec<_>>();
-                    let public_key = PublicKey::from_hex(data[0])?;
-                    let signature = PrivateKey::from_hex(data[1])?;
-                    let public_nonce = PublicKey::from_hex(data[2])?;
-                    let sig = CheckSigSchnorrSignature::new(public_nonce, signature);
-                    input_shares.insert(public_key, sig);
+                let mut script_signature_public_nonces = Vec::with_capacity(args.input_file_names.len());
+                let mut sender_offset_public_key_shares = Vec::with_capacity(args.input_file_names.len());
+                let mut metadata_ephemeral_public_key_shares = Vec::with_capacity(args.input_file_names.len());
+                let mut dh_shared_secret_shares = Vec::with_capacity(args.input_file_names.len());
+                for file_name in args.input_file_names {
+                    // Read party input
+                    let party_info =
+                        read_and_verify::<Step2OutputsForLeader>(&args.session_id, &file_name, &session_info)?;
+                    input_shares.insert(party_info.wallet_public_spend_key, party_info.script_input_signature);
+                    script_signature_public_nonces.push(party_info.public_script_nonce_key);
+                    sender_offset_public_key_shares.push(party_info.public_sender_offset_key);
+                    metadata_ephemeral_public_key_shares.push(party_info.public_sender_offset_nonce_key);
+                    dh_shared_secret_shares.push(party_info.dh_shared_secret_public_key);
                 }
 
                 match encumber_aggregate_utxo(
                     transaction_service.clone(),
-                    args.fee_per_gram,
-                    args.output_hash,
-                    Commitment::from_hex(&args.commitment)?,
+                    session_info.fee_per_gram,
+                    FixedHash::from_hex(&session_info.output_hash)
+                        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+                    Commitment::from_hex(&session_info.commitment_to_spend)?,
                     input_shares,
-                    args.script_signature_public_nonces
-                        .iter()
-                        .map(|v| v.clone().into())
-                        .collect::<Vec<_>>(),
-                    args.sender_offset_public_key_shares
-                        .iter()
-                        .map(|v| v.clone().into())
-                        .collect::<Vec<_>>(),
-                    args.metadata_ephemeral_public_key_shares
-                        .iter()
-                        .map(|v| v.clone().into())
-                        .collect::<Vec<_>>(),
-                    args.dh_shared_secret_shares
-                        .iter()
-                        .map(|v| v.clone().into())
-                        .collect::<Vec<_>>(),
-                    args.recipient_address,
+                    script_signature_public_nonces,
+                    sender_offset_public_key_shares,
+                    metadata_ephemeral_public_key_shares,
+                    dh_shared_secret_shares,
+                    session_info.recipient_address.clone(),
                 )
                 .await
                 {
@@ -818,178 +917,184 @@ pub async fn command_runner(
                         total_metadata_ephemeral_public_key,
                         total_script_nonce,
                     )) => {
-                        println!(
-                            "Encumbered aggregate UTXO:
-                                1.  tx_id: {},
-                                2.  input_commitment: {},
-                                3.  input_stack: {},
-                                4.  input_script: {},
-                                5.  total_script_key: {},
-                                6.  script_signature_ephemeral_commitment: {},
-                                7.  script_signature_ephemeral_pubkey: {},
-                                8.  output_commitment: {},
-                                9.  output_hash: {},
-                                10. sender_offset_pubkey: {},
-                                11. meta_signature_ephemeral_commitment: {},
-                                12. meta_signature_ephemeral_pubkey: {},
-                                13. total_public_offset: {},
-                                14. encrypted_data: {},
-                                15. output_features: {}",
-                            tx_id,
-                            transaction.body.inputs()[0].commitment().unwrap().to_hex(),
-                            transaction.body.inputs()[0].input_data.to_hex(),
-                            transaction.body.inputs()[0].script().unwrap().to_hex(),
-                            script_pubkey.to_hex(),
-                            transaction.body.inputs()[0]
+                        let out_dir = out_dir(&args.session_id)?;
+                        let step_3_outputs_for_self = Step3OutputsForSelf { tx_id };
+                        let out_file = out_dir.join(get_file_name(STEP_3_SELF, None));
+                        write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
+                        write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_self)?;
+
+                        let step_3_outputs_for_parties = Step3OutputsForParties {
+                            input_stack: transaction.body.inputs()[0].clone().input_data,
+                            input_script: transaction.body.inputs()[0].script().unwrap().clone(),
+                            total_script_key: script_pubkey,
+                            script_signature_ephemeral_commitment: transaction.body.inputs()[0]
                                 .script_signature
                                 .ephemeral_commitment()
-                                .to_hex(),
-                            total_script_nonce.to_hex(),
-                            transaction.body.outputs()[0].commitment().to_hex(),
-                            transaction.body.outputs()[0].hash().to_hex(),
-                            transaction.body.outputs()[0].sender_offset_public_key.to_hex(),
-                            transaction.body.outputs()[0]
+                                .clone(),
+                            script_signature_ephemeral_pubkey: total_script_nonce,
+                            output_commitment: transaction.body.outputs()[0].commitment().clone(),
+                            sender_offset_pubkey: transaction.body.outputs()[0].clone().sender_offset_public_key,
+                            metadata_signature_ephemeral_commitment: transaction.body.outputs()[0]
                                 .metadata_signature
                                 .ephemeral_commitment()
-                                .to_hex(),
-                            total_metadata_ephemeral_public_key.to_hex(),
-                            transaction.script_offset.to_hex(),
-                            transaction.body.outputs()[0].encrypted_data.to_hex(),
-                            serde_json::to_string(&transaction.body.outputs()[0].features)
-                                .unwrap_or("Could not serialize output features".to_string())
-                        )
-                    },
-                    Err(e) => println!("Encumber aggregate transaction error! {}", e),
-                }
-            },
-            FaucetSpendAggregateUtxo(args) => {
-                let mut offset = PrivateKey::default();
-                for key in args.script_offset_keys {
-                    let secret_key =
-                        PrivateKey::from_hex(&key).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                    offset = &offset + &secret_key;
-                }
+                                .clone(),
+                            metadata_signature_ephemeral_pubkey: total_metadata_ephemeral_public_key,
+                            encrypted_data: transaction.body.outputs()[0].clone().encrypted_data,
+                            output_features: transaction.body.outputs()[0].clone().features,
+                        };
+                        let out_file = out_dir.join(get_file_name(STEP_3_PARTIES, None));
+                        write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
+                        write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_parties)?;
 
-                match finalise_aggregate_utxo(
-                    transaction_service.clone(),
-                    args.tx_id,
-                    args.meta_signatures
-                        .iter()
-                        .map(|sgn| sgn.clone().into())
-                        .collect::<Vec<_>>(),
-                    args.script_signatures
-                        .iter()
-                        .map(|sgn| sgn.clone().into())
-                        .collect::<Vec<_>>(),
-                    offset,
-                )
-                .await
-                {
-                    Ok(_v) => println!("Transactions successfully completed"),
-                    Err(e) => println!("Error completing transaction! {}", e),
+                        println!();
+                        println!("Concluded step 3 'faucet-encumber-aggregate-utxo'");
+                        println!("Send '{}' to parties for step 4", get_file_name(STEP_3_PARTIES, None));
+                        println!();
+                    },
+                    Err(e) => eprintln!("\nError: Encumber aggregate transaction error! {}\n", e),
                 }
             },
-            FaucetCreateScriptSig(args) => {
-                let script = TariScript::from_hex(&args.input_script)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let input_data = ExecutionStack::from_hex(&args.input_stack)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let commitment =
-                    Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let ephemeral_pubkey = PublicKey::from(args.ephemeral_pubkey);
+            FaucetCreateInputOutputSigs(args) => {
+                // Read session info
+                let session_info = read_verify_session_info(&args.session_id)?;
+                // Read leader input
+                let leader_info = read_and_verify::<Step3OutputsForParties>(
+                    &args.session_id,
+                    &get_file_name(STEP_3_PARTIES, None),
+                    &session_info,
+                )?;
+                // Read own party info
+                let party_info = read_and_verify::<Step2OutputsForSelf>(
+                    &args.session_id,
+                    &get_file_name(STEP_2_SELF, None),
+                    &session_info,
+                )?;
+
+                // Script signature
                 let challenge = TransactionInput::build_script_signature_challenge(
                     &TransactionInputVersion::get_current_version(),
-                    &ephemeral_commitment,
-                    &ephemeral_pubkey,
-                    &script,
-                    &input_data,
-                    &args.total_script_key.into(),
-                    &commitment,
+                    &leader_info.script_signature_ephemeral_commitment,
+                    &leader_info.script_signature_ephemeral_pubkey,
+                    &leader_info.input_script,
+                    &leader_info.input_stack,
+                    &leader_info.total_script_key,
+                    &Commitment::from_hex(&session_info.commitment_to_spend)?,
                 );
 
-                match key_manager_service
-                    .sign_with_nonce_and_message(&args.private_key_id, &args.secret_nonce_key_id, &challenge)
-                    .await
-                {
-                    Ok(signature) => {
-                        println!(
-                            "Script signature created:
-                                1. signature: ({},{})",
-                            signature.get_signature().to_hex(),
-                            signature.get_public_nonce().to_hex(),
-                        )
-                    },
-                    Err(e) => eprintln!("SignMessage error! {}", e),
-                }
-            },
-            FaucetCreateMetaSig(args) => {
-                let offset = key_manager_service
-                    .get_script_offset(&vec![args.secret_script_key_id], &vec![args
-                        .secret_sender_offset_key_id
-                        .clone()])
-                    .await?;
-                let script = script!(PushPubKey(Box::new(args.recipient_address.public_spend_key().clone())));
-                let commitment =
-                    Commitment::from_hex(&args.commitment).map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let covenant = Covenant::default();
-                let encrypted_data = EncryptedData::from_hex(&args.encrypted_data)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let output_features = serde_json::from_str(&args.output_features)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let ephemeral_commitment = Commitment::from_hex(&args.ephemeral_commitment)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let ephemeral_pubkey = PublicKey::from_hex(&args.ephemeral_pubkey)
-                    .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
-                let minimum_value_promise = MicroMinotari::zero();
-                trace!(
-                    target: LOG_TARGET,
-                    "version: {:?}",
-                    TransactionOutputVersion::get_current_version()
-                );
-                trace!(target: LOG_TARGET, "script: {:?}", script);
-                trace!(target: LOG_TARGET, "output features: {:?}", output_features);
-                let offsetkey: PublicKey = args.total_meta_key.clone().into();
-                trace!(target: LOG_TARGET, "sender_offset_public_key: {:?}", offsetkey);
-                trace!(target: LOG_TARGET, "ephemeral_commitment: {:?}", ephemeral_commitment);
-                trace!(target: LOG_TARGET, "ephemeral_pubkey: {:?}", ephemeral_pubkey);
-                trace!(target: LOG_TARGET, "commitment: {:?}", commitment);
-                trace!(target: LOG_TARGET, "covenant: {:?}", covenant);
-                trace!(target: LOG_TARGET, "encrypted_value: {:?}", encrypted_data);
-                trace!(target: LOG_TARGET, "minimum_value_promise: {:?}", minimum_value_promise);
-                let challenge = TransactionOutput::build_metadata_signature_challenge(
-                    &TransactionOutputVersion::get_current_version(),
-                    &script,
-                    &output_features,
-                    &args.total_meta_key.into(),
-                    &ephemeral_commitment,
-                    &ephemeral_pubkey,
-                    &commitment,
-                    &covenant,
-                    &encrypted_data,
-                    minimum_value_promise,
-                );
-                trace!(target: LOG_TARGET, "meta challenge: {:?}", challenge);
+                let mut script_signature = Signature::default();
                 match key_manager_service
                     .sign_with_nonce_and_message(
-                        &args.secret_sender_offset_key_id,
-                        &args.secret_nonce_key_id,
+                        &party_info.wallet_spend_key_id,
+                        &party_info.script_nonce_key_id,
                         &challenge,
                     )
                     .await
                 {
                     Ok(signature) => {
-                        println!(
-                            "Metadata signature created:
-                            1. signature: ({},{}),
-                            2. script offset: {}",
-                            signature.get_signature().to_hex(),
-                            signature.get_public_nonce().to_hex(),
-                            offset.to_hex(),
-                        )
+                        script_signature = signature;
                     },
-                    Err(e) => eprintln!("SignMessage error! {}", e),
+                    Err(e) => eprintln!("\nError: Script signature SignMessage error! {}\n", e),
+                }
+
+                // Metadata signature
+                let script_offset = key_manager_service
+                    .get_script_offset(&vec![party_info.wallet_spend_key_id], &vec![party_info
+                        .sender_offset_key_id
+                        .clone()])
+                    .await?;
+                let challenge = TransactionOutput::build_metadata_signature_challenge(
+                    &TransactionOutputVersion::get_current_version(),
+                    &script!(PushPubKey(Box::new(
+                        session_info.recipient_address.public_spend_key().clone()
+                    ))),
+                    &leader_info.output_features,
+                    &leader_info.sender_offset_pubkey,
+                    &leader_info.metadata_signature_ephemeral_commitment,
+                    &leader_info.metadata_signature_ephemeral_pubkey,
+                    &leader_info.output_commitment,
+                    &Covenant::default(),
+                    &leader_info.encrypted_data,
+                    MicroMinotari::zero(),
+                );
+
+                let mut metadata_signature = Signature::default();
+                match key_manager_service
+                    .sign_with_nonce_and_message(
+                        &party_info.sender_offset_key_id,
+                        &party_info.sender_offset_nonce_key_id,
+                        &challenge,
+                    )
+                    .await
+                {
+                    Ok(signature) => {
+                        metadata_signature = signature;
+                    },
+                    Err(e) => eprintln!("\nError: Metadata signature SignMessage error! {}\n", e),
+                }
+
+                if script_signature.get_signature() == Signature::default().get_signature() ||
+                    metadata_signature.get_signature() == Signature::default().get_signature()
+                {
+                    eprintln!("\nError: Script and/or metadata signatures not created!\n")
+                } else {
+                    let step_4_outputs_for_leader = Step4OutputsForLeader {
+                        script_signature,
+                        metadata_signature,
+                        script_offset,
+                    };
+
+                    let out_dir = out_dir(&args.session_id)?;
+                    let out_file = out_dir.join(get_file_name(STEP_4_LEADER, Some(party_info.alias.clone())));
+                    write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
+                    write_json_object_to_file_as_line(&out_file, false, step_4_outputs_for_leader)?;
+
+                    println!();
+                    println!("Concluded step 4 'faucet-create-input-output-sigs'");
+                    println!(
+                        "Send '{}' to leader for step 5",
+                        get_file_name(STEP_4_LEADER, Some(party_info.alias))
+                    );
+                    println!();
+                }
+            },
+            FaucetSpendAggregateUtxo(args) => {
+                // Read session info
+                let session_info = read_verify_session_info(&args.session_id)?;
+
+                let mut metadata_signatures = Vec::with_capacity(args.input_file_names.len());
+                let mut script_signatures = Vec::with_capacity(args.input_file_names.len());
+                let mut offset = PrivateKey::default();
+                for file_name in args.input_file_names {
+                    // Read party input
+                    let party_info =
+                        read_and_verify::<Step4OutputsForLeader>(&args.session_id, &file_name, &session_info)?;
+                    metadata_signatures.push(party_info.metadata_signature);
+                    script_signatures.push(party_info.script_signature);
+                    offset = &offset + &party_info.script_offset;
+                }
+
+                // Read own party info
+                let leader_info = read_and_verify::<Step3OutputsForSelf>(
+                    &args.session_id,
+                    &get_file_name(STEP_3_SELF, None),
+                    &session_info,
+                )?;
+
+                match finalise_aggregate_utxo(
+                    transaction_service.clone(),
+                    leader_info.tx_id.as_u64(),
+                    metadata_signatures,
+                    script_signatures,
+                    offset,
+                )
+                .await
+                {
+                    Ok(_v) => {
+                        println!();
+                        println!("Concluded step 5 'faucet-spend-aggregate-utxo'");
+                        println!();
+                    },
+                    Err(e) => println!("\nError: Error completing transaction! {}\n", e),
                 }
             },
             SendMinotari(args) => {

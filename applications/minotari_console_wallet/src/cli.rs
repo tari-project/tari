@@ -28,14 +28,11 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
-use minotari_app_utilities::{
-    common_cli_args::CommonCliArgs,
-    utilities::{UniPublicKey, UniSignature},
-};
+use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{key_manager::TariKeyId, tari_amount, tari_amount::MicroMinotari};
+use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -119,11 +116,11 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    FaucetEncumberAggregateUtxo(FaucetEncumberAggregateUtxoArgs),
-    FaucetSpendAggregateUtxo(FaucetSpendAggregateUtxoArgs),
+    FaucetGenerateSessionInfo(FaucetGenerateSessionInfoArgs),
     FaucetCreatePartyDetails(FaucetCreatePartyDetailsArgs),
-    FaucetCreateScriptSig(FaucetCreateScriptSigArgs),
-    FaucetCreateMetaSig(FaucetCreateMetaSigArgs),
+    FaucetEncumberAggregateUtxo(FaucetEncumberAggregateUtxoArgs),
+    FaucetCreateInputOutputSigs(FaucetCreateInputOutputSigArgs),
+    FaucetSpendAggregateUtxo(FaucetSpendAggregateUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -166,47 +163,7 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetCreateKeyPairArgs {
-    #[clap(long)]
-    pub key_branch: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetCreateAggregateSignatureUtxoArgs {
-    #[clap(long)]
-    pub amount: MicroMinotari,
-    #[clap(long)]
-    pub fee_per_gram: MicroMinotari,
-    #[clap(long)]
-    pub n: u8,
-    #[clap(long)]
-    pub m: u8,
-    #[clap(long)]
-    pub message: String,
-    #[clap(long)]
-    pub maturity: u64,
-    #[clap(long)]
-    pub public_keys: Vec<UniPublicKey>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetCreatePartyDetailsArgs {
-    #[clap(long)]
-    pub commitment: String,
-    #[clap(long)]
-    pub recipient_address: TariAddress,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetSignMessageArgs {
-    #[clap(long)]
-    pub private_key_id: TariKeyId,
-    #[clap(long)]
-    pub challenge: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetEncumberAggregateUtxoArgs {
+pub struct FaucetGenerateSessionInfoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
@@ -214,75 +171,39 @@ pub struct FaucetEncumberAggregateUtxoArgs {
     #[clap(long)]
     pub output_hash: String,
     #[clap(long)]
-    pub script_input_shares: Vec<String>,
-    #[clap(long)]
-    pub script_public_key_shares: Vec<UniPublicKey>,
-    #[clap(long)]
-    pub script_signature_public_nonces: Vec<UniPublicKey>,
-    #[clap(long)]
-    pub sender_offset_public_key_shares: Vec<UniPublicKey>,
-    #[clap(long)]
-    pub metadata_ephemeral_public_key_shares: Vec<UniPublicKey>,
-    #[clap(long)]
-    pub dh_shared_secret_shares: Vec<UniPublicKey>,
-    #[clap(long)]
     pub recipient_address: TariAddress,
+    #[clap(long)]
+    pub verify_unspent_outputs: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetCreatePartyDetailsArgs {
+    #[clap(long)]
+    pub input_file: PathBuf,
+    #[clap(long)]
+    pub alias: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetEncumberAggregateUtxoArgs {
+    #[clap(long)]
+    pub session_id: String,
+    #[clap(long)]
+    pub input_file_names: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetCreateInputOutputSigArgs {
+    #[clap(long)]
+    pub session_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct FaucetSpendAggregateUtxoArgs {
     #[clap(long)]
-    pub tx_id: u64,
+    pub session_id: String,
     #[clap(long)]
-    pub meta_signatures: Vec<UniSignature>,
-    #[clap(long)]
-    pub script_signatures: Vec<UniSignature>,
-    #[clap(long)]
-    pub script_offset_keys: Vec<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetCreateScriptSigArgs {
-    #[clap(long)]
-    pub private_key_id: TariKeyId,
-    #[clap(long)]
-    pub secret_nonce_key_id: TariKeyId,
-    #[clap(long)]
-    pub input_script: String,
-    #[clap(long)]
-    pub input_stack: String,
-    #[clap(long)]
-    pub ephemeral_commitment: String,
-    #[clap(long)]
-    pub ephemeral_pubkey: UniPublicKey,
-    #[clap(long)]
-    pub total_script_key: UniPublicKey,
-    #[clap(long)]
-    pub commitment: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetCreateMetaSigArgs {
-    #[clap(long)]
-    pub secret_script_key_id: TariKeyId,
-    #[clap(long)]
-    pub secret_sender_offset_key_id: TariKeyId,
-    #[clap(long)]
-    pub secret_nonce_key_id: TariKeyId,
-    #[clap(long)]
-    pub ephemeral_commitment: String,
-    #[clap(long)]
-    pub ephemeral_pubkey: String,
-    #[clap(long)]
-    pub total_meta_key: UniPublicKey,
-    #[clap(long)]
-    pub commitment: String,
-    #[clap(long)]
-    pub encrypted_data: String,
-    #[clap(long)]
-    pub output_features: String,
-    #[clap(long)]
-    pub recipient_address: TariAddress,
+    pub input_file_names: Vec<String>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -298,10 +219,8 @@ pub struct MakeItRainArgs {
     pub increase_amount: MicroMinotari,
     #[clap(long, parse(try_from_str=parse_start_time))]
     pub start_time: Option<DateTime<Utc>>,
-    #[clap(short, long)]
-    pub one_sided: bool,
     #[clap(long, alias = "stealth-one-sided")]
-    pub stealth: bool,
+    pub one_sided: bool,
     #[clap(short, long)]
     pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
@@ -310,7 +229,7 @@ pub struct MakeItRainArgs {
 
 impl MakeItRainArgs {
     pub fn transaction_type(&self) -> MakeItRainTransactionType {
-        if self.stealth {
+        if self.one_sided {
             MakeItRainTransactionType::StealthOneSided
         } else if self.burn_tari {
             MakeItRainTransactionType::BurnTari
