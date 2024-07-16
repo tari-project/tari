@@ -79,8 +79,13 @@ impl<B: Backend> App<B> {
         base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Result<Self, ExitError> {
-        let wallet_address = wallet.get_wallet_address().await?;
-        let wallet_id = WalletIdentity::new(wallet.comms.node_identity(), wallet_address);
+        let wallet_address_interactive = wallet.get_wallet_interactive_address().await?;
+        let wallet_address_one_sided = wallet.get_wallet_one_sided_address().await?;
+        let wallet_id = WalletIdentity::new(
+            wallet.comms.node_identity(),
+            wallet_address_interactive,
+            wallet_address_one_sided,
+        );
         let app_state = AppState::new(
             &wallet_id,
             wallet,

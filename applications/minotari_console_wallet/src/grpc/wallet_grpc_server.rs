@@ -230,7 +230,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
         let address = self
             .wallet
-            .get_wallet_address()
+            .get_wallet_interactive_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetAddressResponse {
@@ -662,7 +662,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|err| Status::unknown(err.to_string()))?;
         let wallet_address = self
             .wallet
-            .get_wallet_address()
+            .get_wallet_interactive_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let transactions = transactions

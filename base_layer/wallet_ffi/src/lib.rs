@@ -5945,7 +5945,7 @@ pub unsafe extern "C" fn wallet_create(
 
     match w {
         Ok(w) => {
-            let wallet_address = match runtime.block_on(async { w.get_wallet_address().await }) {
+            let wallet_address = match runtime.block_on(async { w.get_wallet_interactive_address().await }) {
                 Ok(address) => address,
                 Err(e) => {
                     error = LibWalletError::from(e).code;
@@ -7652,7 +7652,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
             return ptr::null_mut();
         },
     };
-    let wallet_address = match runtime.block_on(async { (*wallet).wallet.get_wallet_address().await }) {
+    let wallet_address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
         Ok(address) => address,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -7946,7 +7946,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                 return ptr::null_mut();
             },
         };
-        let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_address().await }) {
+        let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
             Ok(address) => address,
             Err(e) => {
                 error = LibWalletError::from(e).code;
@@ -8029,7 +8029,7 @@ pub unsafe extern "C" fn wallet_get_tari_address(
             return ptr::null_mut();
         },
     };
-    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_address().await }) {
+    let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
         Ok(address) => address,
         Err(e) => {
             error = LibWalletError::from(e).code;

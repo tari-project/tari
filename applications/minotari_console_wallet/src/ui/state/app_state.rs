@@ -897,11 +897,10 @@ impl AppStateInner {
 
     pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
         let wallet_id = self.wallet.get_wallet_id().await?;
-        let eid = wallet_id.address.to_emoji_string();
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_id.network(),
-            wallet_id.address.to_base58()
+            wallet_id.address_interactive.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -913,7 +912,8 @@ impl AppStateInner {
             .skip(1)
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         let identity = MyIdentity {
-            tari_address: wallet_id.address.to_base58(),
+            tari_address_interactive: wallet_id.address_interactive.clone(),
+            tari_address_one_sided: wallet_id.address_one_sided.clone(),
             network_address: wallet_id
                 .node_identity
                 .public_addresses()
@@ -921,7 +921,6 @@ impl AppStateInner {
                 .map(|a| a.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            emoji_id: eid,
             qr_code: image,
             node_id: wallet_id.node_identity.node_id().to_string(),
         };
@@ -1234,11 +1233,10 @@ pub struct EventListItem {
 
 impl AppStateData {
     pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
-        let eid = wallet_identity.address.to_emoji_string();
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network(),
-            wallet_identity.address.to_base58()
+            wallet_identity.address_interactive.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -1251,7 +1249,8 @@ impl AppStateData {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
-            tari_address: wallet_identity.address.to_base58(),
+            tari_address_interactive: wallet_identity.address_interactive.clone(),
+            tari_address_one_sided: wallet_identity.address_one_sided.clone(),
             network_address: wallet_identity
                 .node_identity
                 .public_addresses()
@@ -1259,7 +1258,6 @@ impl AppStateData {
                 .map(|a| a.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            emoji_id: eid,
             qr_code: image,
             node_id: wallet_identity.node_identity.node_id().to_string(),
         };
@@ -1309,9 +1307,9 @@ impl AppStateData {
 
 #[derive(Clone)]
 pub struct MyIdentity {
-    pub tari_address: String,
+    pub tari_address_interactive: TariAddress,
+    pub tari_address_one_sided: TariAddress,
     pub network_address: String,
-    pub emoji_id: String,
     pub qr_code: String,
     pub node_id: String,
 }

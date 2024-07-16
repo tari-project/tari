@@ -89,7 +89,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
-    wallet_types::WalletType,
+    wallet_types::{ImportedWallet, WalletType},
 };
 use tari_comms::{
     message::EnvelopeBody,
@@ -169,7 +169,7 @@ use tokio::{
     task,
     time::sleep,
 };
-use tari_common_types::wallet_types::ImportedWallet;
+
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, setup_comms_services},
@@ -228,7 +228,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
     let wallet_type = WalletType::Imported(ImportedWallet {
-        public_spend_key: PublicKey::from_secret_key(&node_identity.secret_key()),
+        public_spend_key: PublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
     });
