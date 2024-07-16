@@ -23,7 +23,7 @@
 use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
-use tari_common_types::types::HashOutput;
+use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
 use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -31,7 +31,7 @@ use tokio::{
     sync::{broadcast, watch},
     task,
 };
-use tari_common_types::tari_address::TariAddress;
+
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,

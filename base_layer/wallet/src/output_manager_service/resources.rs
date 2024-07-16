@@ -23,12 +23,10 @@
 use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
 use tari_shutdown::ShutdownSignal;
 
-use crate::{
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::OutputManagerEventSender,
-        storage::database::OutputManagerDatabase,
-    },
+use crate::output_manager_service::{
+    config::OutputManagerServiceConfig,
+    handle::OutputManagerEventSender,
+    storage::database::OutputManagerDatabase,
 };
 
 /// This struct is a collection of the common resources that a async task in the service requires.

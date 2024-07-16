@@ -33,7 +33,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::{types::CommsDHKE};
+use tari_comms::types::CommsDHKE;
 use tari_core::{
     borsh::SerializedSize,
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
@@ -170,7 +170,6 @@ where
     }
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
-
         let request_stream = self
             .request_stream
             .take()
@@ -1236,10 +1235,7 @@ where
                     .key_manager
                     .sign_script_message(&self.resources.key_manager.get_spend_key().await?.0, &script_challange)
                     .await?;
-                script_input_shares.insert(
-                    self.resources.key_manager.get_spend_key().await?.1,
-                    self_signature,
-                );
+                script_input_shares.insert(self.resources.key_manager.get_spend_key().await?.1, self_signature);
 
                 // the order here is important, we need to add the signatures in the same order as public keys where
                 // added to the script originally

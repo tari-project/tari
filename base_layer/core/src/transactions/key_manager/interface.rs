@@ -25,10 +25,12 @@ use std::str::FromStr;
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::{
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+    COMMS,
+};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
-use tari_common_types::COMMS;
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
 use tari_script::CheckSigSchnorrSignature;
 
@@ -59,7 +61,6 @@ pub enum TxoStage {
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
-    Alpha = 0x01,
     MetadataEphemeralNonce = 0x02,
     CommitmentMask = 0x03,
     Nonce = 0x04,
@@ -75,7 +76,6 @@ impl TransactionKeyManagerBranch {
     pub fn get_branch_key(self) -> String {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
-            TransactionKeyManagerBranch::Alpha => "alpha".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
             TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
@@ -89,7 +89,6 @@ impl TransactionKeyManagerBranch {
     pub fn from_key(key: &str) -> Self {
         match key {
             "data encryption" => TransactionKeyManagerBranch::DataEncryption,
-            "alpha" => TransactionKeyManagerBranch::Alpha,
             "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
             "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
@@ -315,11 +314,6 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
-
-    async fn create_key_pair<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]

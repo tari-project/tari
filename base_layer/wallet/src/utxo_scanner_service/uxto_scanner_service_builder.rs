@@ -26,7 +26,7 @@ use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey, NodeIdentity};
 use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
-use tari_key_manager::key_manager_service::{KeyManagerServiceError};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -107,7 +107,6 @@ impl UtxoScannerServiceBuilder {
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
     ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, KeyManagerServiceError> {
-
         let (_view_key_id, view_key) = wallet.key_manager_service.get_view_key().await?;
         let tari_address = TariAddress::new_dual_address_with_default_features(
             view_key,
@@ -163,7 +162,6 @@ impl UtxoScannerServiceBuilder {
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
     ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity>, KeyManagerServiceError> {
-
         let (_view_key_id, view_key) = key_manager.get_view_key().await?;
         let tari_address =
             TariAddress::new_dual_address_with_default_features(view_key, node_identity.public_key().clone(), network);

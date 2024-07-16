@@ -46,7 +46,6 @@ use crate::transactions::{
     key_manager::{
         interface::{SecretTransactionKeyManagerInterface, TxoStage},
         TariKeyId,
-        TransactionKeyManagerBranch,
         TransactionKeyManagerInner,
         TransactionKeyManagerInterface,
     },
@@ -203,22 +202,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
-        let key_id = self.get_static_key(TransactionKeyManagerBranch::DataEncryption.get_branch_key())
-            .await?;
-        let key = self.get_public_key_at_key_id(&key_id).await?;
-        Ok((key_id, key))
+        self.transaction_key_manager_inner.read().await.get_view_key().await
     }
+
     async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
-        let key_id = self.get_static_key(TransactionKeyManagerBranch::Spend.get_branch_key())
-            .await?;
-        let key = self.get_public_key_at_key_id(&key_id).await?;
-        Ok((key_id, key))
+        self.transaction_key_manager_inner.read().await.get_spend_key().await
     }
+
     async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
-        let key_id = self.get_static_key(TransactionKeyManagerBranch::Spend.get_branch_key())
-            .await?;
-        let key = self.get_public_key_at_key_id(&key_id).await?;
-        Ok((key_id, key))
+        self.transaction_key_manager_inner.read().await.get_comms_key().await
     }
 
     async fn get_next_spend_and_script_key_ids(
@@ -548,17 +540,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
-            .await
-    }
-
-    async fn create_key_pair<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .write()
-            .await
-            .create_key_pair(&branch.into())
             .await
     }
 }

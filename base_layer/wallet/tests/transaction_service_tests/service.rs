@@ -71,7 +71,6 @@ use minotari_wallet::{
     },
     transaction_service::{
         config::TransactionServiceConfig,
-        error::TransactionServiceError,
         handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
         service::TransactionService,
         storage::{
@@ -170,7 +169,7 @@ use tokio::{
     task,
     time::sleep,
 };
-
+use tari_common_types::wallet_types::ImportedWallet;
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, setup_comms_services},
@@ -228,7 +227,11 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
-
+    let wallet_type = WalletType::Imported(ImportedWallet {
+        public_spend_key: PublicKey::from_secret_key(&node_identity.secret_key()),
+        private_spend_key: Some(node_identity.secret_key().clone()),
+        view_key: SK::random(&mut OsRng),
+    });
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -240,13 +243,12 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             oms_backend.clone(),
             factories.clone(),
             Network::LocalNet.into(),
-            node_identity.clone(),
         ))
         .add_initializer(TransactionKeyManagerInitializer::<KeyManagerSqliteDatabase<_>>::new(
             kms_backend,
             cipher,
             factories.clone(),
-            WalletType::default(),
+            wallet_type,
         ))
         .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {
@@ -393,8 +395,6 @@ async fn setup_transaction_service_no_comms(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         wallet_connectivity_service_mock.clone(),
-        node_identity.clone(),
-        Network::LocalNet,
         key_manager.clone(),
     )
     .await
@@ -1765,11 +1765,7 @@ async fn recover_one_sided_transaction() {
     let message = "".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let bob_view_key_id = bob_key_manager_handle.get_view_key_id().await.unwrap();
-    let bob_view_key = bob_key_manager_handle
-        .get_public_key_at_key_id(&bob_view_key_id)
-        .await
-        .unwrap();
+    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap().1;
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_view_key,
         bob_node_identity.public_key().clone(),
@@ -1874,11 +1870,7 @@ async fn recover_stealth_one_sided_transaction() {
         )
         .await;
 
-    let bob_view_key_id = bob_key_manager_handle.get_view_key_id().await.unwrap();
-    let bob_view_key = bob_key_manager_handle
-        .get_public_key_at_key_id(&bob_view_key_id)
-        .await
-        .unwrap();
+    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap().1;
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
@@ -2008,12 +2000,7 @@ async fn test_htlc_send_and_claim() {
     let message = "".to_string();
     let value = 10000.into();
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_view_key_id = bob_ts_interface.key_manager_handle.get_view_key_id().await.unwrap();
-    let bob_view_key = bob_ts_interface
-        .key_manager_handle
-        .get_public_key_at_key_id(&bob_view_key_id)
-        .await
-        .unwrap();
+    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap().1;
     let bob_address = TariAddress::new_dual_address_with_default_features(bob_view_key, bob_pubkey.clone(), network);
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
@@ -2076,89 +2063,6 @@ async fn test_htlc_send_and_claim() {
             .pending_incoming_balance,
         htlc_amount
     );
-}
-
-#[tokio::test]
-async fn send_one_sided_transaction_to_self() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
-    let factories = CryptoFactories::default();
-    // Alice's parameters
-    let alice_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
-        get_next_memory_address(),
-        PeerFeatures::COMMUNICATION_NODE,
-    ));
-
-    let base_node_identity = Arc::new(NodeIdentity::random(
-        &mut OsRng,
-        get_next_memory_address(),
-        PeerFeatures::COMMUNICATION_NODE,
-    ));
-
-    log::info!(
-        "manage_single_transaction: Alice: '{}', Base: '{}'",
-        alice_node_identity.node_id().short_str(),
-        base_node_identity.node_id().short_str()
-    );
-
-    let temp_dir = tempdir().unwrap();
-    let database_path = temp_dir.path().to_str().unwrap().to_string();
-
-    let alice_connection = make_wallet_database_memory_connection();
-
-    let shutdown = Shutdown::new();
-    let (alice_ts, alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
-        setup_transaction_service(
-            alice_node_identity.clone(),
-            vec![],
-            consensus_manager,
-            factories.clone(),
-            alice_connection,
-            database_path,
-            Duration::from_secs(0),
-            shutdown.to_signal(),
-        )
-        .await;
-
-    let initial_wallet_value = 2500.into();
-    let uo1 = make_input(
-        &mut OsRng,
-        initial_wallet_value,
-        &OutputFeatures::default(),
-        &key_manager_handle,
-    )
-    .await;
-    let mut alice_oms_clone = alice_oms;
-    alice_oms_clone.add_output(uo1.clone(), None).await.unwrap();
-    alice_db
-        .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
-        .unwrap();
-
-    let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
-    let value = 1000.into();
-    let mut alice_ts_clone = alice_ts;
-    let alice_address =
-        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
-    match alice_ts_clone
-        .send_one_sided_transaction(
-            alice_address,
-            value,
-            UtxoSelectionCriteria::default(),
-            OutputFeatures::default(),
-            20.into(),
-            message.clone(),
-            PaymentId::Empty,
-        )
-        .await
-    {
-        Err(TransactionServiceError::OneSidedTransactionError(e)) => {
-            assert_eq!(e.as_str(), "One-sided spend-to-self transactions not supported");
-        },
-        _ => {
-            panic!("Expected: OneSidedTransactionError(\"One-sided spend-to-self transactions not supported\")");
-        },
-    };
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
@@ -4318,12 +4222,7 @@ async fn test_restarting_transaction_protocols() {
     };
     let tx = bob_stp.get_transaction().unwrap().clone();
 
-    let bob_view_key_id = bob_ts_interface.key_manager_handle.get_view_key_id().await.unwrap();
-    let bob_view_key = bob_ts_interface
-        .key_manager_handle
-        .get_public_key_at_key_id(&bob_view_key_id)
-        .await
-        .unwrap();
+    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap().1;
     let bob_address =
         TariAddress::new_dual_address_with_default_features(bob_view_key, bob_identity.public_key().clone(), network);
     let inbound_tx = InboundTransaction {
@@ -4346,12 +4245,7 @@ async fn test_restarting_transaction_protocols() {
             Box::new(inbound_tx),
         )))
         .unwrap();
-    let alice_view_key_id = alice_ts_interface.key_manager_handle.get_view_key_id().await.unwrap();
-    let alice_view_key = alice_ts_interface
-        .key_manager_handle
-        .get_public_key_at_key_id(&alice_view_key_id)
-        .await
-        .unwrap();
+    let alice_view_key = alice_ts_interface.key_manager_handle.get_view_key().await.unwrap().1;
     let alice_address = TariAddress::new_dual_address_with_default_features(
         alice_view_key,
         alice_identity.public_key().clone(),

@@ -33,7 +33,7 @@ pub mod service;
 pub mod storage;
 mod tasks;
 
-use std::{marker::PhantomData};
+use std::marker::PhantomData;
 
 use futures::future;
 use log::*;

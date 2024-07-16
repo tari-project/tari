@@ -476,7 +476,6 @@ where
     }
 
     pub async fn get_wallet_address(&self) -> Result<TariAddress, WalletError> {
-
         let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
         Ok(TariAddress::new_dual_address_with_default_features(
             view_key.clone(),
@@ -486,7 +485,6 @@ where
     }
 
     pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
-
         let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
         let address = TariAddress::new_dual_address_with_default_features(
             view_key.clone(),

@@ -26,9 +26,10 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
+use tari_common_types::COMMS;
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
-use tari_common_types::COMMS;
+
 use crate::key_manager_service::error::KeyManagerServiceError;
 
 #[repr(u8)]

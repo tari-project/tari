@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::{HashMap, HashSet}, convert::TryInto, sync::Arc, time::{Duration, Instant}};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
@@ -136,7 +141,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    util::{watch::Watch},
+    util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
 };

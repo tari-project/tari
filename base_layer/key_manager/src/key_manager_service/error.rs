@@ -57,6 +57,8 @@ pub enum KeyManagerServiceError {
     LedgerViewKeyInaccessible,
     #[error("Tari Key Manager storage error: `{0}`")]
     StorageError(#[from] StorageError),
+    #[error("The imported private key cannot be accessed or read")]
+    ImportedPrivateKeyInaccessible,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

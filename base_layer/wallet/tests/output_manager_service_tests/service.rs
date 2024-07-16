@@ -42,7 +42,6 @@ use minotari_wallet::{
     transaction_service::handle::TransactionServiceHandle,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
@@ -171,8 +170,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
-        server_node_identity.clone(),
-        Network::LocalNet,
         key_manager.clone(),
     )
     .await
@@ -197,7 +194,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
     height: Option<u64>,
-    node_identity: Arc<NodeIdentity>,
 ) -> (
     OutputManagerHandle,
     Shutdown,
@@ -237,8 +233,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         connectivity,
-        node_identity.clone(),
-        Network::LocalNet,
         key_manager.clone(),
     )
     .await
@@ -388,12 +382,10 @@ async fn fee_estimate() {
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     // no chain metadata
-    let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(backend.clone(), None, server_node_identity).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), None).await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // no utxos - not enough funds
@@ -521,11 +513,9 @@ async fn test_utxo_selection_no_chain_metadata() {
 async fn test_utxo_selection_with_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
     let backend = OutputManagerSqliteDatabase::new(connection);
-    let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(backend.clone(), Some(6), server_node_identity).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), Some(6)).await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
 
     // no utxos - not enough funds
@@ -673,12 +663,9 @@ async fn test_utxo_selection_with_chain_metadata() {
 async fn test_utxo_selection_with_tx_priority() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
     // setup with chain metadata at a height of 6
     let backend = OutputManagerSqliteDatabase::new(connection);
-    let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(backend.clone(), Some(6), server_node_identity).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), Some(6)).await;
 
     let amount = MicroMinotari::from(2000);
     let fee_per_gram = MicroMinotari::from(2);

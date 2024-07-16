@@ -47,7 +47,7 @@ use minotari_wallet::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::watch::Watch,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -86,7 +86,6 @@ use tari_core::{
     },
     txn_schema,
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
@@ -159,11 +158,7 @@ pub async fn setup() -> (
     let shutdown = Shutdown::new();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
-    let view_key = core_key_manager_service_handle.get_view_key_id().await.unwrap();
-    let view_key = core_key_manager_service_handle
-        .get_public_key_at_key_id(&view_key)
-        .await
-        .unwrap();
+    let view_key = core_key_manager_service_handle.get_view_key().await.unwrap().1;
     let tari_address = TariAddress::new_dual_address_with_default_features(
         view_key,
         client_node_identity.public_key().clone(),
@@ -177,6 +172,7 @@ pub async fn setup() -> (
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
         tari_address,
+        node_identity: client_node_identity.clone(),
         consensus_manager,
         factories: CryptoFactories::default(),
         config: TransactionServiceConfig {
