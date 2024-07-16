@@ -35,7 +35,6 @@ use handlers::{
     get_public_key::handler_get_public_key,
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::handler_get_script_signature,
-    get_script_signature_from_challenge::handler_get_script_signature_from_challenge,
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
@@ -177,7 +176,6 @@ impl TryFrom<ApduHeader> for Instruction {
                 more: value.p2 == P2_MORE,
             }),
             (0x07, 0, 0) => Ok(Instruction::GetMetadataSignature),
-            (0x08, 0, 0) => Ok(Instruction::GetScriptSignatureFromChallenge),
             (0x09, 0, 0) => Ok(Instruction::GetViewKey),
             (0x10, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (0x06, _, _) => Err(AppSW::WrongP1P2),
@@ -226,7 +224,6 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
         Instruction::GetMetadataSignature => handler_get_metadata_signature(comm),
-        Instruction::GetScriptSignatureFromChallenge => handler_get_script_signature_from_challenge(comm),
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
     }
