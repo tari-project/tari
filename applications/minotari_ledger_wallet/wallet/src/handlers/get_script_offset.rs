@@ -24,7 +24,7 @@ pub struct ScriptOffsetCtx {
     account: u64,
     total_offset_indexes: u64,
     total_commitment_keys: u64,
-    all_keys: Vec<Zeroizing<RistrettoSecretKey>>,
+    unique_keys: Vec<Zeroizing<RistrettoSecretKey>>,
 }
 
 // Implement constructor for TxInfo with default values
@@ -36,7 +36,7 @@ impl ScriptOffsetCtx {
             account: 0,
             total_offset_indexes: 0,
             total_commitment_keys: 0,
-            all_keys: Vec::new(),
+            unique_keys: Vec::new(),
         }
     }
 
@@ -47,19 +47,13 @@ impl ScriptOffsetCtx {
         self.account = 0;
         self.total_offset_indexes = 0;
         self.total_commitment_keys = 0;
-        self.all_keys = Vec::new();
+        self.unique_keys = Vec::new();
     }
 
-    fn count_unique(&self) -> usize {
-        let mut unique = Vec::with_capacity(self.all_keys.len());
-
-        for item in self.all_keys.iter() {
-            if !unique.contains(item) {
-                unique.push(item.clone());
-            }
+    fn add_unique_key(&mut self, secret_key: Zeroizing<RistrettoSecretKey>) {
+        if !self.unique_keys.contains(&secret_key) {
+            self.unique_keys.push(secret_key);
         }
-
-        unique.len()
     }
 }
 
@@ -117,7 +111,7 @@ pub fn handler_get_script_offset(
         let index = u64::from_le_bytes(index_bytes);
 
         let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::SenderOffset)?;
-        offset_ctx.all_keys.push(offset.clone());
+        offset_ctx.add_unique_key(offset.clone());
         offset_ctx.total_sender_offset_private_key =
             Zeroizing::new(offset_ctx.total_sender_offset_private_key.deref() + offset.deref());
     }
@@ -131,7 +125,7 @@ pub fn handler_get_script_offset(
 
         let k = alpha_hasher(alpha, blinding_factor)?;
 
-        offset_ctx.all_keys.push(k.clone());
+        offset_ctx.add_unique_key(k.clone());
         offset_ctx.total_script_private_key = Zeroizing::new(offset_ctx.total_script_private_key.deref() + k.deref());
     }
 
@@ -139,7 +133,7 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    if offset_ctx.count_unique() < MIN_UNIQUE_KEYS {
+    if offset_ctx.unique_keys.len() < MIN_UNIQUE_KEYS {
         return Err(AppSW::ScriptOffsetNotUnique);
     }
 
