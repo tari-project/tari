@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
-
+use tari_common_types::COMMS;
 use crate::key_manager_service::error::KeyManagerServiceError;
 
 #[repr(u8)]
@@ -42,7 +42,7 @@ impl KeyManagerBranch {
     /// recovery.
     pub fn get_branch_key(self) -> String {
         match self {
-            KeyManagerBranch::Comms => "comms".to_string(),
+            KeyManagerBranch::Comms => COMMS.to_string(),
         }
     }
 }

@@ -33,11 +33,10 @@ pub mod service;
 pub mod storage;
 mod tasks;
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData};
 
 use futures::future;
 use log::*;
-use tari_comms::NodeIdentity;
 use tari_core::{
     consensus::NetworkConsensus,
     transactions::{
@@ -77,7 +76,6 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    node_identity: Arc<NodeIdentity>,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
@@ -89,14 +87,12 @@ where T: OutputManagerBackend + 'static
         backend: T,
         factories: CryptoFactories,
         network: NetworkConsensus,
-        node_identity: Arc<NodeIdentity>,
     ) -> Self {
         Self {
             config,
             backend: Some(backend),
             factories,
             network,
-            node_identity,
             phantom: PhantomData,
         }
     }
@@ -123,8 +119,6 @@ where
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
-        let node_identity = self.node_identity.clone();
-        let network = self.network.as_network();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -140,8 +134,6 @@ where
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity,
-                node_identity,
-                network,
                 key_manager,
             )
             .await

@@ -28,6 +28,7 @@ use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
+use tari_common_types::COMMS;
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
 use tari_script::CheckSigSchnorrSignature;
 
@@ -65,6 +66,7 @@ pub enum TransactionKeyManagerBranch {
     KernelNonce = 0x05,
     SenderOffset = 0x06,
     SenderOffsetLedger = 0x07,
+    Spend = 0x07,
 }
 
 impl TransactionKeyManagerBranch {
@@ -80,6 +82,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
             TransactionKeyManagerBranch::SenderOffsetLedger => "sender offset ledger".to_string(),
+            TransactionKeyManagerBranch::Spend => COMMS.to_string(),
         }
     }
 
@@ -93,6 +96,7 @@ impl TransactionKeyManagerBranch {
             "sender offset" => TransactionKeyManagerBranch::SenderOffset,
             "sender offset ledger" => TransactionKeyManagerBranch::SenderOffsetLedger,
             "nonce" => TransactionKeyManagerBranch::Nonce,
+            COMMS => TransactionKeyManagerBranch::Spend,
             _ => TransactionKeyManagerBranch::Nonce,
         }
     }
@@ -144,7 +148,11 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         value: u64,
     ) -> Result<bool, KeyManagerServiceError>;
 
-    async fn get_view_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError>;
+    async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+
+    async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+
+    async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
 
     async fn get_next_spend_and_script_key_ids(
         &self,

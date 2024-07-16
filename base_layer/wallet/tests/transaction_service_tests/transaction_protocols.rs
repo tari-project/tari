@@ -169,7 +169,6 @@ pub async fn setup() -> (
         client_node_identity.public_key().clone(),
         network,
     );
-    let wallet_identity = WalletIdentity::new(client_node_identity.clone(), tari_address);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -177,7 +176,7 @@ pub async fn setup() -> (
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
-        wallet_identity,
+        tari_address,
         consensus_manager,
         factories: CryptoFactories::default(),
         config: TransactionServiceConfig {

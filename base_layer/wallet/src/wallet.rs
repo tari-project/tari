@@ -201,7 +201,6 @@ where
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
-                node_identity.clone(),
             ))
             .add_initializer(TransactionKeyManagerInitializer::new(
                 key_manager_backend,
@@ -477,8 +476,8 @@ where
     }
 
     pub async fn get_wallet_address(&self) -> Result<TariAddress, WalletError> {
-        let view_key_id = self.key_manager_service.get_view_key_id().await?;
-        let view_key = self.key_manager_service.get_public_key_at_key_id(&view_key_id).await?;
+
+        let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
         Ok(TariAddress::new_dual_address_with_default_features(
             view_key.clone(),
             self.comms.node_identity().public_key().clone(),
@@ -487,8 +486,8 @@ where
     }
 
     pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
-        let view_key_id = self.key_manager_service.get_view_key_id().await?;
-        let view_key = self.key_manager_service.get_public_key_at_key_id(&view_key_id).await?;
+
+        let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
         let address = TariAddress::new_dual_address_with_default_features(
             view_key.clone(),
             self.comms.node_identity().public_key().clone(),

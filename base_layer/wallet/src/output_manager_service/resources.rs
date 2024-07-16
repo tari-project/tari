@@ -29,7 +29,6 @@ use crate::{
         handle::OutputManagerEventSender,
         storage::database::OutputManagerDatabase,
     },
-    util::wallet_identity::WalletIdentity,
 };
 
 /// This struct is a collection of the common resources that a async task in the service requires.
@@ -43,5 +42,4 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
-    pub wallet_identity: WalletIdentity,
 }

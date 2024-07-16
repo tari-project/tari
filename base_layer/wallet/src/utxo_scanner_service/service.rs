@@ -31,7 +31,7 @@ use tokio::{
     sync::{broadcast, watch},
     task,
 };
-
+use tari_common_types::tari_address::TariAddress;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
@@ -39,7 +39,6 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
-    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
@@ -194,7 +193,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
-    pub wallet_identity: WalletIdentity,
+    pub tari_address: TariAddress,
     pub factories: CryptoFactories,
     pub recovery_message: String,
     pub one_sided_payment_message: String,
