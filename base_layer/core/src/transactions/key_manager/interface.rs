@@ -61,12 +61,12 @@ pub enum TxoStage {
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
-    MetadataEphemeralNonce = 0x02,
-    CommitmentMask = 0x03,
-    Nonce = 0x04,
-    KernelNonce = 0x05,
-    SenderOffset = 0x06,
-    SenderOffsetLedger = 0x07,
+    MetadataEphemeralNonce = 0x01,
+    CommitmentMask = 0x02,
+    Nonce = 0x03,
+    KernelNonce = 0x04,
+    SenderOffset = 0x05,
+    SenderOffsetLedger = 0x06,
     Spend = 0x07,
 }
 

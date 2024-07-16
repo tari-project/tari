@@ -293,8 +293,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                     // If we're trying to access any of the private keys, just say no bueno
                     if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
-                        &TransactionKeyManagerBranch::SenderOffset.get_branch_key() == branch ||
-                        &TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key() == branch
+                        &TransactionKeyManagerBranch::SenderOffset.get_branch_key() == branch
                     {
                         return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
                     }
@@ -594,81 +593,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             trace!(target: LOG_TARGET, "Updated UTXO Key Index to {}", index);
         }
         Ok(())
-    }
-
-    pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
-        let public_key = PublicKey::from_secret_key(&private_key);
-        let hex_key = public_key.to_hex();
-        self.db.insert_imported_key(public_key.clone(), private_key)?;
-        trace!(target: LOG_TARGET, "Imported key {}", hex_key);
-        let key_id = KeyId::Imported { key: public_key };
-        Ok(key_id)
-    }
-
-    pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
-        match key_id {
-            KeyId::Managed { branch, index } => {
-                if let WalletType::Ledger(wallet) = &self.wallet_type {
-                    // In the event we're asking for the view key, and we use a ledger, reference the stored key
-                    if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
-                        return wallet
-                            .view_key
-                            .clone()
-                            .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible);
-                    }
-
-                    // If we're trying to access any of the private keys, just say no bueno
-                    if &TransactionKeyManagerBranch::Alpha.get_branch_key() == branch ||
-                        &TransactionKeyManagerBranch::SenderOffsetLedger.get_branch_key() == branch
-                    {
-                        debug!(target: LOG_TARGET, "Attempted to access private key for branch {branch:?}");
-                        return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
-                    }
-                };
-
-                let km = self
-                    .key_managers
-                    .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                    .read()
-                    .await;
-                let key = km.get_private_key(*index)?;
-                Ok(key)
-            },
-            KeyId::Derived { branch, label, index } => match &self.wallet_type {
-                WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
-                WalletType::Software => {
-                    let km = self
-                        .key_managers
-                        .get(&TransactionKeyManagerBranch::Alpha.get_branch_key())
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                        .read()
-                        .await;
-
-                    let private_alpha = km.get_private_key(0)?;
-
-                    let km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                        .read()
-                        .await;
-                    let branch_key = km.get_private_key(*index)?;
-                    let hasher = Self::get_domain_hasher(label)?;
-                    let hasher = hasher.chain(branch_key.as_bytes()).finalize();
-                    let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                        KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", label))
-                    })?;
-                    let private_key = private_key + private_alpha;
-                    Ok(private_key)
-                },
-            },
-            KeyId::Imported { key } => {
-                let pvt_key = self.db.get_imported_key(key)?;
-                Ok(pvt_key)
-            },
-            KeyId::Zero => Ok(PrivateKey::default()),
-        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------
