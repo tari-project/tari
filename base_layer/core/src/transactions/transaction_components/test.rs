@@ -127,7 +127,7 @@ async fn range_proof_verification() {
     let tx_output1 = wallet_output1.to_transaction_output(&key_manager).await.unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
     let input_data = inputs!(test_params_2.script_key_pk.clone());
-    let wallet_output2 = WalletOutputBuilder::new((2u64.pow(32) + 1u64).into(), test_params_2.spend_key_id.clone())
+    let wallet_output2 = WalletOutputBuilder::new((2u64.pow(32) + 1u64).into(), test_params_2.mask_key_id.clone())
         .with_features(OutputFeatures::default())
         .with_script(script![Nop])
         .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
@@ -566,7 +566,7 @@ async fn test_output_recover_openings() {
 
     let (mask, value, _) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
     assert_eq!(value, wallet_output.value);
-    assert_eq!(mask, test_params.spend_key_id);
+    assert_eq!(mask, test_params.mask_key_id);
 }
 
 mod validate_internal_consistency {

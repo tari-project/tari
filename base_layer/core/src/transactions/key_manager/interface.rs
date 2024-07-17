@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
+use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
 use tari_script::CheckSigSchnorrSignature;
 
 use crate::transactions::{
@@ -147,15 +147,15 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         value: u64,
     ) -> Result<bool, KeyManagerServiceError>;
 
-    async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
     async fn get_next_spend_and_script_key_ids(
         &self,
-    ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError>;
+    ) -> Result<(KeyAndId<PublicKey>, KeyAndId<PublicKey>), KeyManagerServiceError>;
 
     async fn find_script_key_id_from_spend_key_id(
         &self,

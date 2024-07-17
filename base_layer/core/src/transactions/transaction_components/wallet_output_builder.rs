@@ -46,7 +46,7 @@ use crate::{
 pub struct WalletOutputBuilder {
     version: TransactionOutputVersion,
     value: MicroMinotari,
-    spending_key_id: TariKeyId,
+    mask_key_id: TariKeyId,
     features: OutputFeatures,
     script: Option<TariScript>,
     script_lock_height: u64,
@@ -65,11 +65,11 @@ pub struct WalletOutputBuilder {
 
 #[allow(dead_code)]
 impl WalletOutputBuilder {
-    pub fn new(value: MicroMinotari, spending_key_id: TariKeyId) -> Self {
+    pub fn new(value: MicroMinotari, mask_key_id: TariKeyId) -> Self {
         Self {
             version: TransactionOutputVersion::get_current_version(),
             value,
-            spending_key_id,
+            mask_key_id,
             features: OutputFeatures::default(),
             script: None,
             script_lock_height: 0,
@@ -125,7 +125,7 @@ impl WalletOutputBuilder {
     ) -> Result<Self, TransactionError> {
         self.encrypted_data = key_manager
             .encrypt_data_for_recovery(
-                &self.spending_key_id,
+                &self.mask_key_id,
                 custom_recovery_key_id,
                 self.value.as_u64(),
                 payment_id,
@@ -185,7 +185,7 @@ impl WalletOutputBuilder {
         );
         let metadata_signature = key_manager
             .get_metadata_signature(
-                &self.spending_key_id,
+                &self.mask_key_id,
                 &self.value.into(),
                 sender_offset_key_id,
                 &self.version,
@@ -226,14 +226,14 @@ impl WalletOutputBuilder {
         let aggregate_sender_offset_public_key =
             aggregated_sender_offset_public_key_shares + &sender_offset_public_key_self;
 
-        let (ephemeral_private_nonce_id, ephemeral_pubkey_self) = key_manager
+        let ephemeral_pubkey_self = key_manager
             .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
-        let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + ephemeral_pubkey_self;
+        let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + &ephemeral_pubkey_self.key;
 
         let receiver_partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
-                &self.spending_key_id,
+                &self.mask_key_id,
                 &self.value.into(),
                 &aggregate_sender_offset_public_key,
                 &aggregate_ephemeral_pubkey,
@@ -244,7 +244,7 @@ impl WalletOutputBuilder {
             .await?;
 
         let commitment = key_manager
-            .get_commitment(&self.spending_key_id, &self.value.into())
+            .get_commitment(&self.mask_key_id, &self.value.into())
             .await?;
         let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
@@ -256,7 +256,7 @@ impl WalletOutputBuilder {
             &metadata_message,
         );
         let sender_partial_metadata_signature_self = key_manager
-            .sign_with_nonce_and_message(sender_offset_key_id, &ephemeral_private_nonce_id, &challenge)
+            .sign_with_nonce_and_message(sender_offset_key_id, &ephemeral_pubkey_self.key_id, &challenge)
             .await?;
 
         let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature_self;
@@ -285,7 +285,7 @@ impl WalletOutputBuilder {
         let ub = WalletOutput::new(
             self.version,
             self.value,
-            self.spending_key_id,
+            self.mask_key_id,
             self.features,
             self.script
                 .ok_or_else(|| TransactionError::BuilderError("script must be set".to_string()))?,
@@ -319,25 +319,25 @@ mod test {
     #[tokio::test]
     async fn test_try_build() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (mask_key, script_key_id) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let value = MicroMinotari(100);
-        let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
+        let kmob = WalletOutputBuilder::new(value, mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
-        let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
+        let sender_offset_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
+        let kmob = kmob.with_sender_offset_public_key(sender_offset_key.key);
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
-        let kmob = kmob.with_script_key(script_key_id);
+        let kmob = kmob.with_script_key(script_key_id.key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset_key.key_id)
             .await
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
@@ -345,13 +345,13 @@ mod test {
                 let output = val.to_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
                 assert!(key_manager
-                    .verify_mask(output.commitment(), &spending_key_id, value.into())
+                    .verify_mask(output.commitment(), &mask_key.key_id, value.into())
                     .await
                     .unwrap());
 
                 let (recovered_key_id, recovered_value, _) =
                     key_manager.try_output_key_recovery(&output, None).await.unwrap();
-                assert_eq!(recovered_key_id, spending_key_id);
+                assert_eq!(recovered_key_id, mask_key.key_id);
                 assert_eq!(recovered_value, value);
             },
             Err(e) => panic!("{}", e),
@@ -361,23 +361,23 @@ mod test {
     #[tokio::test]
     async fn test_partial_metadata_signatures() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (mask_key, script_key) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let value = MicroMinotari(100);
-        let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
+        let kmob = WalletOutputBuilder::new(value, mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
-        let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
+        let sender_offset_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
+        let kmob = kmob.with_sender_offset_public_key(sender_offset_key.key);
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
-        let kmob = kmob.with_script_key(script_key_id);
+        let kmob = kmob.with_script_key(script_key.key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
             .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset_key.key_id)
             .await
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
@@ -386,7 +386,7 @@ mod test {
                 assert!(output.verify_metadata_signature().is_ok());
 
                 // Now we can swap out the metadata signature for one built from partial sender and receiver signatures
-                let (ephemeral_pubkey_id, ephemeral_pubkey) = key_manager
+                let ephemeral_key = key_manager
                     .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
                     .await
                     .unwrap();
@@ -397,7 +397,7 @@ mod test {
                         &wallet_output.spending_key_id,
                         &wallet_output.value.into(),
                         &wallet_output.sender_offset_public_key,
-                        &ephemeral_pubkey,
+                        &ephemeral_key.key,
                         &wallet_output.version,
                         &metadata_message,
                         wallet_output.features.range_proof_type,
@@ -411,8 +411,8 @@ mod test {
                     .unwrap();
                 let sender_metadata_signature = key_manager
                     .get_sender_partial_metadata_signature(
-                        &ephemeral_pubkey_id,
-                        &sender_offset_private_key_id,
+                        &ephemeral_key.key_id,
+                        &sender_offset_key.key_id,
                         &commitment,
                         receiver_metadata_signature.ephemeral_commitment(),
                         &wallet_output.version,

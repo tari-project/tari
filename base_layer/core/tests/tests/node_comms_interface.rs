@@ -289,7 +289,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             script!(PushPubKey(Box::new(script_public_key))),
             ExecutionStack::default(),
             change.script_key_id,
-            change.spend_key_id,
+            change.mask_key_id,
             Covenant::default(),
         );
 
@@ -297,11 +297,11 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         stx_builder.with_input(tx_input.clone()).await.unwrap();
     }
     for tx_output in txn_schema.to {
-        let (spending_key, _) = key_manager
+        let mask_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
-        let (sender_offset_key_id, sender_offset_public_key) = key_manager
+        let sender_offset_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
@@ -309,7 +309,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         let script_key_id = KeyId::Derived {
             branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
             label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: spending_key.managed_index().unwrap(),
+            index: mask_key.key_id.managed_index().unwrap(),
         };
 
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
@@ -321,7 +321,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             Some(data) => data,
             None => TransactionOutputVersion::get_current_version(),
         };
-        let output = WalletOutputBuilder::new(tx_output, spending_key)
+        let output = WalletOutputBuilder::new(tx_output, mask_key.key_id)
             .with_features(txn_schema.features.clone())
             .with_script(txn_schema.script.clone())
             .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
@@ -330,19 +330,19 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .with_input_data(input_data)
             .with_covenant(txn_schema.covenant.clone())
             .with_version(version)
-            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_sender_offset_public_key(sender_offset_key.key)
             .with_script_key(script_key_id.clone())
-            .sign_as_sender_and_receiver(key_manager, &sender_offset_key_id)
+            .sign_as_sender_and_receiver(key_manager, &sender_offset_key.key_id)
             .await
             .unwrap()
             .try_build(key_manager)
             .await
             .unwrap();
 
-        stx_builder.with_output(output, sender_offset_key_id).await.unwrap();
+        stx_builder.with_output(output, sender_offset_key.key_id).await.unwrap();
     }
     for mut utxo in txn_schema.to_outputs {
-        let (sender_offset_key_id, _) = key_manager
+        let sender_offset_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
@@ -351,7 +351,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .get_metadata_signature(
                 &utxo.spending_key_id,
                 &utxo.value.into(),
-                &sender_offset_key_id,
+                &sender_offset_key.key_id,
                 &utxo.version,
                 &metadata_message,
                 utxo.features.range_proof_type,
@@ -359,7 +359,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .await
             .unwrap();
 
-        stx_builder.with_output(utxo, sender_offset_key_id).await.unwrap();
+        stx_builder.with_output(utxo, sender_offset_key.key_id).await.unwrap();
     }
 
     stx_builder

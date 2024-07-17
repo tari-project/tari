@@ -39,29 +39,29 @@ use crate::types::{PrivateKey, PublicKey};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum WalletType {
     #[default]
-    Software,
+    DerivedKeys,
     Ledger(LedgerWallet),
-    Imported(ImportedWallet),
+    ProvidedKeys(ProvidedKeysWallet),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::Software => write!(f, "Software"),
+            WalletType::DerivedKeys => write!(f, "Derived wallet"),
             WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
-            WalletType::Imported(imported_wallet) => write!(f, "Imported({imported_wallet})"),
+            WalletType::ProvidedKeys(provided_keys_wallet) => write!(f, "Provided Keys ({provided_keys_wallet})"),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImportedWallet {
+pub struct ProvidedKeysWallet {
     pub public_spend_key: PublicKey,
     pub private_spend_key: Option<PrivateKey>,
     pub view_key: PrivateKey,
 }
 
-impl Display for ImportedWallet {
+impl Display for ProvidedKeysWallet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "public spend key {}", self.public_spend_key)?;
         write!(f, "public view key{}", PublicKey::from_secret_key(&self.view_key))?;

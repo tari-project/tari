@@ -278,7 +278,7 @@ async fn generate_sender_transaction_message(
         script!(Nop),
         inputs!(change.script_key_pk),
         change.script_key_id,
-        change.spend_key_id,
+        change.mask_key_id,
         Covenant::default(),
     );
 
@@ -2158,7 +2158,7 @@ async fn scan_for_recovery_test() {
     let mut recoverable_wallet_outputs = Vec::new();
 
     for i in 1..=NUM_RECOVERABLE {
-        let (spending_key_result, _) = oms
+        let mask_key = oms
             .key_manager_handle
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
@@ -2166,7 +2166,7 @@ async fn scan_for_recovery_test() {
         let script_key_id = KeyId::Derived {
             branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
             label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: spending_key_result.managed_index().unwrap(),
+            index: mask_key.key_id.managed_index().unwrap(),
         };
         let public_script_key = oms
             .key_manager_handle
@@ -2178,13 +2178,13 @@ async fn scan_for_recovery_test() {
         let features = OutputFeatures::default();
         let encrypted_data = oms
             .key_manager_handle
-            .encrypt_data_for_recovery(&spending_key_result, None, amount, PaymentId::Empty)
+            .encrypt_data_for_recovery(&mask_key.key_id, None, amount, PaymentId::Empty)
             .await
             .unwrap();
 
         let uo = WalletOutput::new_current_version(
             MicroMinotari::from(amount),
-            spending_key_result,
+            mask_key.key_id,
             features,
             script!(Nop),
             inputs!(public_script_key),

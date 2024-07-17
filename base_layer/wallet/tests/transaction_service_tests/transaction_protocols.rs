@@ -52,7 +52,7 @@ use minotari_wallet::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
 use tari_comms::{
@@ -158,12 +158,22 @@ pub async fn setup() -> (
     let shutdown = Shutdown::new();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
-    let view_key = core_key_manager_service_handle.get_view_key().await.unwrap().1;
-    let tari_address = TariAddress::new_dual_address_with_default_features(
-        view_key,
-        client_node_identity.public_key().clone(),
+    let view_key = core_key_manager_service_handle.get_view_key().await.unwrap();
+    let comms_key = core_key_manager_service_handle.get_comms_key().await.unwrap();
+    let spend_key = core_key_manager_service_handle.get_spend_key().await.unwrap();
+    let interactive_features = if spend_key == comms_key {
+        TariAddressFeatures::create_interactive_and_one_sided()
+    } else {
+        TariAddressFeatures::create_one_sided_only()
+    };
+    let one_sided_tari_address = TariAddress::new_dual_address(
+        view_key.key.clone(),
+        comms_key.key,
         network,
+        TariAddressFeatures::create_one_sided_only(),
     );
+    let interactive_tari_address =
+        TariAddress::new_dual_address(view_key.key, spend_key.key, network, interactive_features);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -171,7 +181,8 @@ pub async fn setup() -> (
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
-        tari_address,
+        one_sided_tari_address,
+        interactive_tari_address,
         node_identity: client_node_identity.clone(),
         consensus_manager,
         factories: CryptoFactories::default(),

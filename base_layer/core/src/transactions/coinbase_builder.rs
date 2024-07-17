@@ -282,7 +282,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &metadata.kernel_features,
             &metadata.burn_commitment,
         );
-        let (public_nonce_id, public_nonce) = self
+        let public_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
@@ -293,8 +293,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .key_manager
             .get_partial_txo_kernel_signature(
                 &spending_key_id,
-                &public_nonce_id,
-                &public_nonce,
+                &public_nonce.key_id,
+                &public_nonce.key,
                 &public_spend_key,
                 &kernel_version,
                 &kernel_message,
@@ -441,12 +441,12 @@ pub async fn generate_coinbase_with_wallet_output(
     range_proof_type: RangeProofType,
     payment_id: PaymentId,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
-    let (sender_offset_key_id, _) = key_manager
+    let sender_offset = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await?;
     let shared_secret = key_manager
         .get_diffie_hellman_shared_secret(
-            &sender_offset_key_id,
+            &sender_offset.key_id,
             wallet_payment_address
                 .public_view_key()
                 .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
@@ -462,7 +462,7 @@ pub async fn generate_coinbase_with_wallet_output(
     let script_spending_pubkey = if stealth_payment {
         let c = key_manager
             .get_diffie_hellman_stealth_domain_hasher(
-                &sender_offset_key_id,
+                &sender_offset.key_id,
                 wallet_payment_address
                     .public_view_key()
                     .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
@@ -478,7 +478,7 @@ pub async fn generate_coinbase_with_wallet_output(
         .with_fees(fee)
         .with_spend_key_id(spending_key_id)
         .with_encryption_key_id(encryption_key_id)
-        .with_sender_offset_key_id(sender_offset_key_id)
+        .with_sender_offset_key_id(sender_offset.key_id)
         .with_script_key_id(script_key_id.clone())
         .with_script(script)
         .with_extra(extra.to_vec())
@@ -594,7 +594,7 @@ mod test {
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
@@ -612,7 +612,7 @@ mod test {
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
         let commitment = key_manager
-            .get_commitment(&p.spend_key_id, &block_reward.into())
+            .get_commitment(&p.mask_key_id, &block_reward.into())
             .await
             .unwrap();
         assert_eq!(&commitment, utxo.commitment());
@@ -649,7 +649,7 @@ mod test {
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
-            .with_spend_key_id(p.spend_key_id)
+            .with_spend_key_id(p.mask_key_id)
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
@@ -688,7 +688,7 @@ mod test {
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
@@ -707,7 +707,7 @@ mod test {
         let builder = builder
             .with_block_height(4_200_000)
             .with_fees(1 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
@@ -743,7 +743,7 @@ mod test {
         let builder = builder
             .with_block_height(42)
             .with_fees(missing_fee)
-            .with_spend_key_id(p.spend_key_id)
+            .with_spend_key_id(p.mask_key_id)
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
@@ -797,7 +797,7 @@ mod test {
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
@@ -818,7 +818,7 @@ mod test {
         let builder = builder
             .with_block_height(4200000)
             .with_fees(1 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
@@ -840,7 +840,7 @@ mod test {
         let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
         assert!(coinbase_kernel2.is_coinbase());
         coinbase_kernel2.features = KernelFeatures::empty();
-        let (new_nonce, nonce) = key_manager
+        let new_nonce = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
@@ -852,14 +852,14 @@ mod test {
             &None,
         );
         let excess = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &new_nonce)
+            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &new_nonce.key_id)
             .await
             .unwrap();
         let sig = key_manager
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
-                &new_nonce,
-                &nonce,
+                &new_nonce.key_id,
+                &new_nonce.key,
                 &excess,
                 &TransactionKernelVersion::get_current_version(),
                 &kernel_message,
@@ -870,12 +870,12 @@ mod test {
             .unwrap();
         // we verify that the created signature is correct
         let offset = key_manager
-            .get_txo_private_kernel_offset(&output.spending_key_id, &new_nonce)
+            .get_txo_private_kernel_offset(&output.spending_key_id, &new_nonce.key_id)
             .await
             .unwrap();
         let sig_challenge = TransactionKernel::finalize_kernel_signature_challenge(
             &TransactionKernelVersion::get_current_version(),
-            &nonce,
+            &new_nonce.key,
             &excess,
             &kernel_message,
         );
@@ -937,7 +937,7 @@ mod test {
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
@@ -958,7 +958,7 @@ mod test {
         let builder = builder
             .with_block_height(4200000)
             .with_fees(1 * uT)
-            .with_spend_key_id(p.spend_key_id.clone())
+            .with_spend_key_id(p.mask_key_id.clone())
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
@@ -994,15 +994,15 @@ mod test {
         body1.verify_kernel_signatures().unwrap_err();
 
         // lets create a new kernel with a correct signature
-        let (new_nonce1, nonce1) = key_manager
+        let new_nonce1 = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let (new_nonce2, nonce2) = key_manager
+        let new_nonce2 = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let nonce = &nonce1 + &nonce2;
+        let nonce = &new_nonce1.key + &new_nonce2.key;
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
             kernel_1.fee,
@@ -1014,7 +1014,7 @@ mod test {
         let mut kernel_signature = key_manager
             .get_partial_txo_kernel_signature(
                 &wo1.spending_key_id,
-                &new_nonce1,
+                &new_nonce1.key_id,
                 &nonce,
                 excess.as_public_key(),
                 &TransactionKernelVersion::get_current_version(),
@@ -1028,7 +1028,7 @@ mod test {
             &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
-                    &new_nonce2,
+                    &new_nonce2.key_id,
                     &nonce,
                     excess.as_public_key(),
                     &TransactionKernelVersion::get_current_version(),

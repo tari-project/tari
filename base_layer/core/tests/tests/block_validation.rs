@@ -283,7 +283,7 @@ async fn inputs_are_not_malleable() {
     let mut malicious_test_params = TestParams::new(&blockchain.key_manager).await;
 
     // Oh noes - they've managed to get hold of the private script and spend keys
-    malicious_test_params.spend_key_id = spent_output.spending_key_id;
+    malicious_test_params.mask_key_id = spent_output.spending_key_id;
     let modified_so = blockchain
         .key_manager
         .get_script_offset(&vec![spent_output.script_key_id.clone()], &vec![malicious_test_params

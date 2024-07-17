@@ -84,16 +84,18 @@ mod test {
         let mut total_private_key = PrivateKey::default();
 
         for _ in 0..num_faucets {
-            let (spend_key_id, _spend_key_pk, script_key_id, _script_key_pk) =
-                key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-            total_private_key = total_private_key + &key_manager.get_private_key(&spend_key_id).await.unwrap();
-            let commitment = key_manager.get_commitment(&spend_key_id, &amount.into()).await.unwrap();
+            let (mask_key_id, script_key) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+            total_private_key = total_private_key + &key_manager.get_private_key(&mask_key_id.key_id).await.unwrap();
+            let commitment = key_manager
+                .get_commitment(&mask_key_id.key_id, &amount.into())
+                .await
+                .unwrap();
             let com_hash: [u8; 32] = DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
                 .chain(&commitment)
                 .finalize()
                 .into();
 
-            let (sender_offset_key_id, sender_offset_key_pk) = key_manager
+            let sender_offset_key = key_manager
                 .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await
                 .unwrap();
@@ -103,7 +105,7 @@ mod test {
                 list_of_spend_keys.clone(),
                 Box::new(com_hash),
             )]);
-            let output = WalletOutputBuilder::new(amount, spend_key_id)
+            let output = WalletOutputBuilder::new(amount, mask_key_id.key_id)
                 .with_features(OutputFeatures::new(
                     OutputFeaturesVersion::get_current_version(),
                     OutputType::Standard,
@@ -118,10 +120,10 @@ mod test {
                 .unwrap()
                 .with_input_data(ExecutionStack::default())
                 .with_version(TransactionOutputVersion::get_current_version())
-                .with_sender_offset_public_key(sender_offset_key_pk)
-                .with_script_key(script_key_id)
+                .with_sender_offset_public_key(sender_offset_key.key)
+                .with_script_key(script_key.key_id)
                 .with_minimum_value_promise(amount)
-                .sign_as_sender_and_receiver(&key_manager, &sender_offset_key_id)
+                .sign_as_sender_and_receiver(&key_manager, &sender_offset_key.key_id)
                 .await
                 .unwrap()
                 .try_build(&key_manager)

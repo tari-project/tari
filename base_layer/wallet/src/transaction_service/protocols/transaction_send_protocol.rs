@@ -593,7 +593,7 @@ where
 
         let completed_transaction = CompletedTransaction::new(
             tx_id,
-            self.resources.tari_address.clone(),
+            self.resources.interactive_tari_address.clone(),
             outbound_tx.destination_address,
             outbound_tx.amount,
             outbound_tx.fee,

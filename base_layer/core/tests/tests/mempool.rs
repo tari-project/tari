@@ -1219,17 +1219,17 @@ async fn consensus_validation_large_tx() {
     let amount_per_output = (amount - fee) / output_count as u64;
     let amount_for_last_output = (amount - fee) - amount_per_output * (output_count as u64 - 1);
     let mut wallet_outputs = Vec::with_capacity(output_count);
-    let (input_kernel_nonce, mut pub_nonce) = key_manager
+    let input_kernel_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
     let mut pub_excess = PublicKey::default() -
         key_manager
-            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce)
+            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let mut sender_offsets = Vec::new();
-
+    let mut pub_nonce = input_kernel_nonce.key.clone();
     for i in 0..output_count {
         let test_params = TestParams::new(&key_manager).await;
         let output_amount = if i < output_count - 1 {
@@ -1294,13 +1294,13 @@ async fn consensus_validation_large_tx() {
 
     offset = &offset -
         &key_manager
-            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce)
+            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
             &input.spending_key_id,
-            &input_kernel_nonce,
+            &input_kernel_nonce.key_id,
             &pub_nonce,
             &pub_excess,
             &kernel_version,
@@ -1387,13 +1387,13 @@ async fn validation_reject_min_fee() {
 
     let fee = 0.into();
 
-    let (input_kernel_nonce, mut pub_nonce) = key_manager
+    let input_kernel_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
     let mut pub_excess = PublicKey::default() -
         key_manager
-            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce)
+            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let mut sender_offsets = Vec::new();
@@ -1416,7 +1416,7 @@ async fn validation_reject_min_fee() {
             )
             .await
             .unwrap();
-    pub_nonce = pub_nonce + test_params.kernel_nonce_key_pk;
+    let pub_nonce = input_kernel_nonce.key + test_params.kernel_nonce_key_pk;
     sender_offsets.push(test_params.sender_offset_key_id.clone());
 
     let mut agg_sig = Signature::default();
@@ -1454,13 +1454,13 @@ async fn validation_reject_min_fee() {
 
     offset = &offset -
         &key_manager
-            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce)
+            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
             &input.spending_key_id,
-            &input_kernel_nonce,
+            &input_kernel_nonce.key_id,
             &pub_nonce,
             &pub_excess,
             &kernel_version,

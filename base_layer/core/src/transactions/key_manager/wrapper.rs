@@ -35,6 +35,7 @@ use tari_key_manager::{
     key_manager_service::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase},
         AddResult,
+        KeyAndId,
         KeyManagerInterface,
         KeyManagerServiceError,
     },
@@ -111,7 +112,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn get_next_key<T: Into<String> + Send>(
         &self,
         branch: T,
-    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+    ) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -119,7 +120,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_random_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+    async fn get_random_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_random_key().await
     }
 
@@ -201,21 +202,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+    async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_view_key().await
     }
 
-    async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+    async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_spend_key().await
     }
 
-    async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+    async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_comms_key().await
     }
 
     async fn get_next_spend_and_script_key_ids(
         &self,
-    ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError> {
+    ) -> Result<(KeyAndId<PublicKey>, KeyAndId<PublicKey>), KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await

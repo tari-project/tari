@@ -104,17 +104,17 @@ where
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
-            let (_view_key_id, view_key) = key_manager
+            let view_key = key_manager
                 .get_view_key()
                 .await
                 .expect("Could not initialize UTXO scanner Service");
-            let (_spend_key_id, spend_key) = key_manager
+            let spend_key = key_manager
                 .get_spend_key()
                 .await
                 .expect("Could not initialize UTXO scanner Service");
             let one_sided_tari_address = TariAddress::new_dual_address(
-                view_key,
-                spend_key,
+                view_key.key,
+                spend_key.key,
                 network,
                 TariAddressFeatures::create_one_sided_only(),
             );
