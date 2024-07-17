@@ -57,6 +57,7 @@ use tari_crypto::{
 use tari_hashing::KeyManagerTransactionsHashDomain;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
+    error::KeyManagerError,
     key_manager::KeyManager,
     key_manager_service::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
@@ -684,7 +685,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         match &self.wallet_type {
             WalletType::Ledger(ledger) => match secret_key_id {
                 KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
-                    TransactionKeyManagerBranch::SenderOffsetLedger => {
+                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
                         #[cfg(not(feature = "ledger"))]
                         {
                             Err(TransactionError::LedgerNotSupported(format!(
@@ -727,7 +728,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         match &self.wallet_type {
             WalletType::Ledger(ledger) => match secret_key_id {
                 KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
-                    TransactionKeyManagerBranch::SenderOffsetLedger => {
+                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
                         #[cfg(not(feature = "ledger"))]
                         {
                             Err(TransactionError::LedgerNotSupported(format!(
@@ -1259,6 +1260,82 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await?;
         let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature;
         Ok(metadata_signature)
+    }
+
+    pub async fn get_metadata_signature_one_sided(
+        &self,
+        spending_key_id: &TariKeyId,
+        value_as_private_key: &PrivateKey,
+        sender_offset_key_id: &TariKeyId,
+        txo_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        if let WalletType::Ledger(ledger) = &self.wallet_type {
+            #[cfg(not(feature = "ledger"))]
+            {
+                return Err(KeyManagerServiceError::LedgerError(
+                    "Ledger is not supported".to_string(),
+                ));
+            }
+
+            #[cfg(feature = "ledger")]
+            {
+                let sender_offset_key_index =
+                    sender_offset_key_id
+                        .managed_index()
+                        .ok_or(TransactionError::KeyManagerError(
+                            KeyManagerError::InvalidKeyID.to_string(),
+                        ))?;
+
+                let spend_key_id = spending_key_id
+                    .managed_index()
+                    .ok_or(TransactionError::KeyManagerError(
+                        KeyManagerError::InvalidKeyID.to_string(),
+                    ))?;
+
+                let mut data = u64::from(ledger.network.as_byte()).to_le_bytes().to_vec();
+                data.extend_from_slice(&u64::from(txo_version.as_u8()).to_le_bytes());
+                data.extend_from_slice(&spend_key_id.to_le_bytes());
+                data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+                data.extend_from_slice(&value_as_private_key.to_vec());
+                data.extend_from_slice(&metadata_signature_message.to_vec());
+
+                let command = ledger.build_command(Instruction::GetOneSidedMetadataSignature, data);
+                let transport = get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+
+                match command.execute_with_transport(&transport) {
+                    Ok(result) => {
+                        if result.data().len() < 161 {
+                            debug!(target: LOG_TARGET, "result less than 161");
+                            return Err(LedgerDeviceError::Processing(format!(
+                                "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes \
+                                 ({:?})",
+                                result.data().len(),
+                                result
+                            ))
+                            .into());
+                        }
+                        let data = result.data();
+                        debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
+                        Ok(ComAndPubSignature::new(
+                            Commitment::from_canonical_bytes(&data[1..33])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PublicKey::from_canonical_bytes(&data[33..65])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[65..97])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[97..129])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                            PrivateKey::from_canonical_bytes(&data[129..161])
+                                .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
+                        ))
+                    },
+                    Err(e) => {
+                        Err(LedgerDeviceError::Instruction(format!("GetOneSidedMetadataSignature: {}", e)).into())
+                    },
+                }
+            }
+        }
     }
 
     pub async fn get_receiver_partial_metadata_signature(

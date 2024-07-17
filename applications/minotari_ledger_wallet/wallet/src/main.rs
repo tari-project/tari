@@ -15,6 +15,7 @@ mod app_ui {
 }
 mod handlers {
     pub mod get_dh_shared_secret;
+    pub mod get_one_sided_metadata_signature;
     pub mod get_public_key;
     pub mod get_public_spend_key;
     pub mod get_schnorr_signature;
@@ -30,6 +31,8 @@ use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
+    get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
+    get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
     get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
@@ -242,6 +245,7 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetPublicSpendKey => handler_get_public_spend_key(comm),
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
+        Instruction::GetScriptSignatureFromChallenge => handler_get_one_sided_metadata_signature(comm),
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
         Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),

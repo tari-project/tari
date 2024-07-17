@@ -1916,7 +1916,7 @@ where
         let key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::SenderOffsetLedger.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
             .await?;
 
         stp.change_recipient_sender_offset_private_key(key.key_id)?;
