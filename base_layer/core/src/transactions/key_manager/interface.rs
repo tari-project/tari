@@ -27,7 +27,7 @@ use digest::consts::U64;
 use strum_macros::EnumIter;
 use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
-    COMMS,
+    WALLET_COMMS_AND_SPEND_KEY_BRANCH,
 };
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
@@ -82,7 +82,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
             TransactionKeyManagerBranch::SenderOffsetLedger => "sender offset ledger".to_string(),
-            TransactionKeyManagerBranch::Spend => COMMS.to_string(),
+            TransactionKeyManagerBranch::Spend => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
         }
     }
 
@@ -95,7 +95,7 @@ impl TransactionKeyManagerBranch {
             "sender offset" => TransactionKeyManagerBranch::SenderOffset,
             "sender offset ledger" => TransactionKeyManagerBranch::SenderOffsetLedger,
             "nonce" => TransactionKeyManagerBranch::Nonce,
-            COMMS => TransactionKeyManagerBranch::Spend,
+            WALLET_COMMS_AND_SPEND_KEY_BRANCH => TransactionKeyManagerBranch::Spend,
             _ => TransactionKeyManagerBranch::Nonce,
         }
     }

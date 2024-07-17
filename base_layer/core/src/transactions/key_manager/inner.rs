@@ -62,7 +62,7 @@ use tari_key_manager::{
     },
 };
 use tari_script::CheckSigSchnorrSignature;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::ByteArray;
 use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
@@ -281,38 +281,37 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
-                // ledger has special rules here
-                if let WalletType::Ledger(wallet) = &self.wallet_type {
-                    // In the event we're asking for the view key, and we use a ledger, reference the stored key
-                    if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
-                        return wallet
-                            .view_key
-                            .clone()
-                            .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible);
-                    }
+                match &self.wallet_type {
+                    WalletType::Software => {},
+                    WalletType::Ledger(wallet) => {
+                        if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                            return wallet
+                                .view_key
+                                .clone()
+                                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible);
+                        }
 
-                    // If we're trying to access any of the private keys, just say no bueno
-                    if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
-                        &TransactionKeyManagerBranch::SenderOffset.get_branch_key() == branch
-                    {
-                        return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
-                    }
-                };
+                        // If we're trying to access any of the private keys, just say no bueno
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::SenderOffset.get_branch_key() == branch
+                        {
+                            return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
+                        }
+                    },
+                    WalletType::Imported(wallet) => {
+                        if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
+                            return Ok(wallet.view_key.clone());
+                        }
 
-                // imported wallet type has special rules here
-                if let WalletType::Imported(wallet) = &self.wallet_type {
-                    if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
-                        return Ok(wallet.view_key.clone());
-                    }
-
-                    // If we're trying to access any of the private keys, just say no bueno
-                    if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
-                        return wallet
-                            .private_spend_key
-                            .clone()
-                            .ok_or(KeyManagerServiceError::ImportedPrivateKeyInaccessible);
-                    }
-                };
+                        // If we're trying to access any of the private keys, just say no bueno
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
+                            return wallet
+                                .private_spend_key
+                                .clone()
+                                .ok_or(KeyManagerServiceError::ImportedPrivateKeyInaccessible);
+                        }
+                    },
+                }
 
                 let km = self
                     .key_managers
@@ -436,9 +435,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         let public_key = PublicKey::from_secret_key(&private_key);
-        let hex_key = public_key.to_hex();
         self.db.insert_imported_key(public_key.clone(), private_key)?;
-        trace!(target: LOG_TARGET, "Imported key {}", hex_key);
         let key_id = KeyId::Imported { key: public_key };
         Ok(key_id)
     }

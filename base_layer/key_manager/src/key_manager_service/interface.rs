@@ -26,7 +26,7 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
-use tari_common_types::COMMS;
+use tari_common_types::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
@@ -43,7 +43,7 @@ impl KeyManagerBranch {
     /// recovery.
     pub fn get_branch_key(self) -> String {
         match self {
-            KeyManagerBranch::Comms => COMMS.to_string(),
+            KeyManagerBranch::Comms => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
         }
     }
 }

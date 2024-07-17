@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // This is the string used to derive the comms/spend key of the wallet
-pub const COMMS: &str = "comms";
+pub const WALLET_COMMS_AND_SPEND_KEY_BRANCH: &str = "comms";
 
 pub mod burnt_proof;
 pub mod chain_metadata;
