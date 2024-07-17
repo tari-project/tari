@@ -61,7 +61,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, WalletOutput},
         CryptoFactories,
@@ -193,16 +193,20 @@ async fn setup(
         scanner_service_builder.with_recovery_message(message);
     }
 
+    let (_view_key_id, view_key) = key_manager.get_view_key().await.unwrap();
+    let tari_address = TariAddress::new_dual_address_with_default_features(
+        view_key,
+        node_identity.public_key().clone(),
+        Network::default(),
+    );
     let scanner_service = scanner_service_builder
-        .build_with_resources(
+        .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager>(
             wallet_db.clone(),
             comms_connectivity,
             wallet_connectivity_mock,
             oms_handle,
             ts_handle,
-            key_manager,
-            node_identity.clone(),
-            Network::default(),
+            tari_address,
             factories,
             shutdown.to_signal(),
             event_sender,
@@ -210,8 +214,7 @@ async fn setup(
             one_sided_message_watch_receiver,
             recovery_message_watch_receiver,
         )
-        .await
-        .unwrap();
+        .await;
 
     UtxoScannerTestInterface {
         scanner_service: Some(scanner_service),

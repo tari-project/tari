@@ -82,11 +82,11 @@ impl<B: Backend> App<B> {
         let wallet_address_interactive = wallet
             .get_wallet_interactive_address()
             .await
-            .map_err(|e| WalletError::KeyManagerServiceError(e))?;
+            .map_err(WalletError::KeyManagerServiceError)?;
         let wallet_address_one_sided = wallet
             .get_wallet_one_sided_address()
             .await
-            .map_err(|e| WalletError::KeyManagerServiceError(e))?;
+            .map_err(WalletError::KeyManagerServiceError)?;
         let wallet_id = WalletIdentity::new(
             wallet.comms.node_identity(),
             wallet_address_interactive,
