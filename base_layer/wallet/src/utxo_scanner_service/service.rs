@@ -193,7 +193,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
-    pub tari_address: TariAddress,
+    pub one_sided_tari_address: TariAddress,
     pub factories: CryptoFactories,
     pub recovery_message: String,
     pub one_sided_payment_message: String,

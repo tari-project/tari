@@ -29,7 +29,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     Frame,
 };
-
+use minotari_wallet::error::WalletError;
 use crate::{
     notifier::Notifier,
     ui::{
@@ -79,8 +79,8 @@ impl<B: Backend> App<B> {
         base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Result<Self, ExitError> {
-        let wallet_address_interactive = wallet.get_wallet_interactive_address().await?;
-        let wallet_address_one_sided = wallet.get_wallet_one_sided_address().await?;
+        let wallet_address_interactive = wallet.get_wallet_interactive_address().await.map_err(|e| WalletError::KeyManagerServiceError(e))?;
+        let wallet_address_one_sided = wallet.get_wallet_one_sided_address().await.map_err(|e| WalletError::KeyManagerServiceError(e))?;
         let wallet_id = WalletIdentity::new(
             wallet.comms.node_identity(),
             wallet_address_interactive,

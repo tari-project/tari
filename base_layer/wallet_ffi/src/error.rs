@@ -35,6 +35,7 @@ use tari_crypto::{
 };
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use thiserror::Error;
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
 
@@ -522,6 +523,16 @@ impl From<MnemonicError> for LibWalletError {
         error!(target: LOG_TARGET, "{}", format!("{:?}", err));
         Self {
             code: 910,
+            message: format!("{:?}", err),
+        }
+    }
+}
+
+impl From<KeyManagerServiceError> for LibWalletError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        Self {
+            code: 458,
             message: format!("{:?}", err),
         }
     }

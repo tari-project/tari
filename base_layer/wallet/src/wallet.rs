@@ -81,7 +81,7 @@ use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
-
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::WalletConfig,
@@ -242,7 +242,6 @@ where
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 factories.clone(),
-                node_identity.clone(),
                 config.network,
             ));
 
@@ -477,7 +476,7 @@ where
         }
     }
 
-    pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, WalletError> {
+    pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
         let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
         let (_comms_key_id, comms_key) = self.key_manager_service.get_comms_key().await?;
         let features = match self.wallet_type {
@@ -492,7 +491,7 @@ where
         ))
     }
 
-    pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, WalletError> {
+    pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
         let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
         let (_spend_key_id, spend_key) = self.key_manager_service.get_spend_key().await?;
         Ok(TariAddress::new_dual_address(
