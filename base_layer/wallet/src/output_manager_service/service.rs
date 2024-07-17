@@ -28,13 +28,12 @@ use digest::consts::U32;
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::{types::CommsDHKE, NodeIdentity};
+use tari_comms::types::CommsDHKE;
 use tari_core::{
     borsh::SerializedSize,
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
@@ -111,7 +110,6 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
-    util::wallet_identity::WalletIdentity,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -149,15 +147,8 @@ where
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
-        node_identity: Arc<NodeIdentity>,
-        network: Network,
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
-        let view_key = key_manager.get_view_key_id().await?;
-        let view_key = key_manager.get_public_key_at_key_id(&view_key).await?;
-        let tari_address =
-            TariAddress::new_dual_address_with_default_features(view_key, node_identity.public_key().clone(), network);
-        let wallet_identity = WalletIdentity::new(node_identity.clone(), tari_address);
         let resources = OutputManagerResources {
             config,
             db,
@@ -167,7 +158,6 @@ where
             key_manager,
             consensus_constants,
             shutdown_signal,
-            wallet_identity,
         };
 
         Ok(Self {
@@ -180,13 +170,6 @@ where
     }
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
-        // we need to ensure the wallet identity secret key is stored in the key manager
-        let _key_id = self
-            .resources
-            .key_manager
-            .import_key(self.resources.wallet_identity.node_identity.secret_key().clone())
-            .await?;
-
         let request_stream = self
             .request_stream
             .take()
@@ -1250,12 +1233,9 @@ where
                 let self_signature = self
                     .resources
                     .key_manager
-                    .sign_script_message(&self.resources.wallet_identity.wallet_node_key_id, &script_challange)
+                    .sign_script_message(&self.resources.key_manager.get_spend_key().await?.0, &script_challange)
                     .await?;
-                script_input_shares.insert(
-                    self.resources.wallet_identity.address.public_spend_key().clone(),
-                    self_signature,
-                );
+                script_input_shares.insert(self.resources.key_manager.get_spend_key().await?.1, self_signature);
 
                 // the order here is important, we need to add the signatures in the same order as public keys where
                 // added to the script originally
@@ -1263,7 +1243,7 @@ where
                     if let Some(signature) = script_input_shares.get(&key) {
                         script_signatures.push(StackItem::Signature(signature.clone()));
                         // our own key should not be added yet, it will be added with the script signing
-                        if &key != self.resources.wallet_identity.address.public_spend_key() {
+                        if key != self.resources.key_manager.get_spend_key().await?.1 {
                             aggregated_script_public_key_shares = aggregated_script_public_key_shares + key;
                         }
                     }
@@ -1276,7 +1256,7 @@ where
                     output.features,
                     output.script,
                     ExecutionStack::new(script_signatures),
-                    self.resources.wallet_identity.wallet_node_key_id.clone(), // Only of the master wallet
+                    self.resources.key_manager.get_spend_key().await?.0, // Only of the master wallet
                     output.sender_offset_public_key,
                     output.metadata_signature,
                     0,
@@ -1435,7 +1415,7 @@ where
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_script_key(self.resources.key_manager.get_spend_key().await?.0)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
                 &self.resources.key_manager,
@@ -2477,7 +2457,7 @@ where
             .resources
             .key_manager
             .get_diffie_hellman_shared_secret(
-                &self.resources.key_manager.get_view_key_id().await?,
+                &self.resources.key_manager.get_view_key().await?.0,
                 &output.sender_offset_public_key,
             )
             .await?;
@@ -2494,7 +2474,7 @@ where
                     output.features,
                     output.script,
                     inputs!(pre_image),
-                    self.resources.wallet_identity.wallet_node_key_id.clone(),
+                    self.resources.key_manager.get_spend_key().await?.0,
                     output.sender_offset_public_key,
                     output.metadata_signature,
                     // Although the technically the script does have a script lock higher than 0, this does not apply
@@ -2689,9 +2669,8 @@ where
             ));
         }
 
-        let wallet_sk = self.resources.wallet_identity.wallet_node_key_id.clone();
-        let wallet_pk = self.resources.key_manager.get_public_key_at_key_id(&wallet_sk).await?;
-        let wallet_view_key = self.resources.key_manager.get_view_key_id().await?;
+        let (wallet_sk, wallet_pk) = self.resources.key_manager.get_spend_key().await?;
+        let (wallet_view_key, _) = self.resources.key_manager.get_view_key().await?;
 
         let mut scanned_outputs = vec![];
 

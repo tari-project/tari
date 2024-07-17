@@ -20,13 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey, NodeIdentity};
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
-use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -39,7 +36,6 @@ use crate::{
         sqlite_db::wallet::WalletSqliteDatabase,
     },
     transaction_service::handle::TransactionServiceHandle,
-    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
         service::{UtxoScannerResources, UtxoScannerService},
@@ -108,17 +104,7 @@ impl UtxoScannerServiceBuilder {
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
     ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, KeyManagerServiceError> {
-        let view_key_id = wallet.key_manager_service.get_view_key_id().await?;
-        let view_key = wallet
-            .key_manager_service
-            .get_public_key_at_key_id(&view_key_id)
-            .await?;
-        let tari_address = TariAddress::new_dual_address_with_default_features(
-            view_key,
-            wallet.comms.node_identity().public_key().clone(),
-            wallet.network.as_network(),
-        );
-        let wallet_identity = WalletIdentity::new(wallet.comms.node_identity(), tari_address);
+        let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
             comms_connectivity: wallet.comms.connectivity(),
@@ -126,7 +112,7 @@ impl UtxoScannerServiceBuilder {
             current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
-            wallet_identity,
+            one_sided_tari_address,
             factories: wallet.factories.clone(),
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
@@ -158,21 +144,14 @@ impl UtxoScannerServiceBuilder {
         wallet_connectivity: TWalletConnectivity,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
-        key_manager: TKeyManagerInterface,
-        node_identity: Arc<NodeIdentity>,
-        network: Network,
+        one_sided_tari_address: TariAddress,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
-    ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity>, KeyManagerServiceError> {
-        let view_key_id = key_manager.get_view_key_id().await?;
-        let view_key = key_manager.get_public_key_at_key_id(&view_key_id).await?;
-        let tari_address =
-            TariAddress::new_dual_address_with_default_features(view_key, node_identity.public_key().clone(), network);
-        let wallet_identity = WalletIdentity::new(node_identity.clone(), tari_address);
+    ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
         let resources = UtxoScannerResources {
             db,
             comms_connectivity,
@@ -180,13 +159,13 @@ impl UtxoScannerServiceBuilder {
             wallet_connectivity,
             output_manager_service,
             transaction_service,
-            wallet_identity,
+            one_sided_tari_address,
             factories,
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
         };
 
-        Ok(UtxoScannerService::new(
+        UtxoScannerService::new(
             self.peers.drain(..).collect(),
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
@@ -196,6 +175,6 @@ impl UtxoScannerServiceBuilder {
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
-        ))
+        )
     }
 }

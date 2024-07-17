@@ -30,32 +30,39 @@ use tari_core::transactions::key_manager::TariKeyId;
 #[derive(Clone, Debug)]
 pub struct WalletIdentity {
     pub node_identity: Arc<NodeIdentity>,
-    pub address: TariAddress,
+    pub address_interactive: TariAddress,
+    pub address_one_sided: TariAddress,
     pub wallet_node_key_id: TariKeyId,
 }
 
 impl WalletIdentity {
-    pub fn new(node_identity: Arc<NodeIdentity>, address: TariAddress) -> Self {
+    pub fn new(
+        node_identity: Arc<NodeIdentity>,
+        address_interactive: TariAddress,
+        address_one_sided: TariAddress,
+    ) -> Self {
         let wallet_node_key_id = TariKeyId::Imported {
             key: node_identity.public_key().clone(),
         };
         WalletIdentity {
             node_identity,
-            address,
+            address_interactive,
+            address_one_sided,
             wallet_node_key_id,
         }
     }
 
     pub fn network(&self) -> Network {
-        self.address.network()
+        self.address_interactive.network()
     }
 }
 
 impl Display for WalletIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.node_identity)?;
-        writeln!(f, "Tari Address: {}", self.address)?;
-        writeln!(f, "Network: {:?}", self.address.network())?;
+        writeln!(f, "Tari Address interactive: {}", self.address_interactive)?;
+        writeln!(f, "Tari Address one-sided: {}", self.address_one_sided)?;
+        writeln!(f, "Network: {:?}", self.address_interactive.network())?;
         Ok(())
     }
 }

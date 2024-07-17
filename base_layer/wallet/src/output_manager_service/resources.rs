@@ -23,13 +23,10 @@
 use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
 use tari_shutdown::ShutdownSignal;
 
-use crate::{
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::OutputManagerEventSender,
-        storage::database::OutputManagerDatabase,
-    },
-    util::wallet_identity::WalletIdentity,
+use crate::output_manager_service::{
+    config::OutputManagerServiceConfig,
+    handle::OutputManagerEventSender,
+    storage::database::OutputManagerDatabase,
 };
 
 /// This struct is a collection of the common resources that a async task in the service requires.
@@ -43,5 +40,4 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
-    pub wallet_identity: WalletIdentity,
 }

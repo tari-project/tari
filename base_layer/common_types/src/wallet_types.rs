@@ -32,6 +32,7 @@ use ledger_transport::APDUCommand;
 use minotari_ledger_wallet_comms::ledger_wallet::{Command, Instruction};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
 use crate::types::{PrivateKey, PublicKey};
 
@@ -40,6 +41,7 @@ pub enum WalletType {
     #[default]
     Software,
     Ledger(LedgerWallet),
+    Imported(ImportedWallet),
 }
 
 impl Display for WalletType {
@@ -47,7 +49,23 @@ impl Display for WalletType {
         match self {
             WalletType::Software => write!(f, "Software"),
             WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
+            WalletType::Imported(imported_wallet) => write!(f, "Imported({imported_wallet})"),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportedWallet {
+    pub public_spend_key: PublicKey,
+    pub private_spend_key: Option<PrivateKey>,
+    pub view_key: PrivateKey,
+}
+
+impl Display for ImportedWallet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "public spend key {}", self.public_spend_key)?;
+        write!(f, "public view key{}", PublicKey::from_secret_key(&self.view_key))?;
+        Ok(())
     }
 }
 

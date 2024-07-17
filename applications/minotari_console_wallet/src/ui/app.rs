@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use minotari_wallet::{util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
+use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::ExitError;
 use tari_comms::peer_manager::Peer;
 use tokio::runtime::Handle;
@@ -79,8 +79,19 @@ impl<B: Backend> App<B> {
         base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Result<Self, ExitError> {
-        let wallet_address = wallet.get_wallet_address().await?;
-        let wallet_id = WalletIdentity::new(wallet.comms.node_identity(), wallet_address);
+        let wallet_address_interactive = wallet
+            .get_wallet_interactive_address()
+            .await
+            .map_err(WalletError::KeyManagerServiceError)?;
+        let wallet_address_one_sided = wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(WalletError::KeyManagerServiceError)?;
+        let wallet_id = WalletIdentity::new(
+            wallet.comms.node_identity(),
+            wallet_address_interactive,
+            wallet_address_one_sided,
+        );
         let app_state = AppState::new(
             &wallet_id,
             wallet,

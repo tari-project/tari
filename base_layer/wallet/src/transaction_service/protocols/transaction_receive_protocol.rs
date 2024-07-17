@@ -435,7 +435,7 @@ where
             let completed_transaction = CompletedTransaction::new(
                 self.id,
                 self.source_address.clone(),
-                self.resources.wallet_identity.address.clone(),
+                self.resources.tari_address.clone(),
                 inbound_tx.amount,
                 finalized_transaction
                     .body

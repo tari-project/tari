@@ -636,7 +636,7 @@ where
         for (wo, message, import_status, tx_id, to) in utxos {
             let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
-                self.resources.wallet_identity.address.clone()
+                self.resources.one_sided_tari_address.clone()
             } else {
                 // Because we do not know the source public key we are making it the default key of zeroes to make it
                 // clear this value is a placeholder.

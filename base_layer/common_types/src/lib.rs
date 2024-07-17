@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// This is the string used to derive the comms/spend key of the wallet
+pub const WALLET_COMMS_AND_SPEND_KEY_BRANCH: &str = "comms";
+
 pub mod burnt_proof;
 pub mod chain_metadata;
 pub mod dammsum;

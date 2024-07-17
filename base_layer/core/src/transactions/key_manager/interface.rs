@@ -25,7 +25,10 @@ use std::str::FromStr;
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::{
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+    WALLET_COMMS_AND_SPEND_KEY_BRANCH,
+};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
@@ -58,13 +61,13 @@ pub enum TxoStage {
 #[derive(Clone, Copy, EnumIter)]
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
-    Alpha = 0x01,
-    MetadataEphemeralNonce = 0x02,
-    CommitmentMask = 0x03,
-    Nonce = 0x04,
-    KernelNonce = 0x05,
-    SenderOffset = 0x06,
-    SenderOffsetLedger = 0x07,
+    MetadataEphemeralNonce = 0x01,
+    CommitmentMask = 0x02,
+    Nonce = 0x03,
+    KernelNonce = 0x04,
+    SenderOffset = 0x05,
+    SenderOffsetLedger = 0x06,
+    Spend = 0x07,
 }
 
 impl TransactionKeyManagerBranch {
@@ -73,26 +76,26 @@ impl TransactionKeyManagerBranch {
     pub fn get_branch_key(self) -> String {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
-            TransactionKeyManagerBranch::Alpha => "alpha".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
             TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
             TransactionKeyManagerBranch::SenderOffsetLedger => "sender offset ledger".to_string(),
+            TransactionKeyManagerBranch::Spend => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
         }
     }
 
     pub fn from_key(key: &str) -> Self {
         match key {
             "data encryption" => TransactionKeyManagerBranch::DataEncryption,
-            "alpha" => TransactionKeyManagerBranch::Alpha,
             "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
             "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
             "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
             "sender offset" => TransactionKeyManagerBranch::SenderOffset,
             "sender offset ledger" => TransactionKeyManagerBranch::SenderOffsetLedger,
             "nonce" => TransactionKeyManagerBranch::Nonce,
+            WALLET_COMMS_AND_SPEND_KEY_BRANCH => TransactionKeyManagerBranch::Spend,
             _ => TransactionKeyManagerBranch::Nonce,
         }
     }
@@ -144,7 +147,11 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         value: u64,
     ) -> Result<bool, KeyManagerServiceError>;
 
-    async fn get_view_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError>;
+    async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+
+    async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+
+    async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
 
     async fn get_next_spend_and_script_key_ids(
         &self,
@@ -307,11 +314,6 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
-
-    async fn create_key_pair<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]

@@ -31,7 +31,7 @@ use tari_crypto::{
     hashing::DomainSeparatedHasher,
     keys::{PublicKey, SecretKey},
 };
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::ByteArray;
 
 use crate::{
     cipher_seed::CipherSeed,
@@ -217,9 +217,7 @@ where
 
     pub async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {
         let public_key = PK::from_secret_key(&private_key);
-        let hex_key = public_key.to_hex();
         self.db.insert_imported_key(public_key.clone(), private_key)?;
-        trace!(target: LOG_TARGET, "Imported key {}", hex_key);
         let key_id = KeyId::Imported { key: public_key };
         Ok(key_id)
     }

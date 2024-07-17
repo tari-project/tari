@@ -46,7 +46,6 @@ use crate::transactions::{
     key_manager::{
         interface::{SecretTransactionKeyManagerInterface, TxoStage},
         TariKeyId,
-        TransactionKeyManagerBranch,
         TransactionKeyManagerInner,
         TransactionKeyManagerInterface,
     },
@@ -202,9 +201,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_view_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.get_static_key(TransactionKeyManagerBranch::DataEncryption.get_branch_key())
-            .await
+    async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner.read().await.get_view_key().await
+    }
+
+    async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner.read().await.get_spend_key().await
+    }
+
+    async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        self.transaction_key_manager_inner.read().await.get_comms_key().await
     }
 
     async fn get_next_spend_and_script_key_ids(
@@ -534,17 +540,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
-            .await
-    }
-
-    async fn create_key_pair<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .write()
-            .await
-            .create_key_pair(&branch.into())
             .await
     }
 }
