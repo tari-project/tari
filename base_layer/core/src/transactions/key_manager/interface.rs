@@ -59,6 +59,8 @@ pub enum TxoStage {
 
 #[repr(u8)]
 #[derive(Clone, Copy, EnumIter)]
+// These byte reps must stay in sync with the ledger representations at:
+// applications/minotari_ledger_wallet/wallet/src/main.rs
 pub enum TransactionKeyManagerBranch {
     DataEncryption = 0x00,
     MetadataEphemeralNonce = 0x01,
