@@ -27,7 +27,7 @@ use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::{
     error::LedgerDeviceError,
-    ledger_wallet::{get_transport, Instruction},
+    ledger_wallet::{get_transport, Instruction, LedgerCommands},
 };
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;

@@ -29,6 +29,8 @@ use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 #[cfg(feature = "ledger")]
+use minotari_ledger_wallet_comms::ledger_wallet::LedgerCommands;
+#[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::{
     error::LedgerDeviceError,
     ledger_wallet::{get_transport, Instruction},
