@@ -65,7 +65,10 @@ pub async fn create_coinbase(
     key_manager: &MemoryDbKeyManager,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager).await;
-    let public_exess = key_manager.get_public_key_at_key_id(&p.mask_key_id).await.unwrap();
+    let public_exess = key_manager
+        .get_public_key_at_key_id(&p.commitment_mask_key_id)
+        .await
+        .unwrap();
     let nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
@@ -83,7 +86,7 @@ pub async fn create_coinbase(
 
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &p.mask_key_id,
+            &p.commitment_mask_key_id,
             &nonce.key_id,
             &nonce.key,
             &public_exess,

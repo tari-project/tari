@@ -180,7 +180,7 @@ mod test {
         let info = SingleRoundSenderData::default();
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            test_params.mask_key_id,
+            test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script!(Nop),
             ExecutionStack::default(),
@@ -221,7 +221,7 @@ mod test {
 
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            test_params.mask_key_id,
+            test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script!(Nop),
             ExecutionStack::default(),
@@ -269,7 +269,7 @@ mod test {
             .await
             .unwrap();
         let pub_xs = key_manager
-            .get_public_key_at_key_id(&test_params.mask_key_id)
+            .get_public_key_at_key_id(&test_params.commitment_mask_key_id)
             .await
             .unwrap();
         let pub_rs = key_manager
@@ -298,7 +298,7 @@ mod test {
             .unwrap();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(1500),
-            test_params2.mask_key_id.clone(),
+            test_params2.commitment_mask_key_id.clone(),
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -335,7 +335,7 @@ mod test {
         // Check the signature
 
         let pubkey = key_manager
-            .get_public_key_at_key_id(&test_params2.mask_key_id)
+            .get_public_key_at_key_id(&test_params2.commitment_mask_key_id)
             .await
             .unwrap();
         let offset = prot.offset.clone();

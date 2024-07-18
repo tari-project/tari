@@ -60,7 +60,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct ChangeDetails {
-    change_mask_key_id: TariKeyId,
+    change_commitment_mask_key_id: TariKeyId,
     change_script: TariScript,
     change_input_data: ExecutionStack,
     change_script_key_id: TariKeyId,
@@ -220,11 +220,11 @@ where KM: TransactionKeyManagerInterface
         change_script: TariScript,
         change_input_data: ExecutionStack,
         change_script_key_id: TariKeyId,
-        change_mask_key_id: TariKeyId,
+        change_commitment_mask_key_id: TariKeyId,
         change_covenant: Covenant,
     ) -> &mut Self {
         let details = ChangeDetails {
-            change_mask_key_id,
+            change_commitment_mask_key_id,
             change_script,
             change_input_data,
             change_script_key_id,
@@ -368,7 +368,7 @@ where KM: TransactionKeyManagerInterface
                         let change_data = self.change.as_ref().ok_or("Change data was not provided")?;
                         let change_script = change_data.change_script.clone();
                         let change_script_key_id = change_data.change_script_key_id.clone();
-                        let change_key_id = change_data.change_mask_key_id.clone();
+                        let change_key_id = change_data.change_commitment_mask_key_id.clone();
                         let sender_offset_public_key = self
                             .key_manager
                             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -661,7 +661,7 @@ mod test {
             script!(Nop),
             Default::default(),
             change.script_key_id.clone(),
-            change.mask_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         );
         let result = builder.build().await.unwrap();
@@ -846,7 +846,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
@@ -895,7 +895,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
@@ -961,7 +961,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(fee_per_gram)

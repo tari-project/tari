@@ -2316,7 +2316,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id,
-                change.mask_key_id,
+                change.commitment_mask_key_id,
                 Default::default(),
             );
         let mut stp = builder.build().await.unwrap();

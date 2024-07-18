@@ -46,7 +46,7 @@ use crate::{
 pub struct WalletOutputBuilder {
     version: TransactionOutputVersion,
     value: MicroMinotari,
-    mask_key_id: TariKeyId,
+    commitment_mask_key_id: TariKeyId,
     features: OutputFeatures,
     script: Option<TariScript>,
     script_lock_height: u64,
@@ -65,11 +65,11 @@ pub struct WalletOutputBuilder {
 
 #[allow(dead_code)]
 impl WalletOutputBuilder {
-    pub fn new(value: MicroMinotari, mask_key_id: TariKeyId) -> Self {
+    pub fn new(value: MicroMinotari, commitment_mask_key_id: TariKeyId) -> Self {
         Self {
             version: TransactionOutputVersion::get_current_version(),
             value,
-            mask_key_id,
+            commitment_mask_key_id,
             features: OutputFeatures::default(),
             script: None,
             script_lock_height: 0,
@@ -125,7 +125,7 @@ impl WalletOutputBuilder {
     ) -> Result<Self, TransactionError> {
         self.encrypted_data = key_manager
             .encrypt_data_for_recovery(
-                &self.mask_key_id,
+                &self.commitment_mask_key_id,
                 custom_recovery_key_id,
                 self.value.as_u64(),
                 payment_id,
@@ -185,7 +185,7 @@ impl WalletOutputBuilder {
         );
         let metadata_signature = key_manager
             .get_metadata_signature(
-                &self.mask_key_id,
+                &self.commitment_mask_key_id,
                 &self.value.into(),
                 sender_offset_key_id,
                 &self.version,
@@ -233,7 +233,7 @@ impl WalletOutputBuilder {
 
         let receiver_partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
-                &self.mask_key_id,
+                &self.commitment_mask_key_id,
                 &self.value.into(),
                 &aggregate_sender_offset_public_key,
                 &aggregate_ephemeral_pubkey,
@@ -244,7 +244,7 @@ impl WalletOutputBuilder {
             .await?;
 
         let commitment = key_manager
-            .get_commitment(&self.mask_key_id, &self.value.into())
+            .get_commitment(&self.commitment_mask_key_id, &self.value.into())
             .await?;
         let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
@@ -285,7 +285,7 @@ impl WalletOutputBuilder {
         let ub = WalletOutput::new(
             self.version,
             self.value,
-            self.mask_key_id,
+            self.commitment_mask_key_id,
             self.features,
             self.script
                 .ok_or_else(|| TransactionError::BuilderError("script must be set".to_string()))?,
@@ -319,9 +319,9 @@ mod test {
     #[tokio::test]
     async fn test_try_build() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let (mask_key, script_key_id) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (commitment_mask_key, script_key_id) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
-        let kmob = WalletOutputBuilder::new(value, mask_key.key_id.clone());
+        let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let sender_offset_key = key_manager
@@ -345,13 +345,13 @@ mod test {
                 let output = val.to_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
                 assert!(key_manager
-                    .verify_mask(output.commitment(), &mask_key.key_id, value.into())
+                    .verify_mask(output.commitment(), &commitment_mask_key.key_id, value.into())
                     .await
                     .unwrap());
 
                 let (recovered_key_id, recovered_value, _) =
                     key_manager.try_output_key_recovery(&output, None).await.unwrap();
-                assert_eq!(recovered_key_id, mask_key.key_id);
+                assert_eq!(recovered_key_id, commitment_mask_key.key_id);
                 assert_eq!(recovered_value, value);
             },
             Err(e) => panic!("{}", e),
@@ -361,9 +361,9 @@ mod test {
     #[tokio::test]
     async fn test_partial_metadata_signatures() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let (mask_key, script_key) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
-        let kmob = WalletOutputBuilder::new(value, mask_key.key_id.clone());
+        let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         let sender_offset_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())

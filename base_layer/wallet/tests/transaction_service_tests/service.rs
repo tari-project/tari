@@ -3331,7 +3331,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.mask_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(
@@ -3416,7 +3416,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.mask_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(
@@ -4196,7 +4196,7 @@ async fn test_restarting_transaction_protocols() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.mask_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         );
     let mut bob_stp = builder.build().await.unwrap();
@@ -4617,7 +4617,7 @@ async fn test_resend_on_startup() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.mask_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(
@@ -5145,7 +5145,7 @@ async fn test_transaction_timeout_cancellation() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.mask_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(

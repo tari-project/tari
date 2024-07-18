@@ -2141,10 +2141,10 @@ where
             stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
         );
-        let (mask_key, _) = self
+        let (commitment_mask_key, _) = self
             .resources
             .transaction_key_manager_service
-            .get_next_spend_and_script_key_ids()
+            .get_next_commitment_mask_and_script_key()
             .await?;
 
         let recovery_key_id = self
@@ -2158,11 +2158,11 @@ where
             Some(ref claim_public_key) => {
                 // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
                 // this case a new spend key from the key manager) and the provided claim public key. The public
-                // nonce/spend_key is returned back to the caller.
+                // nonce/commitment_mask_key is returned back to the caller.
                 let shared_secret = self
                     .resources
                     .transaction_key_manager_service
-                    .get_diffie_hellman_shared_secret(&mask_key.key_id, claim_public_key)
+                    .get_diffie_hellman_shared_secret(&commitment_mask_key.key_id, claim_public_key)
                     .await?;
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                 self.resources
@@ -2183,7 +2183,7 @@ where
                 tx_id,
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
-        let output = WalletOutputBuilder::new(amount, mask_key.key_id.clone())
+        let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(
                 sender_message
                     .single()
@@ -2249,7 +2249,7 @@ where
             ownership_proof = Some(
                 self.resources
                     .transaction_key_manager_service
-                    .generate_burn_proof(&mask_key.key_id, &amount.into(), &claim_public_key)
+                    .generate_burn_proof(&commitment_mask_key.key_id, &amount.into(), &claim_public_key)
                     .await?,
             );
         }
@@ -2306,7 +2306,7 @@ where
 
         Ok((tx_id, BurntProof {
             // Key used to claim the burn on L2
-            reciprocal_claim_public_key: mask_key.key,
+            reciprocal_claim_public_key: commitment_mask_key.key,
             commitment,
             ownership_proof,
             range_proof,

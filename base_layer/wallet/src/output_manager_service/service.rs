@@ -687,11 +687,15 @@ where
         value: MicroMinotari,
         features: OutputFeatures,
     ) -> Result<WalletOutputBuilder, OutputManagerError> {
-        let (mask_key, script_key) = self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let (commitment_mask_key, script_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
         let input_data = ExecutionStack::default();
         let script = TariScript::default();
 
-        Ok(WalletOutputBuilder::new(value, mask_key.key_id)
+        Ok(WalletOutputBuilder::new(value, commitment_mask_key.key_id)
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
@@ -734,7 +738,11 @@ where
             return Err(OutputManagerError::InvalidKernelFeatures);
         }
 
-        let (spending_key, script_public_key) = self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let (spending_key, script_public_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
 
         // Confirm script hash is for the expected script, at the moment assuming Nop or Push_pubkey
         // if the script is Push_pubkey(default_key) we know we have to fill it in.
@@ -982,13 +990,16 @@ where
             input_selection.num_selected()
         );
 
-        let (change_mask_key, change_script_key) =
-            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let (change_commitment_mask_key, change_script_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
         builder.with_change_data(
             script!(PushPubKey(Box::new(change_script_key.key.clone()))),
             ExecutionStack::default(),
             change_script_key.key_id,
-            change_mask_key.key_id,
+            change_commitment_mask_key.key_id,
             Covenant::default(),
         );
 
@@ -1086,13 +1097,16 @@ where
         }
 
         if input_selection.requires_change_output() {
-            let (change_mask_key, change_script_key) =
-                self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+            let (change_commitment_mask_key, change_script_key) = self
+                .resources
+                .key_manager
+                .get_next_commitment_mask_and_script_key()
+                .await?;
             builder.with_change_data(
                 script!(PushPubKey(Box::new(change_script_key.key))),
                 ExecutionStack::default(),
                 change_script_key.key_id,
-                change_mask_key.key_id,
+                change_commitment_mask_key.key_id,
                 Covenant::default(),
             );
         }
@@ -1542,13 +1556,16 @@ where
 
         let mut outputs = vec![output];
 
-        let (change_mask_key_id, change_script_public_key) =
-            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let (change_commitment_mask_key_id, change_script_public_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
         builder.with_change_data(
             script!(PushPubKey(Box::new(change_script_public_key.key.clone()))),
             ExecutionStack::default(),
             change_script_public_key.key_id.clone(),
-            change_mask_key_id.key_id,
+            change_commitment_mask_key_id.key_id,
             Covenant::default(),
         );
 
@@ -2173,7 +2190,11 @@ where
 
         // extending transaction if there is some `change` left over
         if has_leftover_change {
-            let (change_mask, change_script) = self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+            let (change_mask, change_script) = self
+                .resources
+                .key_manager
+                .get_next_commitment_mask_and_script_key()
+                .await?;
             tx_builder.with_change_data(
                 script!(PushPubKey(Box::new(change_script.key))),
                 ExecutionStack::default(),
@@ -2251,13 +2272,17 @@ where
         amount: MicroMinotari,
         covenant: Covenant,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
-        let (mask_key, script_key) = self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let (commitment_mask_key, script_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
         let script = script!(PushPubKey(Box::new(script_key.key.clone())));
 
         let encrypted_data = self
             .resources
             .key_manager
-            .encrypt_data_for_recovery(&mask_key.key_id, None, amount.as_u64(), PaymentId::Empty)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount.as_u64(), PaymentId::Empty)
             .await?;
         let minimum_value_promise = MicroMinotari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
@@ -2277,7 +2302,7 @@ where
             .resources
             .key_manager
             .get_metadata_signature(
-                &mask_key.key_id,
+                &commitment_mask_key.key_id,
                 &PrivateKey::from(amount),
                 &sender_offset.key_id,
                 &TransactionOutputVersion::get_current_version(),
@@ -2289,7 +2314,7 @@ where
         let output = DbWalletOutput::from_wallet_output(
             WalletOutput::new_current_version(
                 amount,
-                mask_key.key_id,
+                commitment_mask_key.key_id,
                 output_features,
                 script,
                 ExecutionStack::default(),
@@ -2504,13 +2529,16 @@ where
 
                 let mut outputs = Vec::new();
 
-                let (change_mask_key, change_script_key) =
-                    self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+                let (change_commitment_mask_key, change_script_key) = self
+                    .resources
+                    .key_manager
+                    .get_next_commitment_mask_and_script_key()
+                    .await?;
                 builder.with_change_data(
                     script!(PushPubKey(Box::new(change_script_key.key.clone()))),
                     ExecutionStack::default(),
                     change_script_key.key_id,
-                    change_mask_key.key_id,
+                    change_commitment_mask_key.key_id,
                     Covenant::default(),
                 );
 
@@ -2585,13 +2613,16 @@ where
 
         let mut outputs = Vec::new();
 
-        let (change_mask_key, change_script_key) =
-            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let (change_commitment_mask_key, change_script_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
         builder.with_change_data(
             script!(PushPubKey(Box::new(change_script_key.key.clone()))),
             ExecutionStack::default(),
             change_script_key.key_id,
-            change_mask_key.key_id,
+            change_commitment_mask_key.key_id,
             Covenant::default(),
         );
 

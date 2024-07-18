@@ -974,21 +974,21 @@ mod test {
         let output_features = Default::default();
 
         // Receiver data
-        let (mask_key, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (commitment_mask_key, _) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let commitment = key_manager
-            .get_commitment(&mask_key.key_id, &PrivateKey::from(value))
+            .get_commitment(&commitment_mask_key.key_id, &PrivateKey::from(value))
             .await
             .unwrap();
         let minimum_value_promise = MicroMinotari::zero();
         let proof = key_manager
-            .construct_range_proof(&mask_key.key_id, value, minimum_value_promise.into())
+            .construct_range_proof(&commitment_mask_key.key_id, value, minimum_value_promise.into())
             .await
             .unwrap();
         let covenant = Covenant::default();
 
         // Encrypted value
         let encrypted_data = key_manager
-            .encrypt_data_for_recovery(&mask_key.key_id, None, value, PaymentId::Empty)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, value, PaymentId::Empty)
             .await
             .unwrap();
 
@@ -1002,7 +1002,7 @@ mod test {
         );
         let partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
-                &mask_key.key_id,
+                &commitment_mask_key.key_id,
                 &value.into(),
                 &sender_offset_key.key,
                 &ephemeral_key.key,
@@ -1059,7 +1059,7 @@ mod test {
                 TariScript::default(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1136,7 +1136,7 @@ mod test {
                 script.clone(),
                 ExecutionStack::default(),
                 a_change_key.script_key_id,
-                a_change_key.mask_key_id,
+                a_change_key.commitment_mask_key_id,
                 Covenant::default(),
             );
         let mut alice = builder.build().await.unwrap();
@@ -1147,7 +1147,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(1200) - fee - MicroMinotari(10),
-            bob_key.mask_key_id,
+            bob_key.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1239,7 +1239,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1270,7 +1270,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            bob_key.mask_key_id,
+            bob_key.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1344,7 +1344,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1381,7 +1381,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            bob_key.mask_key_id,
+            bob_key.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1449,7 +1449,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1487,7 +1487,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.mask_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1532,7 +1532,7 @@ mod test {
                 script!(PushInt(1) Drop Nop),
                 inputs!(change_params.script_key_pk),
                 change_params.script_key_id.clone(),
-                change_params.mask_key_id.clone(),
+                change_params.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1568,7 +1568,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            bob_test_params.mask_key_id,
+            bob_test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1610,6 +1610,6 @@ mod test {
         let output = tx.body.outputs().iter().find(|o| o.script.size() > 1).unwrap();
 
         let (key, _value, _) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
-        assert_eq!(key, change_params.mask_key_id);
+        assert_eq!(key, change_params.commitment_mask_key_id);
     }
 }

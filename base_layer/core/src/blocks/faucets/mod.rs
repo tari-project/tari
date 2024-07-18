@@ -84,10 +84,15 @@ mod test {
         let mut total_private_key = PrivateKey::default();
 
         for _ in 0..num_faucets {
-            let (mask_key_id, script_key) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-            total_private_key = total_private_key + &key_manager.get_private_key(&mask_key_id.key_id).await.unwrap();
+            let (commitment_mask_key_id, script_key) =
+                key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
+            total_private_key = total_private_key +
+                &key_manager
+                    .get_private_key(&commitment_mask_key_id.key_id)
+                    .await
+                    .unwrap();
             let commitment = key_manager
-                .get_commitment(&mask_key_id.key_id, &amount.into())
+                .get_commitment(&commitment_mask_key_id.key_id, &amount.into())
                 .await
                 .unwrap();
             let com_hash: [u8; 32] = DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
@@ -105,7 +110,7 @@ mod test {
                 list_of_spend_keys.clone(),
                 Box::new(com_hash),
             )]);
-            let output = WalletOutputBuilder::new(amount, mask_key_id.key_id)
+            let output = WalletOutputBuilder::new(amount, commitment_mask_key_id.key_id)
                 .with_features(OutputFeatures::new(
                     OutputFeaturesVersion::get_current_version(),
                     OutputType::Standard,
