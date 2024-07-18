@@ -114,15 +114,15 @@ impl TestParams {
         key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
-        let sender_offset_key = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let kernel_nonce_key = key_manager
+        let kernel_nonce = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let public_nonce_key = key_manager
+        let public_noncey = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
@@ -725,11 +725,11 @@ pub async fn create_stx_protocol_internal(
         stx_builder.with_input(tx_input.clone()).await.unwrap();
     }
     for val in schema.to {
-        let commitment_mask_key = key_manager
+        let commitment_mask = key_manager
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
-        let sender_offset_key = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
@@ -769,7 +769,7 @@ pub async fn create_stx_protocol_internal(
         stx_builder.with_output(output, sender_offset_key.key_id).await.unwrap();
     }
     for mut utxo in schema.to_outputs {
-        let sender_offset_key = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
@@ -853,7 +853,7 @@ pub async fn create_utxo(
     covenant: &Covenant,
     minimum_value_promise: MicroMinotari,
 ) -> (TransactionOutput, TariKeyId, TariKeyId) {
-    let commitment_mask_key = key_manager
+    let commitment_mask = key_manager
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await
         .unwrap();
@@ -861,7 +861,7 @@ pub async fn create_utxo(
         .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, value.into(), PaymentId::Empty)
         .await
         .unwrap();
-    let sender_offset_key = key_manager
+    let sender_offset = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await
         .unwrap();

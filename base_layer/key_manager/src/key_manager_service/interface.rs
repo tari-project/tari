@@ -58,7 +58,7 @@ pub enum AddResult {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct KeyAndId<PK> {
-    pub key: PK,
+    pub pub_key: PK,
     pub key_id: KeyId<PK>,
 }
 
