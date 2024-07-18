@@ -839,10 +839,10 @@ pub async fn command_runner(
                 let out_dir = out_dir(&session_info.session_id)?;
                 let step_2_outputs_for_leader = Step2OutputsForLeader {
                     script_input_signature,
-                    wallet_public_spend_key: wallet_spend_key.key,
-                    public_script_nonce_key: script_nonce_key.key,
-                    public_sender_offset_key: sender_offset_key.key,
-                    public_sender_offset_nonce_key: sender_offset_nonce.key,
+                    wallet_public_spend_key: wallet_spend_key.pub_key,
+                    public_script_nonce_key: script_nonce_key.pub_key,
+                    public_sender_offset_key: sender_offset_key.pub_key,
+                    public_sender_offset_nonce_key: sender_offset_nonce.pub_key,
                     dh_shared_secret_public_key: shared_secret_public_key,
                 };
                 let out_file_leader = out_dir.join(get_file_name(STEP_2_LEADER, Some(args.alias.clone())));

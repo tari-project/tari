@@ -178,7 +178,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             index,
         };
         let key = self.get_public_key_at_key_id(&key_id).await?;
-        Ok(KeyAndId { key_id, key })
+        Ok(KeyAndId { key_id, pub_key: key })
     }
 
     pub async fn get_random_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
@@ -187,7 +187,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let public_key = self.get_public_key_at_key_id(&key_id).await?;
         Ok(KeyAndId {
             key_id,
-            key: public_key,
+            pub_key: public_key,
         })
     }
 
@@ -258,7 +258,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(km.derive_public_key(*index)?.key)
             },
             KeyId::Derived { branch, label, index } => {
-                let public_alpha = self.get_spend_key().await?.key;
+                let public_alpha = self.get_spend_key().await?.pub_key;
                 let km = self
                     .key_managers
                     .get(branch)
@@ -387,7 +387,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             index: 0,
         };
         let key = PublicKey::from_secret_key(&self.get_private_view_key().await?);
-        Ok(KeyAndId { key_id, key })
+        Ok(KeyAndId { key_id, pub_key: key })
     }
 
     pub async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
@@ -406,7 +406,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             ))?,
             WalletType::ProvidedKeys(wallet) => wallet.public_spend_key.clone(),
         };
-        Ok(KeyAndId { key_id, key })
+        Ok(KeyAndId { key_id, pub_key: key })
     }
 
     pub async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
@@ -416,7 +416,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         };
         let private_key = self.get_private_comms_key().await?;
         let key = PublicKey::from_secret_key(&private_key);
-        Ok(KeyAndId { key_id, key })
+        Ok(KeyAndId { key_id, pub_key: key })
     }
 
     pub async fn get_next_commitment_mask_and_script_key(
@@ -437,7 +437,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
         Ok((commitment_mask, KeyAndId {
             key_id: script_key_id,
-            key: script_public_key,
+            pub_key: script_public_key,
         }))
     }
 
@@ -1177,7 +1177,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 spending_key_id,
                 value_as_private_key,
                 &sender_offset_public_key,
-                &ephemeral_pubkey.key,
+                &ephemeral_pubkey.pub_key,
                 txo_version,
                 metadata_signature_message,
                 range_proof_type,

@@ -122,7 +122,7 @@ impl TestParams {
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let public_noncey = key_manager
+        let public_nonce = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
@@ -134,15 +134,15 @@ impl TestParams {
         Self {
             commitment_mask_key_id: commitment_mask_key.key_id,
             script_key_id: script_key.key_id,
-            script_key_pk: script_key.key,
-            sender_offset_key_id: sender_offset_key.key_id,
-            sender_offset_key_pk: sender_offset_key.key,
-            kernel_nonce_key_id: kernel_nonce_key.key_id,
-            kernel_nonce_key_pk: kernel_nonce_key.key,
-            public_nonce_key_id: public_nonce_key.key_id,
-            public_nonce_key_pk: public_nonce_key.key,
+            script_key_pk: script_key.pub_key,
+            sender_offset_key_id: sender_offset.key_id,
+            sender_offset_key_pk: sender_offset.pub_key,
+            kernel_nonce_key_id: kernel_nonce.key_id,
+            kernel_nonce_key_pk: kernel_nonce.pub_key,
+            public_nonce_key_id: public_nonce.key_id,
+            public_nonce_key_pk: public_nonce.pub_key,
             ephemeral_public_nonce_key_id: ephemeral_public_nonce.key_id,
-            ephemeral_public_nonce_key_pk: ephemeral_public_nonce.key,
+            ephemeral_public_nonce_key_pk: ephemeral_public_nonce.pub_key,
             transaction_weight: TransactionWeight::v1(),
         }
     }
@@ -308,7 +308,7 @@ pub async fn create_random_signature_from_secret_key(
         .get_partial_txo_kernel_signature(
             &secret_key_id,
             &total_nonce.key_id,
-            &total_nonce.key,
+            &total_nonce.pub_key,
             &total_excess,
             &kernel_version,
             &kernel_message,
@@ -736,7 +736,7 @@ pub async fn create_stx_protocol_internal(
         let script_key_id = KeyId::Derived {
             branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
             label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask_key.key_id.managed_index().unwrap(),
+            index: commitment_mask.key_id.managed_index().unwrap(),
         };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &schema.input_data {
@@ -747,7 +747,7 @@ pub async fn create_stx_protocol_internal(
             Some(data) => data,
             None => TransactionOutputVersion::get_current_version(),
         };
-        let output = WalletOutputBuilder::new(val, commitment_mask_key.key_id)
+        let output = WalletOutputBuilder::new(val, commitment_mask.key_id)
             .with_features(schema.features.clone())
             .with_script(schema.script.clone())
             .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
@@ -756,9 +756,9 @@ pub async fn create_stx_protocol_internal(
             .with_input_data(input_data)
             .with_covenant(schema.covenant.clone())
             .with_version(version)
-            .with_sender_offset_public_key(sender_offset_key.key)
+            .with_sender_offset_public_key(sender_offset.pub_key)
             .with_script_key(script_key_id.clone())
-            .sign_as_sender_and_receiver(key_manager, &sender_offset_key.key_id)
+            .sign_as_sender_and_receiver(key_manager, &sender_offset.key_id)
             .await
             .unwrap()
             .try_build(key_manager)
@@ -766,7 +766,7 @@ pub async fn create_stx_protocol_internal(
             .unwrap();
 
         outputs.push(output.clone());
-        stx_builder.with_output(output, sender_offset_key.key_id).await.unwrap();
+        stx_builder.with_output(output, sender_offset.key_id).await.unwrap();
     }
     for mut utxo in schema.to_outputs {
         let sender_offset = key_manager
@@ -778,7 +778,7 @@ pub async fn create_stx_protocol_internal(
             .get_metadata_signature(
                 &utxo.spending_key_id,
                 &utxo.value.into(),
-                &sender_offset_key.key_id,
+                &sender_offset.key_id,
                 &utxo.version,
                 &metadata_message,
                 utxo.features.range_proof_type,
@@ -786,7 +786,7 @@ pub async fn create_stx_protocol_internal(
             .await
             .unwrap();
 
-        stx_builder.with_output(utxo, sender_offset_key.key_id).await.unwrap();
+        stx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
     }
 
     stx_builder
@@ -813,7 +813,7 @@ pub async fn create_coinbase_kernel(
         .get_partial_txo_kernel_signature(
             commitment_mask_key_id,
             &public_nonce.key_id,
-            &public_nonce.key,
+            &public_nonce.pub_key,
             &public_commitment_mask,
             &kernel_version,
             &kernel_message,
@@ -858,7 +858,7 @@ pub async fn create_utxo(
         .await
         .unwrap();
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, value.into(), PaymentId::Empty)
+        .encrypt_data_for_recovery(&commitment_mask.key_id, None, value.into(), PaymentId::Empty)
         .await
         .unwrap();
     let sender_offset = key_manager
@@ -875,9 +875,9 @@ pub async fn create_utxo(
     );
     let metadata_sig = key_manager
         .get_metadata_signature(
-            &commitment_mask_key.key_id,
+            &commitment_mask.key_id,
             &value.into(),
-            &sender_offset_key.key_id,
+            &sender_offset.key_id,
             &TransactionOutputVersion::get_current_version(),
             &metadata_message,
             features.range_proof_type,
@@ -885,13 +885,13 @@ pub async fn create_utxo(
         .await
         .unwrap();
     let commitment = key_manager
-        .get_commitment(&commitment_mask_key.key_id, &value.into())
+        .get_commitment(&commitment_mask.key_id, &value.into())
         .await
         .unwrap();
     let proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
         Some(
             key_manager
-                .construct_range_proof(&commitment_mask_key.key_id, value.into(), minimum_value_promise.into())
+                .construct_range_proof(&commitment_mask.key_id, value.into(), minimum_value_promise.into())
                 .await
                 .unwrap(),
         )
@@ -904,7 +904,7 @@ pub async fn create_utxo(
         commitment,
         proof,
         script.clone(),
-        sender_offset_key.key,
+        sender_offset.pub_key,
         metadata_sig,
         covenant.clone(),
         encrypted_data,
@@ -912,7 +912,7 @@ pub async fn create_utxo(
     );
     utxo.verify_range_proof(&CryptoFactories::default().range_proof)
         .unwrap();
-    (utxo, commitment_mask_key.key_id, sender_offset_key.key_id)
+    (utxo, commitment_mask.key_id, sender_offset.key_id)
 }
 
 pub async fn schema_to_transaction(

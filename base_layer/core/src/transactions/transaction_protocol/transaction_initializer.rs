@@ -369,7 +369,7 @@ where KM: TransactionKeyManagerInterface
                         let change_script = change_data.change_script.clone();
                         let change_script_key_id = change_data.change_script_key_id.clone();
                         let change_key_id = change_data.change_commitment_mask_key_id.clone();
-                        let sender_offset_public_key = self
+                        let sender_offset_public = self
                             .key_manager
                             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                             .await
@@ -408,7 +408,7 @@ where KM: TransactionKeyManagerInterface
                             .get_metadata_signature(
                                 &change_key_id,
                                 &v.into(),
-                                &sender_offset_public_key.key_id,
+                                &sender_offset_public.key_id,
                                 &output_version,
                                 &metadata_message,
                                 features.range_proof_type,
@@ -423,7 +423,7 @@ where KM: TransactionKeyManagerInterface
                             change_script,
                             input_data,
                             change_script_key_id,
-                            sender_offset_public_key.key.clone(),
+                            sender_offset_public.pub_key.clone(),
                             metadata_sig,
                             0,
                             covenant,
@@ -437,7 +437,7 @@ where KM: TransactionKeyManagerInterface
                         Ok((
                             fee_without_change + change_fee,
                             v,
-                            Some((change_wallet_output, sender_offset_public_key.key_id)),
+                            Some((change_wallet_output, sender_offset_public.key_id)),
                         ))
                     },
                 }

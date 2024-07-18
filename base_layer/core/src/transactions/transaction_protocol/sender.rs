@@ -963,7 +963,7 @@ mod test {
             .await
             .unwrap();
         let value = 1000u64;
-        let sender_offset_key = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
@@ -1004,8 +1004,8 @@ mod test {
             .get_receiver_partial_metadata_signature(
                 &commitment_mask_key.key_id,
                 &value.into(),
-                &sender_offset_key.key,
-                &ephemeral_key.key,
+                &sender_offset.pub_key,
+                &ephemeral_key.pub_key,
                 &txo_version,
                 &metadata_message,
                 output_features.range_proof_type,
@@ -1018,7 +1018,7 @@ mod test {
             commitment,
             Some(proof),
             script.clone(),
-            sender_offset_key.key,
+            sender_offset.pub_key,
             partial_metadata_signature.clone(),
             covenant.clone(),
             encrypted_data,
@@ -1030,7 +1030,7 @@ mod test {
         let partial_sender_metadata_signature = key_manager
             .get_sender_partial_metadata_signature(
                 &ephemeral_key.key_id,
-                &sender_offset_key.key_id,
+                &sender_offset.key_id,
                 &output.commitment,
                 partial_metadata_signature.ephemeral_commitment(),
                 &txo_version,

@@ -749,7 +749,7 @@ where
         let script = if single_round_sender_data.script == script!(Nop) {
             single_round_sender_data.script.clone()
         } else if single_round_sender_data.script == script!(PushPubKey(Box::default())) {
-            script!(PushPubKey(Box::new(script_public_key.key.clone())))
+            script!(PushPubKey(Box::new(script_public_key.pub_key.clone())))
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
@@ -996,7 +996,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.key.clone()))),
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
             ExecutionStack::default(),
             change_script_key.key_id,
             change_commitment_mask_key.key_id,
@@ -1103,7 +1103,7 @@ where
                 .get_next_commitment_mask_and_script_key()
                 .await?;
             builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script_key.key))),
+                script!(PushPubKey(Box::new(change_script_key.pub_key))),
                 ExecutionStack::default(),
                 change_script_key.key_id,
                 change_commitment_mask_key.key_id,
@@ -1250,7 +1250,10 @@ where
                         &script_challange,
                     )
                     .await?;
-                script_input_shares.insert(self.resources.key_manager.get_spend_key().await?.key, self_signature);
+                script_input_shares.insert(
+                    self.resources.key_manager.get_spend_key().await?.pub_key,
+                    self_signature,
+                );
 
                 // the order here is important, we need to add the signatures in the same order as public keys where
                 // added to the script originally
@@ -1258,7 +1261,7 @@ where
                     if let Some(signature) = script_input_shares.get(&key) {
                         script_signatures.push(StackItem::Signature(signature.clone()));
                         // our own key should not be added yet, it will be added with the script signing
-                        if key != self.resources.key_manager.get_spend_key().await?.key {
+                        if key != self.resources.key_manager.get_spend_key().await?.pub_key {
                             aggregated_script_public_key_shares = aggregated_script_public_key_shares + key;
                         }
                     }
@@ -1562,7 +1565,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_public_key.key.clone()))),
+            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone()))),
             ExecutionStack::default(),
             change_script_public_key.key_id.clone(),
             change_commitment_mask_key_id.key_id,
@@ -2196,7 +2199,7 @@ where
                 .get_next_commitment_mask_and_script_key()
                 .await?;
             tx_builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script.key))),
+                script!(PushPubKey(Box::new(change_script.pub_key))),
                 ExecutionStack::default(),
                 change_script.key_id,
                 change_mask.key_id,
@@ -2277,7 +2280,7 @@ where
             .key_manager
             .get_next_commitment_mask_and_script_key()
             .await?;
-        let script = script!(PushPubKey(Box::new(script_key.key.clone())));
+        let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())));
 
         let encrypted_data = self
             .resources
@@ -2319,7 +2322,7 @@ where
                 script,
                 ExecutionStack::default(),
                 script_key.key_id,
-                sender_offset.key,
+                sender_offset.pub_key,
                 metadata_signature,
                 0,
                 covenant,
@@ -2535,7 +2538,7 @@ where
                     .get_next_commitment_mask_and_script_key()
                     .await?;
                 builder.with_change_data(
-                    script!(PushPubKey(Box::new(change_script_key.key.clone()))),
+                    script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
                     ExecutionStack::default(),
                     change_script_key.key_id,
                     change_commitment_mask_key.key_id,
@@ -2619,7 +2622,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.key.clone()))),
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
             ExecutionStack::default(),
             change_script_key.key_id,
             change_commitment_mask_key.key_id,
@@ -2727,7 +2730,7 @@ where
                         .get_diffie_hellman_stealth_domain_hasher(&view_key.key_id, &output.sender_offset_public_key)
                         .await?;
                     let script_spending_key =
-                        stealth_address_script_spending_key(&stealth_address_hasher, &spend_key.key);
+                        stealth_address_script_spending_key(&stealth_address_hasher, &spend_key.pub_key);
                     if &script_spending_key != scanned_pk.as_ref() {
                         continue;
                     }

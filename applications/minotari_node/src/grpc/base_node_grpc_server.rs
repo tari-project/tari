@@ -870,7 +870,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &new_nonce.key;
+            total_nonce = &total_nonce + &new_nonce.pub_key;
             total_excess = &total_excess + &coinbase_kernel.excess;
             private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -1067,7 +1067,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &new_nonce.key;
+            total_nonce = &total_nonce + &new_nonce.pub_key;
             total_excess = &total_excess + &coinbase_kernel.excess;
             private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(

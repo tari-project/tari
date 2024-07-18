@@ -77,7 +77,7 @@ impl SingleReceiverTransactionProtocol {
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &public_nonce.key_id,
-                &(&sender_info.public_nonce + &public_nonce.key),
+                &(&sender_info.public_nonce + &public_nonce.pub_key),
                 &(&sender_info.public_excess + &public_excess),
                 &sender_info.kernel_version,
                 &kernel_message,

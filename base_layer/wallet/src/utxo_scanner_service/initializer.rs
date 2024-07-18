@@ -113,8 +113,8 @@ where
                 .await
                 .expect("Could not initialize UTXO scanner Service");
             let one_sided_tari_address = TariAddress::new_dual_address(
-                view_key.key,
-                spend_key.key,
+                view_key.pub_key,
+                spend_key.pub_key,
                 network,
                 TariAddressFeatures::create_one_sided_only(),
             );

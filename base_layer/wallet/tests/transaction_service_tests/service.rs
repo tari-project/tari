@@ -1767,7 +1767,7 @@ async fn recover_one_sided_transaction() {
     let mut alice_ts_clone = alice_ts.clone();
     let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        bob_view_key.key,
+        bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
         network,
     );
@@ -1891,7 +1891,7 @@ async fn recover_stealth_one_sided_transaction() {
     let mut alice_ts_clone = alice_ts.clone();
 
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        bob_view_key.key,
+        bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
         network,
     );
@@ -2002,7 +2002,7 @@ async fn test_htlc_send_and_claim() {
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
     let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap();
     let bob_address =
-        TariAddress::new_dual_address_with_default_features(bob_view_key.key, bob_pubkey.clone(), network);
+        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network);
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -4225,7 +4225,7 @@ async fn test_restarting_transaction_protocols() {
 
     let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap();
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        bob_view_key.key,
+        bob_view_key.pub_key,
         bob_identity.public_key().clone(),
         network,
     );
@@ -4251,7 +4251,7 @@ async fn test_restarting_transaction_protocols() {
         .unwrap();
     let alice_view_key = alice_ts_interface.key_manager_handle.get_view_key().await.unwrap();
     let alice_address = TariAddress::new_dual_address_with_default_features(
-        alice_view_key.key,
+        alice_view_key.pub_key,
         alice_identity.public_key().clone(),
         network,
     );

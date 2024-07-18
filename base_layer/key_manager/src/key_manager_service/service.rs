@@ -114,7 +114,7 @@ where
                 branch: branch.to_string(),
                 index,
             },
-            key,
+            pub_key: key,
         })
     }
 
@@ -124,7 +124,7 @@ where
         let public_key = self.get_public_key_at_key_id(&key_id).await?;
         Ok(KeyAndId {
             key_id,
-            key: public_key,
+            pub_key: public_key,
         })
     }
 

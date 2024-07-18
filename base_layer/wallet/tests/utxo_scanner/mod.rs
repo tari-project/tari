@@ -195,7 +195,7 @@ async fn setup(
 
     let view_key = key_manager.get_view_key().await.unwrap();
     let tari_address = TariAddress::new_dual_address_with_default_features(
-        view_key.key,
+        view_key.pub_key,
         node_identity.public_key().clone(),
         Network::default(),
     );

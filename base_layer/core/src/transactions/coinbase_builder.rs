@@ -297,7 +297,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .get_partial_txo_kernel_signature(
                 &commitment_mask_key_id,
                 &public_nonce.key_id,
-                &public_nonce.key,
+                &public_nonce.pub_key,
                 &public_commitment_mask_key,
                 &kernel_version,
                 &kernel_message,
@@ -862,7 +862,7 @@ mod test {
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &new_nonce.key_id,
-                &new_nonce.key,
+                &new_nonce.pub_key,
                 &excess,
                 &TransactionKernelVersion::get_current_version(),
                 &kernel_message,
@@ -878,7 +878,7 @@ mod test {
             .unwrap();
         let sig_challenge = TransactionKernel::finalize_kernel_signature_challenge(
             &TransactionKernelVersion::get_current_version(),
-            &new_nonce.key,
+            &new_nonce.pub_key,
             &excess,
             &kernel_message,
         );
@@ -1005,7 +1005,7 @@ mod test {
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let nonce = &new_nonce1.key + &new_nonce2.key;
+        let nonce = &new_nonce1.pub_key + &new_nonce2.pub_key;
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
             kernel_1.fee,

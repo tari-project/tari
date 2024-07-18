@@ -268,13 +268,13 @@ where
             TariAddressFeatures::create_one_sided_only()
         };
         let one_sided_tari_address = TariAddress::new_dual_address(
-            view_key.key.clone(),
-            comms_key.key,
+            view_key.pub_key.clone(),
+            comms_key.pub_key,
             network,
             TariAddressFeatures::create_one_sided_only(),
         );
         let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.key, spend_key.key, network, interactive_features);
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
         let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service,
@@ -1105,7 +1105,7 @@ where
             .transaction_key_manager_service
             .get_comms_key()
             .await?
-            .key ==
+            .pub_key ==
             destination.comms_public_key()
         {
             debug!(
@@ -2306,7 +2306,7 @@ where
 
         Ok((tx_id, BurntProof {
             // Key used to claim the burn on L2
-            reciprocal_claim_public_key: commitment_mask_key.key,
+            reciprocal_claim_public_key: commitment_mask_key.pub_key,
             commitment,
             ownership_proof,
             range_proof,

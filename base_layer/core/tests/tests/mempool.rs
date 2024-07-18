@@ -1229,7 +1229,7 @@ async fn consensus_validation_large_tx() {
             .await
             .unwrap();
     let mut sender_offsets = Vec::new();
-    let mut pub_nonce = input_kernel_nonce.key.clone();
+    let mut pub_nonce = input_kernel_nonce.pub_key.clone();
     for i in 0..output_count {
         let test_params = TestParams::new(&key_manager).await;
         let output_amount = if i < output_count - 1 {
@@ -1416,7 +1416,7 @@ async fn validation_reject_min_fee() {
             )
             .await
             .unwrap();
-    let pub_nonce = input_kernel_nonce.key + test_params.kernel_nonce_key_pk;
+    let pub_nonce = input_kernel_nonce.pub_key + test_params.kernel_nonce_key_pk;
     sender_offsets.push(test_params.sender_offset_key_id.clone());
 
     let mut agg_sig = Signature::default();

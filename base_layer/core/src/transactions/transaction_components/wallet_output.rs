@@ -256,7 +256,7 @@ impl WalletOutput {
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
         let script_public_key = aggregated_script_public_key_shares + script_public_key_self;
 
-        let total_ephemeral_public_key = aggregated_script_signature_public_nonces + &ephemeral_public_key_self.key;
+        let total_ephemeral_public_key = aggregated_script_signature_public_nonces + &ephemeral_public_key_self.pub_key;
         let commitment_partial_script_signature = key_manager
             .get_partial_script_signature(
                 &self.spending_key_id,

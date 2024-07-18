@@ -484,8 +484,8 @@ where
             WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
         };
         Ok(TariAddress::new_dual_address(
-            view_key.key,
-            comms_key.key,
+            view_key.pub_key,
+            comms_key.pub_key,
             self.network.as_network(),
             features,
         ))
@@ -495,8 +495,8 @@ where
         let view_key = self.key_manager_service.get_view_key().await?;
         let spend_key = self.key_manager_service.get_spend_key().await?;
         Ok(TariAddress::new_dual_address(
-            view_key.key,
-            spend_key.key,
+            view_key.pub_key,
+            spend_key.pub_key,
             self.network.as_network(),
             TariAddressFeatures::create_one_sided_only(),
         ))

@@ -167,13 +167,13 @@ pub async fn setup() -> (
         TariAddressFeatures::create_one_sided_only()
     };
     let one_sided_tari_address = TariAddress::new_dual_address(
-        view_key.key.clone(),
-        comms_key.key,
+        view_key.pub_key.clone(),
+        comms_key.pub_key,
         network,
         TariAddressFeatures::create_one_sided_only(),
     );
     let interactive_tari_address =
-        TariAddress::new_dual_address(view_key.key, spend_key.key, network, interactive_features);
+        TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,

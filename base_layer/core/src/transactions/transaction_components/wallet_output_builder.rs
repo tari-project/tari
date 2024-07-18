@@ -229,7 +229,7 @@ impl WalletOutputBuilder {
         let ephemeral_pubkey_self = key_manager
             .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
-        let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + &ephemeral_pubkey_self.key;
+        let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + &ephemeral_pubkey_self.pub_key;
 
         let receiver_partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
@@ -324,11 +324,11 @@ mod test {
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
-        let sender_offset_key = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let kmob = kmob.with_sender_offset_public_key(sender_offset_key.key);
+        let kmob = kmob.with_sender_offset_public_key(sender_offset.pub_key);
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
         let kmob = kmob.with_script_key(script_key_id.key_id);
@@ -337,7 +337,7 @@ mod test {
             .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset_key.key_id)
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
             .await
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
@@ -365,11 +365,11 @@ mod test {
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
-        let sender_offset_key = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let kmob = kmob.with_sender_offset_public_key(sender_offset_key.key);
+        let kmob = kmob.with_sender_offset_public_key(sender_offset.pub_key);
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
         let kmob = kmob.with_script_key(script_key.key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
@@ -377,7 +377,7 @@ mod test {
             .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
             .await
             .unwrap()
-            .sign_as_sender_and_receiver(&key_manager, &sender_offset_key.key_id)
+            .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
             .await
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
@@ -397,7 +397,7 @@ mod test {
                         &wallet_output.spending_key_id,
                         &wallet_output.value.into(),
                         &wallet_output.sender_offset_public_key,
-                        &ephemeral_key.key,
+                        &ephemeral_key.pub_key,
                         &wallet_output.version,
                         &metadata_message,
                         wallet_output.features.range_proof_type,
@@ -412,7 +412,7 @@ mod test {
                 let sender_metadata_signature = key_manager
                     .get_sender_partial_metadata_signature(
                         &ephemeral_key.key_id,
-                        &sender_offset_key.key_id,
+                        &sender_offset.key_id,
                         &commitment,
                         receiver_metadata_signature.ephemeral_commitment(),
                         &wallet_output.version,

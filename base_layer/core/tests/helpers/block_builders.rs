@@ -88,7 +88,7 @@ pub async fn create_coinbase(
         .get_partial_txo_kernel_signature(
             &p.commitment_mask_key_id,
             &nonce.key_id,
-            &nonce.key,
+            &nonce.pub_key,
             &public_exess,
             &TransactionKernelVersion::get_current_version(),
             &kernel_message,
