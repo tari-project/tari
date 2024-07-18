@@ -26,6 +26,7 @@ use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use tari_common_types::wallet_types::LedgerWallet;
 
 use crate::error::LedgerDeviceError;
 
@@ -82,5 +83,58 @@ impl<D: Deref<Target = [u8]>> Command<D> {
         transport
             .exchange(&self.inner)
             .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+    }
+}
+
+pub trait LedgerCommands {
+    fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>>;
+    fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>>;
+}
+
+const WALLET_CLA: u8 = 0x80;
+
+impl LedgerCommands for LedgerWallet {
+    fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
+        let mut base_data = self.account_bytes();
+        base_data.extend_from_slice(&data);
+
+        Command::new(APDUCommand {
+            cla: WALLET_CLA,
+            ins: instruction.as_byte(),
+            p1: 0x00,
+            p2: 0x00,
+            data: base_data,
+        })
+    }
+
+    fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
+        let num_chunks = data.len();
+        let mut more;
+        let mut commands = vec![];
+
+        for (i, chunk) in data.iter().enumerate() {
+            if i + 1 == num_chunks {
+                more = 0;
+            } else {
+                more = 1;
+            }
+
+            // Prepend the account on the first payload
+            let mut base_data = vec![];
+            if i == 0 {
+                base_data.extend_from_slice(&self.account_bytes());
+            }
+            base_data.extend_from_slice(chunk);
+
+            commands.push(Command::new(APDUCommand {
+                cla: WALLET_CLA,
+                ins: instruction.as_byte(),
+                p1: u8::try_from(i).unwrap_or(0),
+                p2: more,
+                data: base_data,
+            }));
+        }
+
+        commands
     }
 }

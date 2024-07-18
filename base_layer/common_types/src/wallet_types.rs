@@ -19,17 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[cfg(feature = "ledger")]
-use std::convert::TryFrom;
+
 use std::{
     fmt,
     fmt::{Display, Formatter},
 };
 
-#[cfg(feature = "ledger")]
-use ledger_transport::APDUCommand;
-#[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::ledger_wallet::{Command, Instruction};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -85,9 +80,6 @@ impl Display for LedgerWallet {
     }
 }
 
-#[cfg(feature = "ledger")]
-const WALLET_CLA: u8 = 0x80;
-
 impl LedgerWallet {
     pub fn new(account: u64, network: Network, public_alpha: Option<PublicKey>, view_key: Option<PrivateKey>) -> Self {
         Self {
@@ -100,51 +92,5 @@ impl LedgerWallet {
 
     pub fn account_bytes(&self) -> Vec<u8> {
         self.account.to_le_bytes().to_vec()
-    }
-
-    #[cfg(feature = "ledger")]
-    pub fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
-        let mut base_data = self.account_bytes();
-        base_data.extend_from_slice(&data);
-
-        Command::new(APDUCommand {
-            cla: WALLET_CLA,
-            ins: instruction.as_byte(),
-            p1: 0x00,
-            p2: 0x00,
-            data: base_data,
-        })
-    }
-
-    #[cfg(feature = "ledger")]
-    pub fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
-        let num_chunks = data.len();
-        let mut more;
-        let mut commands = vec![];
-
-        for (i, chunk) in data.iter().enumerate() {
-            if i + 1 == num_chunks {
-                more = 0;
-            } else {
-                more = 1;
-            }
-
-            // Prepend the account on the first payload
-            let mut base_data = vec![];
-            if i == 0 {
-                base_data.extend_from_slice(&self.account_bytes());
-            }
-            base_data.extend_from_slice(chunk);
-
-            commands.push(Command::new(APDUCommand {
-                cla: WALLET_CLA,
-                ins: instruction.as_byte(),
-                p1: u8::try_from(i).unwrap_or(0),
-                p2: more,
-                data: base_data,
-            }));
-        }
-
-        commands
     }
 }
