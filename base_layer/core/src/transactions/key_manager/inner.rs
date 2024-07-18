@@ -458,11 +458,28 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     async fn get_private_comms_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        self.get_private_key(&TariKeyId::Managed {
-            branch: TransactionKeyManagerBranch::Spend.get_branch_key(),
-            index: 0,
-        })
-        .await
+        let branch = TransactionKeyManagerBranch::Spend.get_branch_key();
+        let index = 0;
+
+        match self.wallet_type {
+            WalletType::Software | WalletType::Imported(_) => {
+                self.get_private_key(&TariKeyId::Managed {
+                    branch: branch.clone(),
+                    index,
+                })
+                .await
+            },
+            WalletType::Ledger(_) => {
+                let km = self
+                    .key_managers
+                    .get(&branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .read()
+                    .await;
+                let key = km.get_private_key(index)?;
+                Ok(key)
+            },
+        }
     }
 
     fn get_domain_hasher(
