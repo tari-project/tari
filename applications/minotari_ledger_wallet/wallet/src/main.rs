@@ -32,7 +32,6 @@ use critical_section::RawRestoreState;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
     get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
-    get_public_alpha::handler_get_public_alpha,
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
     get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
