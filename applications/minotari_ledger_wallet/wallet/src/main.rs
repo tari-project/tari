@@ -93,12 +93,14 @@ pub enum AppSW {
     ClaNotSupported = 0x6E00,
     ScriptSignatureFail = 0xB001,
     MetadataSignatureFail = 0xB002,
+    ScriptOffsetNotUnique = 0xB004,
     KeyDeriveFail = 0xB009,
     KeyDeriveFromCanonical = 0xB010,
     KeyDeriveFromUniform = 0xB011,
     VersionParsingFail = 0xB00A,
     TooManyPayloads = 0xB003,
     WrongApduLength = StatusWords::BadLen as u16,
+    UserCancelled = StatusWords::UserCancelled as u16,
 }
 
 impl From<AppSW> for Reply {
