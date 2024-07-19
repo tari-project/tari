@@ -827,7 +827,9 @@ mod test {
     /// Test invalid emoji
     fn invalid_utf8_char() {
         // This emoji string contains an invalid utf8 character
-        let emoji_string = "🦊 | 🦊 | 🦊 | 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊";
+        let emoji_string = "🦊 | 🦊 | 🦊 | 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
+                            🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
+                            🦊| 🦊 | 🦊| 🦊 | 🦊";
         assert_eq!(
             TariAddress::from_base58(emoji_string),
             Err(TariAddressError::InvalidCharacter)
@@ -841,5 +843,4 @@ mod test {
             Err(TariAddressError::InvalidAddressString)
         );
     }
-
 }
