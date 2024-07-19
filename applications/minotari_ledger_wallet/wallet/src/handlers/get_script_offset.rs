@@ -13,7 +13,7 @@ use crate::{
     AppSW,
     KeyType,
     RESPONSE_VERSION,
-    STATIC_ALPHA_INDEX,
+    STATIC_SPEND_INDEX,
 };
 
 const MIN_UNIQUE_KEYS: usize = 2;
@@ -110,7 +110,7 @@ pub fn handler_get_script_offset(
         index_bytes.clone_from_slice(&data[0..8]);
         let index = u64::from_le_bytes(index_bytes);
 
-        let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::SenderOffset)?;
+        let offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::OneSidedSenderOffset)?;
         offset_ctx.add_unique_key(offset.clone());
         offset_ctx.total_sender_offset_private_key =
             Zeroizing::new(offset_ctx.total_sender_offset_private_key.deref() + offset.deref());
@@ -119,7 +119,7 @@ pub fn handler_get_script_offset(
     let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
 
     if (end_offset_indexes..end_commitment_keys).contains(&(chunk as u64)) {
-        let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
+        let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_SPEND_INDEX, KeyType::Spend)?;
         let blinding_factor: Zeroizing<RistrettoSecretKey> =
             get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 

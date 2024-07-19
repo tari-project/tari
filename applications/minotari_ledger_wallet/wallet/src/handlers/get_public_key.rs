@@ -20,7 +20,7 @@ pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     let mut key_bytes = [0u8; 8];
     key_bytes.clone_from_slice(&data[16..24]);
     let key_int = u64::from_le_bytes(key_bytes);
-    let key = KeyType::from_branch_key(key_int);
+    let key = KeyType::from_branch_key(key_int)?;
 
     let pk = match derive_from_bip32_key(account, index, key) {
         Ok(k) => RistrettoPublicKey::from_secret_key(&k),

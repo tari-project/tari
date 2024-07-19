@@ -26,7 +26,7 @@ use crate::{
     AppSW,
     KeyType,
     RESPONSE_VERSION,
-    STATIC_ALPHA_INDEX,
+    STATIC_SPEND_INDEX,
 };
 
 pub fn handler_get_script_signature(comm: &mut Comm) -> Result<(), AppSW> {
@@ -44,7 +44,7 @@ pub fn handler_get_script_signature(comm: &mut Comm) -> Result<(), AppSW> {
     txi_version_bytes.clone_from_slice(&data[16..24]);
     let txi_version = u64::from_le_bytes(txi_version_bytes);
 
-    let alpha = derive_from_bip32_key(account, STATIC_ALPHA_INDEX, KeyType::Alpha)?;
+    let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
     let blinding_factor: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[24..56])?.into();
     let script_private_key = alpha_hasher(alpha, blinding_factor)?;

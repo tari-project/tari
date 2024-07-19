@@ -27,7 +27,7 @@ pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
     let mut key_bytes = [0u8; 8];
     key_bytes.clone_from_slice(&data[16..24]);
     let key_int = u64::from_le_bytes(key_bytes);
-    let key = KeyType::from_branch_key(key_int);
+    let key = KeyType::from_branch_key(key_int)?;
 
     let public_key: RistrettoPublicKey = get_key_from_canonical_bytes(&data[24..56])?;
 
