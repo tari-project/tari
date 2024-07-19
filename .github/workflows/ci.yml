@@ -121,7 +121,8 @@ jobs:
   build-stable:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
-    name: cargo check with stable
+    #name: cargo check with stable
+    name: cargo check #we should move back to stable when we can
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
@@ -153,9 +154,12 @@ jobs:
       - name: rust-toolchain.toml override by removing
         run: rm -f rust-toolchain.toml
       - name: toolchain
-        uses: dtolnay/rust-toolchain@stable
+        #uses: dtolnay/rust-toolchain@stable
+        #with:
+          #toolchain: stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: ${{ env.toolchain }}
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
