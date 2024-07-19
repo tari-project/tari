@@ -648,7 +648,11 @@ impl InnerService {
             .iter()
             .position(|x| x == &last_used_url)
             .unwrap_or(0);
-        let (left, right) = self.config.monerod_url.split_at(pos);
+        let (left, right) = self
+            .config
+            .monerod_url
+            .split_at_checked(pos)
+            .ok_or(MmProxyError::ConversionError("Invalid utf 8 url".to_string()))?;
         let left = left.to_vec();
         let right = right.to_vec();
         let iter = right.iter().chain(left.iter()).chain(right.iter()).chain(left.iter());

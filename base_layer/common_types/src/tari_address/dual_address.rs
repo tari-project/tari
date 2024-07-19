@@ -162,8 +162,8 @@ impl DualAddress {
         if hex_str.len() != 90 && hex_str.len() != 91 {
             return Err(TariAddressError::InvalidSize);
         }
-        let (first, rest) = hex_str.split_at(2);
-        let (network, features) = first.split_at(1);
+        let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
+        let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
         let mut result = bs58::decode(network)
             .into_vec()
             .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
