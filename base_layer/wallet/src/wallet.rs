@@ -319,13 +319,18 @@ where
         } else {
             None
         };
+        let spend_key = key_manager_handle.get_spend_key().await?;
 
-        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, &node_identity)
-            .await
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "{:?}", e);
-                e
-            })?;
+        persist_one_sided_payment_script_for_node_identity(
+            &mut output_manager_handle,
+            &spend_key.pub_key,
+            spend_key.key_id,
+        )
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "{:?}", e);
+            e
+        })?;
 
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
@@ -835,18 +840,16 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    node_identity: &Arc<NodeIdentity>,
+    spend_key: &PublicKey,
+    spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {
-    let script = push_pubkey_script(node_identity.public_key());
-    let wallet_node_key_id = TariKeyId::Imported {
-        key: node_identity.public_key().clone(),
-    };
+    let script = push_pubkey_script(spend_key);
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
             .as_hash::<Blake2b<U32>>()
             .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
             .to_vec(),
-        script_key_id: wallet_node_key_id.clone(),
+        script_key_id: spend_key_id,
         script,
         input: ExecutionStack::default(),
         script_lock_height: 0,

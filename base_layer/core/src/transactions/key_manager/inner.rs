@@ -470,7 +470,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let index = 0;
 
         match self.wallet_type {
-            WalletType::Software | WalletType::Imported(_) => {
+            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: branch.clone(),
                     index,
