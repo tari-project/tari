@@ -104,6 +104,8 @@ pub enum TariAddressError {
     InvalidChecksum,
     #[error("Invalid emoji character")]
     InvalidEmoji,
+    #[error("Invalid text character")]
+    InvalidCharacter,
     #[error("Cannot recover public key")]
     CannotRecoverPublicKey,
     #[error("Cannot recover network")]
@@ -246,8 +248,8 @@ impl TariAddress {
         if hex_str.len() < 47 {
             return Err(TariAddressError::InvalidSize);
         }
-        let (first, rest) = hex_str.split_at(2);
-        let (network, features) = first.split_at(1);
+        let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
+        let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
         let mut result = bs58::decode(network)
             .into_vec()
             .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
@@ -820,4 +822,24 @@ mod test {
             Err(TariAddressError::CannotRecoverPublicKey)
         );
     }
+
+    #[test]
+    /// Test invalid emoji
+    fn invalid_utf8_char() {
+        // This emoji string contains an invalid utf8 character
+        let emoji_string = "🦊 | 🦊 | 🦊 | 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊";
+        assert_eq!(
+            TariAddress::from_base58(emoji_string),
+            Err(TariAddressError::InvalidCharacter)
+        );
+        assert_eq!(
+            TariAddress::from_emoji_string(emoji_string),
+            Err(TariAddressError::InvalidSize)
+        );
+        assert_eq!(
+            TariAddress::from_str(emoji_string),
+            Err(TariAddressError::InvalidAddressString)
+        );
+    }
+
 }
