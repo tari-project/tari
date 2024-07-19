@@ -60,7 +60,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct ChangeDetails {
-    change_spending_key_id: TariKeyId,
+    change_commitment_mask_key_id: TariKeyId,
     change_script: TariScript,
     change_input_data: ExecutionStack,
     change_script_key_id: TariKeyId,
@@ -152,21 +152,21 @@ where KM: TransactionKeyManagerInterface
         recipient_minimum_value_promise: MicroMinotari,
         amount: MicroMinotari,
     ) -> Result<&mut Self, KeyManagerServiceError> {
-        let (recipient_ephemeral_public_key_nonce, _) = self
+        let recipient_ephemeral_public_key_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
-        let (recipient_sender_offset_key_id, _) = self
+        let recipient_sender_offset = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
         let recipient_details = RecipientDetails {
             recipient_output_features,
             recipient_script,
-            recipient_sender_offset_key_id,
+            recipient_sender_offset_key_id: recipient_sender_offset.key_id,
             recipient_covenant,
             recipient_minimum_value_promise,
-            recipient_ephemeral_public_key_nonce,
+            recipient_ephemeral_public_key_nonce: recipient_ephemeral_public_key_nonce.key_id,
             amount,
         };
         self.recipient = Some(recipient_details);
@@ -181,13 +181,13 @@ where KM: TransactionKeyManagerInterface
 
     /// Adds an input to the transaction.
     pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, KeyManagerServiceError> {
-        let (nonce_id, _) = self
+        let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output: input,
-            kernel_nonce: nonce_id,
+            kernel_nonce: nonce.key_id,
             sender_offset_key_id: None,
         };
         self.inputs.push(pair);
@@ -200,13 +200,13 @@ where KM: TransactionKeyManagerInterface
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
     ) -> Result<&mut Self, KeyManagerServiceError> {
-        let (nonce_id, _) = self
+        let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output,
-            kernel_nonce: nonce_id,
+            kernel_nonce: nonce.key_id,
             sender_offset_key_id: Some(sender_offset_key_id),
         };
         self.sender_custom_outputs.push(pair);
@@ -220,11 +220,11 @@ where KM: TransactionKeyManagerInterface
         change_script: TariScript,
         change_input_data: ExecutionStack,
         change_script_key_id: TariKeyId,
-        change_spending_key_id: TariKeyId,
+        change_commitment_mask_key_id: TariKeyId,
         change_covenant: Covenant,
     ) -> &mut Self {
         let details = ChangeDetails {
-            change_spending_key_id,
+            change_commitment_mask_key_id,
             change_script,
             change_input_data,
             change_script_key_id,
@@ -368,8 +368,8 @@ where KM: TransactionKeyManagerInterface
                         let change_data = self.change.as_ref().ok_or("Change data was not provided")?;
                         let change_script = change_data.change_script.clone();
                         let change_script_key_id = change_data.change_script_key_id.clone();
-                        let change_key_id = change_data.change_spending_key_id.clone();
-                        let (sender_offset_key_id, sender_offset_public_key) = self
+                        let change_key_id = change_data.change_commitment_mask_key_id.clone();
+                        let sender_offset_public = self
                             .key_manager
                             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                             .await
@@ -408,7 +408,7 @@ where KM: TransactionKeyManagerInterface
                             .get_metadata_signature(
                                 &change_key_id,
                                 &v.into(),
-                                &sender_offset_key_id,
+                                &sender_offset_public.key_id,
                                 &output_version,
                                 &metadata_message,
                                 features.range_proof_type,
@@ -423,7 +423,7 @@ where KM: TransactionKeyManagerInterface
                             change_script,
                             input_data,
                             change_script_key_id,
-                            sender_offset_public_key.clone(),
+                            sender_offset_public.pub_key.clone(),
                             metadata_sig,
                             0,
                             covenant,
@@ -437,7 +437,7 @@ where KM: TransactionKeyManagerInterface
                         Ok((
                             fee_without_change + change_fee,
                             v,
-                            Some((change_wallet_output, sender_offset_key_id)),
+                            Some((change_wallet_output, sender_offset_public.key_id)),
                         ))
                     },
                 }
@@ -509,7 +509,7 @@ where KM: TransactionKeyManagerInterface
                 if self.sender_custom_outputs.len() >= MAX_TRANSACTION_OUTPUTS {
                     return self.build_err("Too many outputs in transaction");
                 }
-                let (nonce_id, _) = match self
+                let nonce = match self
                     .key_manager
                     .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                     .await
@@ -519,7 +519,7 @@ where KM: TransactionKeyManagerInterface
                 };
                 Some(OutputPair {
                     output,
-                    kernel_nonce: nonce_id,
+                    kernel_nonce: nonce.key_id,
                     sender_offset_key_id: Some(sender_offset_key_id),
                 })
             },
@@ -661,7 +661,7 @@ mod test {
             script!(Nop),
             Default::default(),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         );
         let result = builder.build().await.unwrap();
@@ -846,7 +846,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
@@ -895,7 +895,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
@@ -961,7 +961,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(fee_per_gram)

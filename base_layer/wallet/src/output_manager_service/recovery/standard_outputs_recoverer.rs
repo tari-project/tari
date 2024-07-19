@@ -227,7 +227,7 @@ where
                 if let Some(Opcode::PushPubKey(public_key)) = script.opcode(0) {
                     let result = self
                         .master_key_manager
-                        .find_script_key_id_from_spend_key_id(spending_key, Some(public_key))
+                        .find_script_key_id_from_commitment_mask_key_id(spending_key, Some(public_key))
                         .await?;
                     if let Some(script_key_id) = result {
                         (ExecutionStack::default(), script_key_id)

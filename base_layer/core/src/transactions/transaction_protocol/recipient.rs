@@ -209,8 +209,8 @@ mod test {
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
             amount,
-            public_excess: sender_test_params.spend_key_pk, // any random key will do
-            public_nonce: sender_test_params.public_nonce_key_pk, // any random key will do
+            public_excess: sender_test_params.kernel_nonce_key_pk, // any random key will do
+            public_nonce: sender_test_params.public_nonce_key_pk,  // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
             features,
@@ -236,7 +236,7 @@ mod test {
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
         let pubkey = key_manager
-            .get_public_key_at_key_id(&receiver_test_params.spend_key_id)
+            .get_public_key_at_key_id(&receiver_test_params.commitment_mask_key_id)
             .await
             .unwrap();
         let offset = data.offset.clone();
@@ -245,7 +245,7 @@ mod test {
         assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, signing_pubkey);
         let commitment = key_manager
-            .get_commitment(&receiver_test_params.spend_key_id, &500.into())
+            .get_commitment(&receiver_test_params.commitment_mask_key_id, &500.into())
             .await
             .unwrap();
         assert_eq!(&commitment, &data.output.commitment);
@@ -270,15 +270,15 @@ mod test {
             &m.burn_commitment,
         );
         let p_nonce = key_manager.get_public_key_at_key_id(&nonce_id).await.unwrap();
-        let p_spend_key = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&receiver_test_params.spend_key_id, &nonce_id)
+        let p_commitment_mask_key = key_manager
+            .get_txo_kernel_signature_excess_with_offset(&receiver_test_params.commitment_mask_key_id, &nonce_id)
             .await
             .unwrap();
         let r_sum = &msg.public_nonce + &p_nonce;
-        let excess = &msg.public_excess + &p_spend_key;
+        let excess = &msg.public_excess + &p_commitment_mask_key;
         let kernel_signature = key_manager
             .get_partial_txo_kernel_signature(
-                &receiver_test_params.spend_key_id,
+                &receiver_test_params.commitment_mask_key_id,
                 &nonce_id,
                 &r_sum,
                 &excess,

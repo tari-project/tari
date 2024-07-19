@@ -477,26 +477,26 @@ where
     }
 
     pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
-        let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
-        let (_comms_key_id, comms_key) = self.key_manager_service.get_comms_key().await?;
+        let view_key = self.key_manager_service.get_view_key().await?;
+        let comms_key = self.key_manager_service.get_comms_key().await?;
         let features = match self.wallet_type {
-            WalletType::Software => TariAddressFeatures::default(),
-            WalletType::Ledger(_) | WalletType::Imported(_) => TariAddressFeatures::create_interactive_only(),
+            WalletType::DerivedKeys => TariAddressFeatures::default(),
+            WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
         };
         Ok(TariAddress::new_dual_address(
-            view_key,
-            comms_key,
+            view_key.pub_key,
+            comms_key.pub_key,
             self.network.as_network(),
             features,
         ))
     }
 
     pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
-        let (_view_key_id, view_key) = self.key_manager_service.get_view_key().await?;
-        let (_spend_key_id, spend_key) = self.key_manager_service.get_spend_key().await?;
+        let view_key = self.key_manager_service.get_view_key().await?;
+        let spend_key = self.key_manager_service.get_spend_key().await?;
         Ok(TariAddress::new_dual_address(
-            view_key,
-            spend_key,
+            view_key.pub_key,
+            spend_key.pub_key,
             self.network.as_network(),
             TariAddressFeatures::create_one_sided_only(),
         ))

@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
+use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
 use tari_script::CheckSigSchnorrSignature;
 
 use crate::transactions::{
@@ -138,30 +138,30 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError>;
 
     async fn verify_mask(
         &self,
         commitment: &Commitment,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError>;
 
-    async fn get_view_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn get_spend_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn get_comms_key(&self) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn get_next_spend_and_script_key_ids(
+    async fn get_next_commitment_mask_and_script_key(
         &self,
-    ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError>;
+    ) -> Result<(KeyAndId<PublicKey>, KeyAndId<PublicKey>), KeyManagerServiceError>;
 
-    async fn find_script_key_id_from_spend_key_id(
+    async fn find_script_key_id_from_commitment_mask_key_id(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         public_script_key: Option<&PublicKey>,
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError>;
 
@@ -187,7 +187,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn construct_range_proof(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError>;
@@ -195,7 +195,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
@@ -213,7 +213,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_partial_txo_kernel_signature(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
         total_nonce: &PublicKey,
         total_excess: &PublicKey,
@@ -225,19 +225,19 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_txo_kernel_signature_excess_with_offset(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         nonce: &TariKeyId,
     ) -> Result<PublicKey, TransactionError>;
 
     async fn get_txo_private_kernel_offset(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError>;
 
     async fn encrypt_data_for_recovery(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
         payment_id: PaymentId,
@@ -288,7 +288,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_receiver_partial_metadata_signature(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &PublicKey,
         ephemeral_pubkey: &PublicKey,

@@ -89,7 +89,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
-    wallet_types::{ImportedWallet, WalletType},
+    wallet_types::{ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
     message::EnvelopeBody,
@@ -227,7 +227,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
-    let wallet_type = WalletType::Imported(ImportedWallet {
+    let wallet_type = WalletType::ProvidedKeys(ProvidedKeysWallet {
         public_spend_key: PublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
@@ -1765,9 +1765,9 @@ async fn recover_one_sided_transaction() {
     let message = "".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap().1;
+    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        bob_view_key,
+        bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
         network,
     );
@@ -1870,7 +1870,7 @@ async fn recover_stealth_one_sided_transaction() {
         )
         .await;
 
-    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap().1;
+    let bob_view_key = bob_key_manager_handle.get_view_key().await.unwrap();
 
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
@@ -1891,7 +1891,7 @@ async fn recover_stealth_one_sided_transaction() {
     let mut alice_ts_clone = alice_ts.clone();
 
     let bob_address = TariAddress::new_dual_address_with_default_features(
-        bob_view_key,
+        bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
         network,
     );
@@ -2000,8 +2000,9 @@ async fn test_htlc_send_and_claim() {
     let message = "".to_string();
     let value = 10000.into();
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap().1;
-    let bob_address = TariAddress::new_dual_address_with_default_features(bob_view_key, bob_pubkey.clone(), network);
+    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap();
+    let bob_address =
+        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network);
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -3330,7 +3331,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(
@@ -3415,7 +3416,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(
@@ -4195,7 +4196,7 @@ async fn test_restarting_transaction_protocols() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         );
     let mut bob_stp = builder.build().await.unwrap();
@@ -4222,9 +4223,12 @@ async fn test_restarting_transaction_protocols() {
     };
     let tx = bob_stp.get_transaction().unwrap().clone();
 
-    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap().1;
-    let bob_address =
-        TariAddress::new_dual_address_with_default_features(bob_view_key, bob_identity.public_key().clone(), network);
+    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_view_key.pub_key,
+        bob_identity.public_key().clone(),
+        network,
+    );
     let inbound_tx = InboundTransaction {
         tx_id,
         source_address: bob_address,
@@ -4245,9 +4249,9 @@ async fn test_restarting_transaction_protocols() {
             Box::new(inbound_tx),
         )))
         .unwrap();
-    let alice_view_key = alice_ts_interface.key_manager_handle.get_view_key().await.unwrap().1;
+    let alice_view_key = alice_ts_interface.key_manager_handle.get_view_key().await.unwrap();
     let alice_address = TariAddress::new_dual_address_with_default_features(
-        alice_view_key,
+        alice_view_key.pub_key,
         alice_identity.public_key().clone(),
         network,
     );
@@ -4613,7 +4617,7 @@ async fn test_resend_on_startup() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(
@@ -5141,7 +5145,7 @@ async fn test_transaction_timeout_cancellation() {
             script!(Nop),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         )
         .with_recipient_data(

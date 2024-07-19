@@ -112,7 +112,7 @@ impl TestTransactionBuilder {
         let value = self.amount -
             self.estimate_fee(num_inputs, features.clone(), script.clone(), covenant.clone())
                 .expect("Failed to estimate fee");
-        let builder = WalletOutputBuilder::new(value, self.keys.spend_key_id.clone())
+        let builder = WalletOutputBuilder::new(value, self.keys.commitment_mask_key_id.clone())
             .with_features(features)
             .with_script(script)
             .with_script_key(self.keys.script_key_id.clone())

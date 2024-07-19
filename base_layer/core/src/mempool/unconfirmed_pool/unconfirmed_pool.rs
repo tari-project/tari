@@ -991,7 +991,7 @@ mod test {
                 TariScript::default(),
                 ExecutionStack::default(),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             );
 

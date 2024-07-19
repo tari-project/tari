@@ -51,4 +51,4 @@ pub use service::KeyManagerInner;
 mod interface;
 pub use interface::KeyId;
 pub mod storage;
-pub use interface::{AddResult, KeyManagerBranch, KeyManagerInterface};
+pub use interface::{AddResult, KeyAndId, KeyManagerBranch, KeyManagerInterface};

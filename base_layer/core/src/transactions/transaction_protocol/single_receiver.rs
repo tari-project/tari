@@ -52,7 +52,7 @@ impl SingleReceiverTransactionProtocol {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info, consensus_constants)?;
         let transaction_output = output.to_transaction_output(key_manager).await?;
 
-        let (nonce_id, public_nonce) = key_manager
+        let public_nonce = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let tx_meta = if output.is_burned() {
@@ -63,7 +63,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.metadata.clone()
         };
         let public_excess = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &nonce_id)
+            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &public_nonce.key_id)
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -76,8 +76,8 @@ impl SingleReceiverTransactionProtocol {
         let signature = key_manager
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
-                &nonce_id,
-                &(&sender_info.public_nonce + &public_nonce),
+                &public_nonce.key_id,
+                &(&sender_info.public_nonce + &public_nonce.pub_key),
                 &(&sender_info.public_excess + &public_excess),
                 &sender_info.kernel_version,
                 &kernel_message,
@@ -86,7 +86,7 @@ impl SingleReceiverTransactionProtocol {
             )
             .await?;
         let offset = key_manager
-            .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)
+            .get_txo_private_kernel_offset(&output.spending_key_id, &public_nonce.key_id)
             .await?;
 
         let data = RecipientSignedMessage {
@@ -180,7 +180,7 @@ mod test {
         let info = SingleRoundSenderData::default();
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            test_params.spend_key_id,
+            test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script!(Nop),
             ExecutionStack::default(),
@@ -221,7 +221,7 @@ mod test {
 
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            test_params.spend_key_id,
+            test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script!(Nop),
             ExecutionStack::default(),
@@ -269,7 +269,7 @@ mod test {
             .await
             .unwrap();
         let pub_xs = key_manager
-            .get_public_key_at_key_id(&test_params.spend_key_id)
+            .get_public_key_at_key_id(&test_params.commitment_mask_key_id)
             .await
             .unwrap();
         let pub_rs = key_manager
@@ -298,7 +298,7 @@ mod test {
             .unwrap();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(1500),
-            test_params2.spend_key_id.clone(),
+            test_params2.commitment_mask_key_id.clone(),
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -335,7 +335,7 @@ mod test {
         // Check the signature
 
         let pubkey = key_manager
-            .get_public_key_at_key_id(&test_params2.spend_key_id)
+            .get_public_key_at_key_id(&test_params2.commitment_mask_key_id)
             .await
             .unwrap();
         let offset = prot.offset.clone();

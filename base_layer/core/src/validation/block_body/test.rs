@@ -238,7 +238,7 @@ async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true).await;
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
-    let spend_key_id = KeyId::Managed {
+    let commitment_mask_key = KeyId::Managed {
         branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
         index: 42,
     };
@@ -246,7 +246,7 @@ async fn it_allows_multiple_coinbases() {
     let (_, coinbase_output) = CoinbaseBuilder::new(blockchain.km.clone())
         .with_block_height(1)
         .with_fees(0.into())
-        .with_spend_key_id(spend_key_id.clone())
+        .with_commitment_mask_id(commitment_mask_key.clone())
         .with_encryption_key_id(TariKeyId::default())
         .with_sender_offset_key_id(TariKeyId::default())
         .with_script_key_id(TariKeyId::default())
