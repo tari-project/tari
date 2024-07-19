@@ -2992,7 +2992,7 @@ where
                     let stealth_key = self
                         .resources
                         .key_manager
-                        .import_add_offset_to_private_key(&spend_key.key_id, stealth_address_offset)
+                        .import_add_offset_to_private_key(stealth_address_offset)
                         .await?;
 
                     let shared_secret = self

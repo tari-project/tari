@@ -260,15 +260,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn import_add_offset_to_private_key(
-        &self,
-        secret_key_id: &TariKeyId,
-        offset: PrivateKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
+    async fn import_add_offset_to_private_key(&self, offset: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .import_add_offset_to_private_key(secret_key_id, offset)
+            .import_add_offset_to_private_key(offset)
             .await
     }
 

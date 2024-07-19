@@ -124,11 +124,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         public_key: &PublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError>;
 
-    async fn import_add_offset_to_private_key(
-        &self,
-        secret_key_id: &TariKeyId,
-        offset: PrivateKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError>;
+    async fn import_add_offset_to_private_key(&self, offset: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError>;
 
     async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError>;
 

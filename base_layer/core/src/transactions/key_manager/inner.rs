@@ -329,9 +329,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         }
 
                         // If we're trying to access any of the private keys, just say no bueno
-                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::SenderOffset.get_branch_key() == branch
-                        {
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
                             return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
                         }
                     },
@@ -766,10 +764,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn import_add_offset_to_private_key(
         &self,
-        secret_key_id: &TariKeyId,
         offset: PrivateKey,
     ) -> Result<TariKeyId, KeyManagerServiceError> {
-        let secret_key = self.get_private_key(secret_key_id).await?;
+        let secret_key = self.get_private_comms_key().await?;
         self.import_key(secret_key + offset).await
     }
 
