@@ -2025,7 +2025,7 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(KeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(
+            .sign_as_sender_and_receiver_verified(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key,
             )

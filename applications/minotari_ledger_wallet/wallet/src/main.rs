@@ -130,6 +130,7 @@ pub enum Instruction {
     GetDHSharedSecret,
     GetRawSchnorrSignature,
     GetScriptSchnorrSignature,
+    GetOneSidedMetadataSignature,
 }
 
 const P2_MORE: u8 = 0x01;
@@ -200,6 +201,7 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
             (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
             (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
+            (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Err(Instruction::GetOneSidedMetadataSignature),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -244,10 +246,10 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetPublicSpendKey => handler_get_public_spend_key(comm),
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
         Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
-        Instruction::GetScriptSignatureFromChallenge => handler_get_one_sided_metadata_signature(comm),
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
         Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),
         Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
+        Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
     }
 }

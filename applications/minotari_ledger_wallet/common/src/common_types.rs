@@ -82,6 +82,7 @@ pub enum Instruction {
     GetDHSharedSecret = 0x08,
     GetRawSchnorrSignature = 0x09,
     GetScriptSchnorrSignature = 0x10,
+    GetOneSidedMetadataSignature = 0x11,
 }
 
 impl Instruction {
@@ -101,6 +102,7 @@ impl Instruction {
             0x08 => Some(Instruction::GetDHSharedSecret),
             0x09 => Some(Instruction::GetRawSchnorrSignature),
             0x10 => Some(Instruction::GetScriptSchnorrSignature),
+            0x11 => Some(Instruction::GetOneSidedMetadataSignature),
             _ => None,
         }
     }

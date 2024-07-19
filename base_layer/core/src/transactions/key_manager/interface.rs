@@ -216,6 +216,16 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn get_one_sided_metadata_signature(
+        &self,
+        spending_key_id: &TariKeyId,
+        value_as_private_key: &PrivateKey,
+        sender_offset_key_id: &TariKeyId,
+        txo_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+        range_proof_type: RangeProofType,
+    ) -> Result<ComAndPubSignature, TransactionError>;
+
     async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,

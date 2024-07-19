@@ -457,6 +457,29 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_one_sided_metadata_signature(
+        &self,
+        spending_key_id: &TariKeyId,
+        value_as_private_key: &PrivateKey,
+        sender_offset_key_id: &TariKeyId,
+        txo_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+        range_proof_type: RangeProofType,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_one_sided_metadata_signature(
+                spending_key_id,
+                value_as_private_key,
+                sender_offset_key_id,
+                txo_version,
+                metadata_signature_message,
+                range_proof_type,
+            )
+            .await
+    }
+
     async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
