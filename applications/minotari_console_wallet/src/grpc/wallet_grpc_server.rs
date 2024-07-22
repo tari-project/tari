@@ -98,15 +98,8 @@ use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinotari, T},
-        transaction_components::{
-            encrypted_data::PaymentId,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
-        },
+        tari_amount::MicroMinotari,
+        transaction_components::{encrypted_data::PaymentId, OutputFeatures, UnblindedOutput},
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;

@@ -65,7 +65,7 @@ impl StaticApplicationInfo {
         )?;
         writeln!(
             file,
-            "{}",
+            r#"#[allow(dead_code)] pub const APP_AUTHORS: &str = "{}";"#,
             self.manifest
                 .workspace
                 .as_ref()

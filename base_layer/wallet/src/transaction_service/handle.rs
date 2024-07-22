@@ -36,7 +36,6 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
-    consensus::{MaxSizeBytes, MaxSizeString},
     mempool::FeePerGramStat,
     proto,
     transactions::{
@@ -143,14 +142,12 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     RegisterCodeTemplate {
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
+        template_name: String,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
+        binary_sha: FixedHash,
+        binary_url: String,
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
     },
@@ -638,22 +635,18 @@ impl TransactionServiceHandle {
 
     pub async fn register_code_template(
         &mut self,
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
+        template_name: String,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
+        binary_sha: FixedHash,
+        binary_url: String,
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
                 template_name,
                 template_version,
                 template_type,
@@ -665,7 +658,10 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::CodeRegistrationTransactionSent {
+                tx_id,
+                template_address,
+            } => Ok((tx_id, template_address)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

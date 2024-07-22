@@ -421,7 +421,7 @@ pub async fn send_register_template_transaction_task(
         )
         .await;
 
-    let sent_tx_id = match result {
+    let (sent_tx_id, _template_addr) = match result {
         Ok(tx_id) => tx_id,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to register code template: {:?}", e);
@@ -441,7 +441,7 @@ pub async fn send_register_template_transaction_task(
         match event_stream.recv().await {
             Ok(event) => {
                 if let TransactionEvent::TransactionCompletedImmediately(completed_tx_id) = &*event {
-                    if sent_tx_id.0 == *completed_tx_id {
+                    if sent_tx_id == *completed_tx_id {
                         result_tx.send(UiTransactionSendStatus::TransactionComplete).unwrap();
                         return;
                     }

@@ -54,7 +54,7 @@ use tari_core::{
     },
     proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerBranch},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -233,7 +233,7 @@ where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: TransactionServiceConfig,
@@ -810,8 +810,6 @@ where
                 return Ok(());
             },
             TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
                 template_name,
                 template_version,
                 template_type,
@@ -821,28 +819,25 @@ where
                 fee_per_gram,
                 sidechain_deployment_key,
             } => {
-                self.register_code_template(
-                    fee_per_gram,
-                    CodeTemplateRegistration {
-                        author_public_key,
-                        author_signature,
-                        template_name: template_name.clone(),
+                let (tx_id, main_output_hash) = self
+                    .register_code_template(
+                        fee_per_gram,
+                        template_name.to_string(),
                         template_version,
                         template_type,
                         build_info,
                         binary_sha,
                         binary_url,
                         sidechain_deployment_key,
-                    },
-                    UtxoSelectionCriteria::default(),
-                    format!("Template Registration: {}", template_name),
-                    send_transaction_join_handles,
-                    transaction_broadcast_join_handles,
-                    reply_channel.take().expect("Reply channel is not set"),
-                )
-                .await?;
-
-                return Ok(());
+                        UtxoSelectionCriteria::default(),
+                        format!("Template Registration: {}", template_name),
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
+                    tx_id,
+                    template_address: main_output_hash,
+                })
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 destination,
@@ -1124,7 +1119,7 @@ where
                 "Received transaction with spend-to-self transaction"
             );
 
-            let (fee, transaction) = self
+            let (fee, transaction, _template_addr) = self
                 .resources
                 .output_manager_service
                 .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
@@ -2411,14 +2406,14 @@ where
         let author_key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(&TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
             .await?;
         let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
             Some(k) => (
                 Some(PublicKey::from_secret_key(&k)),
                 Some(
-                    SchnorrSignature::sign(&k, &author_key.pub_key, &mut OsRng)
+                    SchnorrSignature::sign(&k, author_key.pub_key.as_bytes(), &mut OsRng)
                         .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?,
                 ),
             ),
@@ -2452,7 +2447,7 @@ where
         let author_sig = self
             .resources
             .transaction_key_manager_service
-            .sign_raw(&challenge, &author_key.pub_key, nonce_secret)
+            .sign_raw(&challenge, &author_key.key_id, nonce_secret)
             .await
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 

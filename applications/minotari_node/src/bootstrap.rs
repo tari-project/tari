@@ -23,7 +23,7 @@
 use std::{cmp, str::FromStr, sync::Arc};
 
 use log::*;
-use minotari_app_utilities::{identity_management, identity_management::load_from_json};
+use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
