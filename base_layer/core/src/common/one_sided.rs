@@ -44,8 +44,6 @@ hash_domain!(
     1
 );
 
-hash_domain!(FaucetHashDomain, "com.tari.base_layer.wallet.faucet", 0);
-
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputEncryptionKeysDomain>;
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputSpendingKeysDomain>;
 

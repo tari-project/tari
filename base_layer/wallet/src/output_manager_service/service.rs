@@ -22,9 +22,7 @@
 
 use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 
-use blake2::Blake2b;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use digest::consts::U32;
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
@@ -36,14 +34,13 @@ use tari_common_types::{
 use tari_comms::types::CommsDHKE;
 use tari_core::{
     borsh::SerializedSize,
-    consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
+    consensus::ConsensusConstants,
     covenants::Covenant,
     one_sided::{
         public_key_to_output_encryption_key,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
         stealth_address_script_spending_key,
-        FaucetHashDomain,
     },
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -1237,17 +1234,12 @@ where
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
                 let mut script_signatures = Vec::new();
                 // lets add our own signature to the list
-                let script_challange: [u8; 32] =
-                    DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
-                        .chain(output.commitment())
-                        .finalize()
-                        .into();
                 let self_signature = self
                     .resources
                     .key_manager
                     .sign_script_message(
                         &self.resources.key_manager.get_spend_key().await?.key_id,
-                        &script_challange,
+                        output.commitment.as_bytes(),
                     )
                     .await?;
                 script_input_shares.insert(

@@ -31,9 +31,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use blake2::Blake2b;
 use chrono::{DateTime, Utc};
-use digest::{consts::U32, crypto_common::rand_core::OsRng, Digest};
+use digest::{crypto_common::rand_core::OsRng, Digest};
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
@@ -64,9 +63,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
-    consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
-    one_sided::FaucetHashDomain,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
@@ -823,11 +820,6 @@ pub async fn command_runner(
                 let session_info = read_session_info(args.input_file.clone())?;
 
                 let commitment = Commitment::from_hex(&session_info.commitment_to_spend)?;
-                let commitment_hash: [u8; 32] =
-                    DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
-                        .chain(&commitment)
-                        .finalize()
-                        .into();
                 let shared_secret = key_manager_service
                     .get_diffie_hellman_shared_secret(
                         &sender_offset_key.key_id,
@@ -840,7 +832,7 @@ pub async fn command_runner(
                 let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
 
                 let script_input_signature = key_manager_service
-                    .sign_script_message(&wallet_spend_key.key_id, &commitment_hash)
+                    .sign_script_message(&wallet_spend_key.key_id, commitment.as_bytes())
                     .await?;
 
                 let out_dir = out_dir(&session_info.session_id)?;

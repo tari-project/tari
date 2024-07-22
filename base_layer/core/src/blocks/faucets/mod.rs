@@ -24,8 +24,6 @@ mod test {
 
     use std::{convert::TryFrom, fs::File, io::Write};
 
-    use blake2::Blake2b;
-    use digest::consts::U32;
     use rand::rngs::OsRng;
     use tari_common_types::{
         tari_address::TariAddress,
@@ -34,10 +32,10 @@ mod test {
     use tari_crypto::keys::{PublicKey as PkTrait, SecretKey as SkTrait};
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{ExecutionStack, Opcode::CheckMultiSigVerifyAggregatePubKey, TariScript};
+    use tari_utilities::ByteArray;
 
     use crate::{
-        consensus::DomainSeparatedConsensusHasher,
-        one_sided::{public_key_to_output_encryption_key, FaucetHashDomain},
+        one_sided::public_key_to_output_encryption_key,
         transactions::{
             key_manager::{
                 create_memory_db_key_manager,
@@ -91,10 +89,8 @@ mod test {
                 .get_commitment(&commitment_mask.key_id, &amount.into())
                 .await
                 .unwrap();
-            let com_hash: [u8; 32] = DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
-                .chain(&commitment)
-                .finalize()
-                .into();
+            let mut commitment_bytes = [0u8; 32];
+            commitment_bytes.clone_from_slice(commitment.as_bytes());
 
             let sender_offset = key_manager
                 .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -104,7 +100,7 @@ mod test {
                 signature_threshold,
                 address_len,
                 list_of_spend_keys.clone(),
-                Box::new(com_hash),
+                Box::new(commitment_bytes),
             )]);
             let output = WalletOutputBuilder::new(amount, commitment_mask.key_id)
                 .with_features(OutputFeatures::new(
