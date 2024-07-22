@@ -668,7 +668,7 @@ mod validator_node_merkle_root {
     #[tokio::test]
     async fn it_has_the_correct_merkle_root_for_current_vn_set_with_sidechain() {
         let db = setup();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
         let (sk, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
