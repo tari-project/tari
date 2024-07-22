@@ -240,10 +240,8 @@ mod test {
 
     use super::*;
     use crate::{
-        blocks::{BlockHeader, BlockHeaderAccumulatedData},
-        chain_storage::async_db::AsyncBlockchainDb,
-        consensus::ConsensusManager,
-        proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
+        blocks::BlockHeader,
+        proof_of_work::PowAlgorithm,
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
 
@@ -316,7 +314,6 @@ mod test {
 
     mod validate {
         use super::*;
-        use crate::{blocks::BlockHeaderValidationError, validation::ValidationError};
 
         #[tokio::test]
         async fn it_passes_if_headers_are_valid() {

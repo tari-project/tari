@@ -140,7 +140,6 @@ mod test {
         use tari_crypto::keys::{PublicKey, SecretKey};
 
         use super::*;
-        use crate::base_node::chain_metadata_service::PeerChainMetadata;
 
         // Helper function to generate a peer with a given latency
         fn generate_peer(latency: Option<usize>) -> SyncPeer {

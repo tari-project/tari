@@ -117,7 +117,7 @@ pub fn verify_header(
     let mut is_found = false;
     let mut already_seen_mmfield = false;
     for item in extra_field.0 {
-        if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
+        if let SubField::MergeMining(depth, merge_mining_hash) = item {
             if already_seen_mmfield {
                 return Err(MergeMineError::ValidationError(
                     "More than one merge mining tag found in coinbase".to_string(),
@@ -162,19 +162,21 @@ fn check_aux_chains(
         }
     }
     let merkle_tree_params = MerkleTreeParameters::from_varint(merge_mining_params);
-    if merkle_tree_params.number_of_chains == 0 {
+    if merkle_tree_params.number_of_chains() == 0 {
         return false;
     }
     let hash_position = U256::from_little_endian(
         &Sha256::new()
             .chain_update(tari_genesis_block_hash)
-            .chain_update(merkle_tree_params.aux_nonce.to_le_bytes())
+            .chain_update(merkle_tree_params.aux_nonce().to_le_bytes())
             .chain_update((109_u8).to_le_bytes())
             .finalize(),
     )
     .low_u32() %
-        u32::from(merkle_tree_params.number_of_chains);
-    let (merkle_root, pos) = monero_data.aux_chain_merkle_proof.calculate_root_with_pos(&t_hash);
+        u32::from(merkle_tree_params.number_of_chains());
+    let (merkle_root, pos) = monero_data
+        .aux_chain_merkle_proof
+        .calculate_root_with_pos(&t_hash, merkle_tree_params.number_of_chains());
     if hash_position != pos {
         return false;
     }
@@ -327,7 +329,7 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
 
     // Adding more than one merge mining tag is not allowed
     for item in &extra_field.0 {
-        if let SubField::MergeMining(Some(_), _) = item {
+        if let SubField::MergeMining(_, _) = item {
             return Err(MergeMineError::ValidationError(
                 "More than one merge mining tag in coinbase not allowed".to_string(),
             ));
@@ -342,13 +344,10 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
     let encoded = if aux_chain_count == 1 {
         VarInt(0)
     } else {
-        let mt_params = MerkleTreeParameters {
-            number_of_chains: aux_chain_count,
-            aux_nonce,
-        };
+        let mt_params = MerkleTreeParameters::new(aux_chain_count, aux_nonce)?;
         mt_params.to_varint()
     };
-    extra_field.0.insert(0, SubField::MergeMining(Some(encoded), hash));
+    extra_field.0.insert(0, SubField::MergeMining(encoded, hash));
     debug!(target: LOG_TARGET, "Inserted extra field: {:?}", extra_field);
 
     block.miner_tx.prefix.extra = extra_field.into();
@@ -385,9 +384,8 @@ mod test {
 
     use borsh::BorshSerialize;
     use monero::{
-        blockdata::transaction::{ExtraField, TxOutTarget},
+        blockdata::transaction::TxOutTarget,
         consensus::deserialize,
-        cryptonote::hash::Hashable,
         util::ringct::{RctSig, RctSigBase, RctType},
         Hash,
         PublicKey,
@@ -397,7 +395,6 @@ mod test {
         TxOut,
     };
     use tari_common::configuration::Network;
-    use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
         epoch_time::EpochTime,
@@ -406,7 +403,7 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
+    use crate::proof_of_work::{PowAlgorithm, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -901,7 +898,7 @@ mod test {
         // like trying to sneek it in. Later on, when we call `verify_header(&block_header)`, it should fail.
         let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra).unwrap();
         let hash = monero::Hash::from_slice(hash.as_ref());
-        extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
+        extra_field.0.insert(0, SubField::MergeMining(VarInt(0), hash));
         block.miner_tx.prefix.extra = extra_field.into();
 
         // Trying to extract the Tari hash will fail because there are more than one merge mining tag
@@ -1009,7 +1006,7 @@ mod test {
         let extra_field_after_tag = ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).unwrap();
         assert_eq!(
             &format!(
-                "ExtraField([MergeMining(Some(0), 0x{}), \
+                "ExtraField([MergeMining(0, 0x{}), \
                  TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, 58, 168, \
                  109, 46, 133, 127, 7])])",
                 hex::encode(hash)
@@ -1267,7 +1264,7 @@ mod test {
         assert!(res.is_err());
         let field = res.unwrap_err();
         let mm_tag = SubField::MergeMining(
-            Some(VarInt(0)),
+            VarInt(0),
             Hash::from_slice(
                 hex::decode("9505c642ae2771f344caddde740ad1c238f7fc17f81c2c515b2cd6d3f2030c46")
                     .unwrap()

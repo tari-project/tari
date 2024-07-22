@@ -44,10 +44,19 @@ impl MessageBuilder {
         }
     }
 
-    pub fn address(&self, address: TariAddress) -> Self {
+    pub fn receiver_address(&self, receiver_address: TariAddress) -> Self {
         Self {
             inner: Message {
-                address,
+                receiver_address,
+                ..self.inner.clone()
+            },
+        }
+    }
+
+    pub fn sender_address(&self, sender_address: TariAddress) -> Self {
+        Self {
+            inner: Message {
+                sender_address,
                 ..self.inner.clone()
             },
         }

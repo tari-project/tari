@@ -23,12 +23,23 @@
 use std::time::Instant;
 
 use log::*;
-use tari_common_types::{transaction::TxId, types::FixedHash};
-use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
-    transaction_components::{OutputType, TransactionError, TransactionOutput, WalletOutput},
+use tari_common_types::{
+    transaction::TxId,
+    types::{FixedHash, PrivateKey},
 };
+use tari_core::transactions::{
+    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        encrypted_data::PaymentId,
+        OutputType,
+        TransactionError,
+        TransactionOutput,
+        WalletOutput,
+    },
+};
+use tari_crypto::keys::SecretKey;
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
 
@@ -80,7 +91,7 @@ where
                 continue;
             }
 
-            let (spending_key, committed_value) = match self.attempt_output_recovery(&output).await? {
+            let (spending_key, committed_value, payment_id) = match self.attempt_output_recovery(&output).await? {
                 Some(recovered) => recovered,
                 None => continue,
             };
@@ -108,6 +119,7 @@ where
                 output.encrypted_data,
                 output.minimum_value_promise,
                 output.proof.clone(),
+                payment_id,
             );
 
             rewound_outputs.push((uo, known_script_index.is_some(), hash));
@@ -116,7 +128,7 @@ where
         let rewind_time = start.elapsed();
         trace!(
             target: LOG_TARGET,
-            "bulletproof rewind profile - rewound {} outputs in {} ms",
+            "UTXO recovery - checked {} outputs in {} ms",
             outputs_length,
             rewind_time.as_millis(),
         );
@@ -148,8 +160,6 @@ where
                 tx_id,
                 hash: *hash,
             });
-            self.update_outputs_script_private_key_and_update_key_manager_index(output)
-                .await?;
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
@@ -192,11 +202,18 @@ where
         known_scripts: &[KnownOneSidedPaymentScript],
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop) {
-            // This is a nop, so we can just create a new key an create the input stack.
-            let (key, public_key) = self
-                .master_key_manager
-                .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-                .await?;
+            // This is a nop, so we can just create a new key for the input stack.
+            let key = if let Some(index) = spending_key.managed_index() {
+                KeyId::Derived {
+                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+                    index,
+                }
+            } else {
+                let private_key = PrivateKey::random(&mut rand::thread_rng());
+                self.master_key_manager.import_key(private_key).await?
+            };
+            let public_key = self.master_key_manager.get_public_key_at_key_id(&key).await?;
             (inputs!(public_key), key)
         } else {
             // This is a known script so lets fill in the details
@@ -210,7 +227,7 @@ where
                 if let Some(Opcode::PushPubKey(public_key)) = script.opcode(0) {
                     let result = self
                         .master_key_manager
-                        .find_script_key_id_from_spend_key_id(spending_key, Some(public_key))
+                        .find_script_key_id_from_commitment_mask_key_id(spending_key, Some(public_key))
                         .await?;
                     if let Some(script_key_id) = result {
                         (ExecutionStack::default(), script_key_id)
@@ -231,7 +248,7 @@ where
     async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroMinotari)>, OutputManagerError> {
+    ) -> Result<Option<(TariKeyId, MicroMinotari, PaymentId)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self.db.fetch_by_commitment(output.commitment().clone()) {
@@ -239,57 +256,14 @@ where
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value) = match self.master_key_manager.try_output_key_recovery(output, None).await {
-            Ok(value) => value,
-            // Key manager errors here are actual errors and should not be suppressed.
-            Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
-            Err(_) => return Ok(None),
-        };
+        let (key, committed_value, payment_id) =
+            match self.master_key_manager.try_output_key_recovery(output, None).await {
+                Ok(value) => value,
+                // Key manager errors here are actual errors and should not be suppressed.
+                Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
+                Err(_) => return Ok(None),
+            };
 
-        Ok(Some((key, committed_value)))
-    }
-
-    /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
-    /// output to contain correct associated script private key and update the key manager to the highest index it has
-    /// seen so far.
-    async fn update_outputs_script_private_key_and_update_key_manager_index(
-        &mut self,
-        output: &mut WalletOutput,
-    ) -> Result<(), OutputManagerError> {
-        let public_key = self
-            .master_key_manager
-            .get_public_key_at_key_id(&output.spending_key_id)
-            .await?;
-        let script_key = {
-            let found_index = self
-                .master_key_manager
-                .find_key_index(
-                    TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    &public_key,
-                )
-                .await?;
-
-            self.master_key_manager
-                .update_current_key_index_if_higher(
-                    TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    found_index,
-                )
-                .await?;
-            self.master_key_manager
-                .update_current_key_index_if_higher(
-                    TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
-                    found_index,
-                )
-                .await?;
-
-            TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
-                index: found_index,
-            }
-        };
-        let public_script_key = self.master_key_manager.get_public_key_at_key_id(&script_key).await?;
-        output.input_data = inputs!(public_script_key);
-        output.script_key_id = script_key;
-        Ok(())
+        Ok(Some((key, committed_value, payment_id)))
     }
 }

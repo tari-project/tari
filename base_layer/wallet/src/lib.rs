@@ -17,7 +17,6 @@ pub mod output_manager_service;
 pub mod storage;
 pub mod test_utils;
 pub mod transaction_service;
-pub mod types;
 
 pub use tari_common_types::types::WalletHasher;
 pub mod util;

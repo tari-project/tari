@@ -510,8 +510,7 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use digest::consts::U32;
-    use rand::{self, RngCore};
+    use rand::RngCore;
 
     use super::*;
     use crate::sparse_merkle_tree::bit_utils::TraverseDirection::{Left, Right};

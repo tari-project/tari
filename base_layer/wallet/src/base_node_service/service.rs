@@ -112,9 +112,8 @@ where T: WalletBackend + 'static
                 error!(target: LOG_TARGET, "Error handling request: {:?}", e);
                 e
             });
-            let _result = reply_tx.send(response).map_err(|e| {
+            let _result = reply_tx.send(response).inspect_err(|_| {
                 warn!(target: LOG_TARGET, "Failed to send reply");
-                e
             });
         }
 

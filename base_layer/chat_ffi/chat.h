@@ -67,11 +67,12 @@ extern "C" {
  * The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
 struct ChatClient *create_chat_client(struct ApplicationConfig *config,
-                                      int *error_out,
                                       CallbackContactStatusChange callback_contact_status_change,
                                       CallbackMessageReceived callback_message_received,
                                       CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
-                                      CallbackReadConfirmationReceived callback_read_confirmation_received);
+                                      CallbackReadConfirmationReceived callback_read_confirmation_received,
+                                      struct TariAddress *tari_address,
+                                      int *error_out);
 
 /**
  * Side loads a chat client
@@ -98,11 +99,12 @@ struct ChatClient *create_chat_client(struct ApplicationConfig *config,
  */
 struct ChatClient *sideload_chat_client(struct ApplicationConfig *config,
                                         struct ContactsServiceHandle *contacts_handle,
-                                        int *error_out,
                                         CallbackContactStatusChange callback_contact_status_change,
                                         CallbackMessageReceived callback_message_received,
                                         CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
-                                        CallbackReadConfirmationReceived callback_read_confirmation_received);
+                                        CallbackReadConfirmationReceived callback_read_confirmation_received,
+                                        struct TariAddress *tari_address,
+                                        int *error_out);
 
 /**
  * Frees memory for a ChatClient
@@ -490,6 +492,7 @@ void destroy_conversationalists_vector(struct ConversationalistsVector *ptr);
  * The ```Message``` received should be destroyed after use
  */
 struct Message *create_chat_message(struct TariAddress *receiver,
+                                    struct TariAddress *sender,
                                     const char *message,
                                     int *error_out);
 
@@ -506,6 +509,26 @@ struct Message *create_chat_message(struct TariAddress *receiver,
  * None
  */
 void destroy_chat_message(struct Message *ptr);
+
+/**
+ * Get a ptr to a message from a message_id
+ *
+ * ## Arguments
+ * `client` - The ChatClient pointer
+ * `message_id` - A pointer to a byte vector representing a message id
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut Message` - A pointer to a message
+ *
+ * # Safety
+ * The returned pointer to ```Message``` should be destroyed after use
+ * ```client``` should be destroyed after use
+ * ```message_id``` should be destroyed after use
+ */
+struct Message *get_chat_message(struct ChatClient *client,
+                                 struct ChatByteVector *message_id,
+                                 int *error_out);
 
 /**
  * Sends a message over a client
@@ -587,7 +610,23 @@ struct ChatByteVector *read_chat_message_body(struct Message *message, int *erro
  * `message` should be destroyed eventually
  * the returned `TariAddress` should be destroyed eventually
  */
-struct TariAddress *read_chat_message_address(struct Message *message, int *error_out);
+struct TariAddress *read_chat_message_sender_address(struct Message *message, int *error_out);
+
+/**
+ * Returns a pointer to a TariAddress
+ *
+ * ## Arguments
+ * `message` - A pointer to a Message
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `TariAddress` should be destroyed eventually
+ */
+struct TariAddress *read_chat_message_receiver_address(struct Message *message, int *error_out);
 
 /**
  * Returns a c_uchar representation of the Direction enum
@@ -620,6 +659,21 @@ unsigned char read_chat_message_direction(struct Message *message, int *error_ou
  * `message` should be destroyed eventually
  */
 unsigned long long read_chat_message_stored_at(struct Message *message, int *error_out);
+
+/**
+ * Returns a c_ulonglong representation of the sent at timestamp as seconds since epoch
+ *
+ * ## Arguments
+ * `message` - A pointer to a Message
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_ulonglong` - The stored_at timestamp, seconds since epoch. Returns 0 if message is null.
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+unsigned long long read_chat_message_sent_at(struct Message *message, int *error_out);
 
 /**
  * Returns a c_ulonglong representation of the delivery confirmation timestamp as seconds since epoch

@@ -128,7 +128,6 @@ pub fn run_wallet_with_cli(
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
-    // This is deactivated at the moment as full support is not yet complete
     let wallet_type = prompt_wallet_type(boot_mode, &config.wallet, cli.non_interactive_mode);
 
     // get command line password if provided

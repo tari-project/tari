@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use once_cell::sync::Lazy;
 use thiserror::Error;
 
 /// Calculates a checksum using the [DammSum](https://github.com/cypherstack/dammsum) algorithm.
 ///
 /// This approach uses a dictionary whose size must be `2^k` for some `k > 0`.
-/// The algorithm accepts an array of arbitrary size, each of whose elements are integers in the range `[0, 2^k)`.
+/// The algorithm accepts a slice of arbitrary size, each of whose elements are integers in the range `[0, 2^k)`.
 /// The checksum is a single element also within this range.
 /// DammSum detects all single transpositions and substitutions.
 ///
-/// Note that for this implementation, we add the additional restriction that `k == 8`.
+/// Note that for this implementation, we add the additional restriction that `k == 8` to handle byte slices.
 /// This is only because DammSum requires us to provide the coefficients for a certain type of polynomial, and
 /// because it's unlikely for the alphabet size to change for this use case.
 /// See the linked repository for more information, or if you need a different dictionary size.
@@ -42,18 +43,27 @@ pub enum ChecksumError {
     InvalidChecksum,
 }
 
-// Fixed for a dictionary size of `2^8 == 256`
-const COEFFICIENTS: [u8; 3] = [4, 3, 1];
+/// The number of bytes used for the checksum
+/// This is included for applications that need to know it for encodings
+pub const CHECKSUM_BYTES: usize = 1;
 
-/// Compute the DammSum checksum for an array, each of whose elements are in the range `[0, 2^8)`
-pub fn compute_checksum(data: &Vec<u8>) -> u8 {
+// Set up the mask, fixed for a dictionary size of `2^8 == 256`
+// This can fail on invalid coefficients, which will cause a panic
+// To ensure this doesn't happen in production, it is directly tested
+const COEFFICIENTS: [u8; 3] = [4, 3, 1];
+static MASK: Lazy<u8> = Lazy::new(|| {
     let mut mask = 1u8;
 
-    // Compute the bitmask (if possible)
     for bit in COEFFICIENTS {
-        mask += 1u8 << bit;
+        let shift = 1u8.checked_shl(u32::from(bit)).unwrap();
+        mask = mask.checked_add(shift).unwrap();
     }
 
+    mask
+});
+
+/// Compute the DammSum checksum for a byte slice
+pub fn compute_checksum(data: &[u8]) -> u8 {
     // Perform the Damm algorithm
     let mut result = 0u8;
 
@@ -63,23 +73,24 @@ pub fn compute_checksum(data: &Vec<u8>) -> u8 {
         result <<= 1; // double
         if overflow {
             // reduce
-            result ^= mask;
+            result ^= *MASK;
         }
     }
 
     result
 }
 
-/// Determine whether the array ends with a valid checksum
-pub fn validate_checksum(data: &Vec<u8>) -> Result<(), ChecksumError> {
+/// Determine whether a byte slice ends with a valid checksum
+/// If it is valid, returns the underlying data slice (without the checksum)
+pub fn validate_checksum(data: &[u8]) -> Result<&[u8], ChecksumError> {
     // Empty data is not allowed, nor data only consisting of a checksum
     if data.len() < 2 {
         return Err(ChecksumError::InputDataTooShort);
     }
 
-    // It's sufficient to check the entire array against a zero checksum
+    // It's sufficient to check the entire slice against a zero checksum
     match compute_checksum(data) {
-        0u8 => Ok(()),
+        0u8 => Ok(&data[..data.len() - 1]),
         _ => Err(ChecksumError::InvalidChecksum),
     }
 }
@@ -88,7 +99,13 @@ pub fn validate_checksum(data: &Vec<u8>) -> Result<(), ChecksumError> {
 mod test {
     use rand::Rng;
 
-    use crate::dammsum::{compute_checksum, validate_checksum, ChecksumError};
+    use crate::dammsum::*;
+
+    #[test]
+    /// Check that mask initialization doesn't panic
+    fn no_mask_panic() {
+        let _mask = *MASK;
+    }
 
     #[test]
     /// Check that valid checksums validate
@@ -97,13 +114,14 @@ mod test {
 
         // Generate random data
         let mut rng = rand::thread_rng();
-        let mut data: Vec<u8> = (0..SIZE).map(|_| rng.gen::<u8>()).collect();
+        let data: Vec<u8> = (0..SIZE).map(|_| rng.gen::<u8>()).collect();
 
         // Compute and append the checksum
-        data.push(compute_checksum(&data));
+        let mut data_with_checksum = data.clone();
+        data_with_checksum.push(compute_checksum(&data));
 
-        // Validate
-        assert!(validate_checksum(&data).is_ok());
+        // Validate and ensure we get the same data back
+        assert_eq!(validate_checksum(&data_with_checksum).unwrap(), data);
     }
 
     #[test]

@@ -21,7 +21,6 @@ pub mod connectivity;
 
 pub mod peer_manager;
 pub use peer_manager::{NodeIdentity, OrNotFound, PeerManager};
-
 pub mod framing;
 
 mod multiplexing;
@@ -65,3 +64,10 @@ pub use async_trait::async_trait;
 pub use bytes::{Buf, BufMut, Bytes, BytesMut};
 #[cfg(feature = "rpc")]
 pub use tower::make::MakeService;
+
+/// Was the connection closed due to minimize_connections
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Minimized {
+    Yes,
+    No,
+}

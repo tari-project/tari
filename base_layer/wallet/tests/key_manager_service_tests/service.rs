@@ -66,7 +66,7 @@ async fn get_key_at_test_with_encryption() {
         })
         .await
         .unwrap();
-    assert_eq!(key_1.1, key_1_2);
+    assert_eq!(key_1.pub_key, key_1_2);
 }
 
 #[tokio::test]
@@ -147,7 +147,7 @@ async fn key_manager_find_index() {
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1.1).await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.pub_key).await.unwrap();
 
     assert_eq!(index, 3);
 }
@@ -170,7 +170,7 @@ async fn key_manager_update_current_key_index_if_higher() {
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1.1).await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.pub_key).await.unwrap();
 
     assert_eq!(index, 3);
 
@@ -188,7 +188,7 @@ async fn key_manager_update_current_key_index_if_higher() {
         .unwrap();
     let index = key_manager.find_key_index("branch1", &key_1_2).await.unwrap();
     assert_eq!(index, 7);
-    assert_eq!(key_1_2, key_1.1);
+    assert_eq!(key_1_2, key_1.pub_key);
 }
 
 #[tokio::test]
@@ -213,17 +213,17 @@ async fn key_manager_test_index() {
     let key_2 = key_manager
         .get_public_key_at_key_id(&KeyId::Managed {
             branch: "branch2".to_string(),
-            index: result.0.managed_index().unwrap(),
+            index: result.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
 
     assert_eq!(
-        result.0.managed_index().unwrap(),
-        key_manager.find_key_index("branch1", &result.1).await.unwrap()
+        result.key_id.managed_index().unwrap(),
+        key_manager.find_key_index("branch1", &result.pub_key).await.unwrap()
     );
     assert_eq!(
-        result.0.managed_index().unwrap(),
+        result.key_id.managed_index().unwrap(),
         key_manager.find_key_index("branch2", &key_2).await.unwrap()
     );
 }

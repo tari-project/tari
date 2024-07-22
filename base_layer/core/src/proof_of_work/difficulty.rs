@@ -132,32 +132,6 @@ impl CheckedAdd<u64> for Difficulty {
     }
 }
 
-/// This trait is used to add a type to `CheckedSub`, which greatly simplifies usage in the code.
-/// It is implemented for `Difficulty` and `u64`.
-pub trait CheckedSub<T> {
-    fn checked_sub(&self, other: T) -> Option<Self>
-    where Self: Sized;
-}
-
-impl CheckedSub<Difficulty> for Difficulty {
-    fn checked_sub(&self, other: Difficulty) -> Option<Self> {
-        if let Some(val) = self.0.checked_sub(other.0) {
-            if val < MIN_DIFFICULTY {
-                return None;
-            }
-            Some(Difficulty(val))
-        } else {
-            None
-        }
-    }
-}
-
-impl CheckedSub<u64> for Difficulty {
-    fn checked_sub(&self, other: u64) -> Option<Self> {
-        self.checked_sub(Difficulty(other))
-    }
-}
-
 impl From<Difficulty> for u64 {
     fn from(value: Difficulty) -> Self {
         value.0
@@ -191,7 +165,7 @@ mod test {
     use primitive_types::U256;
 
     use crate::proof_of_work::{
-        difficulty::{CheckedAdd, CheckedSub, MIN_DIFFICULTY},
+        difficulty::{CheckedAdd, MIN_DIFFICULTY},
         Difficulty,
     };
     #[test]
@@ -235,14 +209,6 @@ mod test {
         assert!(d1.checked_add(1).is_some());
         let d2 = Difficulty::max();
         assert!(d2.checked_add(1).is_none());
-    }
-
-    #[test]
-    fn subtraction_does_not_underflow() {
-        let d1 = Difficulty::from_u64(100).unwrap();
-        assert!(d1.checked_sub(1).is_some());
-        let d2 = Difficulty::max();
-        assert!(d1.checked_sub(d2).is_none());
     }
 
     #[test]

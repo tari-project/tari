@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
@@ -59,6 +59,14 @@ impl TryFrom<UnblindedOutput> for grpc::UnblindedOutput {
             covenant,
             encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
+            range_proof: {
+                let proof_bytes = if let Some(proof) = output.range_proof {
+                    proof.to_vec()
+                } else {
+                    vec![]
+                };
+                Some(grpc::RangeProof { proof_bytes })
+            },
         })
     }
 }
@@ -99,6 +107,18 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
         let minimum_value_promise = MicroMinotari::from(output.minimum_value_promise);
 
+        let range_proof = if let Some(proof) = output.range_proof {
+            if proof.proof_bytes.is_empty() {
+                None
+            } else {
+                let proof =
+                    RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {}", e))?;
+                Some(proof)
+            }
+        } else {
+            return Err("Range proof not provided".to_string());
+        };
+
         // zeroize output sensitive data
         output.spending_key.zeroize();
         output.script_private_key.zeroize();
@@ -117,6 +137,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
         ))
     }
 }

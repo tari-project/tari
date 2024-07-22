@@ -50,10 +50,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
 ) {
     // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
     // height or current tip height with safety margin to determine if these should be returned
-    let last_mined_transaction = match db.fetch_last_mined_transaction() {
-        Ok(tx) => tx,
-        Err(_) => None,
-    };
+    let last_mined_transaction = db.fetch_last_mined_transaction().unwrap_or_default();
 
     let height_with_margin = tip_height.saturating_sub(SAFETY_HEIGHT_MARGIN);
     let check_height = if let Some(tx) = last_mined_transaction {
@@ -110,6 +107,11 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         "Checking {} detected transaction statuses",
         all_detected_transactions.len()
     );
+    trace!(
+        target: LOG_TARGET,
+        "Checking transaction statuses for {:?} ",
+        all_detected_transactions.iter().map(|tx| tx.tx_id).collect::<Vec<_>>()
+    );
     for tx in all_detected_transactions {
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
@@ -118,6 +120,11 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
                 return;
             },
         };
+        trace!(
+            target: LOG_TARGET,
+            "TxId: {}, {:?} ",
+            tx.tx_id, output_info_for_tx_id
+        );
         // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
         // be different.
         let output_status = output_info_for_tx_id.statuses[0];

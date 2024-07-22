@@ -25,7 +25,13 @@ use std::{net::SocketAddr, str::FromStr};
 use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{base_node_client::BaseNodeClient, Block, NewBlockTemplate, NewBlockTemplateRequest},
+    tari_rpc::{
+        base_node_client::BaseNodeClient,
+        sha_p2_pool_client::ShaP2PoolClient,
+        Block,
+        NewBlockTemplate,
+        NewBlockTemplateRequest,
+    },
 };
 use tari_common::configuration::{
     bootstrap::{grpc_default_port, ApplicationType},
@@ -162,6 +168,9 @@ pub fn wait_for_keypress() {
 
 /// Base node gRPC client
 pub type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
+
+/// SHA P2Pool gRPC client
+pub type ShaP2PoolGrpcClient = ShaP2PoolClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
 /// Verify that the base node is responding to the mining gRPC requests
 pub async fn verify_base_node_grpc_mining_responses(

@@ -31,7 +31,7 @@ impl CryptoFactories {
     ///
     /// ## Parameters
     ///
-    /// * `max_proof_range`: Sets the the maximum value in range proofs, where `max = 2^max_proof_range`
+    /// * `max_proof_range`: Sets the maximum value in range proofs, where `max = 2^max_proof_range`
     pub fn new(max_proof_range: usize) -> Self {
         Self {
             commitment: Arc::new(CommitmentFactory::default()),

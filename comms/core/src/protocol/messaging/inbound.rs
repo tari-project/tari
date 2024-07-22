@@ -22,8 +22,9 @@
 
 use std::io;
 
-use futures::StreamExt;
+use futures::{future, future::Either, SinkExt, StreamExt};
 use log::*;
+use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc},
@@ -42,6 +43,7 @@ pub struct InboundMessaging {
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     messaging_events_tx: broadcast::Sender<MessagingEvent>,
     enable_message_received_event: bool,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl InboundMessaging {
@@ -50,16 +52,18 @@ impl InboundMessaging {
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         messaging_events_tx: broadcast::Sender<MessagingEvent>,
         enable_message_received_event: bool,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             peer,
             inbound_message_tx,
             messaging_events_tx,
             enable_message_received_event,
+            shutdown_signal,
         }
     }
 
-    pub async fn run<S>(self, socket: S)
+    pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = &self.peer;
         #[cfg(feature = "metrics")]
@@ -71,10 +75,9 @@ impl InboundMessaging {
         );
 
         let stream = MessagingProtocol::framed(socket);
-
         tokio::pin!(stream);
 
-        while let Some(result) = stream.next().await {
+        while let Either::Right((Some(result), _)) = future::select(self.shutdown_signal.wait(), stream.next()).await {
             match result {
                 Ok(raw_msg) => {
                     #[cfg(feature = "metrics")]
@@ -137,6 +140,8 @@ impl InboundMessaging {
                 },
             }
         }
+
+        let _ignore = stream.close().await;
 
         let _ignore = self
             .messaging_events_tx

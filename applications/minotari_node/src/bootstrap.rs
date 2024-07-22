@@ -20,12 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp,
-    str::FromStr,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{cmp, str::FromStr, sync::Arc};
 
 use log::*;
 use minotari_app_utilities::{identity_management, identity_management::load_from_json};
@@ -57,7 +52,6 @@ use tari_core::{
     mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
-    OutputSmt,
 };
 use tari_p2p::{
     auto_update::SoftwareUpdaterService,
@@ -87,7 +81,6 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub factories: CryptoFactories,
     pub randomx_factory: RandomXFactory,
     pub interrupt_signal: ShutdownSignal,
-    pub smt: Arc<RwLock<OutputSmt>>,
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>
@@ -122,11 +115,12 @@ where B: BlockchainBackend + 'static
         let tor_identity = load_from_json(&base_node_config.tor_identity_file)
             .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
         p2p_config.transport.tor.identity = tor_identity;
-        p2p_config.listener_liveness_check_interval = Some(Duration::from_secs(15));
 
+        let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
+                user_agent,
                 peer_seeds.clone(),
                 base_node_config.network,
                 self.node_identity.clone(),

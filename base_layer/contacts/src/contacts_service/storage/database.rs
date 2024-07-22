@@ -187,6 +187,11 @@ where T: ContactsBackend + 'static
         }
     }
 
+    pub fn get_message(&self, message_id: Vec<u8>) -> Result<Message, ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+        fetch!(db_clone, message_id, Message)
+    }
+
     pub fn save_message(&self, message: Message) -> Result<(), ContactsServiceStorageError> {
         self.db
             .write(WriteOperation::Insert(Box::new(DbValue::Message(Box::new(message)))))?;

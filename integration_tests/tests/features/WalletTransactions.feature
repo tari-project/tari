@@ -166,6 +166,7 @@ Feature: Wallet Transactions
     When node C is at height 11
     Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
+  @critical
   Scenario: Wallet imports faucet UTXO
     Given I have a seed node NODE
     When I have 1 base nodes connected to all seed nodes

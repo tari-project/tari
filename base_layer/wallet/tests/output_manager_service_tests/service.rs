@@ -40,10 +40,8 @@ use minotari_wallet::{
     },
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
-    util::wallet_identity::WalletIdentity,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
@@ -66,17 +64,18 @@ use tari_core::{
             MemoryDbKeyManager,
             TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
+            TransactionKeyManagerLabel,
         },
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -159,9 +158,8 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
 
-    let wallet_identity = WalletIdentity::new(server_node_identity.clone(), Network::LocalNet);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -172,7 +170,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
-        wallet_identity,
         key_manager.clone(),
     )
     .await
@@ -197,7 +194,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
     height: Option<u64>,
-    node_identity: Arc<NodeIdentity>,
 ) -> (
     OutputManagerHandle,
     Shutdown,
@@ -226,8 +222,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     mock_base_node_service.set_base_node_state(height);
     task::spawn(mock_base_node_service.run());
     let connectivity = create_wallet_connectivity_mock();
-    let key_manager = create_memory_db_key_manager();
-    let wallet_identity = WalletIdentity::new(node_identity.clone(), Network::LocalNet);
+    let key_manager = create_memory_db_key_manager().unwrap();
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -238,7 +233,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         connectivity,
-        wallet_identity,
         key_manager.clone(),
     )
     .await
@@ -284,7 +278,7 @@ async fn generate_sender_transaction_message(
         script!(Nop),
         inputs!(change.script_key_pk),
         change.script_key_id,
-        change.spend_key_id,
+        change.commitment_mask_key_id,
         Covenant::default(),
     );
 
@@ -388,12 +382,10 @@ async fn fee_estimate() {
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     // no chain metadata
-    let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(backend.clone(), None, server_node_identity).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), None).await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // no utxos - not enough funds
@@ -521,11 +513,9 @@ async fn test_utxo_selection_no_chain_metadata() {
 async fn test_utxo_selection_with_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
     let backend = OutputManagerSqliteDatabase::new(connection);
-    let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(backend.clone(), Some(6), server_node_identity).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), Some(6)).await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
 
     // no utxos - not enough funds
@@ -673,12 +663,9 @@ async fn test_utxo_selection_with_chain_metadata() {
 async fn test_utxo_selection_with_tx_priority() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
     // setup with chain metadata at a height of 6
     let backend = OutputManagerSqliteDatabase::new(connection);
-    let (mut oms, _shutdown, _, _, _, key_manager) =
-        setup_oms_with_bn_state(backend.clone(), Some(6), server_node_identity).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), Some(6)).await;
 
     let amount = MicroMinotari::from(2000);
     let fee_per_gram = MicroMinotari::from(2);
@@ -1933,7 +1920,7 @@ async fn test_txo_revalidation() {
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let output1_value = 1_000_000;
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let output1 = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
@@ -2154,7 +2141,7 @@ async fn test_get_status_by_tx_id() {
     assert_eq!(output_statuses_by_tx_id.statuses.len(), 1);
     assert_eq!(
         output_statuses_by_tx_id.statuses[0],
-        OutputStatus::EncumberedToBeReceived
+        OutputStatus::UnspentMinedUnconfirmed
     );
 }
 
@@ -2171,37 +2158,44 @@ async fn scan_for_recovery_test() {
     let mut recoverable_wallet_outputs = Vec::new();
 
     for i in 1..=NUM_RECOVERABLE {
-        let (spending_key_result, _) = oms
+        let commitment_mask_key = oms
             .key_manager_handle
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
-        let (script_key, public_script_key) = oms
+        let script_key_id = KeyId::Derived {
+            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+            index: commitment_mask_key.key_id.managed_index().unwrap(),
+        };
+        let public_script_key = oms
             .key_manager_handle
-            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+            .get_public_key_at_key_id(&script_key_id)
             .await
             .unwrap();
+
         let amount = 1_000 * i as u64;
         let features = OutputFeatures::default();
         let encrypted_data = oms
             .key_manager_handle
-            .encrypt_data_for_recovery(&spending_key_result, None, amount)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount, PaymentId::Empty)
             .await
             .unwrap();
 
         let uo = WalletOutput::new_current_version(
             MicroMinotari::from(amount),
-            spending_key_result,
+            commitment_mask_key.key_id,
             features,
             script!(Nop),
             inputs!(public_script_key),
-            script_key,
+            script_key_id,
             PublicKey::default(),
             ComAndPubSignature::default(),
             0,
             Covenant::new(),
             encrypted_data,
             MicroMinotari::zero(),
+            PaymentId::Empty,
             &oms.key_manager_handle,
         )
         .await
@@ -2211,7 +2205,7 @@ async fn scan_for_recovery_test() {
 
     let mut non_recoverable_wallet_outputs = Vec::new();
     // we need to create a new key_manager to make the outputs non recoverable
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_input(
             &mut OsRng,
@@ -2266,7 +2260,7 @@ async fn recovered_output_key_not_in_keychain() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
     // we need to create a new key manager here as we dont want the input be recoverable from oms key chain
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000u64),

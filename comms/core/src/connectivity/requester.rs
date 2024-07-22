@@ -41,6 +41,8 @@ use super::{
 use crate::{
     connection_manager::ConnectionManagerError,
     peer_manager::{NodeId, Peer},
+    Minimized,
+    NodeIdentity,
     PeerConnection,
 };
 
@@ -54,7 +56,7 @@ pub type ConnectivityEventTx = broadcast::Sender<ConnectivityEvent>;
 /// Node connectivity events emitted by the ConnectivityManager.
 #[derive(Debug, Clone)]
 pub enum ConnectivityEvent {
-    PeerDisconnected(NodeId),
+    PeerDisconnected(NodeId, Minimized),
     PeerConnected(Box<PeerConnection>),
     PeerConnectFailed(NodeId),
     PeerBanned(NodeId),
@@ -69,7 +71,7 @@ impl fmt::Display for ConnectivityEvent {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityEvent::*;
         match self {
-            PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id),
+            PeerDisconnected(node_id, minimized) => write!(f, "PeerDisconnected({}, {:?})", node_id, minimized),
             PeerConnected(node_id) => write!(f, "PeerConnected({})", node_id),
             PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
@@ -96,11 +98,14 @@ pub enum ConnectivityRequest {
     ),
     GetConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
+    GetMinimizeConnectionsThreshold(oneshot::Sender<Option<usize>>),
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
     BanPeer(NodeId, Duration, String),
     AddPeerToAllowList(NodeId),
     RemovePeerFromAllowList(NodeId),
+    GetAllowList(oneshot::Sender<Vec<NodeId>>),
     GetPeerStats(NodeId, oneshot::Sender<Option<Peer>>),
+    GetNodeIdentity(oneshot::Sender<NodeIdentity>),
 }
 
 /// Handle to make requests and read events from the ConnectivityManager actor.
@@ -233,6 +238,16 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
+    /// Get the optional minimize connections setting.
+    pub async fn get_minimize_connections_threshold(&mut self) -> Result<Option<usize>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetMinimizeConnectionsThreshold(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
     /// Get all currently connection [PeerConnection](crate::PeerConnection]s.
     pub async fn get_active_connections(&mut self) -> Result<Vec<PeerConnection>, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -270,6 +285,26 @@ impl ConnectivityRequester {
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())
+    }
+
+    /// Retrieve self's allow list.
+    pub async fn get_allow_list(&mut self) -> Result<Vec<NodeId>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetAllowList(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    /// Retrieve self's node identity.
+    pub async fn get_node_identity(&mut self) -> Result<NodeIdentity, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetNodeIdentity(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Removes a peer from an allow list that prevents it from being banned.

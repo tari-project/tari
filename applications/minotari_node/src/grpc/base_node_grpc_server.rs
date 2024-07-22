@@ -61,6 +61,7 @@ use tari_core::{
             TxoStage,
         },
         transaction_components::{
+            encrypted_data::PaymentId,
             KernelBuilder,
             RangeProofType,
             Transaction,
@@ -235,10 +236,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (start_height, end_height) = get_heights(&request, handler.clone())
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
-        let num_requested = end_height.checked_sub(start_height).ok_or(obscure_error_if_true(
-            report_error_flag,
-            Status::invalid_argument("Start height is more than end height"),
-        ))?;
+        let num_requested = end_height.checked_sub(start_height).ok_or_else(|| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Start height is more than end height"),
+            )
+        })?;
         if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
             return Err(obscure_error_if_true(
                 report_error_flag,
@@ -788,30 +791,48 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
 
         // let validate the coinbase amounts;
-        let reward = self
-            .consensus_rules
-            .calculate_coinbase_and_fees(new_template.header.height, new_template.body.kernels())
+        let reward = u128::from(
+            self.consensus_rules
+                .calculate_coinbase_and_fees(new_template.header.height, new_template.body.kernels())
+                .map_err(|_| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal("Could not calculate the amount of fees in the block".to_string()),
+                    )
+                })?
+                .as_u64(),
+        );
+        let mut total_shares = 0u128;
+        for coinbase in &coinbases {
+            total_shares += u128::from(coinbase.value);
+        }
+        let mut cur_share_sum = 0u128;
+        let mut prev_coinbase_value = 0u128;
+        for coinbase in &mut coinbases {
+            cur_share_sum += u128::from(coinbase.value);
+            coinbase.value = u64::try_from(
+                (cur_share_sum.saturating_mul(reward))
+                    .checked_div(total_shares)
+                    .ok_or_else(|| {
+                        obscure_error_if_true(report_error_flag, Status::internal("total shares are zero".to_string()))
+                    })? -
+                    prev_coinbase_value,
+            )
             .map_err(|_| {
                 obscure_error_if_true(
                     report_error_flag,
-                    Status::internal("Could not calculate the amount of fees in the block".to_string()),
+                    Status::internal("Single coinbase fees exceeded u64".to_string()),
                 )
-            })?
-            .as_u64();
-        let mut total_shares = 0u64;
-        for coinbase in &coinbases {
-            total_shares += coinbase.value;
-        }
-        let mut remainder = reward - ((reward / total_shares) * total_shares);
-        for coinbase in &mut coinbases {
-            coinbase.value *= reward / total_shares;
-            if remainder > 0 {
-                coinbase.value += 1;
-                remainder -= 1;
-            }
+            })?;
+            prev_coinbase_value = u128::from(coinbase.value);
         }
 
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::internal(format!("Key manager error: '{}'", e)),
+            )
+        })?;
         let height = new_template.header.height;
         // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
         let script_key_id = TariKeyId::default();
@@ -822,7 +843,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
         for coinbase in coinbases {
-            let address = TariAddress::from_hex(&coinbase.address)
+            let address = TariAddress::from_base58(&coinbase.address)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
@@ -840,17 +861,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
+                PaymentId::Empty,
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             new_template.body.add_output(coinbase_output);
-            let (new_private_nonce, pub_nonce) = key_manager
+            let new_nonce = key_manager
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &pub_nonce;
+            total_nonce = &total_nonce + &new_nonce.pub_key;
             total_excess = &total_excess + &coinbase_kernel.excess;
-            private_keys.push((wallet_output.spending_key_id, new_private_nonce));
+            private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -967,10 +989,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block with coinbases");
         let mut block_template: NewBlockTemplate = request
             .new_template
-            .ok_or(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Malformed block template provided".to_string()),
-            ))?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Malformed block template provided".to_string()),
+                )
+            })?
             .try_into()
             .map_err(|s| {
                 obscure_error_if_true(
@@ -1003,7 +1027,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument("Malformed coinbase amounts".to_string()),
             ));
         }
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().map_err(|s| {
+            obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: {}", s)))
+        })?;
         let height = block_template.header.height;
         // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
         let script_key_id = TariKeyId::default();
@@ -1014,7 +1040,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
         for coinbase in coinbases {
-            let address = TariAddress::from_hex(&coinbase.address)
+            let address = TariAddress::from_base58(&coinbase.address)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
@@ -1032,17 +1058,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
+                PaymentId::Empty,
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             block_template.body.add_output(coinbase_output);
-            let (new_private_nonce, pub_nonce) = key_manager
+            let new_nonce = key_manager
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &pub_nonce;
+            total_nonce = &total_nonce + &new_nonce.pub_key;
             total_excess = &total_excess + &coinbase_kernel.excess;
-            private_keys.push((wallet_output.spending_key_id, new_private_nonce));
+            private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,

@@ -37,7 +37,7 @@ use tari_core::{
     consensus::{MaxSizeBytes, MaxSizeString},
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{BuildInfo, OutputFeatures, TemplateType},
+        transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
@@ -127,60 +127,6 @@ pub async fn send_transaction_task(
     }
 }
 
-pub async fn send_one_sided_transaction_task(
-    address: TariAddress,
-    amount: MicroMinotari,
-    selection_criteria: UtxoSelectionCriteria,
-    output_features: OutputFeatures,
-    message: String,
-    fee_per_gram: MicroMinotari,
-    mut transaction_service_handle: TransactionServiceHandle,
-    result_tx: watch::Sender<UiTransactionSendStatus>,
-) {
-    let _result = result_tx.send(UiTransactionSendStatus::Initiated);
-    let mut event_stream = transaction_service_handle.get_event_stream();
-    match transaction_service_handle
-        .send_one_sided_transaction(
-            address,
-            amount,
-            selection_criteria,
-            output_features,
-            fee_per_gram,
-            message,
-        )
-        .await
-    {
-        Err(e) => {
-            let _result = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
-        },
-        Ok(our_tx_id) => {
-            loop {
-                match event_stream.recv().await {
-                    Ok(event) => {
-                        if let TransactionEvent::TransactionCompletedImmediately(tx_id) = &*event {
-                            if our_tx_id == *tx_id {
-                                let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
-                                return;
-                            }
-                        }
-                    },
-                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                        continue;
-                    },
-                    Err(broadcast::error::RecvError::Closed) => {
-                        break;
-                    },
-                }
-            }
-
-            let _result = result_tx.send(UiTransactionSendStatus::Error(
-                "One-sided transaction could not be sent".to_string(),
-            ));
-        },
-    }
-}
-
 pub async fn send_one_sided_to_stealth_address_transaction(
     address: TariAddress,
     amount: MicroMinotari,
@@ -188,6 +134,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     output_features: OutputFeatures,
     message: String,
     fee_per_gram: MicroMinotari,
+    payment_id: PaymentId,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -201,6 +148,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
             output_features,
             fee_per_gram,
             message,
+            payment_id,
         )
         .await
     {

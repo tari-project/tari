@@ -162,7 +162,7 @@ impl LivenessState {
 
     /// Returns true if the nonce is inflight, otherwise false
     pub fn is_inflight(&self, nonce: u64) -> bool {
-        self.inflight_pings.get(&nonce).is_some()
+        self.inflight_pings.contains_key(&nonce)
     }
 
     /// Records a pong. Specifically, the pong counter is incremented and
@@ -345,8 +345,8 @@ mod test {
         state.add_inflight_ping(2, peer2.clone());
         state.add_inflight_ping(3, peer2.clone());
 
-        assert!(state.failed_pings.get(&peer1).is_none());
-        assert!(state.failed_pings.get(&peer2).is_none());
+        assert!(!state.failed_pings.contains_key(&peer1));
+        assert!(!state.failed_pings.contains_key(&peer2));
 
         // MAX_INFLIGHT_TTL passes
         for n in [1, 2, 3] {
@@ -363,6 +363,6 @@ mod test {
         assert!(state.record_pong(2, &peer2).is_none());
         let n = state.failed_pings.get(&peer1).unwrap();
         assert_eq!(*n, 1);
-        assert!(state.failed_pings.get(&peer2).is_none());
+        assert!(!state.failed_pings.contains_key(&peer2));
     }
 }

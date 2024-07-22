@@ -154,7 +154,7 @@ pub async fn create_network_with_multiple_nodes(
     }
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
     let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)

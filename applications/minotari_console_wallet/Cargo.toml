@@ -8,6 +8,7 @@ license = "BSD-3-Clause"
 [dependencies]
 minotari_app_grpc = { workspace = true }
 minotari_app_utilities = { workspace = true }
+minotari_ledger_wallet_comms = { workspace = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true }
@@ -17,6 +18,7 @@ tari_contacts = { workspace = true }
 tari_crypto = { workspace = true }
 tari_key_manager = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
+tari_script = { workspace = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
@@ -37,12 +39,13 @@ clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.14.0"
 crossterm = { version = "0.25.0" }
 digest = "0.10"
+dirs = "5.0"
 futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
 ] }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20", optional = true }
 log = { version = "0.4.8", features = ["std"] }
-log4rs = { version = "1.3.0", default_features = false, features = [
+log4rs = { version = "1.3.0", default-features = false, features = [
     "config_parsing",
     "threshold_filter",
     "yaml_format",
@@ -63,7 +66,6 @@ serde = "1.0.136"
 serde_json = "1.0.79"
 sha2 = "0.10"
 strum = "0.22"
-strum_macros = "0.22"
 thiserror = "1.0.26"
 tonic = "0.8.3"
 unicode-segmentation = "1.6.0"
@@ -82,9 +84,9 @@ features = ["crossterm"]
 tari_features = { workspace = true }
 
 [features]
-default = ["libtor"]
+default = ["libtor", "ledger"]
 grpc = []
-ledger = ["ledger-transport-hid"]
+ledger = ["ledger-transport-hid", "minotari_ledger_wallet_comms"]
 libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]

@@ -33,6 +33,7 @@ use tokio::{
     sync::{mpsc, Mutex},
 };
 use tokio_stream::StreamExt;
+use yamux::ConnectionError;
 
 use crate::{
     connection_manager::{
@@ -138,7 +139,7 @@ pub struct PeerConnectionMockState {
 impl PeerConnectionMockState {
     pub fn new(muxer: Yamux) -> Self {
         let control = muxer.get_yamux_control();
-        let substream_counter = control.substream_counter();
+        let substream_counter = muxer.substream_counter();
         Self {
             call_count: Arc::new(AtomicUsize::new(0)),
             mux_control: Arc::new(Mutex::new(control)),
@@ -172,7 +173,12 @@ impl PeerConnectionMockState {
     }
 
     pub async fn disconnect(&self) -> Result<(), PeerConnectionError> {
-        self.mux_control.lock().await.close().await.map_err(Into::into)
+        match self.mux_control.lock().await.close().await {
+            Ok(_) => Ok(()),
+            // Match the behaviour of the real PeerConnection.
+            Err(ConnectionError::Closed) => Ok(()),
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
@@ -215,7 +221,7 @@ impl PeerConnectionMock {
                     reply_tx.send(Err(err)).unwrap();
                 },
             },
-            Disconnect(_, reply_tx) => {
+            Disconnect(_, reply_tx, _minimized) => {
                 self.receiver.close();
                 reply_tx.send(self.state.disconnect().await).unwrap();
             },

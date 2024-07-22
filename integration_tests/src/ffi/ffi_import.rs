@@ -112,7 +112,7 @@ extern "C" {
         network: c_uint,
         error_out: *mut c_int,
     ) -> *mut TariWalletAddress;
-    pub fn tari_address_from_hex(address: *const c_char, error_out: *mut c_int) -> *mut TariWalletAddress;
+    pub fn tari_address_from_base58(address: *const c_char, error_out: *mut c_int) -> *mut TariWalletAddress;
     pub fn tari_address_to_emoji_id(address: *mut TariWalletAddress, error_out: *mut c_int) -> *mut c_char;
     pub fn emoji_id_to_tari_address(emoji: *const c_char, error_out: *mut c_int) -> *mut TariWalletAddress;
     pub fn commitment_and_public_signature_create_from_bytes(
@@ -474,6 +474,7 @@ extern "C" {
         fee_per_gram: c_ulonglong,
         message: *const c_char,
         one_sided: bool,
+        payment_id_string: *const c_char,
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn wallet_get_fee_estimate(

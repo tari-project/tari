@@ -632,7 +632,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Err(err @ StoreAndForwardError::RequesterChannelClosed) |
             Err(err @ StoreAndForwardError::DhtOutboundError(_)) |
             Err(err @ StoreAndForwardError::StorageError(_)) |
-            Err(err @ StoreAndForwardError::PeerManagerError(_)) => {
+            Err(err @ StoreAndForwardError::PeerManagerError(_)) |
+            Err(err @ StoreAndForwardError::ConnectivityError(_)) => {
                 error!(target: LOG_TARGET, "Internal error: {}", err);
                 None
             },
@@ -752,11 +753,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 mod test {
     use std::time::Duration;
 
-    use chrono::{Timelike, Utc};
+    use chrono::Timelike;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_test_utils::collect_recv;
     use tari_utilities::{hex, hex::Hex};
-    use tokio::{sync::mpsc, task, time::sleep};
+    use tokio::{task, time::sleep};
 
     use super::*;
     use crate::{

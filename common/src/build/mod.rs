@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "static-application-info")]
+mod application;
+#[cfg(feature = "static-application-info")]
+pub use application::StaticApplicationInfo;
+
 #[cfg(feature = "build")]
 mod protobuf;
 #[cfg(feature = "build")]

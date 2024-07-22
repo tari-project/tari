@@ -213,7 +213,6 @@ fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
 
 #[cfg(test)]
 mod test {
-    use config;
     use tari_common::DefaultConfigLoader;
 
     use super::*;

@@ -98,8 +98,15 @@ use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{OutputFeatures, UnblindedOutput},
+        tari_amount::{MicroMinotari, T},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            OutputType,
+            SideChainFeature,
+            UnblindedOutput,
+        },
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
@@ -135,6 +142,7 @@ pub struct WalletGrpcServer {
 }
 
 impl WalletGrpcServer {
+    #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self { wallet, rules })
@@ -154,7 +162,7 @@ impl WalletGrpcServer {
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
         // If we don't have the chain metadata, we hope that VNReg consensus constants did not change - worst case, we
-        // spend more than we need to or the the transaction is rejected.
+        // spend more than we need to or the transaction is rejected.
         let height = self
             .wallet
             .db
@@ -220,11 +228,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
-        let network = self.wallet.network.as_network();
-        let pk = self.wallet.comms.node_identity().public_key().clone();
-        let address = TariAddress::new(pk, network);
+        let address = self
+            .wallet
+            .get_wallet_interactive_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetAddressResponse {
-            address: address.to_bytes().to_vec(),
+            address: address.to_vec(),
         }))
     }
 
@@ -325,7 +335,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_inner()
             .recipient
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
-        let address = TariAddress::from_hex(&message.address)
+        let address = TariAddress::from_base58(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
 
         let mut transaction_service = self.get_transaction_service();
@@ -486,7 +496,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
-                let address = TariAddress::from_hex(&dest.address)
+                let address = TariAddress::from_base58(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
                     dest.address,
@@ -495,13 +505,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     dest.fee_per_gram,
                     dest.message,
                     dest.payment_type,
+                    dest.payment_id,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (hex_address, address, amount, fee_per_gram, message, payment_type) in recipients {
+        for (hex_address, address, amount, fee_per_gram, message, payment_type, payment_id) in recipients {
+            let payment_id = PaymentId::from_bytes(&payment_id)
+                .map_err(|_| "Invalid payment id".to_string())
+                .map_err(Status::invalid_argument)?;
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
                 (
@@ -526,6 +540,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
+                                payment_id,
                             )
                             .await
                     } else {
@@ -537,6 +552,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 message,
+                                payment_id,
                             )
                             .await
                     },
@@ -652,10 +668,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map(|tx| tx.into_iter())
             .map_err(|err| Status::unknown(err.to_string()))?;
-
-        let wallet_pk = self.wallet.comms.node_identity_ref().public_key();
-        let wallet_network = self.wallet.network.as_network();
-        let wallet_address = TariAddress::new(wallet_pk.clone(), wallet_network);
+        let wallet_address = self
+            .wallet
+            .get_wallet_interactive_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let transactions = transactions
             .map(|(tx_id, tx)| match tx {
                 Some(tx) => convert_wallet_transaction_into_transaction_info(tx, &wallet_address),
@@ -757,8 +774,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
-                        source_address: txn.source_address.to_bytes().to_vec(),
-                        dest_address: txn.destination_address.to_bytes().to_vec(),
+                        source_address: txn.source_address.to_vec(),
+                        dest_address: txn.destination_address.to_vec(),
                         status: TransactionStatus::from(txn.status.clone()) as i32,
                         amount: txn.amount.into(),
                         is_cancelled: txn.cancelled.is_some(),
@@ -1108,8 +1125,8 @@ fn convert_wallet_transaction_into_transaction_info(
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_address: tx.source_address.to_bytes().to_vec(),
-            dest_address: wallet_address.to_bytes().to_vec(),
+            source_address: tx.source_address.to_vec(),
+            dest_address: wallet_address.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled,
@@ -1121,8 +1138,8 @@ fn convert_wallet_transaction_into_transaction_info(
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_address: wallet_address.to_bytes().to_vec(),
-            dest_address: tx.destination_address.to_bytes().to_vec(),
+            source_address: wallet_address.to_vec(),
+            dest_address: tx.destination_address.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled,
@@ -1134,8 +1151,8 @@ fn convert_wallet_transaction_into_transaction_info(
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
-            source_address: tx.source_address.to_bytes().to_vec(),
-            dest_address: tx.destination_address.to_bytes().to_vec(),
+            source_address: tx.source_address.to_vec(),
+            dest_address: tx.destination_address.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
             is_cancelled: tx.cancelled.is_some(),

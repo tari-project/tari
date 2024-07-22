@@ -23,6 +23,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
+    str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -57,12 +58,12 @@ use tari_comms::{
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
-    transaction_components::{OutputFeatures, TemplateType, TransactionError},
+    transaction_components::{encrypted_data::PaymentId, OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{broadcast, watch, RwLock},
     task,
@@ -74,12 +75,7 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{
-                send_burn_transaction_task,
-                send_one_sided_transaction_task,
-                send_register_template_transaction_task,
-                send_transaction_task,
-            },
+            tasks::{send_burn_transaction_task, send_register_template_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
         ui_burnt_proof::UiBurntProof,
@@ -228,11 +224,7 @@ impl AppState {
     pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
-        let address = match TariAddress::from_emoji_string(&tari_emoji) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
 
         let contact = Contact::new(alias, address, None, None, false);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
@@ -245,26 +237,22 @@ impl AppState {
 
     // Return alias or pub key if the contact is not in the list.
     pub fn get_alias(&self, address: &TariAddress) -> String {
-        let address_hex = address.to_hex();
+        let address_string = address.to_base58();
 
         match self
             .cached_data
             .contacts
             .iter()
-            .find(|&contact| contact.address.eq(&address_hex))
+            .find(|&contact| contact.address.eq(&address_string))
         {
             Some(contact) => contact.alias.clone(),
-            None => address_hex,
+            None => address_string,
         }
     }
 
     pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&tari_emoji) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
 
         inner.wallet.contacts_service.remove_contact(address).await?;
 
@@ -300,50 +288,13 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&address) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
+        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_transaction_task(
-            address,
-            MicroMinotari::from(amount),
-            selection_criteria,
-            output_features,
-            message,
-            fee_per_gram,
-            tx_service_handle,
-            result_tx,
-        ));
-
-        Ok(())
-    }
-
-    pub async fn send_one_sided_transaction(
-        &mut self,
-        address: String,
-        amount: u64,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: u64,
-        message: String,
-        result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&address) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
-        };
-        let output_features = OutputFeatures { ..Default::default() };
-
-        let fee_per_gram = fee_per_gram * uT;
-        let tx_service_handle = inner.wallet.transaction_service.clone();
-        tokio::spawn(send_one_sided_transaction_task(
             address,
             MicroMinotari::from(amount),
             selection_criteria,
@@ -364,13 +315,18 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         message: String,
+        payment_id_str: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = match TariAddress::from_emoji_string(&address) {
-            Ok(address) => address,
-            Err(_) => TariAddress::from_bytes(&from_hex(&address).map_err(|_| UiError::PublicKeyParseError)?)
-                .map_err(|_| UiError::PublicKeyParseError)?,
+        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
+        let payment_id = if payment_id_str.is_empty() {
+            PaymentId::Empty
+        } else {
+            let payment_id_u64: u64 = payment_id_str
+                .parse::<u64>()
+                .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
+            PaymentId::U64(payment_id_u64)
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -384,6 +340,7 @@ impl AppState {
             output_features,
             message,
             fee_per_gram,
+            payment_id,
             tx_service_handle,
             result_tx,
         ));
@@ -946,12 +903,11 @@ impl AppStateInner {
     }
 
     pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
-        let wallet_id = WalletIdentity::new(self.wallet.comms.node_identity(), self.wallet.network.as_network());
-        let eid = wallet_id.address.to_emoji_string();
+        let wallet_id = self.wallet.get_wallet_id().await?;
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
-            wallet_id.network,
-            wallet_id.address.to_hex()
+            wallet_id.network(),
+            wallet_id.address_interactive.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -963,7 +919,8 @@ impl AppStateInner {
             .skip(1)
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         let identity = MyIdentity {
-            tari_address: wallet_id.address.to_hex(),
+            tari_address_interactive: wallet_id.address_interactive.clone(),
+            tari_address_one_sided: wallet_id.address_one_sided.clone(),
             network_address: wallet_id
                 .node_identity
                 .public_addresses()
@@ -971,7 +928,6 @@ impl AppStateInner {
                 .map(|a| a.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            emoji_id: eid,
             qr_code: image,
             node_id: wallet_id.node_identity.node_id().to_string(),
         };
@@ -1210,6 +1166,7 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
+    pub payment_id: Option<PaymentId>,
 }
 
 impl CompletedTransactionInfo {
@@ -1250,6 +1207,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
+            payment_id: tx.payment_id,
         })
     }
 }
@@ -1282,11 +1240,10 @@ pub struct EventListItem {
 
 impl AppStateData {
     pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
-        let eid = wallet_identity.address.to_emoji_string();
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
-            wallet_identity.network,
-            wallet_identity.address.to_hex()
+            wallet_identity.network(),
+            wallet_identity.address_interactive.to_base58()
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -1299,7 +1256,8 @@ impl AppStateData {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
-            tari_address: wallet_identity.address.to_hex(),
+            tari_address_interactive: wallet_identity.address_interactive.clone(),
+            tari_address_one_sided: wallet_identity.address_one_sided.clone(),
             network_address: wallet_identity
                 .node_identity
                 .public_addresses()
@@ -1307,7 +1265,6 @@ impl AppStateData {
                 .map(|a| a.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
-            emoji_id: eid,
             qr_code: image,
             node_id: wallet_identity.node_identity.node_id().to_string(),
         };
@@ -1357,9 +1314,9 @@ impl AppStateData {
 
 #[derive(Clone)]
 pub struct MyIdentity {
-    pub tari_address: String,
+    pub tari_address_interactive: TariAddress,
+    pub tari_address_one_sided: TariAddress,
     pub network_address: String,
-    pub emoji_id: String,
     pub qr_code: String,
     pub node_id: String,
 }

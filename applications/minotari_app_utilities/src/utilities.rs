@@ -28,10 +28,10 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
-    types::{BlockHash, PublicKey},
+    types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
@@ -47,8 +47,8 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 
 /// Returns a CommsPublicKey from either a emoji id or a public key
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
-    EmojiId::from_emoji_string(&key.trim().replace('|', ""))
-        .map(|emoji_id| emoji_id.to_public_key())
+    EmojiId::from_str(&key.trim().replace('|', ""))
+        .map(|emoji_id| PublicKey::from(&emoji_id))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
 }
@@ -79,12 +79,10 @@ impl FromStr for UniPublicKey {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(emoji_id) = EmojiId::from_emoji_string(&key.trim().replace('|', "")) {
-            Ok(Self(emoji_id.to_public_key()))
+        if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
+            Ok(Self(PublicKey::from(&emoji_id)))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self(public_key))
-        } else if let Ok(tari_address) = TariAddress::from_hex(key) {
-            Ok(Self(tari_address.public_key().clone()))
         } else {
             Err(UniIdError::UnknownIdType)
         }
@@ -97,7 +95,7 @@ impl From<UniPublicKey> for PublicKey {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UniNodeId {
     PublicKey(PublicKey),
     NodeId(NodeId),
@@ -116,13 +114,13 @@ impl FromStr for UniNodeId {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(emoji_id) = EmojiId::from_emoji_string(&key.trim().replace('|', "")) {
-            Ok(Self::PublicKey(emoji_id.to_public_key()))
+        if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
+            Ok(Self::PublicKey(PublicKey::from(&emoji_id)))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self::PublicKey(public_key))
         } else if let Ok(node_id) = NodeId::from_hex(key) {
             Ok(Self::NodeId(node_id))
-        } else if let Ok(tari_address) = TariAddress::from_hex(key) {
+        } else if let Ok(tari_address) = TariAddress::from_base58(key) {
             Ok(Self::TariAddress(tari_address))
         } else {
             Err(UniIdError::UnknownIdType)
@@ -136,9 +134,31 @@ impl TryFrom<UniNodeId> for PublicKey {
     fn try_from(id: UniNodeId) -> Result<Self, Self::Error> {
         match id {
             UniNodeId::PublicKey(public_key) => Ok(public_key),
-            UniNodeId::TariAddress(tari_address) => Ok(tari_address.public_key().clone()),
+            UniNodeId::TariAddress(tari_address) => Ok(tari_address.public_spend_key().clone()),
             UniNodeId::NodeId(_) => Err(UniIdError::Nonconvertible),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UniSignature(Signature);
+
+impl FromStr for UniSignature {
+    type Err = HexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let data = s.split(',').collect::<Vec<_>>();
+        let signature = PrivateKey::from_hex(data[0])?;
+        let public_nonce = PublicKey::from_hex(data[1])?;
+
+        let signature = Signature::new(public_nonce, signature);
+        Ok(Self(signature))
+    }
+}
+
+impl From<UniSignature> for Signature {
+    fn from(id: UniSignature) -> Self {
+        id.0
     }
 }
 
@@ -147,7 +167,7 @@ impl From<UniNodeId> for NodeId {
         match id {
             UniNodeId::PublicKey(public_key) => NodeId::from_public_key(&public_key),
             UniNodeId::NodeId(node_id) => node_id,
-            UniNodeId::TariAddress(tari_address) => NodeId::from_public_key(tari_address.public_key()),
+            UniNodeId::TariAddress(tari_address) => NodeId::from_public_key(tari_address.public_spend_key()),
         }
     }
 }

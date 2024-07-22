@@ -60,10 +60,10 @@ mod test {
         assert_eq!(display_compressed_string(short_str.clone(), 5, 5), short_str);
         let long_str = "abcdefghijklmnopqrstuvwxyz".to_string();
         assert_eq!(display_compressed_string(long_str, 3, 3), "abc..xyz".to_string());
-        let emoji_str = "🐾💎🎤🎨📌🍄🎰🍉🚧💉💡👟🚒📌🔌🐶🐾🐢🔭🐨😻💨🐎🐊🚢👟🚧🐞🚜🌂🎩🎱📈".to_string();
+        let emoji_str = "🐾💎🎤🎨📌🍄🎰🍉🚧💉💡👟🚒📌🔌🐶🐾🐢🔭🐨👍💨🦁🐊🚢👟🚧🐞🚜📟🎩🎱📈".to_string();
         assert_eq!(
             display_compressed_string(emoji_str, 3, 6),
-            "🐾💎🎤..🐞🚜🌂🎩🎱📈".to_string()
+            "🐾💎🎤..🐞🚜📟🎩🎱📈".to_string()
         );
     }
 }

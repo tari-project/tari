@@ -37,7 +37,7 @@ function Client(address) {
     "getCompletedTransactions",
     "getTransactionInfo",
     "getVersion",
-    "identify",
+    "getAddress",
     "transfer",
     "importUtxos",
     "listConnectedPeers",

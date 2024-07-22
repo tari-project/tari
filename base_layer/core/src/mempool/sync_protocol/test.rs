@@ -61,7 +61,7 @@ use crate::{
 };
 
 pub async fn create_transactions(n: usize) -> Vec<Transaction> {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut transactions = Vec::new();
     for _i in 0..n {
         let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default(), &key_manager)

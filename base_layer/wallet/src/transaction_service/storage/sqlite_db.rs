@@ -28,7 +28,7 @@ use std::{
 
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use diesel::{prelude::*, result::Error as DieselError};
 use log::*;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
@@ -43,7 +43,7 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -66,6 +66,7 @@ use crate::{
         },
     },
 };
+
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -456,6 +457,32 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             );
         }
         Ok(result)
+    }
+
+    fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let tx = CompletedTransactionSql::find_by_cancelled(tx_id, false, &mut conn)?;
+
+        tx.delete(&mut conn)?;
+        let cipher = acquire_read_lock!(self.cipher);
+        let completed_tx = CompletedTransactionSql::try_from(transaction, &cipher)?;
+        completed_tx.commit(&mut conn)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - update_completed_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
     }
 
     fn get_pending_transaction_counterparty_address_by_tx_id(
@@ -1320,7 +1347,7 @@ impl InboundTransactionSql {
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let i = Self {
             tx_id: i.tx_id.as_u64() as i64,
-            source_address: i.source_address.to_bytes().to_vec(),
+            source_address: i.source_address.to_vec(),
             amount: u64::from(i.amount) as i64,
             receiver_protocol: receiver_protocol_bytes.to_vec(),
             message: i.message,
@@ -1568,7 +1595,7 @@ impl OutboundTransactionSql {
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let outbound_tx = Self {
             tx_id: o.tx_id.as_u64() as i64,
-            destination_address: o.destination_address.to_bytes().to_vec(),
+            destination_address: o.destination_address.to_vec(),
             amount: u64::from(o.amount) as i64,
             fee: u64::from(o.fee) as i64,
             sender_protocol: sender_protocol_bytes.to_vec(),
@@ -1672,6 +1699,7 @@ pub struct CompletedTransactionSql {
     mined_timestamp: Option<NaiveDateTime>,
     transaction_signature_nonce: Vec<u8>,
     transaction_signature_key: Vec<u8>,
+    payment_id: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -1936,11 +1964,14 @@ impl CompletedTransactionSql {
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
-
+        let payment_id = match c.payment_id {
+            Some(id) => Some(id.as_bytes()),
+            None => Some(Vec::new()),
+        };
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
-            source_address: c.source_address.to_bytes().to_vec(),
-            destination_address: c.destination_address.to_bytes().to_vec(),
+            source_address: c.source_address.to_vec(),
+            destination_address: c.destination_address.to_vec(),
             amount: u64::from(c.amount) as i64,
             fee: u64::from(c.fee) as i64,
             transaction_protocol: transaction_bytes.to_vec(),
@@ -1957,6 +1988,7 @@ impl CompletedTransactionSql {
             mined_timestamp: c.mined_timestamp,
             transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
+            payment_id,
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2030,6 +2062,18 @@ impl CompletedTransaction {
             },
             None => None,
         };
+        let payment_id = match c.payment_id {
+            Some(bytes) => PaymentId::from_bytes(&bytes).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create payment id from stored bytes"
+                );
+                CompletedTransactionConversionError::BincodeDeserialize(
+                    "payment id could not be converted from bytes".to_string(),
+                )
+            })?,
+            None => PaymentId::Empty,
+        };
 
         let output = Self {
             tx_id: (c.tx_id as u64).into(),
@@ -2054,6 +2098,7 @@ impl CompletedTransaction {
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
             mined_timestamp: c.mined_timestamp,
+            payment_id: Some(payment_id),
         };
 
         // zeroize sensitive data
@@ -2155,7 +2200,7 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{default::Default, mem::size_of, time::Duration};
+    use std::{mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
@@ -2174,7 +2219,7 @@ mod test {
         key_manager::create_memory_db_key_manager,
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, Transaction},
+        transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -2204,7 +2249,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
@@ -2271,12 +2316,12 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id,
-                change.spend_key_id,
+                change.commitment_mask_key_id,
                 Default::default(),
             );
         let mut stp = builder.build().await.unwrap();
 
-        let address = TariAddress::new(
+        let address = TariAddress::new_single_address_with_interactive_only(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2294,7 +2339,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new(
+        let address = TariAddress::new_single_address_with_interactive_only(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2361,7 +2406,8 @@ mod test {
             &consensus_constants,
         )
         .await;
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2378,7 +2424,8 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2431,11 +2478,13 @@ mod test {
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         );
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2458,12 +2507,15 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: None,
         };
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2486,6 +2538,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -2634,7 +2687,8 @@ mod test {
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2660,7 +2714,8 @@ mod test {
         let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx, &cipher).unwrap();
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2688,11 +2743,13 @@ mod test {
         let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx, &cipher).unwrap();
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2721,6 +2778,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: Some(PaymentId::Empty),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -2773,7 +2831,8 @@ mod test {
                 })
                 .expect("Migrations failed");
 
-            let source_address = TariAddress::new(
+            let source_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2794,7 +2853,8 @@ mod test {
 
             inbound_tx_sql.commit(&mut conn).unwrap();
 
-            let destination_address = TariAddress::new(
+            let destination_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2816,11 +2876,13 @@ mod test {
 
             outbound_tx_sql.commit(&mut conn).unwrap();
 
-            let source_address = TariAddress::new(
+            let source_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
-            let destination_address = TariAddress::new(
+            let destination_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2849,6 +2911,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
+                payment_id: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -2956,11 +3019,13 @@ mod test {
                 10 => (None, TransactionStatus::MinedConfirmed),
                 _ => (None, TransactionStatus::Completed),
             };
-            let source_address = TariAddress::new(
+            let source_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
-            let destination_address = TariAddress::new(
+            let destination_address = TariAddress::new_dual_address_with_default_features(
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -2989,6 +3054,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
+                payment_id: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

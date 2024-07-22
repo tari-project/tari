@@ -33,7 +33,6 @@ Configuration options for the Minotari Miner are as follows:
 - `network` - "Selected network"
 - `wait_timeout_on_error` - "Base node reconnect timeout after any gRPC or miner error"
 - `wallet_payment_address` - "The Tari wallet address where the mining funds will be sent to"
-- `stealth_payment` - "Stealth payment yes or no"
 
 ### Caveats
 

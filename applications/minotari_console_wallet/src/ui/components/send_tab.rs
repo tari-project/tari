@@ -29,6 +29,7 @@ pub struct SendTab {
     send_input_mode: SendInputMode,
     show_contacts: bool,
     to_field: String,
+    payment_id_field: String,
     amount_field: String,
     fee_field: String,
     message_field: String,
@@ -49,6 +50,7 @@ impl SendTab {
             send_input_mode: SendInputMode::None,
             show_contacts: false,
             to_field: String::new(),
+            payment_id_field: String::new(),
             amount_field: String::new(),
             fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
             message_field: String::new(),
@@ -96,23 +98,23 @@ impl SendTab {
                 Span::raw(" field, "),
                 Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
-                Span::styled("Amount/Token", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(", "),
+                Span::styled("Amount/Token, ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" field, "),
                 Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to select a contact."),
+                Span::raw(" to select a contact, "),
+                Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to edit "),
+                Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
             ]),
             Spans::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a normal transaction, "),
                 Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a one-sided transaction, "),
-                Span::styled("X", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a one-sided transaction to a stealth address."),
+                Span::raw(" to send a one-sided transaction"),
             ]),
         ])
         .wrap(Wrap { trim: false })
@@ -167,6 +169,14 @@ impl SendTab {
             .block(Block::default().borders(Borders::ALL).title("(M)essage:"));
         f.render_widget(message_input, vert_chunks[3]);
 
+        let payment_id_input = Paragraph::new(self.payment_id_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::PaymentId => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(P)ayment-id:"));
+        f.render_widget(payment_id_input, vert_chunks[4]);
+
         match self.send_input_mode {
             SendInputMode::None => (),
             SendInputMode::To => f.set_cursor(
@@ -196,6 +206,12 @@ impl SendTab {
                 vert_chunks[3].x + self.message_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
                 vert_chunks[3].y + 1,
+            ),
+            SendInputMode::PaymentId => f.set_cursor(
+                // Put cursor past the end of the input text
+                vert_chunks[4].x + self.payment_id_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                vert_chunks[4].y + 1,
             ),
         }
     }
@@ -241,9 +257,7 @@ impl SendTab {
             } else if 'y' == c {
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::Normal) |
-                    Some(ConfirmationDialogType::OneSided) |
-                    Some(ConfirmationDialogType::StealthAddress) => {
+                    Some(ConfirmationDialogType::Normal) | Some(ConfirmationDialogType::StealthAddress) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
                                 v
@@ -268,24 +282,6 @@ impl SendTab {
 
                             let mut reset_fields = false;
                             match self.confirmation_dialog {
-                                Some(ConfirmationDialogType::OneSided) => {
-                                    match Handle::current().block_on(app_state.send_one_sided_transaction(
-                                        self.to_field.clone(),
-                                        amount.into(),
-                                        UtxoSelectionCriteria::default(),
-                                        fee_per_gram,
-                                        self.message_field.clone(),
-                                        tx,
-                                    )) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
-                                },
                                 Some(ConfirmationDialogType::StealthAddress) => {
                                     match Handle::current().block_on(
                                         app_state.send_one_sided_to_stealth_address_transaction(
@@ -294,6 +290,7 @@ impl SendTab {
                                             UtxoSelectionCriteria::default(),
                                             fee_per_gram,
                                             self.message_field.clone(),
+                                            self.payment_id_field.clone(),
                                             tx,
                                         ),
                                     ) {
@@ -332,6 +329,7 @@ impl SendTab {
                                 self.selected_unique_id = None;
                                 self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
                                 self.message_field = "".to_string();
+                                self.payment_id_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);
                             }
@@ -386,9 +384,16 @@ impl SendTab {
                     },
                 },
                 SendInputMode::Message => match c {
-                    '\n' => self.send_input_mode = SendInputMode::None,
+                    '\n' => self.send_input_mode = SendInputMode::PaymentId,
                     c => {
                         self.message_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::PaymentId => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        self.payment_id_field.push(c);
                         return KeyHandled::Handled;
                     },
                 },
@@ -424,7 +429,7 @@ impl<B: Backend> Component<B> for SendTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(14),
+                    Constraint::Length(17),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]
@@ -505,24 +510,12 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::OneSided) => {
-                draw_dialog(
-                    f,
-                    area,
-                    "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
-                    Color::Red,
-                    120,
-                    9,
-                );
-            },
             Some(ConfirmationDialogType::StealthAddress) => {
                 draw_dialog(
                     f,
                     area,
                     "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this one-sided transaction to a stealth address?\n(Y)es / (N)o"
-                        .to_string(),
+                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -579,7 +572,8 @@ impl<B: Backend> Component<B> for SendTab {
             },
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
-            's' | 'o' | 'x' => {
+            'p' => self.send_input_mode = SendInputMode::PaymentId,
+            's' | 'o' => {
                 if self.to_field.is_empty() {
                     self.error_message =
                         Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());
@@ -596,8 +590,7 @@ impl<B: Backend> Component<B> for SendTab {
                 }
 
                 self.confirmation_dialog = Some(match c {
-                    'o' => ConfirmationDialogType::OneSided,
-                    'x' => ConfirmationDialogType::StealthAddress,
+                    'o' => ConfirmationDialogType::StealthAddress,
                     _ => ConfirmationDialogType::Normal,
                 });
             },
@@ -651,6 +644,9 @@ impl<B: Backend> Component<B> for SendTab {
             SendInputMode::Message => {
                 let _ = self.message_field.pop();
             },
+            SendInputMode::PaymentId => {
+                let _ = self.payment_id_field.pop();
+            },
             SendInputMode::None => {},
         }
     }
@@ -663,11 +659,11 @@ pub enum SendInputMode {
     Amount,
     Message,
     Fee,
+    PaymentId,
 }
 
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
     Normal,
-    OneSided,
     StealthAddress,
 }

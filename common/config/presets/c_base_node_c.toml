@@ -83,20 +83,25 @@ track_reorgs = true
 #service.block_sync_trigger = 5
 
 [base_node.state_machine]
-# The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer will be
-# selected. If there are no further peers the sync will be restarted with an increased by `max_latency_increase`.
-#blockchain_sync_config.initial_max_sync_latency = 15
-# If all sync peers exceed latency increase allowed latency by this value
-#blockchain_sync_config.max_latency_increase =2
-# Longer ban period for potentially malicious infractions (protocol violations etc.)
+# The initial max sync latency (seconds). If a peer fails to stream a header/block within this deadline another sync
+# peer will be selected. If there are no further peers the sync will be restarted with an increased by
+# `max_latency_increase`. [default = 240]
+blockchain_sync_config.initial_max_sync_latency = 240
+# If all sync peers exceed latency increase allowed latency by this value (seconds) [default = 10]
+blockchain_sync_config.max_latency_increase = 10
+# Longer ban period (seconds) for potentially malicious infractions (protocol violations etc.) [default = 2 hours]
 #blockchain_sync_config.ban_period = 7_200 # 2 * 60 * 60
-# Short ban period for infractions that are likely not malicious (slow to respond spotty connections etc)
+# Short ban period (seconds) for infractions that are likely not malicious (slow to respond spotty connections etc)
+# [default = 4 minutes]
 #blockchain_sync_config.short_ban_period = 240
 # An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty sync peers
-# are chosen based on their advertised chain metadata.
+# are chosen based on their advertised chain metadata. [default = []]
 #blockchain_sync_config.forced_sync_peers = []
-# Number of threads to use for validation
+# Number of threads to use for validation [default = 6]
 #blockchain_sync_config.validation_concurrency = 6
+# The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
+# [default = 240]
+blockchain_sync_config.rpc_deadline = 240
 
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0
@@ -148,10 +153,7 @@ track_reorgs = true
 # CIDR for addresses allowed to enter into liveness check mode on the listener.
 #listener_liveness_allowlist_cidrs = []
 # Enables periodic socket-level liveness checks. Default: Disabled
-listener_liveness_check_interval = 15
-
-# User agent string for this node
-#user_agent = ""
+listener_self_liveness_check_interval = 15
 
 # The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
 # sessions.
@@ -192,7 +194,7 @@ listener_liveness_check_interval = 15
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
 # better privacy
 #tor.proxy_bypass_for_outbound_tcp = false
-# If set, instructs tor to forward traffic the the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
+# If set, instructs tor to forward traffic the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
 #tor.forward_address =
 # If set, the listener will bind to this address instead of the forward_address. You need to make sure that this listener is connectable from the forward_address.
 #tor.listener_address_override =
@@ -216,7 +218,9 @@ database_url = "data/base_node/dht.db"
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
 #num_neighbouring_nodes = 8
 # Number of random peers to include. Default: 4
-#num_random_nodes=  4
+#num_random_nodes = 4
+# Connections above the configured number of neighbouring and random nodes will be removed (default: false)
+#minimize_connections = false
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
 # Send to this many peers when using the propagate strategy. Default: 4
@@ -288,6 +292,10 @@ database_url = "data/base_node/dht.db"
 # The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
 # Default: 5
 #network_discovery.max_sync_peers = 5
+# The maximum number of peers we allow per round of sync. (Default: 500)
+#network_discovery.max_peers_to_sync_per_round = 500
+# Initial refresh sync peers delay period, when a configured connection needs preference. (Default: Disabled)
+#network_discovery.initial_peer_sync_delay = 0
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60

@@ -93,16 +93,17 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-contacts-service".to_string(),
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
-        listener_liveness_check_interval: None,
+        listener_self_liveness_check_interval: None,
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
+    let user_agent = format!("tari/tests/{}", env!("CARGO_PKG_VERSION"));
     let fut = StackBuilder::new(shutdown.to_signal())
         .add_initializer(P2pInitializer::new(
             comms_config,
+            user_agent,
             PeerSeedsConfig::default(),
             Network::LocalNet,
             node_identity.clone(),
@@ -150,7 +151,7 @@ pub fn test_contacts_service() {
         let mut contacts = Vec::new();
         for i in 0..5 {
             let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-            let address = TariAddress::new(public_key, Network::default());
+            let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
             contacts.push(Contact::new(random::string(8), address, None, None, false));
 
@@ -168,7 +169,7 @@ pub fn test_contacts_service() {
         assert_eq!(contact, contacts[0]);
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new(public_key, Network::default());
+        let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
         let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
         match contact {
@@ -233,7 +234,7 @@ pub fn test_message_pagination() {
         let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new(public_key, Network::default());
+        let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
         let contact = Contact::new(random::string(8), address.clone(), None, None, false);
         runtime.block_on(contacts_service.upsert_contact(contact)).unwrap();
@@ -242,7 +243,8 @@ pub fn test_message_pagination() {
         for num in 0..8 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
-                .address(address.clone())
+                .receiver_address(address.clone())
+                .sender_address(address.clone())
                 .build();
 
             contacts_db.save_message(message.clone()).expect("Message to be saved");
@@ -272,7 +274,8 @@ pub fn test_message_pagination() {
         for num in 0..3000 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
-                .address(address.clone())
+                .receiver_address(address.clone())
+                .sender_address(address.clone())
                 .build();
 
             contacts_db.save_message(message.clone()).expect("Message to be saved");

@@ -29,6 +29,7 @@ use libc::c_int;
 use log::info;
 use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{config::ApplicationConfig, networking::PeerFeatures, ChatClient as ChatClientTrait, Client};
+use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::handle::ContactsServiceHandle;
 use tokio::runtime::Runtime;
 
@@ -88,11 +89,12 @@ pub struct ChatClient {
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_client(
     config: *mut ApplicationConfig,
-    error_out: *mut c_int,
     callback_contact_status_change: CallbackContactStatusChange,
     callback_message_received: CallbackMessageReceived,
     callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
     callback_read_confirmation_received: CallbackReadConfirmationReceived,
+    tari_address: *mut TariAddress,
+    error_out: *mut c_int,
 ) -> *mut ChatClient {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -142,8 +144,9 @@ pub unsafe extern "C" fn create_chat_client(
             return ptr::null_mut();
         },
     };
-
-    let mut client = Client::new(identity, (*config).clone());
+    let user_agent = format!("tari/chat_ffi/{}", env!("CARGO_PKG_VERSION"));
+    let tari_address = (*tari_address).clone();
+    let mut client = Client::new(identity, tari_address, (*config).clone(), user_agent);
 
     if let Ok(()) = runtime.block_on(client.initialize()) {
         let contacts_handler = match client.contacts.clone() {
@@ -200,11 +203,12 @@ pub unsafe extern "C" fn create_chat_client(
 pub unsafe extern "C" fn sideload_chat_client(
     config: *mut ApplicationConfig,
     contacts_handle: *mut ContactsServiceHandle,
-    error_out: *mut c_int,
     callback_contact_status_change: CallbackContactStatusChange,
     callback_message_received: CallbackMessageReceived,
     callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
     callback_read_confirmation_received: CallbackReadConfirmationReceived,
+    tari_address: *mut TariAddress,
+    error_out: *mut c_int,
 ) -> *mut ChatClient {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -242,8 +246,9 @@ pub unsafe extern "C" fn sideload_chat_client(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-
-    let mut client = Client::sideload((*config).clone(), (*contacts_handle).clone());
+    let user_agent = format!("tari/chat_ffi/{}", env!("CARGO_PKG_VERSION"));
+    let tari_address = (*tari_address).clone();
+    let mut client = Client::sideload((*config).clone(), (*contacts_handle).clone(), user_agent, tari_address);
     if let Ok(()) = runtime.block_on(client.initialize()) {
         let mut callback_handler = CallbackHandler::new(
             (*contacts_handle).clone(),

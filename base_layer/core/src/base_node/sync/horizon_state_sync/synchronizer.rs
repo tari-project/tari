@@ -251,7 +251,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let config = RpcClient::builder()
             .with_deadline(self.config.rpc_deadline)
-            .with_deadline_grace_period(Duration::from_secs(3));
+            .with_deadline_grace_period(Duration::from_secs(5));
 
         let mut client = conn
             .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)

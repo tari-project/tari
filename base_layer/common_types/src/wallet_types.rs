@@ -26,19 +26,71 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumString;
+use tari_common::configuration::Network;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-#[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
+use crate::types::{PrivateKey, PublicKey};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum WalletType {
-    Software,
-    Ledger(usize),
+    #[default]
+    DerivedKeys,
+    Ledger(LedgerWallet),
+    ProvidedKeys(ProvidedKeysWallet),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            WalletType::Software => write!(f, "Software"),
-            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
+            WalletType::DerivedKeys => write!(f, "Derived wallet"),
+            WalletType::Ledger(ledger_wallet) => write!(f, "Ledger({ledger_wallet})"),
+            WalletType::ProvidedKeys(provided_keys_wallet) => write!(f, "Provided Keys ({provided_keys_wallet})"),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProvidedKeysWallet {
+    pub public_spend_key: PublicKey,
+    pub private_spend_key: Option<PrivateKey>,
+    pub view_key: PrivateKey,
+}
+
+impl Display for ProvidedKeysWallet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "public spend key {}", self.public_spend_key)?;
+        write!(f, "public view key{}", PublicKey::from_secret_key(&self.view_key))?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LedgerWallet {
+    account: u64,
+    pub public_alpha: Option<PublicKey>,
+    pub network: Network,
+    pub view_key: Option<PrivateKey>,
+}
+
+impl Display for LedgerWallet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "account {}", self.account)?;
+        write!(f, "pubkey {}", self.public_alpha.is_some())?;
+        Ok(())
+    }
+}
+
+impl LedgerWallet {
+    pub fn new(account: u64, network: Network, public_alpha: Option<PublicKey>, view_key: Option<PrivateKey>) -> Self {
+        Self {
+            account,
+            public_alpha,
+            network,
+            view_key,
+        }
+    }
+
+    pub fn account_bytes(&self) -> Vec<u8> {
+        self.account.to_le_bytes().to_vec()
     }
 }

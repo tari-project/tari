@@ -71,7 +71,6 @@ impl<M: DomainSeparation, D: Digest + Default> Default for DomainSeparatedConsen
 mod tests {
     use blake2::Blake2b;
     use digest::consts::U32;
-    use tari_common::configuration::Network;
     use tari_crypto::hash_domain;
     use tari_script::script;
 

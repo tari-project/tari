@@ -29,6 +29,7 @@ use tari_utilities::hex::Hex;
 
 use crate::proof_of_work::PowAlgorithm;
 
+#[allow(dead_code)]
 pub trait AchievedDifficulty {}
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here

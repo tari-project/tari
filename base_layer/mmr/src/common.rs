@@ -30,7 +30,7 @@ use tari_common::DomainDigest;
 
 use crate::{error::MerkleMountainRangeError, Hash};
 
-const ALL_ONES: usize = std::usize::MAX;
+const ALL_ONES: usize = usize::MAX;
 
 #[derive(Copy, Clone)]
 pub struct LeafIndex(pub usize);

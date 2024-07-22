@@ -116,7 +116,11 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    SendOneSided(SendMinotariArgs),
+    FaucetGenerateSessionInfo(FaucetGenerateSessionInfoArgs),
+    FaucetCreatePartyDetails(FaucetCreatePartyDetailsArgs),
+    FaucetEncumberAggregateUtxo(FaucetEncumberAggregateUtxoArgs),
+    FaucetCreateInputOutputSigs(FaucetCreateInputOutputSigArgs),
+    FaucetSpendAggregateUtxo(FaucetSpendAggregateUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -159,6 +163,50 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
+pub struct FaucetGenerateSessionInfoArgs {
+    #[clap(long)]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub commitment: String,
+    #[clap(long)]
+    pub output_hash: String,
+    #[clap(long)]
+    pub recipient_address: TariAddress,
+    #[clap(long)]
+    pub verify_unspent_outputs: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetCreatePartyDetailsArgs {
+    #[clap(long)]
+    pub input_file: PathBuf,
+    #[clap(long)]
+    pub alias: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetEncumberAggregateUtxoArgs {
+    #[clap(long)]
+    pub session_id: String,
+    #[clap(long)]
+    pub input_file_names: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetCreateInputOutputSigArgs {
+    #[clap(long)]
+    pub session_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FaucetSpendAggregateUtxoArgs {
+    #[clap(long)]
+    pub session_id: String,
+    #[clap(long)]
+    pub input_file_names: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
 pub struct MakeItRainArgs {
     pub destination: TariAddress,
     #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
@@ -171,10 +219,8 @@ pub struct MakeItRainArgs {
     pub increase_amount: MicroMinotari,
     #[clap(long, parse(try_from_str=parse_start_time))]
     pub start_time: Option<DateTime<Utc>>,
-    #[clap(short, long)]
-    pub one_sided: bool,
     #[clap(long, alias = "stealth-one-sided")]
-    pub stealth: bool,
+    pub one_sided: bool,
     #[clap(short, long)]
     pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
@@ -183,10 +229,8 @@ pub struct MakeItRainArgs {
 
 impl MakeItRainArgs {
     pub fn transaction_type(&self) -> MakeItRainTransactionType {
-        if self.stealth {
+        if self.one_sided {
             MakeItRainTransactionType::StealthOneSided
-        } else if self.one_sided {
-            MakeItRainTransactionType::OneSided
         } else if self.burn_tari {
             MakeItRainTransactionType::BurnTari
         } else {
@@ -198,7 +242,6 @@ impl MakeItRainArgs {
 #[derive(Debug, Clone, Copy)]
 pub enum MakeItRainTransactionType {
     Interactive,
-    OneSided,
     StealthOneSided,
     BurnTari,
 }
@@ -241,6 +284,7 @@ pub struct WhoisArgs {
 pub struct ExportUtxosArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
+    pub with_private_keys: bool,
 }
 
 #[derive(Debug, Args, Clone)]

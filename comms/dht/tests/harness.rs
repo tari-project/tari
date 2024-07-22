@@ -55,6 +55,7 @@ pub struct TestNode {
     pub comms: CommsNode,
     pub dht: Dht,
     pub inbound_messages: mpsc::Receiver<DecryptedDhtMessage>,
+    #[allow(dead_code)]
     pub messaging_events: broadcast::Sender<MessagingEvent>,
     pub shutdown: Shutdown,
 }

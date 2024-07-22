@@ -95,6 +95,14 @@ pub enum ValidationError {
         max_script_size: usize,
         actual_script_size: usize,
     },
+    #[error(
+        "Encrypted data exceeded maximum encrytped data size, expected less than {max_encrypted_data_size} but was \
+         {actual_encrypted_data_size}"
+    )]
+    EncryptedDataExceedsMaxSize {
+        max_encrypted_data_size: usize,
+        actual_encrypted_data_size: usize,
+    },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
     #[error("Duplicate kernel Error: {0}")]
@@ -185,6 +193,7 @@ impl ValidationError {
             err @ ValidationError::IncorrectPreviousHash { .. } |
             err @ ValidationError::BadBlockFound { .. } |
             err @ ValidationError::TariScriptExceedsMaxSize { .. } |
+            err @ ValidationError::EncryptedDataExceedsMaxSize { .. } |
             err @ ValidationError::ConsensusError(_) |
             err @ ValidationError::DuplicateKernelError(_) |
             err @ ValidationError::CovenantError(_) |

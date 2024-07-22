@@ -24,7 +24,7 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_key_manager::key_manager_service::KeyId;
-use tari_script::{one_sided_payment_script, script};
+use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tokio::time::Instant;
 
@@ -40,14 +40,18 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch},
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{RangeProofType, TransactionError},
+        transaction_components::{
+            encrypted_data::{PaymentId, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
+            EncryptedData,
+            RangeProofType,
+            TransactionError,
+        },
         CoinbaseBuilder,
         CryptoFactories,
     },
     txn_schema,
     validation::{BlockBodyValidator, ValidationError},
 };
-
 async fn setup_with_rules(rules: ConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
     let blockchain = TestBlockchain::create(rules.clone()).await;
     let validator = BlockBodyFullValidator::new(rules, check_rangeproof);
@@ -234,21 +238,25 @@ async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true).await;
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
-    let spend_key_id = KeyId::Managed {
-        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
+    let commitment_mask_key = KeyId::Managed {
+        branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
         index: 42,
     };
     let wallet_payment_address = TariAddress::default();
     let (_, coinbase_output) = CoinbaseBuilder::new(blockchain.km.clone())
         .with_block_height(1)
         .with_fees(0.into())
-        .with_spend_key_id(spend_key_id.clone())
+        .with_commitment_mask_id(commitment_mask_key.clone())
         .with_encryption_key_id(TariKeyId::default())
         .with_sender_offset_key_id(TariKeyId::default())
         .with_script_key_id(TariKeyId::default())
-        .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+        .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
         .with_range_proof_type(RangeProofType::RevealedValue)
-        .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
+        .build_with_reward(
+            blockchain.rules().consensus_constants(1),
+            coinbase.value,
+            PaymentId::Empty,
+        )
         .await
         .unwrap();
 
@@ -414,6 +422,35 @@ async fn it_limits_the_script_byte_size() {
 }
 
 #[tokio::test]
+async fn it_limits_the_encrypted_data_byte_size() {
+    let rules = ConsensusManager::builder(Network::LocalNet)
+        .add_consensus_constants(
+            ConsensusConstantsBuilder::new(Network::LocalNet)
+                .with_coinbase_lockheight(0)
+                .build(),
+        )
+        .build()
+        .unwrap();
+    let (mut blockchain, validator) = setup_with_rules(rules, true).await;
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
+
+    let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
+    schema1.script = script!(Nop Nop Nop);
+    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
+    let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+    let mut outputs = txs[0].body.outputs().clone();
+    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 257]);
+    txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
+    let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
+
+    let txn = blockchain.db().db_read_access().unwrap();
+    let smt = blockchain.db().smt();
+    let err = validator.validate_body(&*txn, block.block(), smt).unwrap_err();
+    assert!(matches!(err, ValidationError::EncryptedDataExceedsMaxSize { .. }));
+}
+
+#[tokio::test]
 async fn it_rejects_invalid_input_metadata() {
     let rules = ConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
@@ -471,7 +508,6 @@ async fn it_rejects_zero_conf_double_spends() {
 
 mod body_only {
     use super::*;
-    use crate::validation::block_body::BlockBodyFullValidator;
 
     #[tokio::test]
     async fn it_rejects_invalid_input_metadata() {
@@ -510,7 +546,7 @@ mod body_only {
 mod orphan_validator {
     use super::*;
     use crate::{
-        transactions::transaction_components::{OutputType, RangeProofType},
+        transactions::transaction_components::OutputType,
         txn_schema,
         validation::block_body::BlockBodyInternalConsistencyValidator,
     };

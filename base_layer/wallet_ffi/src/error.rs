@@ -33,7 +33,10 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_key_manager::{
+    error::{KeyManagerError, MnemonicError},
+    key_manager_service::KeyManagerServiceError,
+};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -63,6 +66,7 @@ pub enum InterfaceError {
 #[derive(Debug, Clone)]
 pub struct LibWalletError {
     pub code: i32,
+    #[allow(dead_code)]
     pub message: String,
 }
 
@@ -398,11 +402,13 @@ impl From<TariAddressError> for LibWalletError {
     fn from(e: TariAddressError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", e));
         match e {
-            TariAddressError::InvalidNetworkOrChecksum => Self {
+            TariAddressError::InvalidNetwork => Self {
                 code: 701,
                 message: format!("{:?}", e),
             },
-            TariAddressError::CannotRecoverPublicKey => Self {
+            TariAddressError::CannotRecoverPublicKey |
+            TariAddressError::CannotRecoverFeature |
+            TariAddressError::CannotRecoverNetwork => Self {
                 code: 702,
                 message: format!("{:?}", e),
             },
@@ -412,6 +418,23 @@ impl From<TariAddressError> for LibWalletError {
             },
             TariAddressError::InvalidEmoji => Self {
                 code: 704,
+                message: format!("{:?}", e),
+            },
+
+            TariAddressError::InvalidFeatures => Self {
+                code: 705,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidChecksum => Self {
+                code: 706,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidAddressString => Self {
+                code: 707,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::InvalidCharacter => Self {
+                code: 708,
                 message: format!("{:?}", e),
             },
         }
@@ -506,6 +529,16 @@ impl From<MnemonicError> for LibWalletError {
         error!(target: LOG_TARGET, "{}", format!("{:?}", err));
         Self {
             code: 910,
+            message: format!("{:?}", err),
+        }
+    }
+}
+
+impl From<KeyManagerServiceError> for LibWalletError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        Self {
+            code: 458,
             message: format!("{:?}", err),
         }
     }

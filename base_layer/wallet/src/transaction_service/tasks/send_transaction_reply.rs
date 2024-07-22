@@ -67,7 +67,7 @@ pub async fn send_transaction_reply(
         TransactionRoutingMechanism::StoreAndForwardOnly => {
             send_transaction_reply_store_and_forward(
                 inbound_transaction.tx_id,
-                inbound_transaction.source_address.public_key().clone(),
+                inbound_transaction.source_address.public_spend_key().clone(),
                 proto_message.clone(),
                 &mut outbound_message_service,
             )
@@ -97,7 +97,7 @@ pub async fn send_transaction_reply_direct(
         .map_err(TransactionServiceError::ServiceError)?;
     match outbound_message_service
         .send_direct_unencrypted(
-            inbound_transaction.source_address.public_key().clone(),
+            inbound_transaction.source_address.comms_public_key().clone(),
             OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
             "wallet transaction reply".to_string(),
         )
@@ -108,7 +108,7 @@ pub async fn send_transaction_reply_direct(
                 if wait_on_dial(
                     send_states,
                     tx_id,
-                    inbound_transaction.source_address.public_key().clone(),
+                    inbound_transaction.source_address.comms_public_key().clone(),
                     "Transaction Reply",
                     direct_send_timeout,
                 )
@@ -127,7 +127,7 @@ pub async fn send_transaction_reply_direct(
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_reply_store_and_forward(
                         tx_id,
-                        inbound_transaction.source_address.public_key().clone(),
+                        inbound_transaction.source_address.comms_public_key().clone(),
                         proto_message.clone(),
                         &mut outbound_message_service,
                     )
@@ -142,7 +142,7 @@ pub async fn send_transaction_reply_direct(
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_reply_store_and_forward(
                         tx_id,
-                        inbound_transaction.source_address.public_key().clone(),
+                        inbound_transaction.source_address.comms_public_key().clone(),
                         proto_message.clone(),
                         &mut outbound_message_service,
                     )
@@ -153,7 +153,7 @@ pub async fn send_transaction_reply_direct(
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_reply_store_and_forward(
                         tx_id,
-                        inbound_transaction.source_address.public_key().clone(),
+                        inbound_transaction.source_address.comms_public_key().clone(),
                         proto_message.clone(),
                         &mut outbound_message_service,
                     )
@@ -169,7 +169,7 @@ pub async fn send_transaction_reply_direct(
                         direct_send_result = wait_on_dial(
                             send_states,
                             tx_id,
-                            inbound_transaction.source_address.public_key().clone(),
+                            inbound_transaction.source_address.comms_public_key().clone(),
                             "Transaction Reply",
                             direct_send_timeout,
                         )

@@ -275,7 +275,9 @@ where B: BlockchainBackend
         } else {
             // lets load the smt into memory
             let mut smt = blockchain_db.smt_write_access()?;
+            warn!(target: LOG_TARGET, "Loading SMT into memory from stored db");
             *smt = blockchain_db.db_write_access()?.calculate_tip_smt()?;
+            warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
         }
         if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
@@ -2450,7 +2452,7 @@ fn get_previous_timestamps<T: BlockchainBackend>(
     Ok(timestamps)
 }
 
-/// Gets all blocks ordered from the the block that connects (via prev_hash) to the main chain, to the orphan tip.
+/// Gets all blocks ordered from the block that connects (via prev_hash) to the main chain, to the orphan tip.
 #[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(
     db: &T,
@@ -2651,7 +2653,6 @@ mod test {
             chain_strength_comparer::strongest_chain,
             consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
-            ConsensusManager,
         },
         proof_of_work::Difficulty,
         test_helpers::{
@@ -2955,7 +2956,6 @@ mod test {
 
     mod handle_possible_reorg {
         use super::*;
-        use crate::test_helpers::blockchain::update_block_and_smt;
 
         #[ignore]
         #[tokio::test]

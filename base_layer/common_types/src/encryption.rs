@@ -109,11 +109,7 @@ pub fn encrypt_bytes_integral_nonce(
 
 #[cfg(test)]
 mod test {
-    use std::mem::size_of;
-
-    use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
-    use rand::{rngs::OsRng, RngCore};
-    use tari_utilities::{ByteArray, Hidden};
+    use chacha20poly1305::{Key, KeyInit};
 
     use super::*;
 

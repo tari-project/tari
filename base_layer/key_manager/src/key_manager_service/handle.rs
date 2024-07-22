@@ -29,6 +29,7 @@ use crate::{
     cipher_seed::CipherSeed,
     key_manager_service::{
         error::KeyManagerServiceError,
+        interface::KeyAndId,
         storage::database::{KeyManagerBackend, KeyManagerDatabase},
         AddResult,
         KeyId,
@@ -76,12 +77,17 @@ where
             .add_key_manager_branch(&branch.into())
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyAndId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
             .get_next_key(&branch.into())
             .await
+    }
+
+    /// Gets a randomly generated key, which the key manager will manage
+    async fn get_random_key(&self) -> Result<KeyAndId<PK>, KeyManagerServiceError> {
+        (*self.key_manager_inner).read().await.get_random_key().await
     }
 
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {

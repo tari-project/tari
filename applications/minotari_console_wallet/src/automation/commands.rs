@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     convert::TryInto,
     fs,
     fs::File,
@@ -30,8 +31,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use blake2::Blake2b;
 use chrono::{DateTime, Utc};
-use digest::Digest;
+use digest::{consts::U32, crypto_common::rand_core::OsRng, Digest};
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
@@ -48,13 +50,12 @@ use minotari_wallet::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
-use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{
     burnt_proof::BurntProof,
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -62,12 +63,33 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroMinotari, Minotari},
-    transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
+use tari_core::{
+    consensus::DomainSeparatedConsensusHasher,
+    covenants::Covenant,
+    one_sided::FaucetHashDomain,
+    transactions::{
+        key_manager::TransactionKeyManagerInterface,
+        tari_amount::{uT, MicroMinotari, Minotari},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionInputVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+            WalletOutput,
+        },
+    },
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_crypto::{
+    keys::SecretKey,
+    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
+};
+use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_script::{script, CheckSigSchnorrSignature};
+use tari_utilities::{encoding::Base58, hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -75,39 +97,37 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
+    automation::{
+        utils::{
+            get_file_name,
+            move_session_file_to_session_dir,
+            out_dir,
+            read_and_verify,
+            read_session_info,
+            read_verify_session_info,
+            write_json_object_to_file_as_line,
+            write_to_json_file,
+        },
+        Step1SessionInfo,
+        Step2OutputsForLeader,
+        Step2OutputsForSelf,
+        Step3OutputsForParties,
+        Step3OutputsForSelf,
+        Step4OutputsForLeader,
+    },
     cli::{CliCommands, MakeItRainTransactionType},
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
-
-/// Enum representing commands used by the wallet
-#[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
-#[strum(serialize_all = "kebab_case")]
-pub enum WalletCommand {
-    GetBalance,
-    SendTari,
-    SendOneSided,
-    MakeItRain,
-    CoinSplit,
-    DiscoverPeer,
-    Whois,
-    ExportUtxos,
-    ExportTx,
-    ImportTx,
-    ExportSpentUtxos,
-    CountUtxos,
-    SetBaseNode,
-    SetCustomBaseNode,
-    ClearCustomBaseNode,
-    InitShaAtomicSwap,
-    FinaliseShaAtomicSwap,
-    ClaimShaAtomicSwapRefund,
-    RegisterAsset,
-    MintTokens,
-    CreateInitialCheckpoint,
-    RevalidateWalletDb,
-}
+// Faucet file names
+pub(crate) const FILE_EXTENSION: &str = "json";
+pub(crate) const SESSION_INFO: &str = "step_1_session_info";
+pub(crate) const STEP_2_LEADER: &str = "step_2_for_leader_from_";
+pub(crate) const STEP_2_SELF: &str = "step_2_for_self";
+pub(crate) const STEP_3_SELF: &str = "step_3_for_self";
+pub(crate) const STEP_3_PARTIES: &str = "step_3_for_parties";
+pub(crate) const STEP_4_LEADER: &str = "step_4_for_leader_from_";
 
 #[derive(Debug)]
 pub struct SentTransaction {}
@@ -149,6 +169,60 @@ pub async fn burn_tari(
             None,
             sidechain_deployment_key,
         )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// encumbers a n-of-m transaction
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::mutable_key_type)]
+async fn encumber_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroMinotari,
+    output_hash: HashOutput,
+    expected_commitment: PedersenCommitment,
+    script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
+    script_signature_public_nonces: Vec<PublicKey>,
+    sender_offset_public_key_shares: Vec<PublicKey>,
+    metadata_ephemeral_public_key_shares: Vec<PublicKey>,
+    dh_shared_secret_shares: Vec<PublicKey>,
+    recipient_address: TariAddress,
+) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), CommandError> {
+    wallet_transaction_service
+        .encumber_aggregate_utxo(
+            fee_per_gram,
+            output_hash,
+            expected_commitment,
+            script_input_shares,
+            script_signature_public_nonces,
+            sender_offset_public_key_shares,
+            metadata_ephemeral_public_key_shares,
+            dh_shared_secret_shares,
+            recipient_address,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// finalises an already encumbered a n-of-m transaction
+async fn finalise_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    tx_id: u64,
+    meta_signatures: Vec<Signature>,
+    script_signatures: Vec<Signature>,
+    wallet_script_secret_key: PrivateKey,
+) -> Result<TxId, CommandError> {
+    let mut meta_sig = Signature::default();
+    for sig in &meta_signatures {
+        meta_sig = &meta_sig + sig;
+    }
+    let mut script_sig = Signature::default();
+    for sig in &script_signatures {
+        script_sig = &script_sig + sig;
+    }
+
+    wallet_transaction_service
+        .finalize_aggregate_utxo(tx_id, meta_sig, script_sig, wallet_script_secret_key)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -230,28 +304,6 @@ pub async fn register_validator_node(
         .map_err(CommandError::TransactionServiceError)
 }
 
-/// Send a one-sided transaction to a recipient
-pub async fn send_one_sided(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    fee_per_gram: u64,
-    amount: MicroMinotari,
-    selection_criteria: UtxoSelectionCriteria,
-    dest_address: TariAddress,
-    message: String,
-) -> Result<TxId, CommandError> {
-    wallet_transaction_service
-        .send_one_sided_transaction(
-            dest_address,
-            amount,
-            selection_criteria,
-            OutputFeatures::default(),
-            fee_per_gram * uT,
-            message,
-        )
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
-
 pub async fn send_one_sided_to_stealth_address(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
@@ -259,6 +311,7 @@ pub async fn send_one_sided_to_stealth_address(
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_one_sided_to_stealth_address_transaction(
@@ -268,6 +321,7 @@ pub async fn send_one_sided_to_stealth_address(
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -372,7 +426,7 @@ pub async fn make_it_rain(
     // - If a slower rate is requested as what is achievable, transactions will be delayed to match the rate.
     // - If a faster rate is requested as what is achievable, the maximum rate will be that of the integrated system.
     // - The default value of 25/s may not be achievable.
-    let transactions_per_second = transactions_per_second.abs().max(0.01).min(250.0);
+    let transactions_per_second = transactions_per_second.abs().clamp(0.01, 250.0);
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
@@ -450,17 +504,6 @@ pub async fn make_it_rain(
                         MakeItRainTransactionType::Interactive => {
                             send_tari(tx_service, fee, amount, address.clone(), msg.clone()).await
                         },
-                        MakeItRainTransactionType::OneSided => {
-                            send_one_sided(
-                                tx_service,
-                                fee,
-                                amount,
-                                UtxoSelectionCriteria::default(),
-                                address.clone(),
-                                msg.clone(),
-                            )
-                            .await
-                        },
                         MakeItRainTransactionType::StealthOneSided => {
                             send_one_sided_to_stealth_address(
                                 tx_service,
@@ -469,6 +512,7 @@ pub async fn make_it_rain(
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
                                 msg.clone(),
+                                PaymentId::Empty,
                             )
                             .await
                         },
@@ -647,6 +691,7 @@ pub async fn command_runner(
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
+    let key_manager_service = wallet.key_manager_service.clone();
     let mut online = false;
 
     let mut tx_ids = Vec::new();
@@ -707,6 +752,354 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
+            FaucetGenerateSessionInfo(args) => {
+                let commitment = if let Ok(val) = Commitment::from_hex(&args.commitment) {
+                    val
+                } else {
+                    eprintln!("\nError: Invalid 'commitment' provided!\n");
+                    continue;
+                };
+                let hash = if let Ok(val) = FixedHash::from_hex(&args.output_hash) {
+                    val
+                } else {
+                    eprintln!("\nError: Invalid 'output_hash' provided!\n");
+                    continue;
+                };
+
+                if args.verify_unspent_outputs {
+                    let unspent_outputs = transaction_service.fetch_unspent_outputs(vec![hash]).await?;
+                    if unspent_outputs.is_empty() {
+                        eprintln!(
+                            "\nError: Output with output_hash '{}' has already been spent!\n",
+                            args.output_hash
+                        );
+                        continue;
+                    }
+                    if unspent_outputs[0].commitment() != &commitment {
+                        eprintln!(
+                            "\nError: Mismatched commitment '{}' and output_hash '{}'; not for the same output!\n",
+                            args.commitment, args.output_hash
+                        );
+                        continue;
+                    }
+                }
+
+                let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
+                session_id.truncate(16);
+                let session_info = Step1SessionInfo {
+                    session_id: session_id.clone(),
+                    commitment_to_spend: args.commitment,
+                    output_hash: args.output_hash,
+                    recipient_address: args.recipient_address,
+                    fee_per_gram: args.fee_per_gram,
+                };
+                let out_dir = out_dir(&session_info.session_id)?;
+                let out_file = out_dir.join(get_file_name(SESSION_INFO, None));
+                write_to_json_file(&out_file, true, session_info)?;
+                println!();
+                println!("Concluded step 1 'faucet-generate-session-info'");
+                println!("Your session ID is:                 '{}'", session_id);
+                println!("Your session's output directory is: '{}'", out_dir.display());
+                println!("Session info saved to:              '{}'", out_file.display());
+                println!("Send '{}' to parties for step 2", get_file_name(SESSION_INFO, None));
+                println!();
+            },
+            FaucetCreatePartyDetails(args) => {
+                if args.alias.is_empty() || args.alias.contains(" ") {
+                    eprintln!("\nError: Alias cannot contain spaces!\n");
+                    continue;
+                }
+                if args.alias.chars().any(|c| !c.is_alphanumeric() && c != '_') {
+                    eprintln!("\nError: Alias contains invalid characters! Only alphanumeric and '_' are allowed.\n");
+                    continue;
+                }
+
+                let wallet_spend_key = wallet.key_manager_service.get_spend_key().await?;
+                let script_nonce_key = key_manager_service.get_random_key().await?;
+                let sender_offset_key = key_manager_service.get_random_key().await?;
+                let sender_offset_nonce = key_manager_service.get_random_key().await?;
+
+                // Read session info
+                let session_info = read_session_info(args.input_file.clone())?;
+
+                let commitment = Commitment::from_hex(&session_info.commitment_to_spend)?;
+                let commitment_hash: [u8; 32] =
+                    DomainSeparatedConsensusHasher::<FaucetHashDomain, Blake2b<U32>>::new("com_hash")
+                        .chain(&commitment)
+                        .finalize()
+                        .into();
+                let shared_secret = key_manager_service
+                    .get_diffie_hellman_shared_secret(
+                        &sender_offset_key.key_id,
+                        session_info
+                            .recipient_address
+                            .public_view_key()
+                            .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
+                    )
+                    .await?;
+                let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
+
+                let script_input_signature = key_manager_service
+                    .sign_script_message(&wallet_spend_key.key_id, &commitment_hash)
+                    .await?;
+
+                let out_dir = out_dir(&session_info.session_id)?;
+                let step_2_outputs_for_leader = Step2OutputsForLeader {
+                    script_input_signature,
+                    wallet_public_spend_key: wallet_spend_key.pub_key,
+                    public_script_nonce_key: script_nonce_key.pub_key,
+                    public_sender_offset_key: sender_offset_key.pub_key,
+                    public_sender_offset_nonce_key: sender_offset_nonce.pub_key,
+                    dh_shared_secret_public_key: shared_secret_public_key,
+                };
+                let out_file_leader = out_dir.join(get_file_name(STEP_2_LEADER, Some(args.alias.clone())));
+                write_json_object_to_file_as_line(&out_file_leader, true, session_info.clone())?;
+                write_json_object_to_file_as_line(&out_file_leader, false, step_2_outputs_for_leader)?;
+
+                let step_2_outputs_for_self = Step2OutputsForSelf {
+                    alias: args.alias.clone(),
+                    wallet_spend_key_id: wallet_spend_key.key_id,
+                    script_nonce_key_id: script_nonce_key.key_id,
+                    sender_offset_key_id: sender_offset_key.key_id,
+                    sender_offset_nonce_key_id: sender_offset_nonce.key_id,
+                };
+                let out_file_self = out_dir.join(get_file_name(STEP_2_SELF, None));
+                write_json_object_to_file_as_line(&out_file_self, true, session_info.clone())?;
+                write_json_object_to_file_as_line(&out_file_self, false, step_2_outputs_for_self)?;
+
+                println!();
+                println!("Concluded step 2 'faucet-create-party-details'");
+                println!("Your session's output directory is '{}'", out_dir.display());
+                move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
+                println!(
+                    "Send '{}' to leader for step 3",
+                    get_file_name(STEP_2_LEADER, Some(args.alias))
+                );
+                println!();
+            },
+            FaucetEncumberAggregateUtxo(args) => {
+                // Read session info
+                let session_info = read_verify_session_info(&args.session_id)?;
+
+                #[allow(clippy::mutable_key_type)]
+                let mut input_shares = HashMap::new();
+                let mut script_signature_public_nonces = Vec::with_capacity(args.input_file_names.len());
+                let mut sender_offset_public_key_shares = Vec::with_capacity(args.input_file_names.len());
+                let mut metadata_ephemeral_public_key_shares = Vec::with_capacity(args.input_file_names.len());
+                let mut dh_shared_secret_shares = Vec::with_capacity(args.input_file_names.len());
+                for file_name in args.input_file_names {
+                    // Read party input
+                    let party_info =
+                        read_and_verify::<Step2OutputsForLeader>(&args.session_id, &file_name, &session_info)?;
+                    input_shares.insert(party_info.wallet_public_spend_key, party_info.script_input_signature);
+                    script_signature_public_nonces.push(party_info.public_script_nonce_key);
+                    sender_offset_public_key_shares.push(party_info.public_sender_offset_key);
+                    metadata_ephemeral_public_key_shares.push(party_info.public_sender_offset_nonce_key);
+                    dh_shared_secret_shares.push(party_info.dh_shared_secret_public_key);
+                }
+
+                match encumber_aggregate_utxo(
+                    transaction_service.clone(),
+                    session_info.fee_per_gram,
+                    FixedHash::from_hex(&session_info.output_hash)
+                        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+                    Commitment::from_hex(&session_info.commitment_to_spend)?,
+                    input_shares,
+                    script_signature_public_nonces,
+                    sender_offset_public_key_shares,
+                    metadata_ephemeral_public_key_shares,
+                    dh_shared_secret_shares,
+                    session_info.recipient_address.clone(),
+                )
+                .await
+                {
+                    Ok((
+                        tx_id,
+                        transaction,
+                        script_pubkey,
+                        total_metadata_ephemeral_public_key,
+                        total_script_nonce,
+                    )) => {
+                        let out_dir = out_dir(&args.session_id)?;
+                        let step_3_outputs_for_self = Step3OutputsForSelf { tx_id };
+                        let out_file = out_dir.join(get_file_name(STEP_3_SELF, None));
+                        write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
+                        write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_self)?;
+
+                        let step_3_outputs_for_parties = Step3OutputsForParties {
+                            input_stack: transaction.body.inputs()[0].clone().input_data,
+                            input_script: transaction.body.inputs()[0].script().unwrap().clone(),
+                            total_script_key: script_pubkey,
+                            script_signature_ephemeral_commitment: transaction.body.inputs()[0]
+                                .script_signature
+                                .ephemeral_commitment()
+                                .clone(),
+                            script_signature_ephemeral_pubkey: total_script_nonce,
+                            output_commitment: transaction.body.outputs()[0].commitment().clone(),
+                            sender_offset_pubkey: transaction.body.outputs()[0].clone().sender_offset_public_key,
+                            metadata_signature_ephemeral_commitment: transaction.body.outputs()[0]
+                                .metadata_signature
+                                .ephemeral_commitment()
+                                .clone(),
+                            metadata_signature_ephemeral_pubkey: total_metadata_ephemeral_public_key,
+                            encrypted_data: transaction.body.outputs()[0].clone().encrypted_data,
+                            output_features: transaction.body.outputs()[0].clone().features,
+                        };
+                        let out_file = out_dir.join(get_file_name(STEP_3_PARTIES, None));
+                        write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
+                        write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_parties)?;
+
+                        println!();
+                        println!("Concluded step 3 'faucet-encumber-aggregate-utxo'");
+                        println!("Send '{}' to parties for step 4", get_file_name(STEP_3_PARTIES, None));
+                        println!();
+                    },
+                    Err(e) => eprintln!("\nError: Encumber aggregate transaction error! {}\n", e),
+                }
+            },
+            FaucetCreateInputOutputSigs(args) => {
+                // Read session info
+                let session_info = read_verify_session_info(&args.session_id)?;
+                // Read leader input
+                let leader_info = read_and_verify::<Step3OutputsForParties>(
+                    &args.session_id,
+                    &get_file_name(STEP_3_PARTIES, None),
+                    &session_info,
+                )?;
+                // Read own party info
+                let party_info = read_and_verify::<Step2OutputsForSelf>(
+                    &args.session_id,
+                    &get_file_name(STEP_2_SELF, None),
+                    &session_info,
+                )?;
+
+                // Script signature
+                let challenge = TransactionInput::build_script_signature_challenge(
+                    &TransactionInputVersion::get_current_version(),
+                    &leader_info.script_signature_ephemeral_commitment,
+                    &leader_info.script_signature_ephemeral_pubkey,
+                    &leader_info.input_script,
+                    &leader_info.input_stack,
+                    &leader_info.total_script_key,
+                    &Commitment::from_hex(&session_info.commitment_to_spend)?,
+                );
+
+                let mut script_signature = Signature::default();
+                match key_manager_service
+                    .sign_with_nonce_and_message(
+                        &party_info.wallet_spend_key_id,
+                        &party_info.script_nonce_key_id,
+                        &challenge,
+                    )
+                    .await
+                {
+                    Ok(signature) => {
+                        script_signature = signature;
+                    },
+                    Err(e) => eprintln!("\nError: Script signature SignMessage error! {}\n", e),
+                }
+
+                // Metadata signature
+                let script_offset = key_manager_service
+                    .get_script_offset(&vec![party_info.wallet_spend_key_id], &vec![party_info
+                        .sender_offset_key_id
+                        .clone()])
+                    .await?;
+                let challenge = TransactionOutput::build_metadata_signature_challenge(
+                    &TransactionOutputVersion::get_current_version(),
+                    &script!(PushPubKey(Box::new(
+                        session_info.recipient_address.public_spend_key().clone()
+                    ))),
+                    &leader_info.output_features,
+                    &leader_info.sender_offset_pubkey,
+                    &leader_info.metadata_signature_ephemeral_commitment,
+                    &leader_info.metadata_signature_ephemeral_pubkey,
+                    &leader_info.output_commitment,
+                    &Covenant::default(),
+                    &leader_info.encrypted_data,
+                    MicroMinotari::zero(),
+                );
+
+                let mut metadata_signature = Signature::default();
+                match key_manager_service
+                    .sign_with_nonce_and_message(
+                        &party_info.sender_offset_key_id,
+                        &party_info.sender_offset_nonce_key_id,
+                        &challenge,
+                    )
+                    .await
+                {
+                    Ok(signature) => {
+                        metadata_signature = signature;
+                    },
+                    Err(e) => eprintln!("\nError: Metadata signature SignMessage error! {}\n", e),
+                }
+
+                if script_signature.get_signature() == Signature::default().get_signature() ||
+                    metadata_signature.get_signature() == Signature::default().get_signature()
+                {
+                    eprintln!("\nError: Script and/or metadata signatures not created!\n")
+                } else {
+                    let step_4_outputs_for_leader = Step4OutputsForLeader {
+                        script_signature,
+                        metadata_signature,
+                        script_offset,
+                    };
+
+                    let out_dir = out_dir(&args.session_id)?;
+                    let out_file = out_dir.join(get_file_name(STEP_4_LEADER, Some(party_info.alias.clone())));
+                    write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
+                    write_json_object_to_file_as_line(&out_file, false, step_4_outputs_for_leader)?;
+
+                    println!();
+                    println!("Concluded step 4 'faucet-create-input-output-sigs'");
+                    println!(
+                        "Send '{}' to leader for step 5",
+                        get_file_name(STEP_4_LEADER, Some(party_info.alias))
+                    );
+                    println!();
+                }
+            },
+            FaucetSpendAggregateUtxo(args) => {
+                // Read session info
+                let session_info = read_verify_session_info(&args.session_id)?;
+
+                let mut metadata_signatures = Vec::with_capacity(args.input_file_names.len());
+                let mut script_signatures = Vec::with_capacity(args.input_file_names.len());
+                let mut offset = PrivateKey::default();
+                for file_name in args.input_file_names {
+                    // Read party input
+                    let party_info =
+                        read_and_verify::<Step4OutputsForLeader>(&args.session_id, &file_name, &session_info)?;
+                    metadata_signatures.push(party_info.metadata_signature);
+                    script_signatures.push(party_info.script_signature);
+                    offset = &offset + &party_info.script_offset;
+                }
+
+                // Read own party info
+                let leader_info = read_and_verify::<Step3OutputsForSelf>(
+                    &args.session_id,
+                    &get_file_name(STEP_3_SELF, None),
+                    &session_info,
+                )?;
+
+                match finalise_aggregate_utxo(
+                    transaction_service.clone(),
+                    leader_info.tx_id.as_u64(),
+                    metadata_signatures,
+                    script_signatures,
+                    offset,
+                )
+                .await
+                {
+                    Ok(_v) => {
+                        println!();
+                        println!("Concluded step 5 'faucet-spend-aggregate-utxo'");
+                        println!();
+                    },
+                    Err(e) => println!("\nError: Error completing transaction! {}\n", e),
+                }
+            },
             SendMinotari(args) => {
                 match send_tari(
                     transaction_service.clone(),
@@ -724,24 +1117,6 @@ pub async fn command_runner(
                     Err(e) => eprintln!("SendMinotari error! {}", e),
                 }
             },
-            SendOneSided(args) => {
-                match send_one_sided(
-                    transaction_service.clone(),
-                    config.fee_per_gram,
-                    args.amount,
-                    UtxoSelectionCriteria::default(),
-                    args.destination,
-                    args.message,
-                )
-                .await
-                {
-                    Ok(tx_id) => {
-                        debug!(target: LOG_TARGET, "send-one-sided concluded with tx_id {}", tx_id);
-                        tx_ids.push(tx_id);
-                    },
-                    Err(e) => eprintln!("SendOneSided error! {}", e),
-                }
-            },
             SendOneSidedToStealthAddress(args) => {
                 match send_one_sided_to_stealth_address(
                     transaction_service.clone(),
@@ -750,6 +1125,7 @@ pub async fn command_runner(
                     UtxoSelectionCriteria::default(),
                     args.destination,
                     args.message,
+                    PaymentId::Empty,
                 )
                 .await
                 {
@@ -803,24 +1179,44 @@ pub async fn command_runner(
             },
             Whois(args) => {
                 let public_key = args.public_key.into();
-                let emoji_id = EmojiId::from_public_key(&public_key).to_emoji_string();
+                let emoji_id = EmojiId::from(&public_key).to_string();
 
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<(WalletOutput, Commitment)> =
-                        utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
-                    let count = utxos.len();
-                    let sum: MicroMinotari = utxos.iter().map(|utxo| utxo.0.value).sum();
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
+                    for output in utxos {
+                        let unblinded =
+                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
+                                .await?;
+                        unblinded_utxos.push((unblinded, output.commitment));
+                    }
+                    let count = unblinded_utxos.len();
+                    let sum: MicroMinotari = unblinded_utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
-                        if let Err(e) = write_utxos_to_csv_file(utxos, file) {
+                        if let Err(e) = write_utxos_to_csv_file(unblinded_utxos, file, args.with_private_keys) {
                             eprintln!("ExportUtxos error! {}", e);
                         }
                     } else {
-                        for (i, utxo) in utxos.iter().enumerate() {
-                            println!("{}. Value: {} {}", i + 1, utxo.0.value, utxo.0.features);
+                        for (i, utxo) in unblinded_utxos.iter().enumerate() {
+                            println!(
+                                "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
+                                i + 1,
+                                utxo.0.value,
+                                if args.with_private_keys {
+                                    utxo.0.spending_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
+                                if args.with_private_keys {
+                                    utxo.0.script_private_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
+                                utxo.0.features
+                            );
                         }
                     }
                     println!("Total number of UTXOs: {}", count);
@@ -858,17 +1254,37 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<(WalletOutput, Commitment)> =
-                        utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
-                    let count = utxos.len();
-                    let sum: MicroMinotari = utxos.iter().map(|utxo| utxo.0.value).sum();
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
+                    for output in utxos {
+                        let unblinded =
+                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
+                                .await?;
+                        unblinded_utxos.push((unblinded, output.commitment));
+                    }
+                    let count = unblinded_utxos.len();
+                    let sum: MicroMinotari = unblinded_utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
-                        if let Err(e) = write_utxos_to_csv_file(utxos, file) {
+                        if let Err(e) = write_utxos_to_csv_file(unblinded_utxos, file, args.with_private_keys) {
                             eprintln!("ExportSpentUtxos error! {}", e);
                         }
                     } else {
-                        for (i, utxo) in utxos.iter().enumerate() {
-                            println!("{}. Value: {} {}", i + 1, utxo.0.value, utxo.0.features);
+                        for (i, utxo) in unblinded_utxos.iter().enumerate() {
+                            println!(
+                                "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
+                                i + 1,
+                                utxo.0.value,
+                                if args.with_private_keys {
+                                    utxo.0.spending_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
+                                if args.with_private_keys {
+                                    utxo.0.script_private_key.to_hex()
+                                } else {
+                                    "*hidden*".to_string()
+                                },
+                                utxo.0.features
+                            );
                         }
                     }
                     println!("Total number of UTXOs: {}", count);
@@ -1105,22 +1521,26 @@ pub async fn command_runner(
     Ok(())
 }
 
-fn write_utxos_to_csv_file(utxos: Vec<(WalletOutput, Commitment)>, file_path: PathBuf) -> Result<(), CommandError> {
+fn write_utxos_to_csv_file(
+    utxos: Vec<(UnblindedOutput, Commitment)>,
+    file_path: PathBuf,
+    with_private_keys: bool,
+) -> Result<(), CommandError> {
     let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
     writeln!(
         csv_file,
-        r##""index","version","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise""##
+        r##""index","version","value","spending_key","commitment","output_type","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise","range_proof""##
     )
-    .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, (utxo, commitment)) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
-            r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
             utxo.version.as_u8(),
             utxo.value.0,
-            utxo.spending_key_id,
+            if with_private_keys {utxo.spending_key.to_hex()} else { "*hidden*".to_string() },
             commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
@@ -1129,7 +1549,7 @@ fn write_utxos_to_csv_file(utxos: Vec<(WalletOutput, Commitment)>, file_path: Pa
             utxo.script.to_hex(),
             utxo.covenant.to_bytes().to_hex(),
             utxo.input_data.to_hex(),
-            utxo.script_key_id,
+            if with_private_keys {utxo.script_private_key.to_hex()} else { "*hidden*".to_string() },
             utxo.sender_offset_public_key.to_hex(),
             utxo.metadata_signature.ephemeral_commitment().to_hex(),
             utxo.metadata_signature.ephemeral_pubkey().to_hex(),
@@ -1138,9 +1558,20 @@ fn write_utxos_to_csv_file(utxos: Vec<(WalletOutput, Commitment)>, file_path: Pa
             utxo.metadata_signature.u_y().to_hex(),
             utxo.script_lock_height,
             utxo.encrypted_data.to_byte_vec().to_hex(),
-            utxo.minimum_value_promise.as_u64()
+            utxo.minimum_value_promise.as_u64(),
+            if let Some(proof) = utxo.range_proof.clone() {
+                proof.to_hex()
+            } else {
+                "".to_string()
+            },
         )
-        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+            .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+        debug!(
+            target: LOG_TARGET,
+            "UTXO {} exported: {:?}",
+            i + 1,
+            utxo
+        );
     }
     Ok(())
 }

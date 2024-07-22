@@ -27,8 +27,9 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
@@ -104,9 +105,44 @@ impl AggregateBody {
         &self.inputs
     }
 
+    /// Update an existing transaction input's script signature (found by matching commitment)
+    pub fn update_script_signature(
+        &mut self,
+        commitment: &Commitment,
+        script_signature: ComAndPubSignature,
+    ) -> Result<(), TransactionError> {
+        let input = self
+            .inputs
+            .iter_mut()
+            .find(|input| match input.commitment() {
+                Ok(c) => c == commitment,
+                Err(_) => false,
+            })
+            .ok_or(TransactionError::OutputNotFound(commitment.to_hex()))?;
+        input.script_signature = script_signature;
+
+        Ok(())
+    }
+
     /// Provide read-only access to the output list
     pub fn outputs(&self) -> &Vec<TransactionOutput> {
         &self.outputs
+    }
+
+    /// Update an existing transaction output's metadata signature (found by matching commitment)
+    pub fn update_metadata_signature(
+        &mut self,
+        commitment: &Commitment,
+        metadata_signature: ComAndPubSignature,
+    ) -> Result<(), TransactionError> {
+        let output = self
+            .outputs
+            .iter_mut()
+            .find(|output| &output.commitment == commitment)
+            .ok_or(TransactionError::OutputNotFound(commitment.to_hex()))?;
+        output.metadata_signature = metadata_signature;
+
+        Ok(())
     }
 
     /// Provide read-only access to the kernel list
@@ -429,7 +465,7 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, Signature};
+    use tari_common_types::types::{FixedHash, PublicKey, Signature};
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;

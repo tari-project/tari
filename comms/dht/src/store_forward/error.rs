@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use prost::DecodeError;
 use tari_comms::{
+    connectivity::ConnectivityError,
     message::MessageError,
     peer_manager::{NodeId, PeerManagerError},
 };
@@ -89,4 +90,6 @@ pub enum StoreAndForwardError {
     StoredAtWasInFuture,
     #[error("Invariant error (POSSIBLE BUG): {0}")]
     InvariantError(String),
+    #[error("ConnectivityError: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
 }

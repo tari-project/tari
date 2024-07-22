@@ -41,6 +41,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
+            encrypted_data::PaymentId,
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             EncryptedData,
@@ -70,7 +71,8 @@ pub struct WalletOutput {
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroMinotari,
-    pub rangeproof: Option<RangeProof>,
+    pub range_proof: Option<RangeProof>,
+    pub payment_id: PaymentId,
 }
 
 impl WalletOutput {
@@ -91,9 +93,10 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        payment_id: PaymentId,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
+        let range_proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
             Some(
                 key_manager
                     .construct_range_proof(&spending_key_id, value.into(), minimum_value_promise.into())
@@ -116,7 +119,8 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
-            rangeproof,
+            range_proof,
+            payment_id,
         })
     }
 
@@ -136,6 +140,7 @@ impl WalletOutput {
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
         rangeproof: Option<RangeProof>,
+        payment_id: PaymentId,
     ) -> Self {
         Self {
             version,
@@ -151,7 +156,8 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
-            rangeproof,
+            range_proof: rangeproof,
+            payment_id,
         }
     }
 
@@ -169,6 +175,7 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        payment_id: PaymentId,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         Self::new(
@@ -185,6 +192,7 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            payment_id,
             key_manager,
         )
         .await
@@ -197,7 +205,7 @@ impl WalletOutput {
     ) -> Result<TransactionInput, TransactionError> {
         let value = self.value.into();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
-        let rangeproof_hash = match &self.rangeproof {
+        let rangeproof_hash = match &self.range_proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
         };
@@ -221,7 +229,7 @@ impl WalletOutput {
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
                 covenant: self.covenant.clone(),
                 version: self.version,
-                encrypted_data: self.encrypted_data,
+                encrypted_data: self.encrypted_data.clone(),
                 metadata_signature: self.metadata_signature.clone(),
                 rangeproof_hash,
                 minimum_value_promise: self.minimum_value_promise,
@@ -229,6 +237,70 @@ impl WalletOutput {
             self.input_data.clone(),
             script_signature,
         ))
+    }
+
+    /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs
+    /// `script_signature_public_nonces` and `script_public_key_shares` exclude the caller's data.
+    pub async fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
+        &self,
+        aggregated_script_signature_public_nonces: &PublicKey,
+        aggregated_script_public_key_shares: &PublicKey,
+        key_manager: &KM,
+    ) -> Result<(TransactionInput, PublicKey), TransactionError> {
+        let value = self.value.into();
+        let version = TransactionInputVersion::get_current_version();
+        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+
+        let message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        let ephemeral_public_key_self = key_manager.get_random_key().await?;
+        let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
+        let script_public_key = aggregated_script_public_key_shares + script_public_key_self;
+
+        let total_ephemeral_public_key = aggregated_script_signature_public_nonces + &ephemeral_public_key_self.pub_key;
+        let commitment_partial_script_signature = key_manager
+            .get_partial_script_signature(
+                &self.spending_key_id,
+                &value,
+                &version,
+                &total_ephemeral_public_key,
+                &script_public_key,
+                &message,
+            )
+            .await?;
+        let challenge = TransactionInput::finalize_script_signature_challenge(
+            &version,
+            commitment_partial_script_signature.ephemeral_commitment(),
+            &total_ephemeral_public_key,
+            &script_public_key,
+            &commitment,
+            &message,
+        );
+        let script_key_partial_script_signature = key_manager
+            .sign_with_nonce_and_message(&self.script_key_id, &ephemeral_public_key_self.key_id, &challenge)
+            .await?;
+        let script_signature = &commitment_partial_script_signature + &script_key_partial_script_signature;
+
+        let input = TransactionInput::new_current_version(
+            SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
+                encrypted_data: self.encrypted_data.clone(),
+                metadata_signature: self.metadata_signature.clone(),
+                version: self.version,
+                minimum_value_promise: self.minimum_value_promise,
+                rangeproof_hash: match &self.range_proof {
+                    Some(rp) => rp.hash(),
+                    None => FixedHash::zero(),
+                },
+            },
+            self.input_data.clone(),
+            script_signature,
+        );
+
+        Ok((input, script_public_key))
     }
 
     /// Commits an WalletOutput into a TransactionInput that only contains the hash of the spent output data
@@ -263,12 +335,12 @@ impl WalletOutput {
             self.version,
             self.features.clone(),
             commitment,
-            self.rangeproof.clone(),
+            self.range_proof.clone(),
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
-            self.encrypted_data,
+            self.encrypted_data.clone(),
             self.minimum_value_promise,
         );
 

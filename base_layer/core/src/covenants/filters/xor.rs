@@ -58,7 +58,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_outputset_using_symmetric_difference() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let script = script!(CheckHeight(100));
         let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))));
         let input = create_input(&key_manager).await;
