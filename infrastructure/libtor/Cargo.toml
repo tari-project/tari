@@ -16,7 +16,7 @@ tor-hash-passwd = "1.0.1"
 
 [target.'cfg(unix)'.dependencies]
 libtor = { version = "46.9.0" }
-openssl = { version = "0.10.61", features = ["vendored"] }
+openssl = { version = "0.10.66", features = ["vendored"] }
 
 [package.metadata.cargo-machete]
 ignored = ["openssl"] # this is so we can run cargo machete without getting false positive about macro dependancies
