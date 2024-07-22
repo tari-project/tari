@@ -329,10 +329,8 @@ impl AppState {
         let payment_id = if payment_id_str.is_empty() {
             PaymentId::Empty
         } else {
-            let payment_id_u64: u64 = payment_id_str
-                .parse::<u64>()
-                .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
-            PaymentId::U64(payment_id_u64)
+            let bytes = payment_id_str.as_bytes().to_vec();
+            PaymentId::Open(bytes)
         };
 
         let output_features = OutputFeatures { ..Default::default() };

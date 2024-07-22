@@ -437,7 +437,7 @@ impl TransactionsTab {
                 Some(v) => {
                     if let PaymentId::Open(bytes) = v {
                         String::from_utf8(bytes)
-                            .unwrap_or_else(|_| "Invalid".to_string())
+                            .unwrap_or_else(|_| "Invalid string".to_string())
                             .to_string()
                     } else {
                         format!("#{}", v)

@@ -7147,7 +7147,8 @@ pub unsafe extern "C" fn wallet_send_transaction(
         } else {
             match CStr::from_ptr(payment_id_string).to_str() {
                 Ok(v) => {
-                    let bytes = v.as_bytes().to_vec();
+                    let rust_str = v.to_owned();
+                    let bytes = rust_str.as_bytes().to_vec();
                     PaymentId::Open(bytes)
                 },
                 _ => {
