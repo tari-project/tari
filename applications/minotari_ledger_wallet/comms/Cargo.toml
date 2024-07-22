@@ -6,8 +6,8 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.2", default-features = false }
-tari_common_types = { path = "../../../base_layer/common_types", version = "1.0.0-pre.16" }
+tari_crypto = { workspace = true }
+tari_common_types = { workspace = true }
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 num-derive = "0.4.2"

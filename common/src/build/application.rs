@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2024. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -29,7 +29,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Deserialize;
+use cargo_toml::Manifest;
 
 pub struct StaticApplicationInfo {
     manifest: Manifest,
@@ -38,8 +38,9 @@ pub struct StaticApplicationInfo {
 
 impl StaticApplicationInfo {
     pub fn initialize() -> Result<Self, anyhow::Error> {
-        let manifest = extract_manifest()?;
-        let commit = get_commit().unwrap_or_else(|e| {
+        let git_root = find_git_root()?;
+        let manifest = extract_manifest(&git_root)?;
+        let commit = get_commit(&git_root).unwrap_or_else(|e| {
             emit_cargo_warn(e);
             "NoGitRepository".to_string()
         });
@@ -64,8 +65,14 @@ impl StaticApplicationInfo {
         )?;
         writeln!(
             file,
-            r#"#[allow(dead_code)] pub const APP_AUTHOR: &str = "{}";"#,
-            self.manifest.package.authors.join(","),
+            "{}",
+            self.manifest
+                .workspace
+                .as_ref()
+                .and_then(|w| w.package.as_ref())
+                .and_then(|p| p.authors.as_ref())
+                .map(|a| a.join(","))
+                .unwrap_or_default()
         )?;
         Ok(out_path)
     }
@@ -77,29 +84,23 @@ impl StaticApplicationInfo {
             emit_cargo_warn(e);
             "Unknown".to_string()
         });
-        format!("{}-{}-{}", self.manifest.package.version, self.commit, build)
+        format!("{}-{}-{}", self.get_version_number(), self.commit, build)
     }
 
     /// Get the version number only
     /// The final output looks like 0.1.2
     fn get_version_number(&self) -> String {
-        self.manifest.package.version.clone()
+        self.manifest
+            .workspace
+            .as_ref()
+            .and_then(|w| w.package.as_ref())
+            .and_then(|p| p.version.clone())
+            .unwrap_or_default()
     }
 }
 
-#[derive(Deserialize)]
-struct Package {
-    authors: Vec<String>,
-    version: String,
-}
-
-#[derive(Deserialize)]
-struct Manifest {
-    package: Package,
-}
-
-fn extract_manifest() -> Result<Manifest, anyhow::Error> {
-    let cargo_path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml");
+fn extract_manifest<P: AsRef<Path>>(git_root: P) -> Result<Manifest, anyhow::Error> {
+    let cargo_path = git_root.as_ref().join("Cargo.toml");
     let cargo = fs::read(cargo_path)?;
     let cargo = std::str::from_utf8(&cargo)?;
     let manifest = toml::from_str(cargo)?;
@@ -124,8 +125,7 @@ fn find_git_root() -> Result<PathBuf, anyhow::Error> {
     Ok(path)
 }
 
-fn get_commit() -> Result<String, anyhow::Error> {
-    let git_root = find_git_root()?;
+fn get_commit<P: AsRef<Path>>(git_root: P) -> Result<String, anyhow::Error> {
     let repo = git2::Repository::open(git_root)?;
     let head = repo.revparse_single("HEAD")?;
     let id = format!("{:?}", head.id());

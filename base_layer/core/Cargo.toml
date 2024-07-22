@@ -29,6 +29,7 @@ ledger = [
 metrics = ["tari_metrics"]
 
 [dependencies]
+minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true }

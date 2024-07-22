@@ -43,7 +43,7 @@ use tari_common_types::{
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::ConsensusManager,
+    consensus::{ConsensusManager, MaxSizeBytes, MaxSizeString},
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{
@@ -58,10 +58,12 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
+            BuildInfo,
             CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
             RangeProofType,
+            TemplateType,
             Transaction,
             TransactionOutput,
             WalletOutputBuilder,
@@ -78,7 +80,8 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::{PublicKey as PKtrait, SecretKey},
-    ristretto::pedersen::PedersenCommitment,
+    ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey},
+    signatures::SchnorrSignature,
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
@@ -687,6 +690,7 @@ where
                 fee_per_gram,
                 message,
                 claim_public_key,
+                sidechain_deployment_key,
             } => self
                 .burn_tari(
                     amount,
@@ -694,6 +698,7 @@ where
                     fee_per_gram,
                     message,
                     claim_public_key,
+                    sidechain_deployment_key,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -781,6 +786,8 @@ where
                 amount,
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_claim_public_key,
+                sidechain_deployment_key,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -790,6 +797,8 @@ where
                     amount,
                     validator_node_public_key,
                     validator_node_signature,
+                    validator_node_claim_public_key,
+                    sidechain_deployment_key,
                     selection_criteria,
                     fee_per_gram,
                     message,
@@ -810,6 +819,7 @@ where
                 binary_sha,
                 binary_url,
                 fee_per_gram,
+                sidechain_deployment_key,
             } => {
                 self.register_code_template(
                     fee_per_gram,
@@ -822,6 +832,7 @@ where
                         build_info,
                         binary_sha,
                         binary_url,
+                        sidechain_deployment_key,
                     },
                     UtxoSelectionCriteria::default(),
                     format!("Template Registration: {}", template_name),
@@ -2094,16 +2105,32 @@ where
         fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
+        sidechain_deployment_key: Option<PrivateKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
         trace!(target: LOG_TARGET, "Burning transaction start - TxId: {}", tx_id);
+        if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
+            return Err(TransactionServiceError::InvalidBurnTransaction(
+                "A sidechain deployment key was provided without a claim public key".to_string(),
+            ));
+        }
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(key) => {
+                let sidechain_id = PublicKey::from_secret_key(&key);
+                let sidechain_id_knowledge_proof =
+                    SchnorrSignature::sign(&key, claim_public_key.as_ref().unwrap().to_vec(), &mut OsRng)
+                        .map_err(|e| TransactionServiceError::InvalidBurnTransaction(format!("Error: {:?}", e)))?;
+                (Some(sidechain_id), Some(sidechain_id_knowledge_proof))
+            },
+            None => (None, None),
+        };
         let output_features = claim_public_key
             .as_ref()
             .cloned()
-            .map(OutputFeatures::create_burn_confidential_output)
+            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_id, sidechain_id_knowledge_proof))
             .unwrap_or_else(OutputFeatures::create_burn_output);
 
         // Prepare sender part of the transaction
@@ -2318,6 +2345,8 @@ where
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        validator_node_claim_public_key: PublicKey,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -2329,8 +2358,23 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(k) => {
+                let sidechain_id = PublicKey::from_secret_key(&k);
+                let sidechain_id_knowledge_proof =
+                    SchnorrSignature::sign(&k, validator_node_public_key.to_vec(), &mut OsRng)
+                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+                (Some(sidechain_id), Some(sidechain_id_knowledge_proof))
+            },
+            None => (None, None),
+        };
+        let output_features = OutputFeatures::for_validator_node_registration(
+            validator_node_public_key,
+            validator_node_signature,
+            validator_node_claim_public_key,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
+        );
         self.send_transaction(
             self.resources.interactive_tari_address.clone(),
             amount,
@@ -2343,36 +2387,94 @@ where
             transaction_broadcast_join_handles,
             reply_channel,
         )
-        .await
+        .await?;
+        Ok(())
     }
 
     pub async fn register_code_template(
         &mut self,
         fee_per_gram: MicroMinotari,
-        template_registration: CodeTemplateRegistration,
+        template_name: String,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: FixedHash,
+        binary_url: String,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         message: String,
-        join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        >,
+
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
-    ) -> Result<(), TransactionServiceError> {
-        self.send_transaction(
-            self.resources.interactive_tari_address.clone(),
-            0.into(),
-            selection_criteria,
-            OutputFeatures::for_template_registration(template_registration),
-            fee_per_gram,
-            message,
-            TransactionMetadata::default(),
-            join_handles,
+    ) -> Result<(TxId, HashOutput), TransactionServiceError> {
+        let author_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_key(&TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .await?;
+        let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(k) => (
+                Some(PublicKey::from_secret_key(&k)),
+                Some(
+                    SchnorrSignature::sign(&k, &author_key.pub_key, &mut OsRng)
+                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?,
+                ),
+            ),
+            None => (None, None),
+        };
+
+        let mut template_registration = CodeTemplateRegistration {
+            author_public_key: author_key.pub_key.clone(),
+            author_signature: Signature::default(),
+            template_name: template_name
+                .try_into()
+                .map_err(|_| TransactionServiceError::InvalidDataError {
+                    field: "template_name".to_string(),
+                })?,
+            template_version,
+            template_type,
+            build_info,
+            binary_sha: MaxSizeBytes::try_from(binary_sha.as_slice().to_vec()).map_err(|_| {
+                TransactionServiceError::InvalidDataError {
+                    field: "binary_sha".to_string(),
+                }
+            })?,
+            binary_url: MaxSizeString::try_from(binary_url).map_err(|_| TransactionServiceError::InvalidDataError {
+                field: "binary_url".to_string(),
+            })?,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
+        };
+
+        let challenge = template_registration.create_challenge(&nonce_pub);
+        let author_sig = self
+            .resources
+            .transaction_key_manager_service
+            .sign_raw(&challenge, &author_key.pub_key, nonce_secret)
+            .await
+            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+
+        template_registration.author_signature = author_sig;
+
+        let output_features = OutputFeatures::for_template_registration(template_registration);
+        let tx_id = TxId::new_random();
+        let (fee, transaction, main_output_hash) = self
+            .resources
+            .output_manager_service
+            .create_pay_to_self_transaction(tx_id, 0.into(), selection_criteria, output_features, fee_per_gram, None)
+            .await?;
+        self.submit_transaction_to_self(
             transaction_broadcast_join_handles,
-            reply_channel,
+            tx_id,
+            transaction,
+            fee,
+            0.into(),
+            message,
         )
-        .await
+        .await?;
+        Ok((tx_id, main_output_hash))
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -3565,4 +3667,53 @@ enum PowerMode {
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: TransactionStatus,
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_script::{stealth_payment_script, Opcode};
+
+    use super::*;
+
+    #[test]
+    fn test_stealth_addresses() {
+        // recipient's keys
+        let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
+        let (_b, big_b) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender generates a random nonce key-pair: R=r⋅G
+        let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
+        // where H(⋅) is a cryptographic hash function
+        let c = diffie_hellman_stealth_domain_hasher(&r, &big_a);
+
+        // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
+        let sender_spending_key = stealth_address_script_spending_key(&c, &big_b);
+
+        let script = stealth_payment_script(&big_r, &sender_spending_key);
+
+        // ----------------------------------------------------------------------------
+        // imitating the receiving end, scanning and extraction
+
+        // Extracting the nonce R and a spending key from the script
+        if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
+        {
+            // calculating Ks with the provided R nonce from the script
+            let c = diffie_hellman_stealth_domain_hasher(&a, big_r);
+
+            // computing a spending key `Ks=(c+b)G` for comparison
+            let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);
+
+            // computing a scanning key `Ks=cG+B` for comparison
+            let scanning_key =
+                PublicKey::from_secret_key(&RistrettoSecretKey::from_uniform_bytes(c.as_ref()).unwrap()) + big_b;
+
+            assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
+            assert_eq!(receiver_spending_key, sender_spending_key);
+            assert_eq!(scanning_key, sender_spending_key);
+            assert_eq!(scanning_key, receiver_spending_key);
+        }
+    }
 }

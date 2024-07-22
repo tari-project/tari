@@ -8,7 +8,7 @@ license = "BSD-3-Clause"
 [dependencies]
 minotari_app_grpc = { workspace = true }
 minotari_app_utilities = { workspace = true }
-minotari_ledger_wallet_comms = { workspace = true }
+minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true }

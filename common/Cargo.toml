@@ -20,6 +20,7 @@ tari_features = { workspace = true }
 anyhow = "1.0.53"
 blake2 = "0.10"
 config = { version = "0.14.0", default-features = false, features = ["toml"] }
+cargo_toml = { version = "0.20.4" }
 dirs-next = "1.0.2"
 git2 = { version = "0.18", default-features = false, optional = true }
 log = "0.4.8"
