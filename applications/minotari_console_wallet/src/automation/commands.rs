@@ -117,7 +117,7 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
-// Faucet file names
+// Pre-mine file names
 pub(crate) const FILE_EXTENSION: &str = "json";
 pub(crate) const SESSION_INFO: &str = "step_1_session_info";
 pub(crate) const STEP_2_LEADER: &str = "step_2_for_leader_from_";
@@ -742,7 +742,7 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
-            FaucetGenerateSessionInfo(args) => {
+            PreMineGenerateSessionInfo(args) => {
                 let commitment = if let Ok(val) = Commitment::from_hex(&args.commitment) {
                     val
                 } else {
@@ -787,14 +787,14 @@ pub async fn command_runner(
                 let out_file = out_dir.join(get_file_name(SESSION_INFO, None));
                 write_to_json_file(&out_file, true, session_info)?;
                 println!();
-                println!("Concluded step 1 'faucet-generate-session-info'");
+                println!("Concluded step 1 'pre-mine-generate-session-info'");
                 println!("Your session ID is:                 '{}'", session_id);
                 println!("Your session's output directory is: '{}'", out_dir.display());
                 println!("Session info saved to:              '{}'", out_file.display());
                 println!("Send '{}' to parties for step 2", get_file_name(SESSION_INFO, None));
                 println!();
             },
-            FaucetCreatePartyDetails(args) => {
+            PreMineCreatePartyDetails(args) => {
                 if args.alias.is_empty() || args.alias.contains(" ") {
                     eprintln!("\nError: Alias cannot contain spaces!\n");
                     continue;
@@ -853,7 +853,7 @@ pub async fn command_runner(
                 write_json_object_to_file_as_line(&out_file_self, false, step_2_outputs_for_self)?;
 
                 println!();
-                println!("Concluded step 2 'faucet-create-party-details'");
+                println!("Concluded step 2 'pre-mine-create-party-details'");
                 println!("Your session's output directory is '{}'", out_dir.display());
                 move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
                 println!(
@@ -862,7 +862,7 @@ pub async fn command_runner(
                 );
                 println!();
             },
-            FaucetEncumberAggregateUtxo(args) => {
+            PreMineEncumberAggregateUtxo(args) => {
                 // Read session info
                 let session_info = read_verify_session_info(&args.session_id)?;
 
@@ -935,14 +935,14 @@ pub async fn command_runner(
                         write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_parties)?;
 
                         println!();
-                        println!("Concluded step 3 'faucet-encumber-aggregate-utxo'");
+                        println!("Concluded step 3 'pre-mine-encumber-aggregate-utxo'");
                         println!("Send '{}' to parties for step 4", get_file_name(STEP_3_PARTIES, None));
                         println!();
                     },
                     Err(e) => eprintln!("\nError: Encumber aggregate transaction error! {}\n", e),
                 }
             },
-            FaucetCreateInputOutputSigs(args) => {
+            PreMineCreateInputOutputSigs(args) => {
                 // Read session info
                 let session_info = read_verify_session_info(&args.session_id)?;
                 // Read leader input
@@ -1037,7 +1037,7 @@ pub async fn command_runner(
                     write_json_object_to_file_as_line(&out_file, false, step_4_outputs_for_leader)?;
 
                     println!();
-                    println!("Concluded step 4 'faucet-create-input-output-sigs'");
+                    println!("Concluded step 4 'pre-mine-create-input-output-sigs'");
                     println!(
                         "Send '{}' to leader for step 5",
                         get_file_name(STEP_4_LEADER, Some(party_info.alias))
@@ -1045,7 +1045,7 @@ pub async fn command_runner(
                     println!();
                 }
             },
-            FaucetSpendAggregateUtxo(args) => {
+            PreMineSpendAggregateUtxo(args) => {
                 // Read session info
                 let session_info = read_verify_session_info(&args.session_id)?;
 
@@ -1079,7 +1079,7 @@ pub async fn command_runner(
                 {
                     Ok(_v) => {
                         println!();
-                        println!("Concluded step 5 'faucet-spend-aggregate-utxo'");
+                        println!("Concluded step 5 'pre-mine-spend-aggregate-utxo'");
                         println!();
                     },
                     Err(e) => println!("\nError: Error completing transaction! {}\n", e),

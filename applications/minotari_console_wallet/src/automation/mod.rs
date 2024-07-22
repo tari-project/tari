@@ -39,7 +39,7 @@ use tari_core::transactions::{
 };
 use tari_script::{CheckSigSchnorrSignature, ExecutionStack, TariScript};
 
-// Outputs for self with `FaucetCreatePartyDetails`
+// Outputs for self with `PreMineCreatePartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step1SessionInfo {
     session_id: String,
@@ -49,7 +49,7 @@ struct Step1SessionInfo {
     recipient_address: TariAddress,
 }
 
-// Outputs for self with `FaucetCreatePartyDetails`
+// Outputs for self with `PreMineCreatePartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step2OutputsForSelf {
     alias: String,
@@ -59,7 +59,7 @@ struct Step2OutputsForSelf {
     sender_offset_nonce_key_id: TariKeyId,
 }
 
-// Outputs for leader with `FaucetCreatePartyDetails`
+// Outputs for leader with `PreMineCreatePartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step2OutputsForLeader {
     script_input_signature: CheckSigSchnorrSignature,
@@ -70,13 +70,13 @@ struct Step2OutputsForLeader {
     dh_shared_secret_public_key: PublicKey,
 }
 
-// Outputs for self with `FaucetEncumberAggregateUtxo`
+// Outputs for self with `PreMineEncumberAggregateUtxo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step3OutputsForSelf {
     tx_id: TxId,
 }
 
-// Outputs for parties with `FaucetEncumberAggregateUtxo`
+// Outputs for parties with `PreMineEncumberAggregateUtxo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step3OutputsForParties {
     input_stack: ExecutionStack,
@@ -92,7 +92,7 @@ struct Step3OutputsForParties {
     output_features: OutputFeatures,
 }
 
-// Outputs for leader with `FaucetCreateScriptSig` and `FaucetCreateMetaSig`
+// Outputs for leader with `PreMineCreateScriptSig` and `PreMineCreateMetaSig`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step4OutputsForLeader {
     script_signature: Signature,

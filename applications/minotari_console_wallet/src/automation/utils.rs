@@ -131,7 +131,7 @@ pub(crate) fn out_dir(session_id: &str) -> Result<PathBuf, CommandError> {
     let base_dir = dirs::cache_dir().ok_or(CommandError::InvalidArgument(
         "Could not find cache directory".to_string(),
     ))?;
-    Ok(base_dir.join("tari_faucets").join(session_id))
+    Ok(base_dir.join("tari_pre_mine").join(session_id))
 }
 
 /// Move the session file to the session directory

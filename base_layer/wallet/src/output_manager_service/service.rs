@@ -1214,7 +1214,7 @@ where
         }
         // Retrieve the list of n public keys from the script
         let public_keys =
-            if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
+            if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) = output.script.as_slice().get(1) {
                 keys.clone()
             } else {
                 return Err(OutputManagerError::ServiceError(format!(
