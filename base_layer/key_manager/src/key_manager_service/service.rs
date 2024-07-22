@@ -173,6 +173,7 @@ where
                 Ok(public_key)
             },
             KeyId::Imported { key } => Ok(key.clone()),
+            KeyId::Offset { .. } => Err(KeyManagerServiceError::KeyNotFoundInKeyChain),
             KeyId::Zero => Ok(PK::default()),
         }
     }

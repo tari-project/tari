@@ -302,6 +302,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(public_key)
             },
             KeyId::Imported { key } => Ok(key.clone()),
+            KeyId::Offset { key_id, offset } => Err(KeyManagerServiceError::KeyNotFoundInKeyChain),
             KeyId::Zero => Ok(PublicKey::default()),
         }
     }
@@ -408,6 +409,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let pvt_key = self.db.get_imported_key(key)?;
                 Ok(pvt_key)
             },
+            KeyId::Offset { .. } => Ok(PrivateKey::default()),
             KeyId::Zero => Ok(PrivateKey::default()),
         }
     }
@@ -546,6 +548,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Managed { index, .. } => *index,
             KeyId::Derived { .. } => return Ok(None),
             KeyId::Imported { .. } => return Ok(None),
+            KeyId::Offset { .. } => return Ok(None),
             KeyId::Zero => return Ok(None),
         };
         let script_key_id = KeyId::Derived {
@@ -1001,6 +1004,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let mut derived_key_commitments = vec![];
         for script_key_id in script_key_ids {
             match script_key_id {
+                KeyId::Offset { .. } => {},
                 KeyId::Imported { .. } | KeyId::Managed { .. } | KeyId::Zero => {
                     total_script_private_key = total_script_private_key + self.get_private_key(script_key_id).await?
                 },
@@ -1061,7 +1065,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             } => {
                                 sender_offset_indexes.push(*index);
                             },
-                            TariKeyId::Imported { .. } | TariKeyId::Zero => {},
+                            TariKeyId::Imported { .. } | TariKeyId::Offset { .. } | TariKeyId::Zero => {},
                         }
                     }
 

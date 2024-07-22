@@ -2989,11 +2989,10 @@ where
                     // Compute the stealth address offset
                     let stealth_address_offset = PrivateKey::from_uniform_bytes(stealth_address_hasher.as_ref())
                         .expect("'DomainSeparatedHash<Blake2b<U64>>' has correct size");
-                    let stealth_key = self
-                        .resources
-                        .key_manager
-                        .import_add_offset_to_private_key(&spend_key.key_id, stealth_address_offset)
-                        .await?;
+                    let stealth_key = TariKeyId::Offset {
+                        key_id: Box::new(spend_key.key_id.clone()),
+                        offset: stealth_address_offset.clone(),
+                    };
 
                     let shared_secret = self
                         .resources
@@ -3020,7 +3019,7 @@ where
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
+        for (output, output_source, script_private_key_id, shared_secret) in scanned_outputs {
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
             if let Ok((committed_value, spending_key, payment_id)) =
                 EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
@@ -3039,7 +3038,7 @@ where
                         output.features,
                         output.script,
                         tari_script::ExecutionStack::new(vec![]),
-                        script_private_key,
+                        script_private_key_id,
                         output.sender_offset_public_key,
                         output.metadata_signature,
                         0,
