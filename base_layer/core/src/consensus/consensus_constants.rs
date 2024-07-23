@@ -97,6 +97,8 @@ pub struct ConsensusConstants {
     transaction_weight: TransactionWeight,
     /// Maximum byte size of TariScript
     max_script_byte_size: usize,
+    /// Maximum byte size of encrypted data
+    max_extra_encrypted_data_byte_size: usize,
     /// Range of valid transaction input versions
     input_version_range: RangeInclusive<TransactionInputVersion>,
     /// Range of valid transaction output (and features) versions
@@ -155,9 +157,7 @@ pub struct PowAlgorithmConstants {
     pub target_time: u64,
 }
 
-const FAUCET_VALUE: u64 = 6_030_157_777_181_012;
-const ESMERALDA_FAUCET_VALUE: u64 = FAUCET_VALUE;
-// const IGOR_FAUCET_VALUE: u64 = 1_897_859_637_874_722;
+const FAUCET_VALUE: u64 = 0; // 6_030_157_777_181_012;
 const INITIAL_EMISSION: MicroMinotari = MicroMinotari(13_952_877_857);
 const ESMERALDA_INITIAL_EMISSION: MicroMinotari = INITIAL_EMISSION;
 
@@ -272,6 +272,11 @@ impl ConsensusConstants {
     /// The maximum serialized byte size of TariScript
     pub fn max_script_byte_size(&self) -> usize {
         self.max_script_byte_size
+    }
+
+    /// The maximum serialized byte size of TariScript
+    pub fn max_extra_encrypted_data_byte_size(&self) -> usize {
+        self.max_extra_encrypted_data_byte_size
     }
 
     /// This is the min initial difficulty that can be requested for the pow
@@ -396,7 +401,8 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: 0.into(),
             transaction_weight: TransactionWeight::latest(),
-            max_script_byte_size: 2048,
+            max_script_byte_size: 512,
+            max_extra_encrypted_data_byte_size: 256,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -460,7 +466,8 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: 0.into(), // IGOR_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
+            max_script_byte_size: 512,
+            max_extra_encrypted_data_byte_size: 256,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -515,9 +522,10 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(),
+            faucet_value: 40_000_000_000.into(),
             transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
+            max_script_byte_size: 512,
+            max_extra_encrypted_data_byte_size: 256,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -573,7 +581,8 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
+            max_script_byte_size: 512,
+            max_extra_encrypted_data_byte_size: 256,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -623,7 +632,8 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
+            max_script_byte_size: 512,
+            max_extra_encrypted_data_byte_size: 256,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -675,7 +685,8 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: MicroMinotari::from(0),
             transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
+            max_script_byte_size: 512,
+            max_extra_encrypted_data_byte_size: 256,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -893,7 +904,7 @@ mod test {
             ConsensusConstants,
         },
         transactions::{
-            tari_amount::{uT, MicroMinotari, T},
+            tari_amount::{uT, MicroMinotari},
             transaction_components::{OutputType, RangeProofType},
         },
     };
@@ -906,49 +917,6 @@ mod test {
         ConsensusConstants::stagenet();
         ConsensusConstants::nextnet();
         ConsensusConstants::mainnet();
-    }
-
-    // Comment out the feature flag to run this test
-    #[test]
-    #[cfg(feature = "schedule_get_constants")]
-    fn esmeralda_schedule_get_constants() {
-        let mut esmeralda = ConsensusConstants::esmeralda();
-        loop {
-            let schedule = EmissionSchedule::new(
-                esmeralda[0].emission_initial,
-                esmeralda[0].emission_decay,
-                esmeralda[0].emission_tail,
-            );
-            // No genesis block coinbase
-            assert_eq!(schedule.block_reward(0), MicroMinotari(0));
-            // Coinbases starts at block 1
-            let coinbase_offset = 1;
-            let first_reward = schedule.block_reward(coinbase_offset);
-            assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
-            assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
-            // Tail emission starts after block 3,255,552 + coinbase_offset
-            let mut rewards = schedule
-                .iter()
-                .skip(3_255_552 + usize::try_from(coinbase_offset).unwrap());
-            let supply = loop {
-                let (block_num, reward, supply) = rewards.next().unwrap();
-                let total_supply = supply + esmeralda[0].faucet_value;
-                println!(
-                    "Initial: {}, Block: {}, Reward: {}, Supply: {}, Total supply: {}",
-                    esmeralda[0].emission_initial, block_num, reward, supply, total_supply
-                );
-                if reward == esmeralda[0].emission_tail {
-                    break supply;
-                }
-            };
-            let total_supply_up_to_tail_emission = supply + esmeralda[0].faucet_value;
-            if total_supply_up_to_tail_emission >= 21_000_000_800_000_000 * uT {
-                println!("Total supply up to tail emission: {}", total_supply_up_to_tail_emission);
-                break;
-            }
-            esmeralda[0].emission_initial = esmeralda[0].emission_initial + MicroMinotari(1);
-        }
-        panic!("\n\nThis test may not pass in CI\n\n");
     }
 
     #[test]
@@ -985,15 +953,15 @@ mod test {
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3255553 + coinbase_offset);
         assert_eq!(reward, 800_000_415 * uT);
-        assert_eq!(supply, 20_999_999_999_819_869 * uT);
+        assert_eq!(supply, 14_969_882_222_638_857 * uT);
         let (_, reward, _) = rewards.next().unwrap();
         assert_eq!(reward, 799_999_715 * uT);
         // Inflating tail emission
         let mut rewards = schedule.iter().skip(3259845);
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3259846);
-        assert_eq!(reward, 797 * T);
-        assert_eq!(supply, 21_003_427_156_818_122 * uT);
+        assert_eq!(reward, 796_998_899.into());
+        assert_eq!(supply, 14_973_309_379_635_607 * uT);
     }
 
     #[test]
@@ -1027,8 +995,8 @@ mod test {
         let mut rewards = schedule.iter().skip(3259845);
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3259846);
-        assert_eq!(reward, 797 * T);
-        assert_eq!(supply, 21_003_427_156_818_122 * uT);
+        assert_eq!(reward, 796_998_899.into());
+        assert_eq!(supply, 14_973_269_379_635_607 * uT);
     }
 
     #[test]
@@ -1062,8 +1030,8 @@ mod test {
         let mut rewards = schedule.iter().skip(3259845);
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3259846);
-        assert_eq!(reward, 797 * T);
-        assert_eq!(supply, 21_003_427_156_818_122 * uT);
+        assert_eq!(reward, 796_998_899.into());
+        assert_eq!(supply, 14_973_269_379_635_607 * uT);
     }
 
     #[test]

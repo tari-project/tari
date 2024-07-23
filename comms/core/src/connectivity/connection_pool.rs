@@ -24,7 +24,7 @@ use std::{collections::HashMap, fmt, time::Duration};
 
 use nom::lib::std::collections::hash_map::Entry;
 
-use crate::{peer_manager::NodeId, PeerConnection};
+use crate::{peer_manager::NodeId, Minimized, PeerConnection};
 
 /// Status type for connections
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ pub enum ConnectionStatus {
     Connected,
     Retrying,
     Failed,
-    Disconnected,
+    Disconnected(Minimized),
 }
 
 impl fmt::Display for ConnectionStatus {
@@ -124,7 +124,7 @@ impl ConnectionPool {
                 entry_mut.status = if conn.is_connected() {
                     ConnectionStatus::Connected
                 } else {
-                    ConnectionStatus::Disconnected
+                    ConnectionStatus::Disconnected(Minimized::No)
                 };
                 entry_mut.set_connection(conn);
                 entry_mut.status
@@ -237,7 +237,7 @@ impl ConnectionPool {
     }
 
     pub fn count_disconnected(&self) -> usize {
-        self.count_filtered(|c| c.status() == ConnectionStatus::Disconnected)
+        self.count_filtered(|c| matches!(c.status(), ConnectionStatus::Disconnected(_)))
     }
 
     pub fn count_entries(&self) -> usize {

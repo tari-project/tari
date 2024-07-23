@@ -72,7 +72,10 @@ impl From<MultiaddrWithStats> for grpc::Address {
             None => String::new(),
         };
         let connection_attempts = address_with_stats.connection_attempts();
-        let avg_latency = address_with_stats.avg_latency().as_secs();
+        let avg_latency = address_with_stats
+            .avg_latency()
+            .map(|val| grpc::AverageLatency { latency: val.as_secs() });
+
         Self {
             address,
             last_seen,

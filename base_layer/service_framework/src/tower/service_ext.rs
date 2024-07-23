@@ -93,7 +93,7 @@ mod test {
         Arc,
     };
 
-    use futures::{future, FutureExt};
+    use futures::future;
     use futures_test::task::panic_context;
     use tower::service_fn;
 

@@ -43,10 +43,13 @@ pub struct MonerodEntry {
     /// Whether the server is currently up
     pub up: bool,
     /// Whether the server is web compatible
+    #[allow(dead_code)]
     pub web_compatible: bool,
     /// The network the server is on (mainnet, stagenet, testnet)
+    #[allow(dead_code)]
     pub network: String,
     /// Time since the server was checked
+    #[allow(dead_code)]
     pub last_checked: String,
     /// The history of the server being up
     pub up_history: Vec<bool>,

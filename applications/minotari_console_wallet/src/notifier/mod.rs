@@ -49,6 +49,7 @@ pub const CANCELLED: &str = "cancelled";
 
 #[derive(Clone)]
 // FIXME
+#[allow(dead_code)]
 #[allow(clippy::large_enum_variant)]
 pub enum WalletEventMessage {
     Completed {
@@ -310,8 +311,8 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
-        tx.source_address.to_hex(),
-        tx.destination_address.to_hex(),
+        tx.source_address.to_base58(),
+        tx.destination_address.to_base58(),
         status,
         excess,
         public_nonce,
@@ -331,7 +332,7 @@ fn args_from_outbound(tx: &OutboundTransaction, event: &str) -> Vec<String> {
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
-        tx.destination_address.to_hex(),
+        tx.destination_address.to_base58(),
         status,
         "outbound".to_string(),
     ]
@@ -347,7 +348,7 @@ fn args_from_inbound(tx: &InboundTransaction, event: &str) -> Vec<String> {
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
-        tx.source_address.to_hex(),
+        tx.source_address.to_base58(),
         status,
         "inbound".to_string(),
     ]

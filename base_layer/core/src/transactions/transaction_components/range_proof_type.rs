@@ -23,7 +23,10 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use num_derive::FromPrimitive;
@@ -71,6 +74,18 @@ impl Display for RangeProofType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // Debug "shortcut" works because variants do not have fields
         write!(f, "{:?}", self)
+    }
+}
+
+impl FromStr for RangeProofType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "bullet_proof_plus" => Ok(RangeProofType::BulletProofPlus),
+            "revealed_value" => Ok(RangeProofType::RevealedValue),
+            _ => Err("Invalid range proof type".to_string()),
+        }
     }
 }
 

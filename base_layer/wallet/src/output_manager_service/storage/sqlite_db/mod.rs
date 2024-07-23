@@ -29,7 +29,6 @@ use diesel::{
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
     result::Error as DieselError,
-    SqliteConnection,
 };
 use log::*;
 pub use new_output_sql::NewOutputSql;
@@ -61,6 +60,7 @@ use crate::{
     schema::{known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
 };
+
 mod new_output_sql;
 mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
@@ -1131,7 +1131,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &mut conn).is_ok() {
             return Err(OutputManagerStorageError::DuplicateOutput);
         }
-        let new_output = NewOutputSql::new(output, Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
+        let new_output = NewOutputSql::new(output, Some(OutputStatus::UnspentMinedUnconfirmed), Some(tx_id))?;
         new_output.commit(&mut conn)?;
 
         if start.elapsed().as_millis() > 0 {
@@ -1498,7 +1498,7 @@ mod test {
         let mut outputs_spent = Vec::new();
         let mut outputs_unspent = Vec::new();
 
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         for _i in 0..2 {
             let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)

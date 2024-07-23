@@ -28,6 +28,8 @@ use tari_comms::{
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
     types::CommsPublicKey,
+    Minimized,
+    PeerManager,
 };
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -64,6 +66,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     event_publisher: LivenessEventSender,
     shutdown_signal: ShutdownSignal,
     monitored_peers: Arc<RwLock<Vec<NodeId>>>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
@@ -80,6 +83,7 @@ where
         outbound_messaging: OutboundMessageRequester,
         event_publisher: LivenessEventSender,
         shutdown_signal: ShutdownSignal,
+        peer_manager: Arc<PeerManager>,
     ) -> Self {
         Self {
             request_rx: Some(request_rx),
@@ -91,6 +95,7 @@ where
             shutdown_signal,
             config: config.clone(),
             monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
+            peer_manager,
         }
     }
 
@@ -157,8 +162,8 @@ where
             inner: ping_pong_msg,
             ..
         } = msg;
-        let node_id = source_peer.node_id;
-        let public_key = source_peer.public_key;
+        let node_id = source_peer.node_id.clone();
+        let public_key = source_peer.public_key.clone();
         let message_tag = dht_header.message_tag;
         let ping_pong_msg = match ping_pong_msg {
             Ok(p) => p,
@@ -214,8 +219,14 @@ where
                     message_tag,
                 );
 
-                let pong_event = PingPongEvent::new(node_id, maybe_latency, ping_pong_msg.metadata.into());
+                let pong_event = PingPongEvent::new(node_id.clone(), maybe_latency, ping_pong_msg.metadata.into());
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
+
+                if let Some(address) = source_peer.last_address_used() {
+                    self.peer_manager
+                        .update_peer_address_latency_and_last_seen(&public_key, &address, maybe_latency)
+                        .await?;
+                }
             },
         }
         Ok(())
@@ -350,7 +361,7 @@ where
                     target: LOG_TARGET,
                     "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
                 );
-                conn.disconnect().await?;
+                conn.disconnect(Minimized::No).await?;
             }
         }
         self.state.clear_failed_pings();
@@ -384,8 +395,9 @@ mod test {
     use tari_comms::{
         message::MessageTag,
         net_address::MultiaddressesWithStats,
-        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+        peer_manager::{Peer, PeerFeatures, PeerFlags},
         test_utils::mocks::create_connectivity_mock,
+        types::CommsDatabase,
     };
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
@@ -395,6 +407,8 @@ mod test {
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
+    use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+    use tari_test_utils::{paths::create_temporary_data_path, random};
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,
@@ -405,6 +419,24 @@ mod test {
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
+
+    pub fn build_peer_manager() -> Arc<PeerManager> {
+        let database_name = random::string(8);
+        let path = create_temporary_data_path();
+        let datastore = LMDBBuilder::new()
+            .set_path(path.to_str().unwrap())
+            .set_env_config(LMDBConfig::default())
+            .set_max_number_of_databases(1)
+            .add_database(&database_name, lmdb_zero::db::CREATE)
+            .build()
+            .unwrap();
+
+        let peer_database = datastore.get_handle(&database_name).unwrap();
+
+        PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None)
+            .map(Arc::new)
+            .unwrap()
+    }
 
     #[tokio::test]
     async fn get_ping_pong_count() {
@@ -436,6 +468,7 @@ mod test {
             outbound_messaging,
             publisher,
             shutdown.to_signal(),
+            build_peer_manager(),
         );
 
         // Run the service
@@ -471,6 +504,7 @@ mod test {
             outbound_messaging,
             publisher,
             shutdown.to_signal(),
+            build_peer_manager(),
         );
 
         // Run the LivenessService
@@ -544,6 +578,7 @@ mod test {
         let (publisher, _) = broadcast::channel(200);
 
         let shutdown = Shutdown::new();
+
         let service = LivenessService::new(
             Default::default(),
             stream::empty(),
@@ -553,6 +588,7 @@ mod test {
             outbound_messaging,
             publisher,
             shutdown.to_signal(),
+            build_peer_manager(),
         );
 
         task::spawn(service.run());
@@ -595,6 +631,7 @@ mod test {
             outbound_messaging,
             publisher.clone(),
             shutdown.to_signal(),
+            build_peer_manager(),
         );
 
         task::spawn(service.run());

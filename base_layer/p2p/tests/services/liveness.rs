@@ -54,6 +54,7 @@ pub async fn setup_liveness_service(
     let handles = StackBuilder::new(comms.shutdown_signal())
         .add_initializer(RegisterHandle::new(dht.clone()))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
+        .add_initializer(RegisterHandle::new(comms.peer_manager()))
         .add_initializer(LivenessInitializer::new(
             Default::default(),
             Arc::clone(&subscription_factory),

@@ -74,7 +74,7 @@ impl DhtDiscoveryRequester {
     ///
     /// ## Arguments
     /// - `dest_public_key` - The public key of the recipient used to create a shared ECDH key which in turn is used to
-    /// encrypt the discovery message
+    ///   encrypt the discovery message
     /// - `destination` - The `NodeDestination` to use in the DhtHeader when sending a discovery message.
     ///    - `Unknown` destination will maintain complete privacy, the trade off is that discovery needs to propagate
     ///      the entire network to reach the destination and so may take longer

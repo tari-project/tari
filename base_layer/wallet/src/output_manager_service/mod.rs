@@ -39,7 +39,10 @@ use futures::future;
 use log::*;
 use tari_core::{
     consensus::NetworkConsensus,
-    transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
+    transactions::{
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+        CryptoFactories,
+    },
 };
 use tari_service_framework::{
     async_trait,
@@ -59,7 +62,6 @@ use crate::{
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
-    util::wallet_identity::WalletIdentity,
 };
 
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
@@ -74,7 +76,6 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    wallet_identity: WalletIdentity,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
@@ -86,14 +87,12 @@ where T: OutputManagerBackend + 'static
         backend: T,
         factories: CryptoFactories,
         network: NetworkConsensus,
-        wallet_identity: WalletIdentity,
     ) -> Self {
         Self {
             config,
             backend: Some(backend),
             factories,
             network,
-            wallet_identity,
             phantom: PhantomData,
         }
     }
@@ -103,7 +102,7 @@ where T: OutputManagerBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface + SecretTransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -120,7 +119,6 @@ where
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
-        let wallet_identity = self.wallet_identity.clone();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -136,7 +134,6 @@ where
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity,
-                wallet_identity,
                 key_manager,
             )
             .await

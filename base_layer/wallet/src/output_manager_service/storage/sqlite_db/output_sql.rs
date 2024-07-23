@@ -28,7 +28,7 @@ use std::{
 use borsh::BorshDeserialize;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use diesel::{prelude::*, sql_query, SqliteConnection};
+use diesel::{prelude::*, sql_query};
 use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
@@ -37,7 +37,14 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{EncryptedData, OutputFeatures, OutputType, TransactionOutputVersion, WalletOutput},
+    transaction_components::{
+        encrypted_data::PaymentId,
+        EncryptedData,
+        OutputFeatures,
+        OutputType,
+        TransactionOutputVersion,
+        WalletOutput,
+    },
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_key_manager::key_manager_service::KeyId;
@@ -102,6 +109,7 @@ pub struct OutputSql {
     pub minimum_value_promise: i64,
     pub source: i32,
     pub last_validation_timestamp: Option<NaiveDateTime>,
+    pub payment_id: Option<Vec<u8>>,
 }
 
 impl OutputSql {
@@ -667,6 +675,19 @@ impl OutputSql {
         })?;
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
+        let payment_id = match self.payment_id {
+            Some(bytes) => PaymentId::from_bytes(&bytes).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create payment id from stored bytes"
+                );
+                OutputManagerStorageError::ConversionError {
+                    reason: "payment id could not be converted from bytes".to_string(),
+                }
+            })?,
+            None => PaymentId::Empty,
+        };
+
         let wallet_output = WalletOutput::new_with_rangeproof(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
@@ -755,6 +776,7 @@ impl OutputSql {
                 Some(bytes) => Some(RangeProof::from_canonical_bytes(&bytes)?),
                 None => None,
             },
+            payment_id.clone(),
         );
 
         let commitment = Commitment::from_vec(&self.commitment)?;
@@ -800,6 +822,7 @@ impl OutputSql {
             source: self.source.try_into()?,
             received_in_tx_id: self.received_in_tx_id.map(|d| (d as u64).into()),
             spent_in_tx_id: self.spent_in_tx_id.map(|d| (d as u64).into()),
+            payment_id,
         })
     }
 }

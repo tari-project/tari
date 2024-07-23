@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityError, message::MessageError, PeerConnectionError};
+use tari_comms::{
+    connectivity::ConnectivityError,
+    message::MessageError,
+    peer_manager::PeerManagerError,
+    PeerConnectionError,
+};
 use tari_comms_dht::{outbound::DhtOutboundError, DhtActorError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -53,4 +58,6 @@ pub enum LivenessError {
     NodeIdDoesNotExist,
     #[error("PingPongDecodeError: {0}")]
     PingPongDecodeError(#[from] prost::DecodeError),
+    #[error("Peer not found: `{0}`")]
+    PeerNotFoundError(#[from] PeerManagerError),
 }

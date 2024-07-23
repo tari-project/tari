@@ -33,7 +33,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-        transaction_components::{TransactionKernel, TransactionOutput},
+        transaction_components::{encrypted_data::PaymentId, TransactionKernel, TransactionOutput},
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -63,7 +63,7 @@ impl<'a> BlockTemplateProtocol<'a> {
         consensus_manager: ConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateProtocol<'a>, MmProxyError> {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager()?;
         Ok(Self {
             config,
             base_node_client,
@@ -271,7 +271,7 @@ impl BlockTemplateProtocol<'_> {
         let grpc::NewBlockTemplateResponse {
             miner_data,
             new_block_template: template,
-            initial_sync_achieved,
+            initial_sync_achieved: _,
         } = self
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
@@ -289,11 +289,7 @@ impl BlockTemplateProtocol<'_> {
 
         let miner_data = miner_data.ok_or(MmProxyError::GrpcResponseMissingField("miner_data"))?;
         let template = template.ok_or(MmProxyError::GrpcResponseMissingField("new_block_template"))?;
-        Ok(NewBlockTemplateData {
-            template,
-            miner_data,
-            initial_sync_achieved,
-        })
+        Ok(NewBlockTemplateData { template, miner_data })
     }
 
     /// Check if the height is more than the actual tip. So if still makes sense to compute block for that height.
@@ -335,9 +331,10 @@ impl BlockTemplateProtocol<'_> {
             self.config.coinbase_extra.as_bytes(),
             &self.key_manager,
             &self.wallet_payment_address,
-            self.config.stealth_payment,
+            true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
+            PaymentId::Empty,
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))
@@ -438,7 +435,6 @@ fn add_monero_data(
 pub struct NewBlockTemplateData {
     pub template: grpc::NewBlockTemplate,
     pub miner_data: grpc::MinerData,
-    pub initial_sync_achieved: bool,
 }
 
 impl NewBlockTemplateData {

@@ -147,7 +147,7 @@ pub struct TorTransportConfig {
     /// When set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy, setting
     /// to true may improve network performance for TCP nodes.
     pub proxy_bypass_for_outbound_tcp: bool,
-    /// If set, instructs tor to forward traffic the the provided address. Otherwise, an OS-assigned port on 127.0.0.1
+    /// If set, instructs tor to forward traffic the provided address. Otherwise, an OS-assigned port on 127.0.0.1
     /// is used.
     pub forward_address: Option<Multiaddr>,
     /// If set, the listener will bind to this address instead of the forward_address.

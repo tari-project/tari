@@ -29,6 +29,7 @@ pub use interface::{
     TariKeyId,
     TransactionKeyManagerBranch,
     TransactionKeyManagerInterface,
+    TransactionKeyManagerLabel,
     TxoStage,
 };
 
@@ -46,4 +47,4 @@ pub use memory_db_key_manager::{
 };
 
 mod error;
-pub use error::{CoreKeyManagerError, LedgerDeviceError};
+pub use error::CoreKeyManagerError;

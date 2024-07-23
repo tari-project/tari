@@ -31,6 +31,7 @@ use tari_comms::{
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
         node_identity::ordered_node_identities_by_distance,
     },
+    Minimized,
     NodeIdentity,
     PeerManager,
 };
@@ -192,6 +193,7 @@ async fn replace_peer_when_peer_goes_offline() {
 
     connectivity.publish_event(ConnectivityEvent::PeerDisconnected(
         node_identities[4].node_id().clone(),
+        Minimized::No,
     ));
 
     async_assert!(
@@ -242,12 +244,16 @@ async fn insert_neighbour() {
 
     // First 8 inserts should not remove a peer (because num_neighbouring_nodes == 8)
     for ni in shuffled.iter().take(8) {
-        assert!(dht_connectivity.insert_neighbour(ni.node_id().clone()).is_none());
+        assert!(dht_connectivity
+            .insert_neighbour_ordered_by_distance(ni.node_id().clone())
+            .is_none());
     }
 
     // Next 2 inserts will always remove a node id
     for ni in shuffled.iter().skip(8) {
-        assert!(dht_connectivity.insert_neighbour(ni.node_id().clone()).is_some())
+        assert!(dht_connectivity
+            .insert_neighbour_ordered_by_distance(ni.node_id().clone())
+            .is_some())
     }
 
     // Check the first 7 node ids match our neighbours, the last element depends on distance and ordering of inserts

@@ -46,6 +46,7 @@ use crate::{
     protocol::ProtocolId,
     test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
+    Minimized,
 };
 
 #[tokio::test]
@@ -161,7 +162,7 @@ async fn smoke() {
         assert_eq!(buf, *b"HELLO");
     }
 
-    conn1.disconnect().await.unwrap();
+    conn1.disconnect(Minimized::No).await.unwrap();
 
     shutdown.trigger();
 

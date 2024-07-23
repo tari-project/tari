@@ -166,7 +166,7 @@ loggers:
     appenders:
       - base_layer_contacts
   wallet:
-    level: debug
+    level: trace
     appenders:
       - base_layer_wallet
   # miner

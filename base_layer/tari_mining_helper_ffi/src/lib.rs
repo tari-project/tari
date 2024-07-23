@@ -43,7 +43,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::create_memory_db_key_manager,
-        transaction_components::RangeProofType,
+        transaction_components::{encrypted_data::PaymentId, RangeProofType},
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -339,7 +339,14 @@ pub unsafe extern "C" fn inject_coinbase(
             return;
         },
     };
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = match create_memory_db_key_manager() {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::KeyManager(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
 
     let consensus_manager = match ConsensusManager::builder(network).build() {
         Ok(v) => v,
@@ -376,6 +383,7 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
+            PaymentId::Empty,
         )
         .await
     }) {
@@ -562,8 +570,6 @@ pub unsafe extern "C" fn share_validate(
 
 #[cfg(test)]
 mod tests {
-    use libc::c_int;
-    use tari_common::configuration::Network;
     use tari_core::{
         blocks::{genesis_block::get_genesis_block, Block},
         proof_of_work::Difficulty,
@@ -571,7 +577,6 @@ mod tests {
     };
 
     use super::*;
-    use crate::{inject_nonce, public_key_hex_validate, share_difficulty, share_validate};
 
     fn min_difficulty() -> Difficulty {
         Difficulty::from_u64(1000).expect("Failed to create difficulty")

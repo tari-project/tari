@@ -90,7 +90,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_uint() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(field_eq(@field::features_maturity, @uint(42)));
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
@@ -108,7 +108,7 @@ mod test {
     #[tokio::test]
     async fn it_filters_sender_offset_public_key() {
         let pk = PublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(field_eq(
             @field::sender_offset_public_key,
             @public_key(pk.clone())
@@ -128,7 +128,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_commitment() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let commitment =
             Commitment::from_hex("7ca31ba517d8b563609ed6707fedde5a2be64ac1d67b254cb5348bc2f680557f").unwrap();
         let covenant = covenant!(field_eq(
@@ -151,7 +151,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_tari_script() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let script = script!(CheckHeight(100));
         let covenant = covenant!(field_eq(
             @field::script,
@@ -173,7 +173,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_covenant() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42)))));
         let covenant = covenant!(field_eq(@field::covenant, @covenant(next_cov.clone())));
         let input = create_input(&key_manager).await;
@@ -192,7 +192,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_output_type() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(field_eq(@field::features_output_type, @output_type(Coinbase)));
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
@@ -210,7 +210,7 @@ mod test {
 
     #[tokio::test]
     async fn it_errors_if_field_has_an_incorrect_type() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(field_eq(@field::features, @uint(42)));
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);

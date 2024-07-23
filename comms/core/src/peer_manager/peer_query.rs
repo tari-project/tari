@@ -215,11 +215,7 @@ mod test {
     use super::*;
     use crate::{
         net_address::{MultiaddressesWithStats, PeerAddressSource},
-        peer_manager::{
-            node_id::NodeId,
-            peer::{Peer, PeerFlags},
-            PeerFeatures,
-        },
+        peer_manager::{peer::PeerFlags, PeerFeatures},
     };
 
     fn create_test_peer(ban_flag: bool) -> Peer {
@@ -246,7 +242,7 @@ mod test {
 
     #[test]
     fn limit_query() {
-        // Create 20 peers were the 1st and last one is bad
+        // Create some good peers
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
@@ -262,11 +258,7 @@ mod test {
 
     #[test]
     fn select_where_query() {
-        // Create peer manager with random peers
-        let mut sample_peers = Vec::new();
-        // Create 20 peers were the 1st and last one is bad
-        let _rng = rand::rngs::OsRng;
-        sample_peers.push(create_test_peer(true));
+        // Create some good and bad peers
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
@@ -292,11 +284,7 @@ mod test {
 
     #[test]
     fn select_where_limit_query() {
-        // Create peer manager with random peers
-        let mut sample_peers = Vec::new();
-        // Create 20 peers were the 1st and last one is bad
-        let _rng = rand::rngs::OsRng;
-        sample_peers.push(create_test_peer(true));
+        // Create some good and bad peers
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 
@@ -333,11 +321,7 @@ mod test {
 
     #[test]
     fn sort_by_query() {
-        // Create peer manager with random peers
-        let mut sample_peers = Vec::new();
-        // Create 20 peers were the 1st and last one is bad
-        let _rng = rand::rngs::OsRng;
-        sample_peers.push(create_test_peer(true));
+        // Create some good and bad peers
         let db = HashmapDatabase::new();
         let mut id_counter = 0;
 

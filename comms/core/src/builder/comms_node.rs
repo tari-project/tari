@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, sync::Arc, time::Duration};
+use std::{iter, sync::Arc};
 
 use log::*;
 use tari_shutdown::ShutdownSignal;
@@ -36,8 +36,8 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequest,
         ConnectionManagerRequester,
-        LivenessCheck,
-        LivenessStatus,
+        SelfLivenessCheck,
+        SelfLivenessStatus,
     },
     connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequest, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -122,12 +122,6 @@ impl UnspawnedCommsNode {
     /// Set the tor hidden service controller to associate with this comms instance
     pub fn with_hidden_service_controller(mut self, hidden_service_ctl: tor::HiddenServiceController) -> Self {
         self.builder.hidden_service_ctl = Some(hidden_service_ctl);
-        self
-    }
-
-    /// Set to true to enable self liveness checking for the configured public address
-    pub fn set_liveness_check(mut self, interval: Option<Duration>) -> Self {
-        self.builder = self.builder.set_liveness_check(interval);
         self
     }
 
@@ -228,12 +222,14 @@ impl UnspawnedCommsNode {
         // Spawn liveness check now that we have the final address
         let public_addresses = node_identity.public_addresses();
         let liveness_watch = if public_addresses.is_empty() {
-            watch::channel(LivenessStatus::Disabled).1
+            watch::channel(SelfLivenessStatus::Disabled).1
         } else {
             connection_manager_config
-                .liveness_self_check_interval
-                .map(|interval| LivenessCheck::spawn(transport, public_addresses, interval, shutdown_signal.clone()))
-                .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1)
+                .self_liveness_self_check_interval
+                .map(|interval| {
+                    SelfLivenessCheck::spawn(transport, public_addresses, interval, shutdown_signal.clone())
+                })
+                .unwrap_or_else(|| watch::channel(SelfLivenessStatus::Disabled).1)
         };
 
         Ok(CommsNode {
@@ -285,7 +281,7 @@ pub struct CommsNode {
     /// Shared PeerManager instance
     peer_manager: Arc<PeerManager>,
     /// Current liveness status
-    liveness_watch: watch::Receiver<LivenessStatus>,
+    liveness_watch: watch::Receiver<SelfLivenessStatus>,
     /// The 'reciprocal' shutdown signals for each comms service
     complete_signals: Vec<ShutdownSignal>,
 }
@@ -321,7 +317,7 @@ impl CommsNode {
     }
 
     /// Returns the current liveness status
-    pub fn liveness_status(&self) -> LivenessStatus {
+    pub fn liveness_status(&self) -> SelfLivenessStatus {
         *self.liveness_watch.borrow()
     }
 

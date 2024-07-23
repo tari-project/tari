@@ -34,6 +34,7 @@ use tari_comms::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
     },
+    Minimized,
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::runtime::spawn_until_shutdown;
@@ -177,7 +178,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
     mock_state.add_active_connection(conn.clone()).await;
     // Empty out all the calls
     let _result = mock_state.take_calls().await;
-    conn.disconnect().await.unwrap();
+    conn.disconnect(Minimized::No).await.unwrap();
 
     let barrier = Arc::new(Barrier::new(2));
     let pending_request = task::spawn({

@@ -15,7 +15,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io};
+use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::{VarIntReader, VarIntWriter};

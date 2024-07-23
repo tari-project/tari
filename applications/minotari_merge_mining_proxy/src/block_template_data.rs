@@ -26,7 +26,7 @@ use std::{collections::HashMap, convert::TryFrom, sync::Arc};
 
 #[cfg(not(test))]
 use chrono::Duration;
-use chrono::{self, DateTime, Utc};
+use chrono::{DateTime, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
 use tari_core::proof_of_work::monero_rx::FixedByteArray;
@@ -221,6 +221,7 @@ pub struct BlockTemplateData {
     pub monero_difficulty: u64,
     pub tari_difficulty: u64,
     pub tari_merge_mining_hash: FixedHash,
+    #[allow(dead_code)]
     pub aux_chain_hashes: Vec<monero::Hash>,
     pub new_block_template: grpc::NewBlockTemplate,
 }

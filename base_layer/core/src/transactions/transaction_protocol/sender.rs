@@ -27,11 +27,10 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
+use tari_crypto::ristretto::pedersen::PedersenCommitment;
 pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
-use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -343,6 +342,22 @@ impl SenderTransactionProtocol {
         }
     }
 
+    pub fn change_recipient_sender_offset_private_key(&mut self, key_id: TariKeyId) -> Result<(), TPE> {
+        match &mut self.state {
+            SenderState::Initializing(ref mut info) |
+            SenderState::Finalizing(ref mut info) |
+            SenderState::SingleRoundMessageReady(ref mut info) |
+            SenderState::CollectingSingleSignature(ref mut info) => {
+                if let Some(ref mut v) = info.recipient_data {
+                    v.recipient_sender_offset_key_id = key_id;
+                }
+            },
+            SenderState::FinalizedTransaction(_) | SenderState::Failed(_) => return Err(TPE::InvalidStateError),
+        }
+
+        Ok(())
+    }
+
     /// This function will return the value of the fee of this transaction
     pub fn get_fee_amount(&self) -> Result<MicroMinotari, TPE> {
         match &self.state {
@@ -472,7 +487,7 @@ impl SenderTransactionProtocol {
         Ok((public_nonce, public_excess))
     }
 
-    /// Add partial signatures, add the the recipient info to sender state and move to the Finalizing state
+    /// Add partial signatures, add the recipient info to sender state and move to the Finalizing state
     pub async fn add_single_recipient_info<KM: TransactionKeyManagerInterface>(
         &mut self,
         mut rec: RecipientSignedMessage,
@@ -724,10 +739,8 @@ impl SenderTransactionProtocol {
     /// transaction was valid or not. If the result is false, the transaction will be in a Failed state. Calling
     /// finalize while in any other state will result in an error.
     ///
-    /// First we validate against internal sanity checks, then try build the transaction, and then
-    /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
-    /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
-    /// returns `Ok(false)` in this instance.
+    /// First we validate against internal sanity checks, then try build the transaction. If any step fails,
+    /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation.
     pub async fn finalize<KM: TransactionKeyManagerInterface>(&mut self, key_manager: &KM) -> Result<(), TPE> {
         match &self.state {
             SenderState::Finalizing(info) => {
@@ -774,16 +787,6 @@ impl fmt::Display for SenderTransactionProtocol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.state)
     }
-}
-
-pub fn calculate_tx_id(pub_nonce: &PublicKey, index: usize) -> TxId {
-    let hash = CalculateTxIdTransactionProtocolHasherBlake256::new()
-        .chain(pub_nonce.as_bytes())
-        .chain(index.to_le_bytes())
-        .finalize();
-    let mut bytes: [u8; 8] = [0u8; 8];
-    bytes.copy_from_slice(&hash.as_ref()[..8]);
-    u64::from_le_bytes(bytes).into()
 }
 
 //----------------------------------------      Sender State      ----------------------------------------------------//
@@ -883,6 +886,7 @@ mod test {
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
+                encrypted_data::PaymentId,
                 EncryptedData,
                 OutputFeatures,
                 TransactionOutput,
@@ -906,7 +910,7 @@ mod test {
 
     #[tokio::test]
     async fn test_errors() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let stp = SenderTransactionProtocol {
             state: SenderState::Failed(TransactionProtocolError::InvalidStateError),
         };
@@ -951,15 +955,15 @@ mod test {
     #[tokio::test]
     async fn test_metadata_signature_finalize() {
         // Defaults
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
 
         // Sender data
-        let (ephemeral_pubkey_id, ephemeral_pubkey) = key_manager
+        let ephemeral_key = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
         let value = 1000u64;
-        let (sender_offset_key_id, sender_offset_public_key) = key_manager
+        let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
@@ -970,21 +974,21 @@ mod test {
         let output_features = Default::default();
 
         // Receiver data
-        let (spending_key_id, _, _script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (commitment_mask_key, _) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let commitment = key_manager
-            .get_commitment(&spending_key_id, &PrivateKey::from(value))
+            .get_commitment(&commitment_mask_key.key_id, &PrivateKey::from(value))
             .await
             .unwrap();
         let minimum_value_promise = MicroMinotari::zero();
         let proof = key_manager
-            .construct_range_proof(&spending_key_id, value, minimum_value_promise.into())
+            .construct_range_proof(&commitment_mask_key.key_id, value, minimum_value_promise.into())
             .await
             .unwrap();
         let covenant = Covenant::default();
 
         // Encrypted value
         let encrypted_data = key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, value)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, value, PaymentId::Empty)
             .await
             .unwrap();
 
@@ -998,10 +1002,10 @@ mod test {
         );
         let partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
-                &spending_key_id,
+                &commitment_mask_key.key_id,
                 &value.into(),
-                &sender_offset_public_key,
-                &ephemeral_pubkey,
+                &sender_offset.pub_key,
+                &ephemeral_key.pub_key,
                 &txo_version,
                 &metadata_message,
                 output_features.range_proof_type,
@@ -1014,7 +1018,7 @@ mod test {
             commitment,
             Some(proof),
             script.clone(),
-            sender_offset_public_key,
+            sender_offset.pub_key,
             partial_metadata_signature.clone(),
             covenant.clone(),
             encrypted_data,
@@ -1025,8 +1029,8 @@ mod test {
         // Sender finalize transaction output
         let partial_sender_metadata_signature = key_manager
             .get_sender_partial_metadata_signature(
-                &ephemeral_pubkey_id,
-                &sender_offset_key_id,
+                &ephemeral_key.key_id,
+                &sender_offset.key_id,
                 &output.commitment,
                 partial_metadata_signature.ephemeral_commitment(),
                 &txo_version,
@@ -1040,7 +1044,7 @@ mod test {
 
     #[tokio::test]
     async fn zero_recipients() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p1 = TestParams::new(&key_manager).await;
         let p2 = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
@@ -1055,7 +1059,7 @@ mod test {
                 TariScript::default(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1102,7 +1106,7 @@ mod test {
         let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         // Alice's parameters
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let a_change_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
@@ -1132,7 +1136,7 @@ mod test {
                 script.clone(),
                 ExecutionStack::default(),
                 a_change_key.script_key_id,
-                a_change_key.spend_key_id,
+                a_change_key.commitment_mask_key_id,
                 Covenant::default(),
             );
         let mut alice = builder.build().await.unwrap();
@@ -1143,7 +1147,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(1200) - fee - MicroMinotari(10),
-            bob_key.spend_key_id,
+            bob_key.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1154,6 +1158,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1207,7 +1212,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient_with_change() {
         let rules = create_consensus_rules();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice_key = TestParams::new(&key_manager).await;
@@ -1234,7 +1239,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1265,7 +1270,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            bob_key.spend_key_id,
+            bob_key.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1276,6 +1281,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1320,7 +1326,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient_multiple_inputs_with_change() {
         let rules = create_consensus_rules();
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
@@ -1338,7 +1344,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1375,7 +1381,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            bob_key.spend_key_id,
+            bob_key.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1386,6 +1392,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -1429,7 +1436,7 @@ mod test {
     #[tokio::test]
     async fn disallow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
@@ -1442,7 +1449,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1467,7 +1474,7 @@ mod test {
     #[tokio::test]
     async fn allow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
         let script = script!(Nop);
@@ -1480,7 +1487,7 @@ mod test {
                 script.clone(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1506,8 +1513,8 @@ mod test {
     #[tokio::test]
     async fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
         // Alice's parameters
-        let key_manager_alice = create_memory_db_key_manager();
-        let key_manager_bob = create_memory_db_key_manager();
+        let key_manager_alice = create_memory_db_key_manager().unwrap();
+        let key_manager_bob = create_memory_db_key_manager().unwrap();
         // Bob's parameters
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroMinotari(25000);
@@ -1525,7 +1532,7 @@ mod test {
                 script!(PushInt(1) Drop Nop),
                 inputs!(change_params.script_key_pk),
                 change_params.script_key_id.clone(),
-                change_params.spend_key_id.clone(),
+                change_params.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_input(input)
@@ -1561,7 +1568,7 @@ mod test {
         let bob_public_key = msg.sender_offset_public_key.clone();
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            bob_test_params.spend_key_id,
+            bob_test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -1572,6 +1579,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager_bob,
         )
         .await
@@ -1601,7 +1609,7 @@ mod test {
 
         let output = tx.body.outputs().iter().find(|o| o.script.size() > 1).unwrap();
 
-        let (key, _value) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
-        assert_eq!(key, change_params.spend_key_id);
+        let (key, _value, _) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
+        assert_eq!(key, change_params.commitment_mask_key_id);
     }
 }

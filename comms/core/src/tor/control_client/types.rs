@@ -23,7 +23,7 @@
 use std::{fmt, net::SocketAddr};
 
 use serde_derive::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, Copy, Debug)]
 pub enum KeyType {
@@ -79,8 +79,7 @@ impl fmt::Display for KeyBlob<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Zeroize)]
-#[zeroize(drop)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub enum PrivateKey {
     /// The server should use the 1024 bit RSA key provided in as KeyBlob (v2).
     Rsa1024(String),

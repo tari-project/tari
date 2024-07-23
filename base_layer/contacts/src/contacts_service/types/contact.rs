@@ -44,7 +44,7 @@ impl Contact {
     ) -> Self {
         Self {
             alias,
-            node_id: NodeId::from_key(address.public_key()),
+            node_id: NodeId::from_key(address.public_spend_key()),
             address,
             last_seen,
             latency,
@@ -58,7 +58,7 @@ impl From<&TariAddress> for Contact {
         Self {
             alias: address.to_emoji_string(),
             address: address.clone(),
-            node_id: NodeId::from_key(address.public_key()),
+            node_id: NodeId::from_key(address.public_spend_key()),
             last_seen: None,
             latency: None,
             favourite: false,

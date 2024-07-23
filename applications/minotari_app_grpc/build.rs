@@ -10,6 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "proto/base_node.proto",
             "proto/wallet.proto",
             "proto/validator_node.proto",
+            "proto/p2pool.proto",
         ],
         &["proto"],
     )?;

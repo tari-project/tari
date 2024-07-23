@@ -121,7 +121,7 @@ impl OnConnect {
         StateEvent::Shutdown
     }
 
-    async fn sync_peers(&self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
+    async fn sync_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
         let mut client = conn.connect_rpc::<rpc::DhtClient>().await?;
         let peer_stream = client
             .get_peers(GetPeersRequest {

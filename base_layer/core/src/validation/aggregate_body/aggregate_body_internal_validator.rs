@@ -52,6 +52,7 @@ use crate::{
             check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
+            check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
             is_all_unique_and_sorted,
             validate_input_version,
@@ -113,6 +114,7 @@ impl AggregateBodyInternalConsistencyValidator {
         for output in body.outputs() {
             check_permitted_output_types(constants, output)?;
             check_script_size(output, constants.max_script_byte_size())?;
+            check_encrypted_data_byte_size(output, constants.max_extra_encrypted_data_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;
@@ -217,6 +219,20 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
 /// Verify that the TariScript is not larger than the max size
 fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), ValidationError> {
     check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
+        warn!(
+            target: LOG_TARGET,
+            "output ({}) script size exceeded max size {:?}.", output, e
+        );
+        e
+    })
+}
+
+/// Verify that the TariScript is not larger than the max size
+fn check_encrypted_data_byte_size(
+    output: &TransactionOutput,
+    max_encrypted_data_size: usize,
+) -> Result<(), ValidationError> {
+    check_tari_encrypted_data_byte_size(output.encrypted_data(), max_encrypted_data_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
             "output ({}) script size exceeded max size {:?}.", output, e
@@ -574,7 +590,7 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &key_manager,
@@ -636,7 +652,7 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let key_manager = create_memory_db_key_manager();
+            let key_manager = create_memory_db_key_manager().unwrap();
             let mut outputs = futures::stream::unfold((), |_| async {
                 let (o, _, _) = test_helpers::create_utxo(
                     100.into(),

@@ -106,7 +106,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
@@ -157,7 +157,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
@@ -279,10 +279,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("3f4011ec1e8ddfbd66fb7331c5623b38f529a66e81233d924df85f2070b2aacb").unwrap();
+            FixedHash::from_hex("b97afb0f165fc41e47d5a6bea4e651a16ffab2ecc6259814b42084aeac8fb959").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("3e40efda288a57d3319c63388dd47ffe4b682baaf6a3b58622ec94d77ad712a2").unwrap();
-        block.header.validator_node_mr = FixedHash::zero();
+            FixedHash::from_hex("a2bbf7770db43bb1ad57c20d7737870f290618376f8b156019414abb494c23a8").unwrap();
+        block.header.validator_node_mr =
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -299,7 +300,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("12 Jul 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -395,8 +396,6 @@ mod test {
     use std::convert::TryFrom;
 
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
-    use tari_utilities::ByteArray;
-    use Network;
 
     use super::*;
     use crate::{
@@ -417,7 +416,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 100, 1);
+        check_block(Network::Esmeralda, &block, 20, 1);
     }
 
     #[test]
@@ -426,7 +425,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 100, 1);
+        check_block(Network::NextNet, &block, 0, 0);
     }
 
     #[test]
@@ -436,7 +435,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 100, 1);
+        check_block(Network::StageNet, &block, 0, 0);
     }
 
     #[test]

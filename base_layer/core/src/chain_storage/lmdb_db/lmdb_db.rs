@@ -1461,7 +1461,7 @@ impl LMDBDatabase {
         seed: &[u8],
         height: u64,
     ) -> Result<(), ChainStorageError> {
-        let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(std::u64::MAX);
+        let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(u64::MAX);
         if height < current_height {
             lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
         };
@@ -1663,12 +1663,6 @@ impl LMDBDatabase {
         output_hash: &[u8],
     ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch output: {} Found ({})",
-                to_hex(output_hash),
-                key.to_hex()
-            );
             match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)? {
                 Some(TransactionOutputRowData {
                     output: o,
@@ -1686,11 +1680,6 @@ impl LMDBDatabase {
                 _ => Ok(None),
             }
         } else {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch output: {} NOT found in index",
-                to_hex(output_hash)
-            );
             Ok(None)
         }
     }
@@ -1701,12 +1690,6 @@ impl LMDBDatabase {
         output_hash: &[u8],
     ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch input: {} Found ({})",
-                to_hex(output_hash),
-                key.to_hex()
-            );
             match lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)? {
                 Some(TransactionInputRowData {
                     input: i,
@@ -1724,11 +1707,6 @@ impl LMDBDatabase {
                 _ => Ok(None),
             }
         } else {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch input: {} NOT found in index",
-                to_hex(output_hash)
-            );
             Ok(None)
         }
     }
@@ -2101,13 +2079,11 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_output_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        debug!(target: LOG_TARGET, "Fetch input: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_input_in_txn(&txn, output_hash.as_slice())
     }
@@ -2586,9 +2562,9 @@ impl BlockchainBackend for LMDBDatabase {
         }
         trace!(
             target: LOG_TARGET,
-            "Finished calculating new smt (size: {}), took: #{}s",
+            "Finished calculating new smt (size: {}), took: {:.2?}",
             smt.size(),
-            start.elapsed().as_millis()
+            start.elapsed()
         );
         Ok(smt)
     }

@@ -21,7 +21,6 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    default::Default,
     fmt::{Debug, Formatter},
     path::PathBuf,
     str::FromStr,

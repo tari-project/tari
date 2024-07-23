@@ -84,7 +84,7 @@ impl Default for FinalSendMessageParams {
             is_discovery_enabled: false,
             dht_header: None,
             debug_info: None,
-            tag: None,
+            tag: Some(MessageTag::new()),
         }
     }
 }

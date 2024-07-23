@@ -42,7 +42,7 @@ use grpc::{
 use minotari_app_grpc::tari_rpc::{self as grpc, TransactionStatus};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, RangeProof};
 use tari_core::{
     covenants::Covenant,
     transactions::{
@@ -57,7 +57,7 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::commitment::HomomorphicCommitment;
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
@@ -67,7 +67,7 @@ use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
-use tari_script::{ExecutionStack, StackItem, TariScript};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
 use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
@@ -706,6 +706,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
             dest_wallet.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -766,6 +767,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             dest_wallet.as_str()
         ),
         payment_type: 1, // one sided transaction
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -865,6 +867,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
             fee_per_gram
         ),
         payment_type: 0, // mimblewimble transaction
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1294,6 +1297,7 @@ async fn send_num_transactions_to_wallets_at_fee(
                 receiver_wallet.as_str()
             ),
             payment_type: 0, // standard mimblewimble transaction
+            payment_id: Vec::new(),
         };
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
@@ -1435,6 +1439,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
             receiver.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1629,6 +1634,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             receiver1.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
 
     let payment_recipient2 = PaymentRecipient {
@@ -1642,6 +1648,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             receiver2.as_str()
         ),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
@@ -1753,6 +1760,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         fee_per_gram,
         message: format!("transfer amount {} from {} to self", amount, sender.as_str(),),
         payment_type: 0, // normal mimblewimble payment type
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1838,6 +1846,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
             fee_per_gram
         ),
         payment_type: 0, // normal mimblewimble transaction
+        payment_id: Vec::new(),
     };
 
     let atomic_swap_request = SendShaAtomicSwapRequest {
@@ -2127,6 +2136,7 @@ async fn send_one_sided_stealth_transaction(
             receiver.as_str()
         ),
         payment_type: 2, // one sided stealth transaction
+        payment_id: Vec::new(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -2215,6 +2225,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
 
     let args = ExportUtxosArgs {
         output_file: Some(path_buf.clone()),
+        with_private_keys: true,
     };
     cli.command2 = Some(CliCommands::ExportUtxos(args));
 
@@ -2261,14 +2272,19 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
+        let proof = if output[21].is_empty() {
+            None
+        } else {
+            Some(RangeProof::from_hex(&output[21]).unwrap())
+        };
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
-            signature_u_x,
             signature_u_a,
+            signature_u_x,
             signature_u_y,
         );
         let utxo = UnblindedOutput::new(
@@ -2285,6 +2301,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             covenant,
             encrypted_data,
             minimum_value_promise,
+            proof,
         );
 
         outputs.push(utxo);
@@ -2320,6 +2337,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
 
     let args = ExportUtxosArgs {
         output_file: Some(path_buf.clone()),
+        with_private_keys: true,
     };
     cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
 
@@ -2365,14 +2383,19 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
+        let proof = if output[21].is_empty() {
+            None
+        } else {
+            Some(RangeProof::from_hex(&output[21]).unwrap())
+        };
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
-            signature_u_x,
             signature_u_a,
+            signature_u_x,
             signature_u_y,
         );
         let utxo = UnblindedOutput::new(
@@ -2389,6 +2412,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             covenant,
             encrypted_data,
             minimum_value_promise,
+            proof,
         );
 
         outputs.push(utxo);
@@ -2424,6 +2448,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
 
     let args = ExportUtxosArgs {
         output_file: Some(path_buf.clone()),
+        with_private_keys: true,
     };
     cli.command2 = Some(CliCommands::ExportUtxos(args));
 
@@ -2469,17 +2494,22 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
         let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
+        let proof = if output[21].is_empty() {
+            None
+        } else {
+            Some(RangeProof::from_hex(&output[21]).unwrap())
+        };
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
         let metadata_signature = ComAndPubSignature::new(
             ephemeral_commitment,
             ephemeral_nonce,
-            signature_u_x,
             signature_u_a,
+            signature_u_x,
             signature_u_y,
         );
-        let mut utxo = UnblindedOutput::new(
+        let utxo = UnblindedOutput::new(
             version,
             value,
             spending_key,
@@ -2493,20 +2523,10 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             covenant,
             encrypted_data,
             minimum_value_promise,
+            proof,
         );
 
-        utxo.metadata_signature = ComAndPubSignature::new(
-            Commitment::default(),
-            PublicKey::default(),
-            PrivateKey::default(),
-            PrivateKey::default(),
-            PrivateKey::default(),
-        );
-        utxo.script_private_key = utxo.clone().spending_key;
-
-        let script_public_key = PublicKey::from_secret_key(&utxo.script_private_key);
-        utxo.input_data = ExecutionStack::new(vec![StackItem::PublicKey(script_public_key)]);
-        outputs.push(utxo.clone());
+        outputs.push(utxo);
     }
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
@@ -2608,6 +2628,7 @@ async fn multi_send_txs_from_wallet(
                 fee_per_gram
             ),
             payment_type: 0, // mimblewimble transaction
+            payment_id: Vec::new(),
         };
 
         let transfer_req = TransferRequest {

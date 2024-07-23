@@ -50,8 +50,12 @@ tari_test_utils = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = ["base_node"] }
 borsh = "1.2"
+env_logger = "0.7.1"
 
 [build-dependencies]
 cbindgen = "0.24.3"
 tari_common = { workspace = true, features = ["build"] }
 tari_features = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tari_target_network_mainnet)', 'cfg(tari_target_network_nextnet)', 'cfg(tari_target_network_testnet)'] }

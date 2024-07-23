@@ -168,6 +168,15 @@ impl Peer {
             .and_then(|a| a.last_attempted())
     }
 
+    /// The last address used to connect to the peer
+    pub fn last_address_used(&self) -> Option<Multiaddr> {
+        self.addresses
+            .addresses()
+            .iter()
+            .max_by_key(|a| a.last_attempted())
+            .map(|a| a.address().clone())
+    }
+
     /// Returns true if the peer is marked as offline
     pub fn is_offline(&self) -> bool {
         self.addresses.offline_at().is_some()
@@ -197,6 +206,11 @@ impl Peer {
     /// Provides that date time of the last successful interaction with the peer
     pub fn last_seen(&self) -> Option<NaiveDateTime> {
         self.addresses.last_seen()
+    }
+
+    /// Provides info about the failure status of all addresses
+    pub fn all_addresses_failed(&self) -> bool {
+        self.addresses.iter().all(|a| a.last_failed_reason().is_some())
     }
 
     /// Provides that length of time since the last successful interaction with the peer
@@ -341,7 +355,6 @@ mod test {
     };
 
     use super::*;
-    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, types::CommsPublicKey};
 
     #[test]
     fn test_is_banned_and_ban_for() {
@@ -362,7 +375,7 @@ mod test {
             Default::default(),
         );
         assert!(!peer.is_banned());
-        peer.ban_for(Duration::from_millis(std::u64::MAX), "Very long manual ban".to_string());
+        peer.ban_for(Duration::from_millis(u64::MAX), "Very long manual ban".to_string());
         assert_eq!(peer.reason_banned(), &"Very long manual ban".to_string());
         assert!(peer.is_banned());
         peer.ban_for(Duration::from_millis(0), "".to_string());

@@ -40,6 +40,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
+            encrypted_data::PaymentId,
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -48,7 +49,7 @@ use crate::{
             MAX_TRANSACTION_OUTPUTS,
         },
         transaction_protocol::{
-            sender::{calculate_tx_id, OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+            sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
             TransactionMetadata,
         },
@@ -59,7 +60,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct ChangeDetails {
-    change_spending_key_id: TariKeyId,
+    change_commitment_mask_key_id: TariKeyId,
     change_script: TariScript,
     change_input_data: ExecutionStack,
     change_script_key_id: TariKeyId,
@@ -151,21 +152,21 @@ where KM: TransactionKeyManagerInterface
         recipient_minimum_value_promise: MicroMinotari,
         amount: MicroMinotari,
     ) -> Result<&mut Self, KeyManagerServiceError> {
-        let (recipient_ephemeral_public_key_nonce, _) = self
+        let recipient_ephemeral_public_key_nonce = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
             .await?;
-        let (recipient_sender_offset_key_id, _) = self
+        let recipient_sender_offset = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
         let recipient_details = RecipientDetails {
             recipient_output_features,
             recipient_script,
-            recipient_sender_offset_key_id,
+            recipient_sender_offset_key_id: recipient_sender_offset.key_id,
             recipient_covenant,
             recipient_minimum_value_promise,
-            recipient_ephemeral_public_key_nonce,
+            recipient_ephemeral_public_key_nonce: recipient_ephemeral_public_key_nonce.key_id,
             amount,
         };
         self.recipient = Some(recipient_details);
@@ -180,32 +181,32 @@ where KM: TransactionKeyManagerInterface
 
     /// Adds an input to the transaction.
     pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, KeyManagerServiceError> {
-        let (nonce_id, _) = self
+        let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output: input,
-            kernel_nonce: nonce_id,
+            kernel_nonce: nonce.key_id,
             sender_offset_key_id: None,
         };
         self.inputs.push(pair);
         Ok(self)
     }
 
-    /// As the Sender adds an output to the transaction.
+    /// As the Sender add an output to the transaction.
     pub async fn with_output(
         &mut self,
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
     ) -> Result<&mut Self, KeyManagerServiceError> {
-        let (nonce_id, _) = self
+        let nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output,
-            kernel_nonce: nonce_id,
+            kernel_nonce: nonce.key_id,
             sender_offset_key_id: Some(sender_offset_key_id),
         };
         self.sender_custom_outputs.push(pair);
@@ -219,11 +220,11 @@ where KM: TransactionKeyManagerInterface
         change_script: TariScript,
         change_input_data: ExecutionStack,
         change_script_key_id: TariKeyId,
-        change_spending_key_id: TariKeyId,
+        change_commitment_mask_key_id: TariKeyId,
         change_covenant: Covenant,
     ) -> &mut Self {
         let details = ChangeDetails {
-            change_spending_key_id,
+            change_commitment_mask_key_id,
             change_script,
             change_input_data,
             change_script_key_id,
@@ -367,10 +368,10 @@ where KM: TransactionKeyManagerInterface
                         let change_data = self.change.as_ref().ok_or("Change data was not provided")?;
                         let change_script = change_data.change_script.clone();
                         let change_script_key_id = change_data.change_script_key_id.clone();
-                        let change_key_id = change_data.change_spending_key_id.clone();
-                        let (sender_offset_key_id, sender_offset_public_key) = self
+                        let change_key_id = change_data.change_commitment_mask_key_id.clone();
+                        let sender_offset_public = self
                             .key_manager
-                            .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+                            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                             .await
                             .map_err(|e| e.to_string())?;
                         let input_data = change_data.change_input_data.clone();
@@ -384,7 +385,7 @@ where KM: TransactionKeyManagerInterface
 
                         let encrypted_data = self
                             .key_manager
-                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64())
+                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), PaymentId::Empty)
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -407,7 +408,7 @@ where KM: TransactionKeyManagerInterface
                             .get_metadata_signature(
                                 &change_key_id,
                                 &v.into(),
-                                &sender_offset_key_id,
+                                &sender_offset_public.key_id,
                                 &output_version,
                                 &metadata_message,
                                 features.range_proof_type,
@@ -422,12 +423,13 @@ where KM: TransactionKeyManagerInterface
                             change_script,
                             input_data,
                             change_script_key_id,
-                            sender_offset_public_key.clone(),
+                            sender_offset_public.pub_key.clone(),
                             metadata_sig,
                             0,
                             covenant,
                             encrypted_data,
                             minimum_value_promise,
+                            PaymentId::Empty,
                             &self.key_manager,
                         )
                         .await
@@ -435,7 +437,7 @@ where KM: TransactionKeyManagerInterface
                         Ok((
                             fee_without_change + change_fee,
                             v,
-                            Some((change_wallet_output, sender_offset_key_id)),
+                            Some((change_wallet_output, sender_offset_public.key_id)),
                         ))
                     },
                 }
@@ -507,7 +509,7 @@ where KM: TransactionKeyManagerInterface
                 if self.sender_custom_outputs.len() >= MAX_TRANSACTION_OUTPUTS {
                     return self.build_err("Too many outputs in transaction");
                 }
-                let (nonce_id, _) = match self
+                let nonce = match self
                     .key_manager
                     .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                     .await
@@ -517,25 +519,17 @@ where KM: TransactionKeyManagerInterface
                 };
                 Some(OutputPair {
                     output,
-                    kernel_nonce: nonce_id,
+                    kernel_nonce: nonce.key_id,
                     sender_offset_key_id: Some(sender_offset_key_id),
                 })
             },
             None => None,
         };
 
-        let spending_key = match self
-            .key_manager
-            .get_public_key_at_key_id(&self.inputs[0].output.spending_key_id)
-            .await
-        {
-            Ok(key) => key,
-            Err(e) => return self.build_err(&e.to_string()),
-        };
         // we need some random data here, the public excess of the commitment is random.
         let tx_id = match self.tx_id {
             Some(id) => id,
-            None => calculate_tx_id(&spending_key, 0),
+            None => TxId::new_random(),
         };
 
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
@@ -612,7 +606,7 @@ mod test {
     #[tokio::test]
     async fn no_receivers() -> std::io::Result<()> {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         // Start the builder
         let builder = SenderTransactionInitializer::new(&create_consensus_constants(0), key_manager.clone());
@@ -667,7 +661,7 @@ mod test {
             script!(Nop),
             Default::default(),
             change.script_key_id.clone(),
-            change.spend_key_id.clone(),
+            change.commitment_mask_key_id.clone(),
             Covenant::default(),
         );
         let result = builder.build().await.unwrap();
@@ -689,7 +683,7 @@ mod test {
     #[tokio::test]
     async fn no_change_or_receivers() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![]).await;
         let constants = create_consensus_constants(0);
@@ -740,7 +734,7 @@ mod test {
     #[allow(clippy::identity_op)]
     async fn change_edge_case() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let constants = create_consensus_constants(0);
         let weighting = constants.transaction_weight_params();
@@ -795,7 +789,7 @@ mod test {
     #[tokio::test]
     async fn too_many_inputs() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
@@ -827,7 +821,7 @@ mod test {
     #[tokio::test]
     async fn fee_too_low() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let tx_fee = p.fee().calculate(
             MicroMinotari(1),
@@ -852,7 +846,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
@@ -872,7 +866,7 @@ mod test {
     #[tokio::test]
     async fn not_enough_funds() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
         let script = script!(Nop);
@@ -901,7 +895,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
@@ -924,7 +918,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient() {
         // Create some inputs
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
         let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;
@@ -967,7 +961,7 @@ mod test {
                 script!(Nop),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
-                change.spend_key_id.clone(),
+                change.commitment_mask_key_id.clone(),
                 Covenant::default(),
             )
             .with_fee_per_gram(fee_per_gram)

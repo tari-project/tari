@@ -1,6 +1,7 @@
 [workspace.package]
-version = "1.0.0-dan.11"
+version = "1.0.0-dan.16"
 edition = "2021"
+authors = ["The Tari Development Community"]
 
 [workspace]
 resolver = "2"
@@ -35,6 +36,7 @@ members = [
     "applications/minotari_app_utilities",
     "applications/minotari_merge_mining_proxy",
     "applications/minotari_miner",
+    "applications/minotari_ledger_wallet/comms",
     "integration_tests",
     "hashing",
 ]
@@ -74,8 +76,7 @@ tari_chat_client = { path = "base_layer/contacts/src/chat_client" }
 minotari_node = { path = "applications/minotari_node" }
 minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
-
-
+minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms" }
 
 [profile.release]
 # Shutdown when panicking so we can see the error, specifically for the wallet

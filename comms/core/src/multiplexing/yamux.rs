@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{future::Future, io, pin::Pin, task::Poll};
+use std::{future::poll_fn, io, marker::PhantomData, pin::Pin, task::Poll};
 
-use futures::{task::Context, Stream};
+use futures::{channel::oneshot, task::Context, Stream};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::mpsc,
 };
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
-use tracing::{self, debug, error};
+use tracing::{debug, error, warn};
 // Reexport
 pub use yamux::ConnectionError;
 use yamux::Mode;
@@ -48,30 +48,20 @@ pub struct Yamux {
     substream_counter: AtomicRefCounter,
 }
 
-const MAX_BUFFER_SIZE: u32 = 8 * 1024 * 1024; // 8MiB
-const RECEIVE_WINDOW: u32 = 5 * 1024 * 1024; // 5MiB
-
 impl Yamux {
     /// Upgrade the underlying socket to use yamux
     pub fn upgrade_connection<TSocket>(socket: TSocket, direction: ConnectionDirection) -> io::Result<Self>
-    where TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static {
+    where TSocket: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static {
         let mode = match direction {
             ConnectionDirection::Inbound => Mode::Server,
             ConnectionDirection::Outbound => Mode::Client,
         };
 
-        let mut config = yamux::Config::default();
-
-        config.set_window_update_mode(yamux::WindowUpdateMode::OnRead);
-        // Because OnRead mode increases the RTT of window update, bigger buffer size and receive
-        // window size perform better.
-        config.set_max_buffer_size(MAX_BUFFER_SIZE as usize);
-        config.set_receive_window(RECEIVE_WINDOW);
+        let config = yamux::Config::default();
 
         let substream_counter = AtomicRefCounter::new();
         let connection = yamux::Connection::new(socket.compat(), config, mode);
-        let control = Control::new(connection.control(), substream_counter.clone());
-        let incoming = Self::spawn_incoming_stream_worker(connection, substream_counter.clone());
+        let (control, incoming) = Self::spawn_incoming_stream_worker(connection, substream_counter.clone());
 
         Ok(Self {
             control,
@@ -85,14 +75,16 @@ impl Yamux {
     fn spawn_incoming_stream_worker<TSocket>(
         connection: yamux::Connection<TSocket>,
         counter: AtomicRefCounter,
-    ) -> IncomingSubstreams
+    ) -> (Control, IncomingSubstreams)
     where
-        TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static,
+        TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 'static,
     {
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
-        let incoming = IncomingWorker::new(connection, incoming_tx);
-        tokio::spawn(incoming.run());
-        IncomingSubstreams::new(incoming_rx, counter)
+        let (request_tx, request_rx) = mpsc::channel(1);
+        let incoming = YamuxWorker::new(incoming_tx, request_rx, counter.clone());
+        let control = Control::new(request_tx);
+        tokio::spawn(incoming.run(connection));
+        (control, IncomingSubstreams::new(incoming_rx, counter))
     }
 
     /// Get the yamux control struct
@@ -121,42 +113,45 @@ impl Yamux {
     }
 }
 
+#[derive(Debug)]
+pub enum YamuxRequest {
+    OpenStream {
+        reply: oneshot::Sender<yamux::Result<Substream>>,
+    },
+    Close {
+        reply: oneshot::Sender<yamux::Result<()>>,
+    },
+}
+
 #[derive(Clone)]
 pub struct Control {
-    inner: yamux::Control,
-    substream_counter: AtomicRefCounter,
+    request_tx: mpsc::Sender<YamuxRequest>,
 }
 
 impl Control {
-    pub fn new(inner: yamux::Control, substream_counter: AtomicRefCounter) -> Self {
-        Self {
-            inner,
-            substream_counter,
-        }
+    pub fn new(request_tx: mpsc::Sender<YamuxRequest>) -> Self {
+        Self { request_tx }
     }
 
     /// Open a new stream to the remote.
     pub async fn open_stream(&mut self) -> Result<Substream, ConnectionError> {
-        // Ensure that this counts as used while the substream is being opened
-        let counter_guard = self.substream_counter.new_guard();
-        let stream = self.inner.open_stream().await?;
-        Ok(Substream {
-            stream: stream.compat(),
-            _counter_guard: counter_guard,
-        })
+        let (reply, reply_rx) = oneshot::channel();
+        self.request_tx
+            .send(YamuxRequest::OpenStream { reply })
+            .await
+            .map_err(|_| ConnectionError::Closed)?;
+        let stream = reply_rx.await.map_err(|_| ConnectionError::Closed)??;
+        Ok(stream)
     }
 
     /// Close the connection.
-    pub fn close(&mut self) -> impl Future<Output = Result<(), ConnectionError>> + '_ {
-        self.inner.close()
-    }
-
-    pub fn substream_count(&self) -> usize {
-        self.substream_counter.get()
-    }
-
-    pub(crate) fn substream_counter(&self) -> AtomicRefCounter {
-        self.substream_counter.clone()
+    pub async fn close(&mut self) -> Result<(), ConnectionError> {
+        let (reply, reply_rx) = oneshot::channel();
+        self.request_tx
+            .send(YamuxRequest::Close { reply })
+            .await
+            .map_err(|_| ConnectionError::Closed)?;
+        reply_rx.await.map_err(|_| ConnectionError::Closed)?
     }
 }
 
@@ -240,52 +235,78 @@ impl From<yamux::StreamId> for stream_id::Id {
     }
 }
 
-struct IncomingWorker<TSocket> {
-    connection: yamux::Connection<TSocket>,
-    sender: mpsc::Sender<yamux::Stream>,
+struct YamuxWorker<TSocket> {
+    incoming_substreams: mpsc::Sender<yamux::Stream>,
+    request_rx: mpsc::Receiver<YamuxRequest>,
+    counter: AtomicRefCounter,
+    _phantom: PhantomData<TSocket>,
 }
 
-impl<TSocket> IncomingWorker<TSocket>
-where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static /*  */
+impl<TSocket> YamuxWorker<TSocket>
+where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 'static
 {
-    pub fn new(connection: yamux::Connection<TSocket>, sender: mpsc::Sender<yamux::Stream>) -> Self {
-        Self { connection, sender }
+    pub fn new(
+        incoming_substreams: mpsc::Sender<yamux::Stream>,
+        request_rx: mpsc::Receiver<YamuxRequest>,
+        counter: AtomicRefCounter,
+    ) -> Self {
+        Self {
+            incoming_substreams,
+            request_rx,
+            counter,
+            _phantom: PhantomData,
+        }
     }
 
-    pub async fn run(mut self) {
+    async fn run(mut self, mut connection: yamux::Connection<TSocket>) {
         loop {
             tokio::select! {
-                _ = self.sender.closed() => {
-                    self.close().await;
+                biased;
+
+                _ = self.incoming_substreams.closed() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "{} Incoming peer substream task is stopping because the internal stream sender channel was \
+                         closed",
+                        self.counter.get()
+                    );
+                    // Ignore: we already log the error variant in Self::close
+                    let _ignore = Self::close(&mut connection).await;
                     break
                 },
 
-                result = self.connection.next_stream() => {
+                Some(request) = self.request_rx.recv() => {
+                    if let Err(err) = self.handle_request(&mut connection, request).await {
+                        error!(target: LOG_TARGET, "Error handling request: {err}");
+                        break;
+                    }
+                },
+
+                result = Self::next_inbound_stream(&mut connection) => {
                      match result {
-                        Ok(Some(stream)) => {
-                            if self.sender.send(stream).await.is_err() {
+                        Some(Ok(stream)) => {
+                            if self.incoming_substreams.send(stream).await.is_err() {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "{} Incoming peer substream task is stopping because the internal stream sender channel \
-                                     was closed",
-                                    self.connection
+                                    "{} Incoming peer substream task is stopping because the internal stream sender channel was closed",
+                                    self.counter.get()
                                 );
                                 break;
                             }
                         },
-                        Ok(None) =>{
+                        None =>{
                             debug!(
                                 target: LOG_TARGET,
                                 "{} Incoming peer substream ended.",
-                                self.connection
+                                self.counter.get()
                             );
                             break;
                         }
-                        Err(err) => {
+                        Some(Err(err)) => {
                             error!(
                                 target: LOG_TARGET,
                                 "{} Incoming peer substream task received an error because '{}'",
-                                self.connection,
+                                self.counter.get(),
                                 err
                             );
                             break;
@@ -296,38 +317,46 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
         }
     }
 
-    async fn close(&mut self) {
-        let mut control = self.connection.control();
-        // Sends the close message once polled, while continuing to poll the connection future
-        let close_fut = control.close();
-        tokio::pin!(close_fut);
-        loop {
-            tokio::select! {
-                biased;
-
-                result = &mut close_fut => {
-                    match result {
-                        Ok(_) => break,
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "Failed to close yamux connection: {}", err);
-                            break;
-                        }
-                    }
-                },
-
-                result = self.connection.next_stream() => {
-                    match result {
-                        Ok(Some(_)) => continue,
-                        Ok(None) => break,
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
-                            continue;
-                        }
-                    }
+    async fn handle_request(
+        &self,
+        connection_mut: &mut yamux::Connection<TSocket>,
+        request: YamuxRequest,
+    ) -> io::Result<()> {
+        match request {
+            YamuxRequest::OpenStream { reply } => {
+                let result = poll_fn(move |cx| connection_mut.poll_new_outbound(cx)).await;
+                if reply
+                    .send(result.map(|stream| Substream {
+                        stream: stream.compat(),
+                        _counter_guard: self.counter.new_guard(),
+                    }))
+                    .is_err()
+                {
+                    warn!(target: LOG_TARGET, "Request to open substream was aborted before reply was sent");
                 }
-            }
+            },
+            YamuxRequest::Close { reply } => {
+                if reply.send(Self::close(connection_mut).await).is_err() {
+                    warn!(target: LOG_TARGET, "Request to close substream was aborted before reply was sent");
+                }
+            },
         }
-        debug!(target: LOG_TARGET, "{} Yamux connection has closed", self.connection);
+        Ok(())
+    }
+
+    async fn next_inbound_stream(
+        connection_mut: &mut yamux::Connection<TSocket>,
+    ) -> Option<yamux::Result<yamux::Stream>> {
+        poll_fn(|cx| connection_mut.poll_next_inbound(cx)).await
+    }
+
+    async fn close(connection: &mut yamux::Connection<TSocket>) -> yamux::Result<()> {
+        if let Err(err) = poll_fn(|cx| connection.poll_close(cx)).await {
+            error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
+            return Err(err);
+        }
+        debug!(target: LOG_TARGET, "Yamux connection has closed");
+        Ok(())
     }
 }
 
@@ -356,21 +385,18 @@ mod test {
             let mut substream = dialer_control.open_stream().await.unwrap();
 
             substream.write_all(msg).await.unwrap();
-            substream.flush().await.unwrap();
             substream.shutdown().await.unwrap();
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?.into_incoming();
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?;
         let mut substream = listener
+            .incoming
             .next()
             .await
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no substream"))?;
 
         let mut buf = Vec::new();
-        tokio::select! {
-            _ = substream.read_to_end(&mut buf) => {},
-            _ = listener.next() => {},
-        };
+        substream.read_to_end(&mut buf).await?;
         assert_eq!(buf, msg);
 
         Ok(())
@@ -387,15 +413,21 @@ mod test {
         let substreams_out = tokio::spawn(async move {
             let mut substreams = Vec::with_capacity(NUM_SUBSTREAMS);
             for _ in 0..NUM_SUBSTREAMS {
-                substreams.push(dialer_control.open_stream().await.unwrap());
+                let mut stream = dialer_control.open_stream().await.unwrap();
+                // Since Yamux 0.12.0 the client does not initiate a substream unless you actually write something
+                stream.write_all(b"hello").await.unwrap();
+                substreams.push(stream);
             }
             substreams
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
-            .unwrap()
-            .into_incoming();
-        let substreams_in = collect_stream!(&mut listener, take = NUM_SUBSTREAMS, timeout = Duration::from_secs(10));
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound).unwrap();
+
+        let substreams_in = collect_stream!(
+            &mut listener.incoming,
+            take = NUM_SUBSTREAMS,
+            timeout = Duration::from_secs(10)
+        );
 
         assert_eq!(dialer.substream_count(), NUM_SUBSTREAMS);
         assert_eq!(listener.substream_count(), NUM_SUBSTREAMS);
@@ -426,8 +458,8 @@ mod test {
             assert_eq!(buf, b"");
         });
 
-        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?.into_incoming();
-        let mut substream = incoming.next().await.unwrap();
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?;
+        let mut substream = listener.incoming.next().await.unwrap();
 
         let mut buf = vec![0; msg.len()];
         substream.read_exact(&mut buf).await?;
@@ -482,12 +514,13 @@ mod test {
         let (dialer, listener) = MemorySocket::new_pair();
 
         let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
+        let substream_counter = dialer.substream_counter();
         let mut dialer_control = dialer.get_yamux_control();
 
         tokio::spawn(async move {
-            assert_eq!(dialer_control.substream_count(), 0);
+            assert_eq!(substream_counter.get(), 0);
             let mut substream = dialer_control.open_stream().await.unwrap();
-            assert_eq!(dialer_control.substream_count(), 1);
+            assert_eq!(substream_counter.get(), 1);
 
             let msg = vec![0x55u8; MSG_LEN];
             substream.write_all(msg.as_slice()).await.unwrap();
@@ -500,10 +533,10 @@ mod test {
             assert_eq!(buf, vec![0xAAu8; MSG_LEN]);
         });
 
-        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?.into_incoming();
-        assert_eq!(incoming.substream_count(), 0);
-        let mut substream = incoming.next().await.unwrap();
-        assert_eq!(incoming.substream_count(), 1);
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?;
+        assert_eq!(listener.substream_count(), 0);
+        let mut substream = listener.incoming.next().await.unwrap();
+        assert_eq!(listener.substream_count(), 1);
 
         let mut buf = vec![0u8; MSG_LEN];
         substream.read_exact(&mut buf).await?;
@@ -514,7 +547,7 @@ mod test {
         substream.shutdown().await?;
         drop(substream);
 
-        assert_eq!(incoming.substream_count(), 0);
+        assert_eq!(listener.substream_count(), 0);
 
         Ok(())
     }

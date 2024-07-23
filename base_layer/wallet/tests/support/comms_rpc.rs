@@ -149,7 +149,7 @@ impl BaseNodeWalletRpcMockState {
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
-                    best_block_height: std::i64::MAX as u64,
+                    best_block_height: i64::MAX as u64,
                     best_block_hash: FixedHash::zero().to_vec(),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,

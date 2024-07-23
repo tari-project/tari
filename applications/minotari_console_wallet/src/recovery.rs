@@ -22,11 +22,14 @@
 
 #![allow(dead_code, unused)]
 
+use std::ptr;
+
 use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use minotari_wallet::{
     connectivity_service::WalletConnectivityHandle,
+    error::WalletError,
     storage::sqlite_db::wallet::WalletSqliteDatabase,
     utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletSqlite,
@@ -37,7 +40,7 @@ use tari_crypto::tari_utilities::Hidden;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
-use tokio::sync::broadcast;
+use tokio::{runtime::Runtime, sync::broadcast};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::wallet_modes::PeerConfig;
@@ -122,7 +125,7 @@ pub async fn wallet_recovery(
         .with_peers(peer_public_keys)
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)
-        .build_with_wallet(wallet, shutdown_signal);
+        .build_with_wallet(wallet, shutdown_signal).await.map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
 
     let mut event_stream = recovery_task.get_event_receiver();
 
@@ -141,7 +144,8 @@ pub async fn wallet_recovery(
                 current_height,
                 tip_height,
             }) => {
-                let percentage_progress = (current_height * 100) / tip_height;
+                // its going to fail if the tip height is 0, meaning if you scanned up to 0, you are done
+                let percentage_progress = (current_height * 100).checked_div(tip_height).unwrap_or(100);
                 debug!(
                     target: LOG_TARGET,
                     "{}: Recovery process {}% complete (Block {} of {}).",

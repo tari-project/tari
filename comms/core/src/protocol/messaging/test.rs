@@ -55,6 +55,7 @@ use crate::{
 };
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
+static TEST_MSG2: Bytes = Bytes::from_static(b"TEST_MSG2");
 
 static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"test/msg");
 
@@ -128,20 +129,20 @@ async fn new_inbound_substream_handling() {
     // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
     let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
 
-    // Notify the messaging protocol that a new substream has been established that wants to talk the messaging.
     let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+
+    let mut framed_ours = MessagingProtocol::framed(stream_ours);
+    framed_ours.send(TEST_MSG1.clone()).await.unwrap();
+
+    // Notify the messaging protocol that a new substream has been established that wants to talk the messaging.
+    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
     proto_tx
         .send(ProtocolNotification::new(
             MESSAGING_PROTOCOL_ID.clone(),
-            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours),
+            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_theirs),
         ))
         .await
         .unwrap();
-
-    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
-    let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
-
-    framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
 
     let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
         .await
@@ -370,42 +371,55 @@ async fn new_inbound_substream_only_single_session_permitted() {
 
     // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
     let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
+    // Spawn a task to deal with incoming substreams
+    tokio::spawn({
+        let expected_node_id = expected_node_id.clone();
+        async move {
+            while let Some(stream_theirs) = muxer_theirs.incoming_mut().next().await {
+                proto_tx
+                    .send(ProtocolNotification::new(
+                        MESSAGING_PROTOCOL_ID.clone(),
+                        ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_theirs),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        }
+    });
 
-    // Notify the messaging protocol that a new substream has been established that wants to talk the messaging.
+    // Open first stream
     let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
-    proto_tx
-        .send(ProtocolNotification::new(
-            MESSAGING_PROTOCOL_ID.clone(),
-            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours),
-        ))
-        .await
-        .unwrap();
+    let mut framed_ours = MessagingProtocol::framed(stream_ours);
+    framed_ours.send(TEST_MSG1.clone()).await.unwrap();
 
-    // First stream is open
-    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
-
-    // Open another one for messaging
-    let stream_ours2 = muxer_ours.get_yamux_control().open_stream().await.unwrap();
-    proto_tx
-        .send(ProtocolNotification::new(
-            MESSAGING_PROTOCOL_ID.clone(),
-            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours2),
-        ))
+    // Message comes through
+    let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
         .await
+        .unwrap()
         .unwrap();
+    assert_eq!(in_msg.source_peer, expected_node_id);
+    assert_eq!(in_msg.body, TEST_MSG1);
 
     // Check the second stream closes immediately
-    let stream_theirs2 = muxer_theirs.incoming_mut().next().await.unwrap();
-    let mut framed_ours2 = MessagingProtocol::framed(stream_theirs2);
-    let next = framed_ours2.next().await;
-    // The stream is closed
-    assert!(next.is_none());
+    let stream_ours2 = muxer_ours.get_yamux_control().open_stream().await.unwrap();
 
-    // The first stream is still active
-    let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
+    let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
+    // Check that it eventually exits. The first send will initiate the substream and send. Once the other side closes
+    // the connection it takes a few sends for that to be detected and the substream to be closed.
+    loop {
+        // This message will not go through
+        if let Err(e) = framed_ours2.send(TEST_MSG2.clone()).await {
+            assert_eq!(
+                e.to_string().split(':').nth(1).map(|s| s.trim()),
+                Some("connection is closed"),
+                "Expected connection to be closed but got '{e}'"
+            );
+            break;
+        }
+    }
 
-    framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
-
+    // First stream still open
+    framed_ours.send(TEST_MSG1.clone()).await.unwrap();
     let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
         .await
         .unwrap()
@@ -414,23 +428,14 @@ async fn new_inbound_substream_only_single_session_permitted() {
     assert_eq!(in_msg.body, TEST_MSG1);
 
     // Close the first
-    framed_theirs.close().await.unwrap();
+    framed_ours.close().await.unwrap();
 
     // Open another one for messaging
-    let stream_ours2 = muxer_ours.get_yamux_control().open_stream().await.unwrap();
-    proto_tx
-        .send(ProtocolNotification::new(
-            MESSAGING_PROTOCOL_ID.clone(),
-            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours2),
-        ))
-        .await
-        .unwrap();
+    let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    let mut framed_ours = MessagingProtocol::framed(stream_ours);
+    framed_ours.send(TEST_MSG1.clone()).await.unwrap();
 
-    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
-    let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
-    framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
-
-    // The second message comes through
+    // The third message comes through
     let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
         .await
         .unwrap()

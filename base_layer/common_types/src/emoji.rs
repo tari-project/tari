@@ -25,6 +25,7 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
     iter,
+    str::FromStr,
 };
 
 use once_cell::sync::Lazy;
@@ -32,7 +33,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use thiserror::Error;
 
 use crate::{
-    dammsum::{compute_checksum, validate_checksum},
+    dammsum::{compute_checksum, validate_checksum, CHECKSUM_BYTES},
     types::PublicKey,
 };
 
@@ -49,49 +50,49 @@ use crate::{
 /// # Example
 ///
 /// ```
+/// use std::str::FromStr;
 /// use tari_common_types::emoji::EmojiId;
 ///
 /// // Construct an emoji ID from an emoji string (this can fail)
-/// let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";
-/// let emoji_id_from_emoji_string = EmojiId::from_emoji_string(emoji_string);
+/// let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🐢🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🥊";
+/// let emoji_id_from_emoji_string = EmojiId::from_str(emoji_string);
 /// assert!(emoji_id_from_emoji_string.is_ok());
 ///
 /// // Get the public key
-/// let public_key = emoji_id_from_emoji_string.unwrap().to_public_key();
+/// let public_key = emoji_id_from_emoji_string.unwrap().as_public_key().clone();
 ///
 /// // Reconstruct the emoji ID from the public key (this cannot fail)
-/// let emoji_id_from_public_key = EmojiId::from_public_key(&public_key);
+/// let emoji_id_from_public_key = EmojiId::from(&public_key);
 ///
 /// // An emoji ID is deterministic
-/// assert_eq!(emoji_id_from_public_key.to_emoji_string(), emoji_string);
+/// assert_eq!(emoji_id_from_public_key.to_string(), emoji_string);
 ///
 /// // Oh no! We swapped the first two emoji characters by mistake, so this should fail
-/// let invalid_emoji_string = "🐩🌴🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";
-/// assert!(EmojiId::from_emoji_string(invalid_emoji_string).is_err());
+/// let invalid_emoji_string = "🦀🌴🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🐢🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🥊";
+/// assert!(EmojiId::from_str(invalid_emoji_string).is_err());
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct EmojiId(PublicKey);
 
 const DICT_SIZE: usize = 256; // number of elements in the symbol dictionary
-const INTERNAL_SIZE: usize = 32; // number of bytes used for the internal representation (without checksum)
-const CHECKSUM_SIZE: usize = 1; // number of bytes in the checksum
+const DATA_BYTES: usize = 32; // number of bytes used for the key data
 
 // The emoji table, mapping byte values to emoji characters
 pub const EMOJI: [char; DICT_SIZE] = [
-    '🌀', '🌂', '🌈', '🌊', '🌋', '🌍', '🌙', '🌝', '🌞', '🌟', '🌠', '🌰', '🌴', '🌵', '🌷', '🌸', '🌹', '🌻', '🌽',
-    '🍀', '🍁', '🍄', '🍅', '🍆', '🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🍎', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕',
-    '🍗', '🍚', '🍞', '🍟', '🍠', '🍣', '🍦', '🍩', '🍪', '🍫', '🍬', '🍭', '🍯', '🍰', '🍳', '🍴', '🍵', '🍶', '🍷',
-    '🍸', '🍹', '🍺', '🍼', '🎀', '🎁', '🎂', '🎃', '🎄', '🎈', '🎉', '🎒', '🎓', '🎠', '🎡', '🎢', '🎣', '🎤', '🎥',
+    '🐢', '📟', '🌈', '🌊', '🎯', '🐋', '🌙', '🤔', '🌕', '⭐', '🎋', '🌰', '🌴', '🌵', '🌲', '🌸', '🌹', '🌻', '🌽',
+    '🍀', '🍁', '🍄', '🥑', '🍆', '🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🍎', '🍐', '🍑', '🍒', '🍓', '🍔', '🍕',
+    '🍗', '🍚', '🍞', '🍟', '🥝', '🍣', '🍦', '🍩', '🍪', '🍫', '🍬', '🍭', '🍯', '🥐', '🍳', '🥄', '🍵', '🍶', '🍷',
+    '🍸', '🍾', '🍺', '🍼', '🎀', '🎁', '🎂', '🎃', '🤖', '🎈', '🎉', '🎒', '🎓', '🎠', '🎡', '🎢', '🎣', '🎤', '🎥',
     '🎧', '🎨', '🎩', '🎪', '🎬', '🎭', '🎮', '🎰', '🎱', '🎲', '🎳', '🎵', '🎷', '🎸', '🎹', '🎺', '🎻', '🎼', '🎽',
-    '🎾', '🎿', '🏀', '🏁', '🏆', '🏈', '🏉', '🏠', '🏥', '🏦', '🏭', '🏰', '🐀', '🐉', '🐊', '🐌', '🐍', '🐎', '🐐',
-    '🐑', '🐓', '🐖', '🐗', '🐘', '🐙', '🐚', '🐛', '🐜', '🐝', '🐞', '🐢', '🐣', '🐨', '🐩', '🐪', '🐬', '🐭', '🐮',
-    '🐯', '🐰', '🐲', '🐳', '🐴', '🐵', '🐶', '🐷', '🐸', '🐺', '🐻', '🐼', '🐽', '🐾', '👀', '👅', '👑', '👒', '👓',
-    '👔', '👕', '👖', '👗', '👘', '👙', '👚', '👛', '👞', '👟', '👠', '👡', '👢', '👣', '👹', '👻', '👽', '👾', '👿',
-    '💀', '💄', '💈', '💉', '💊', '💋', '💌', '💍', '💎', '💐', '💔', '💕', '💘', '💡', '💣', '💤', '💦', '💨', '💩',
-    '💭', '💯', '💰', '💳', '💸', '💺', '💻', '💼', '📈', '📉', '📌', '📎', '📚', '📝', '📡', '📣', '📱', '📷', '🔋',
-    '🔌', '🔎', '🔑', '🔔', '🔥', '🔦', '🔧', '🔨', '🔩', '🔪', '🔫', '🔬', '🔭', '🔮', '🔱', '🗽', '😂', '😇', '😈',
-    '😉', '😍', '😎', '😱', '😷', '😹', '😻', '😿', '🚀', '🚁', '🚂', '🚌', '🚑', '🚒', '🚓', '🚕', '🚗', '🚜', '🚢',
-    '🚦', '🚧', '🚨', '🚪', '🚫', '🚲', '🚽', '🚿', '🛁',
+    '🎾', '🎿', '🏀', '🏁', '🏆', '🏈', '⚽', '🏠', '🏥', '🏦', '🏭', '🏰', '🐀', '🐉', '🐊', '🐌', '🐍', '🦁', '🐐',
+    '🐑', '🐔', '🙈', '🐗', '🐘', '🐙', '🐚', '🐛', '🐜', '🐝', '🐞', '🦋', '🐣', '🐨', '🦀', '🐪', '🐬', '🐭', '🐮',
+    '🐯', '🐰', '🦆', '🦂', '🐴', '🐵', '🐶', '🐷', '🐸', '🐺', '🐻', '🐼', '🐽', '🐾', '👀', '👅', '👑', '👒', '🧢',
+    '💅', '👕', '👖', '👗', '👘', '👙', '💃', '👛', '👞', '👟', '👠', '🥊', '👢', '👣', '🤡', '👻', '👽', '👾', '🤠',
+    '👃', '💄', '💈', '💉', '💊', '💋', '👂', '💍', '💎', '💐', '💔', '🔒', '🧩', '💡', '💣', '💤', '💦', '💨', '💩',
+    '➕', '💯', '💰', '💳', '💵', '💺', '💻', '💼', '📈', '📜', '📌', '📎', '📖', '📿', '📡', '⏰', '📱', '📷', '🔋',
+    '🔌', '🚰', '🔑', '🔔', '🔥', '🔦', '🔧', '🔨', '🔩', '🔪', '🔫', '🔬', '🔭', '🔮', '🔱', '🗽', '😂', '😇', '😈',
+    '🤑', '😍', '😎', '😱', '😷', '🤢', '👍', '👶', '🚀', '🚁', '🚂', '🚚', '🚑', '🚒', '🚓', '🛵', '🚗', '🚜', '🚢',
+    '🚦', '🚧', '🚨', '🚪', '🚫', '🚲', '🚽', '🚿', '🧲',
 ];
 
 // The reverse table, mapping emoji to characters to byte values
@@ -121,16 +122,24 @@ pub enum EmojiIdError {
 }
 
 impl EmojiId {
-    /// Construct an emoji ID from an emoji string with checksum
-    pub fn from_emoji_string(emoji: &str) -> Result<Self, EmojiIdError> {
+    /// Get the public key from an emoji ID
+    pub fn as_public_key(&self) -> &PublicKey {
+        &self.0
+    }
+}
+
+impl FromStr for EmojiId {
+    type Err = EmojiIdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         // The string must be the correct size, including the checksum
-        if emoji.chars().count() != INTERNAL_SIZE + CHECKSUM_SIZE {
+        if s.chars().count() != DATA_BYTES + CHECKSUM_BYTES {
             return Err(EmojiIdError::InvalidSize);
         }
 
         // Convert the emoji string to a byte array
-        let mut bytes = Vec::<u8>::with_capacity(INTERNAL_SIZE + CHECKSUM_SIZE);
-        for c in emoji.chars() {
+        let mut bytes = Vec::<u8>::with_capacity(DATA_BYTES + CHECKSUM_BYTES);
+        for c in s.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
                 bytes.push(*i);
             } else {
@@ -138,58 +147,61 @@ impl EmojiId {
             }
         }
 
-        // Assert the checksum is valid
-        if validate_checksum(&bytes).is_err() {
-            return Err(EmojiIdError::InvalidChecksum);
-        }
-
-        // Remove the checksum
-        bytes.pop();
+        // Assert the checksum is valid and get the underlying data
+        let data = validate_checksum(&bytes).map_err(|_| EmojiIdError::InvalidChecksum)?;
 
         // Convert to a public key
-        match PublicKey::from_canonical_bytes(&bytes) {
+        match PublicKey::from_canonical_bytes(data) {
             Ok(public_key) => Ok(Self(public_key)),
             Err(_) => Err(EmojiIdError::CannotRecoverPublicKey),
         }
     }
+}
 
-    /// Construct an emoji ID from a public key
-    pub fn from_public_key(public_key: &PublicKey) -> Self {
-        Self(public_key.clone())
+impl From<&PublicKey> for EmojiId {
+    fn from(value: &PublicKey) -> Self {
+        Self::from(value.clone())
     }
+}
 
-    /// Convert the emoji ID to an emoji string with checksum
-    pub fn to_emoji_string(&self) -> String {
-        // Convert the public key to bytes and compute the checksum
-        let bytes = self.0.as_bytes().to_vec();
-        bytes
-            .iter()
-            .chain(iter::once(&compute_checksum(&bytes)))
-            .map(|b| EMOJI[*b as usize])
-            .collect::<String>()
+impl From<PublicKey> for EmojiId {
+    fn from(value: PublicKey) -> Self {
+        Self(value)
     }
+}
 
-    /// Convert the emoji ID to a public key
-    pub fn to_public_key(&self) -> PublicKey {
-        self.0.clone()
+impl From<&EmojiId> for PublicKey {
+    fn from(value: &EmojiId) -> Self {
+        value.as_public_key().clone()
     }
 }
 
 impl Display for EmojiId {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        fmt.write_str(&self.to_emoji_string())
+        // Convert the public key to bytes and compute the checksum
+        let bytes = self.as_public_key().as_bytes();
+        let emoji = bytes
+            .iter()
+            .chain(iter::once(&compute_checksum(bytes)))
+            .map(|b| EMOJI[*b as usize])
+            .collect::<String>();
+
+        fmt.write_str(&emoji)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::iter;
+    use std::{iter, str::FromStr};
 
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey},
+        tari_utilities::ByteArray,
+    };
 
     use crate::{
-        dammsum::compute_checksum,
-        emoji::{emoji_set, EmojiId, EmojiIdError, CHECKSUM_SIZE, INTERNAL_SIZE},
+        dammsum::{compute_checksum, CHECKSUM_BYTES},
+        emoji::{emoji_set, EmojiId, EmojiIdError, DATA_BYTES},
         types::{PrivateKey, PublicKey},
     };
 
@@ -201,57 +213,52 @@ mod test {
         let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
-        let emoji_id_from_public_key = EmojiId::from_public_key(&public_key);
-        assert_eq!(emoji_id_from_public_key.to_public_key(), public_key);
+        let emoji_id_from_public_key = EmojiId::from(&public_key);
+        assert_eq!(emoji_id_from_public_key.as_public_key(), &public_key);
 
         // Check the size of the corresponding emoji string
-        let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_SIZE + CHECKSUM_SIZE);
+        let emoji_string = emoji_id_from_public_key.to_string();
+        assert_eq!(emoji_string.chars().count(), DATA_BYTES + CHECKSUM_BYTES);
 
         // Generate an emoji ID from the emoji string and ensure we recover it
-        let emoji_id_from_emoji_string = EmojiId::from_emoji_string(&emoji_string).unwrap();
-        assert_eq!(emoji_id_from_emoji_string.to_emoji_string(), emoji_string);
+        let emoji_id_from_emoji_string = EmojiId::from_str(&emoji_string).unwrap();
+        assert_eq!(emoji_id_from_emoji_string.to_string(), emoji_string);
 
         // Return to the original public key for good measure
-        assert_eq!(emoji_id_from_emoji_string.to_public_key(), public_key);
+        assert_eq!(emoji_id_from_emoji_string.as_public_key(), &public_key);
     }
 
     #[test]
     /// Test invalid size
     fn invalid_size() {
         // This emoji string is too short to be a valid emoji ID
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒";
-        assert_eq!(EmojiId::from_emoji_string(emoji_string), Err(EmojiIdError::InvalidSize));
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🐢🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒";
+        assert_eq!(EmojiId::from_str(emoji_string), Err(EmojiIdError::InvalidSize));
     }
 
     #[test]
     /// Test invalid emoji
     fn invalid_emoji() {
         // This emoji string contains an invalid emoji character
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎅";
-        assert_eq!(
-            EmojiId::from_emoji_string(emoji_string),
-            Err(EmojiIdError::InvalidEmoji)
-        );
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🐢🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🎅";
+        assert_eq!(EmojiId::from_str(emoji_string), Err(EmojiIdError::InvalidEmoji));
     }
 
     #[test]
     /// Test invalid checksum
     fn invalid_checksum() {
         // This emoji string contains an invalid checksum
-        let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒🎒";
-        assert_eq!(
-            EmojiId::from_emoji_string(emoji_string),
-            Err(EmojiIdError::InvalidChecksum)
-        );
+        let emoji_string = "🌴🦀🔌📌🚑🌰🎓🌴🐊🐌🔒💡🐜📜👛🍵👛🐽🎂🐻🐢🍓👶🐭🐼🏀🎪💔💵🥑🔋🎒🎒";
+        assert_eq!(EmojiId::from_str(emoji_string), Err(EmojiIdError::InvalidChecksum));
     }
 
     #[test]
     /// Test invalid public key
     fn invalid_public_key() {
         // This byte representation does not represent a valid public key
-        let mut bytes = vec![0u8; INTERNAL_SIZE];
+        let mut bytes = vec![0u8; DATA_BYTES];
         bytes[0] = 1;
+        assert!(PublicKey::from_canonical_bytes(&bytes).is_err());
 
         // Convert to an emoji string and manually add a valid checksum
         let emoji_set = emoji_set();
@@ -262,8 +269,14 @@ mod test {
             .collect::<String>();
 
         assert_eq!(
-            EmojiId::from_emoji_string(&emoji_string),
+            EmojiId::from_str(&emoji_string),
             Err(EmojiIdError::CannotRecoverPublicKey)
         );
+    }
+
+    #[test]
+    /// Test that the data size is correct for the underlying key type
+    fn data_size() {
+        assert_eq!(PublicKey::default().as_bytes().len(), DATA_BYTES);
     }
 }

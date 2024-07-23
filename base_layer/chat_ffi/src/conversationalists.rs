@@ -177,7 +177,7 @@ mod test {
     #[test]
     fn test_retrieving_conversationalists_from_vector() {
         let (_, pk) = PublicKey::random_keypair(&mut OsRng);
-        let a = TariAddress::from_public_key(&pk, Network::LocalNet);
+        let a = TariAddress::new_single_address_with_interactive_only(pk, Network::LocalNet);
         let conversationalists =
             ConversationalistsVector(vec![TariAddress::default(), TariAddress::default(), a.clone()]);
 

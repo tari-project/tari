@@ -279,7 +279,7 @@ mod test {
     use tokio_stream::StreamExt;
 
     use super::*;
-    use crate::tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey};
+    use crate::tor::control_client::{test_server, test_server::canned_responses};
 
     async fn setup_test() -> (TorControlPortClient, test_server::State) {
         let (_, mock_state, socket) = test_server::spawn().await;

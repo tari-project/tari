@@ -14,7 +14,7 @@ name: Build docker images - workflow_call/on-demand
       toolchain:
         type: string
         description: 'Rust toolchain'
-        default: nightly-2024-02-04
+        default: nightly-2024-07-07
       arch:
         type: string
         default: x86-64
@@ -215,7 +215,7 @@ jobs:
 
       - name: Docker image build and push
         id: docker_build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./tari/
           file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile

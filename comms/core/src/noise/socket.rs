@@ -662,8 +662,6 @@ impl From<TransportState> for NoiseState {
 
 #[cfg(test)]
 mod test {
-    use std::io;
-
     use futures::future::join;
     use snow::{params::NoiseParams, Builder, Error, Keypair};
 

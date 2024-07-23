@@ -110,8 +110,6 @@ impl InboundDomainConnector {
 mod test {
     use futures::executor::block_on;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
-    use tari_comms_dht::domain_message::MessageHeader;
-    use tokio::sync::mpsc;
     use tower::ServiceExt;
 
     use super::*;

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, SqliteConnection};
+use diesel::prelude::*;
 use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 use tari_crypto::keys::PublicKey;
 use tari_utilities::{hex::Hex, ByteArray, Hidden};

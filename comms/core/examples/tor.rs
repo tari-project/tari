@@ -253,9 +253,8 @@ async fn start_ping_ponger(
                 id.parse::<u64>()
                     .ok()
                     .and_then(|id_num| inflight_pings.remove(&id_num))
-                    .map(|latency| {
+                    .inspect(|&latency| {
                         println!("Latency: {}ms", latency);
-                        latency
                     });
 
                 println!("-----------------------------------");
