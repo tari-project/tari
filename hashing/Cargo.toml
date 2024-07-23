@@ -1,6 +1,6 @@
 [package]
 name = "tari_hashing"
-version = "1.0.0-pre.16"
+version = "1.0.0-pre.17"
 edition = "2021"
 description = "Tari hash domains"
 authors = ["The Tari Development Community"]
