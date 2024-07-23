@@ -7100,7 +7100,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-
     if destination.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("dest_public_key".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -7121,8 +7120,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
 
     let message_string;
     if message.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
         message_string = CString::new("")
             .expect("Blank CString will not fail")
             .to_str()
@@ -7147,7 +7144,8 @@ pub unsafe extern "C" fn wallet_send_transaction(
         } else {
             match CStr::from_ptr(payment_id_string).to_str() {
                 Ok(v) => {
-                    let bytes = v.as_bytes().to_vec();
+                    let rust_str = v.to_owned();
+                    let bytes = rust_str.as_bytes().to_vec();
                     PaymentId::Open(bytes)
                 },
                 _ => {
