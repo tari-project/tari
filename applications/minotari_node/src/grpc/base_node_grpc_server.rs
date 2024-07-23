@@ -23,6 +23,7 @@
 use std::{
     cmp,
     convert::{TryFrom, TryInto},
+    str::FromStr,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -843,7 +844,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
         for coinbase in coinbases {
-            let address = TariAddress::from_base58(&coinbase.address)
+            let address = TariAddress::from_str(&coinbase.address)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
@@ -1040,7 +1041,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
         for coinbase in coinbases {
-            let address = TariAddress::from_base58(&coinbase.address)
+            let address = TariAddress::from_str(&coinbase.address)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue

@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+};
 
 use futures::{
     channel::mpsc::{self, Sender},
@@ -335,7 +338,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_inner()
             .recipient
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
-        let address = TariAddress::from_base58(&message.address)
+        let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
 
         let mut transaction_service = self.get_transaction_service();
@@ -496,7 +499,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
-                let address = TariAddress::from_base58(&dest.address)
+                let address = TariAddress::from_str(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
                     dest.address,
