@@ -26,8 +26,8 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
-use tari_common_types::{types::PrivateKey, WALLET_COMMS_AND_SPEND_KEY_BRANCH};
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_common_types::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
+use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::key_manager_service::error::KeyManagerServiceError;
@@ -76,10 +76,6 @@ pub enum KeyId<PK> {
     Imported {
         key: PK,
     },
-    Offset {
-        key_id: Box<KeyId<PK>>,
-        offset: PrivateKey,
-    },
     #[default]
     Zero,
 }
@@ -92,7 +88,6 @@ where PK: Clone
             KeyId::Managed { index, .. } => Some(*index),
             KeyId::Derived { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
-            KeyId::Offset { .. } => None,
             KeyId::Zero => None,
         }
     }
@@ -102,7 +97,6 @@ where PK: Clone
             KeyId::Managed { branch, .. } => Some(branch.clone()),
             KeyId::Derived { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
-            KeyId::Offset { .. } => None,
             KeyId::Zero => None,
         }
     }
@@ -112,7 +106,6 @@ where PK: Clone
             KeyId::Managed { .. } => None,
             KeyId::Derived { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
-            KeyId::Offset { .. } => None,
             KeyId::Zero => None,
         }
     }
@@ -135,8 +128,7 @@ where PK: ByteArray
                 label: l,
                 index: i,
             } => write!(f, "{}.{}.{}.{}", DERIVED_KEY_BRANCH, b, l, i),
-            KeyId::Imported { key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, key.to_hex()),
-            KeyId::Offset { key_id, offset } => write!(f, "offset key id.{}.{}", key_id, offset.to_hex()),
+            KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
     }
@@ -195,8 +187,8 @@ where PK: ByteArray
 #[async_trait::async_trait]
 pub trait KeyManagerInterface<PK>: Clone + Send + Sync + 'static
 where
-    PK: PublicKeyTrait + Send + Sync + 'static,
-    PK::K: SecretKeyTrait + Send + Sync + 'static,
+    PK: PublicKey + Send + Sync + 'static,
+    PK::K: SecretKey + Send + Sync + 'static,
 {
     /// Creates a new branch for the key manager service to track
     /// If this is an existing branch, that is not yet tracked in memory, the key manager service will load the key
