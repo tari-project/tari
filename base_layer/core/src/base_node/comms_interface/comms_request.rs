@@ -45,8 +45,15 @@ pub enum NodeCommsRequest {
     GetChainMetadata,
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
-    FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingBlocks { range: RangeInclusive<u64>, compact: bool },
+    FetchMatchingUtxos {
+        hashes: Vec<HashOutput>,
+        include_spent: bool,
+        include_burnt: bool,
+    },
+    FetchMatchingBlocks {
+        range: RangeInclusive<u64>,
+        compact: bool,
+    },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
     FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
@@ -55,11 +62,23 @@ pub enum NodeCommsRequest {
     GetNewBlock(NewBlockTemplate),
     GetBlockFromAllChains(HashOutput),
     FetchKernelByExcessSig(Signature),
-    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
-    FetchValidatorNodesKeys { height: u64 },
-    GetShardKey { height: u64, public_key: PublicKey },
-    FetchTemplateRegistrations { start_height: u64, end_height: u64 },
-    FetchUnspentUtxosInBlock { block_hash: BlockHash },
+    FetchMempoolTransactionsByExcessSigs {
+        excess_sigs: Vec<PrivateKey>,
+    },
+    FetchValidatorNodesKeys {
+        height: u64,
+    },
+    GetShardKey {
+        height: u64,
+        public_key: PublicKey,
+    },
+    FetchTemplateRegistrations {
+        start_height: u64,
+        end_height: u64,
+    },
+    FetchUnspentUtxosInBlock {
+        block_hash: BlockHash,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -78,7 +97,11 @@ impl Display for NodeCommsRequest {
                 write!(f, "FetchHeaders ({:?})", range)
             },
             FetchHeadersByHashes(v) => write!(f, "FetchHeadersByHashes (n={})", v.len()),
-            FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
+            FetchMatchingUtxos {
+                hashes,
+                include_burnt,
+                include_spent,
+            } => write!(f, "FetchMatchingUtxos (n={})", hashes.len()),
             FetchMatchingBlocks { range, compact } => {
                 write!(f, "FetchMatchingBlocks ({:?}, {})", range, compact)
             },

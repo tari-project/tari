@@ -157,7 +157,11 @@ where B: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
-            NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
+            NodeCommsRequest::FetchMatchingUtxos {
+                hashes: utxo_hashes,
+                include_spent,
+                include_burnt,
+            } => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
                 for (output, spent) in (self
                     .blockchain_db
@@ -166,9 +170,13 @@ where B: BlockchainBackend + 'static
                     .into_iter()
                     .flatten()
                 {
-                    if !spent {
-                        res.push(output);
+                    if !include_burnt && output.is_burned() {
+                        continue;
                     }
+                    if !include_spent && spent {
+                        continue;
+                    }
+                    res.push(output);
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
