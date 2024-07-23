@@ -24,7 +24,7 @@ thiserror = "1.0.26"
 tokio = "1.23"
 
 [target.'cfg(target_os="android")'.dependencies]
-openssl = { version = "0.10.55", features = ["vendored"] }
+openssl = { version = "0.10.66", features = ["vendored"] }
 
 [lib]
 crate-type = ["staticlib", "cdylib"]
