@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.17](https://github.com/tari-project/tari/compare/v1.0.0-pre.16...v1.0.0-pre.17) (2024-07-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* fix key manager use of keys (#6407)
+
+### Features
+
+* add file-based input and output to faucet commands ([#6405](https://github.com/tari-project/tari/issues/6405)) ([8c6ea82](https://github.com/tari-project/tari/commit/8c6ea82837320865f59e5c9a8b23755e282a17cf))
+* change grpc address conversions to use from_str ([#6422](https://github.com/tari-project/tari/issues/6422)) ([33374a6](https://github.com/tari-project/tari/commit/33374a6917e16c2756ba94aaf818234ba0daba62))
+* count unique keys ([#6401](https://github.com/tari-project/tari/issues/6401)) ([5997ff3](https://github.com/tari-project/tari/commit/5997ff390b0f7d57f1018fa28088e92ec6172068))
+* fix key manager use of keys ([#6407](https://github.com/tari-project/tari/issues/6407)) ([35db898](https://github.com/tari-project/tari/commit/35db8980e82acc4f29fdc7b8d8fbf1f84a8f04de))
+* update ledger instructions ([#6406](https://github.com/tari-project/tari/issues/6406)) ([cc74845](https://github.com/tari-project/tari/commit/cc7484501e7f79c7b437a52b3a88d3073c978ebc))
+
+
+### Bug Fixes
+
+* branch keys ([#6413](https://github.com/tari-project/tari/issues/6413)) ([47e3761](https://github.com/tari-project/tari/commit/47e37614d6a3efa1fff3914b7ea0acfc4fa484cc))
+* panic in from_base58 fn ([#6414](https://github.com/tari-project/tari/issues/6414)) ([237fbfd](https://github.com/tari-project/tari/commit/237fbfd45641bd138d8d3ee50d8f0b3fff4c1eeb))
+
 ## [1.0.0-pre.16](https://github.com/tari-project/tari/compare/v1.0.0-pre.15...v1.0.0-pre.16) (2024-07-12)
 
 ### Features
