@@ -3,6 +3,7 @@
 
 //! # Multi-party Ledger - command line example
 
+use dialoguer::{theme::ColorfulTheme, Select};
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ledger_get_app_name,
@@ -17,6 +18,7 @@ use minotari_ledger_wallet_comms::{
         ledger_get_view_key,
         verify_ledger_application,
     },
+    error::LedgerDeviceError,
     ledger_wallet::get_transport,
 };
 use rand::rngs::OsRng;
@@ -246,6 +248,71 @@ fn main() {
         },
     }
 
+    // Test ledger app not started
+    println!("\ntest: Ledger app not running");
+    prompt_with_message("Exit the 'MinoTari Wallet' Ledger app and press Enter to continue..");
+    match ledger_get_view_key(account) {
+        Ok(_) => {
+            println!("\nError: Ledger app is still running\n");
+            return;
+        },
+        Err(e) => {
+            if e != LedgerDeviceError::Processing(
+                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+            ) {
+                println!("\nError: Unexpected response ({})\n", e);
+                return;
+            }
+        },
+    }
+
+    // Test ledger disconnect
+    println!("\ntest: Ledger disconnected");
+    prompt_with_message("Disconnect the Ledger device and press Enter to continue..");
+    match ledger_get_view_key(account) {
+        Ok(_) => {
+            println!("\nError: Ledger not disconnected\n");
+            return;
+        },
+        Err(e) => {
+            if e != LedgerDeviceError::Processing(
+                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+            ) {
+                println!("\nError: Unexpected response ({})\n", e);
+                return;
+            }
+        },
+    }
+
+    // Test ledger reconnect
+    println!("\ntest: Ledger reconnected");
+    prompt_with_message("Reconnect the Ledger device (with password) and press Enter to continue..");
+    match ledger_get_view_key(account) {
+        Ok(_) => {
+            println!("\nError: Ledger app should not be running\n");
+            return;
+        },
+        Err(e) => {
+            if e != LedgerDeviceError::Processing(
+                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+            ) {
+                println!("\nError: Unexpected response ({})\n", e);
+                return;
+            }
+        },
+    }
+
+    // Test ledger app restart
+    println!("\ntest: Ledger app restart");
+    prompt_with_message("Start the 'MinoTari Wallet' Ledger app and press Enter to continue..");
+    match ledger_get_view_key(account) {
+        Ok(view_key) => println!("view_key:       {}", view_key.to_hex()),
+        Err(e) => {
+            println!("\nError: {}\n", e);
+            return;
+        },
+    }
+
     println!("\nTest completed successfully\n");
 }
 
@@ -253,4 +320,13 @@ pub fn get_random_nonce() -> PrivateKey {
     let mut raw_bytes = [0u8; 64];
     OsRng.fill_bytes(&mut raw_bytes);
     RistrettoSecretKey::from_uniform_bytes(&raw_bytes).expect("will not fail")
+}
+
+fn prompt_with_message(prompt_text: &str) -> usize {
+    Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt_text)
+        .default(0)
+        .item("Ok")
+        .interact()
+        .unwrap()
 }
