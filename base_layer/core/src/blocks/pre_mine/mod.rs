@@ -21,9 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #[cfg(test)]
 mod test {
-    use std::convert::TryInto;
-
-    use std::{convert::TryFrom, fs::File, io::Write};
+    use std::{
+        convert::{TryFrom, TryInto},
+        fs::File,
+        io::Write,
+    };
 
     use rand::{rngs::OsRng, seq::SliceRandom, thread_rng};
     use tari_common_types::{
@@ -105,7 +107,6 @@ mod test {
             let script = script!(
                     CheckHeight(lock_height + fail_safe_height)  LeZero IfThen CheckMultiSigVerifyAggregatePubKey(signature_threshold,address_len,list_of_spend_keys.clone(),Box::new(commitment_bytes)) Else PushPubKey(Box::new(backup_address.public_spend_key().clone())) EndIf
             );
-            dbg!(&script.as_slice().get(3));
             let output = WalletOutputBuilder::new(amount, commitment_mask.key_id)
                 .with_features(OutputFeatures::new(
                     OutputFeaturesVersion::get_current_version(),
