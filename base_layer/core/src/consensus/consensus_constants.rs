@@ -402,7 +402,7 @@ impl ConsensusConstants {
             faucet_value: 0.into(),
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 512,
-            max_extra_encrypted_data_byte_size: 256,
+            max_extra_encrypted_data_byte_size: 240,
             input_version_range,
             output_version_range,
             kernel_version_range,

@@ -20,11 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, convert::TryFrom, ops::Deref};
+use std::{
+    cmp,
+    convert::TryFrom,
+    ops::{Deref, DerefMut},
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_utilities::hex::{from_hex, HexError};
+use tari_utilities::{
+    hex::{from_hex, HexError},
+    ByteArray,
+    ByteArrayError,
+};
 
 #[derive(
     Debug,
@@ -115,6 +123,27 @@ impl<const MAX: usize> Deref for MaxSizeBytes<MAX> {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl<const MAX: usize> DerefMut for MaxSizeBytes<MAX> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<const MAX: usize> ByteArray for MaxSizeBytes<MAX> {
+    /// Try and convert the given byte array to a MaxSizeBytes. Any failures (incorrect array length,
+    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
+    fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        Self::from_bytes_checked(bytes).ok_or(ByteArrayError::ConversionError {
+            reason: "Invalid byte length".to_string(),
+        })
+    }
+
+    /// Return the NodeId as a byte array
+    fn as_bytes(&self) -> &[u8] {
+        self.inner.as_ref()
     }
 }
 
