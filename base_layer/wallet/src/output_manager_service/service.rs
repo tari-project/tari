@@ -1213,15 +1213,16 @@ where
             )));
         }
         // Retrieve the list of n public keys from the script
-        let public_keys =
-            if let [Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)] = output.script.as_slice() {
-                keys.clone()
-            } else {
-                return Err(OutputManagerError::ServiceError(format!(
-                    "Invalid script (TxId: {})",
-                    tx_id
-                )));
-            };
+        let public_keys = if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) =
+            output.script.as_slice().get(3)
+        {
+            keys.clone()
+        } else {
+            return Err(OutputManagerError::ServiceError(format!(
+                "Invalid script (TxId: {})",
+                tx_id
+            )));
+        };
         // Create a deterministic encryption key from the sum of the public keys
         let sum_public_keys = public_keys
             .iter()

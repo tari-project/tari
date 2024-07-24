@@ -163,18 +163,18 @@ pub(crate) fn command_mode(
         config,
         base_node_config,
         wallet,
-        force_exit_for_faucet_commands(&command),
+        force_exit_for_pre_mine_commands(&command),
     )
 }
 
-fn force_exit_for_faucet_commands(command: &CliCommands) -> bool {
+fn force_exit_for_pre_mine_commands(command: &CliCommands) -> bool {
     matches!(
         command,
-        CliCommands::FaucetGenerateSessionInfo(_) |
-            CliCommands::FaucetEncumberAggregateUtxo(_) |
-            CliCommands::FaucetSpendAggregateUtxo(_) |
-            CliCommands::FaucetCreatePartyDetails(_) |
-            CliCommands::FaucetCreateInputOutputSigs(_)
+        CliCommands::PreMineGenerateSessionInfo(_) |
+            CliCommands::PreMineEncumberAggregateUtxo(_) |
+            CliCommands::PreMineSpendAggregateUtxo(_) |
+            CliCommands::PreMineCreatePartyDetails(_) |
+            CliCommands::PreMineCreateInputOutputSigs(_)
     )
 }
 
@@ -224,8 +224,8 @@ pub(crate) fn script_mode(
     let commands = parse_command_file(script)?;
     let mut exit_wallet = false;
     for command in &commands {
-        if force_exit_for_faucet_commands(command) {
-            println!("Faucet commands may not run in script mode!");
+        if force_exit_for_pre_mine_commands(command) {
+            println!("Pre-mine commands may not run in script mode!");
             exit_wallet = true;
             break;
         }
@@ -529,20 +529,21 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            faucet-generate-session-info --fee-per-gram 2 --commitment \
+            pre-mine-generate-session-info --fee-per-gram 2 --commitment \
              f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --output-hash \
              f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --recipient-address \
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
              --verify-unspent-outputs
 
-            faucet-create-party-details --input-file ./step_1_session_info.txt --alias alice
+            pre-mine-create-party-details --input-file ./step_1_session_info.txt --alias alice
 
-            faucet-encumber-aggregate-utxo --session-id ee1643655c --input-file-names=step_2_for_leader_from_alice.txt \
-             --input-file-names=step_2_for_leader_from_bob.txt --input-file-names=step_2_for_leader_from_carol.txt
+            pre-mine-encumber-aggregate-utxo --session-id ee1643655c \
+             --input-file-names=step_2_for_leader_from_alice.txt --input-file-names=step_2_for_leader_from_bob.txt \
+             --input-file-names=step_2_for_leader_from_carol.txt
 
-            faucet-create-input-output-sigs --session-id ee1643655c
+            pre-mine-create-input-output-sigs --session-id ee1643655c
 
-            faucet-spend-aggregate-utxo --session-id ee1643655c --input-file-names=step_4_for_leader_from_alice.txt \
+            pre-mine-spend-aggregate-utxo --session-id ee1643655c --input-file-names=step_4_for_leader_from_alice.txt \
              --input-file-names=step_4_for_leader_from_bob.txt --input-file-names=step_4_for_leader_from_carol.txt
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
@@ -564,11 +565,11 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut faucet_generate_session_info = false;
-        let mut faucet_encumber_aggregate_utxo = false;
-        let mut faucet_spend_aggregate_utxo = false;
-        let mut faucet_create_party_details = false;
-        let mut faucet_create_input_output_sigs = false;
+        let mut pre_mine_generate_session_info = false;
+        let mut pre_mine_encumber_aggregate_utxo = false;
+        let mut pre_mine_spend_aggregate_utxo = false;
+        let mut pre_mine_create_party_details = false;
+        let mut pre_mine_create_input_output_sigs = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -580,11 +581,11 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::FaucetGenerateSessionInfo(_) => faucet_generate_session_info = true,
-                CliCommands::FaucetEncumberAggregateUtxo(_) => faucet_encumber_aggregate_utxo = true,
-                CliCommands::FaucetSpendAggregateUtxo(_) => faucet_spend_aggregate_utxo = true,
-                CliCommands::FaucetCreatePartyDetails(_) => faucet_create_party_details = true,
-                CliCommands::FaucetCreateInputOutputSigs(_) => faucet_create_input_output_sigs = true,
+                CliCommands::PreMineGenerateSessionInfo(_) => pre_mine_generate_session_info = true,
+                CliCommands::PreMineEncumberAggregateUtxo(_) => pre_mine_encumber_aggregate_utxo = true,
+                CliCommands::PreMineSpendAggregateUtxo(_) => pre_mine_spend_aggregate_utxo = true,
+                CliCommands::PreMineCreatePartyDetails(_) => pre_mine_create_party_details = true,
+                CliCommands::PreMineCreateInputOutputSigs(_) => pre_mine_create_input_output_sigs = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
@@ -618,11 +619,11 @@ mod test {
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                faucet_generate_session_info &&
-                faucet_encumber_aggregate_utxo &&
-                faucet_spend_aggregate_utxo &&
-                faucet_create_party_details &&
-                faucet_create_input_output_sigs &&
+                pre_mine_generate_session_info &&
+                pre_mine_encumber_aggregate_utxo &&
+                pre_mine_spend_aggregate_utxo &&
+                pre_mine_create_party_details &&
+                pre_mine_create_input_output_sigs &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&

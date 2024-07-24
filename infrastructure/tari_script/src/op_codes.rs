@@ -129,11 +129,11 @@ const OP_END_IF: u8 = 0x63;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Opcode {
     // Block Height Checks
-    /// Pops the top of the stack as `height`. Compare the current block height to `height`. Fails with
+    /// Compare the current block height to `height`. Fails with
     /// `IncompatibleTypes` if u64 is not a valid 64-bit unsigned integer. Fails with `VerifyFailed` if the block
     /// height < `height`.
     CheckHeightVerify(u64),
-    /// Pops the top of the stack as `height`. Pushes the value of (the current tip height - `height`) to the stack. In
+    /// Pushes the value of (the current tip height - `height`) to the stack. In
     /// other words, the top of the stack will hold the height difference between `height` and the current height.
     /// If the chain has progressed beyond `height`, the value is positive; and negative if the chain has yet to
     /// reach `height`. Fails with `IncompatibleTypes` if u64 is not a valid 64-bit unsigned integer. Fails with

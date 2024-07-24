@@ -52,7 +52,7 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     }
 }
 
-fn add_faucet_utxos_to_genesis_block(file: &str, block: &mut Block) {
+fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut utxos = Vec::new();
     let mut counter = 1;
     let lines_count = file.lines().count();
@@ -106,13 +106,13 @@ fn print_mr_values(block: &mut Block, print: bool) {
 pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {pre_mine_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/stagenet_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+        let file_contents = include_str!("pre_mine/stagenet_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -158,13 +158,13 @@ fn get_stagenet_genesis_block_raw() -> Block {
 pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {pre_mine_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/nextnet_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+        let file_contents = include_str!("pre_mine/nextnet_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -216,13 +216,13 @@ pub fn get_igor_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_igor_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {pre_mine_value: ?}' with total value
         // NB: `igor_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/igor_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+        let file_contents = include_str!("pre_mine/igor_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -270,13 +270,13 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_esmeralda_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
-        // NB: `esmeralda_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = true;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {pre_mine_value: ?}' with total
+        // value NB: `esmeralda_genesis_sanity_check` must pass
+        let file_contents = include_str!("pre_mine/esmeralda_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -419,7 +419,7 @@ mod test {
     #[cfg(tari_target_network_testnet)]
     fn esme_genesis_sanity_check() {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
         check_block(Network::Esmeralda, &block, 20, 1);
     }
@@ -428,7 +428,7 @@ mod test {
     #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
         check_block(Network::NextNet, &block, 0, 0);
     }
@@ -438,7 +438,7 @@ mod test {
     fn stagenet_genesis_sanity_check() {
         Network::set_current(Network::StageNet).unwrap();
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
         check_block(Network::StageNet, &block, 0, 0);
     }
@@ -467,7 +467,7 @@ mod test {
         assert!(!some_output_is_coinbase);
         let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
         batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
-        // Coinbase and faucet kernel
+        // Coinbase and pre_mine kernel
         assert_eq!(
             block.block().body.kernels().len() as u64,
             block.header().kernel_mmr_size
@@ -522,8 +522,8 @@ mod test {
         );
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 
-        // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
-        // is correct)
+        // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
+        // kernel is correct)
 
         let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();

@@ -241,7 +241,7 @@ impl ConsensusManagerBuilder {
             self.consensus_constants[0].emission_decay,
             self.consensus_constants[0].inflation_bips,
             self.consensus_constants[0].tail_epoch_length,
-            self.consensus_constants[0].faucet_value(),
+            self.consensus_constants[0].pre_mine_value(),
         );
 
         let inner = ConsensusManagerInner {

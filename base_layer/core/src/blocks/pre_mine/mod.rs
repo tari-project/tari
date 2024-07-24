@@ -21,10 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #[cfg(test)]
 mod test {
+    use std::{
+        convert::{TryFrom, TryInto},
+        fs::File,
+        io::Write,
+    };
 
-    use std::{convert::TryFrom, fs::File, io::Write};
-
-    use rand::rngs::OsRng;
+    use rand::{rngs::OsRng, seq::SliceRandom, thread_rng};
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
@@ -32,7 +35,7 @@ mod test {
     };
     use tari_crypto::keys::{PublicKey as PkTrait, SecretKey as SkTrait};
     use tari_key_manager::key_manager_service::KeyManagerInterface;
-    use tari_script::{ExecutionStack, Opcode::CheckMultiSigVerifyAggregatePubKey, TariScript};
+    use tari_script::{script, ExecutionStack};
     use tari_utilities::ByteArray;
 
     use crate::{
@@ -61,12 +64,15 @@ mod test {
         },
     };
 
-    pub async fn create_faucets(
+    pub async fn create_pre_mine(
         amount: MicroMinotari,
-        num_faucets: usize,
+        num_utxos: usize,
         signature_threshold: u8,
-        lock_height: u64,
+        start_lock_height: u64,
+        lock_height_increase: u64,
         addresses: Vec<TariAddress>,
+        backup_address: TariAddress,
+        fail_safe_height: u64,
     ) -> (Vec<TransactionOutput>, TransactionKernel) {
         let mut list_of_spend_keys = Vec::new();
         let mut total_script_key = PublicKey::default();
@@ -80,8 +86,9 @@ mod test {
         let address_len = u8::try_from(addresses.len()).unwrap();
         let mut outputs = Vec::new();
         let mut total_private_key = PrivateKey::default();
+        let mut lock_height = start_lock_height;
 
-        for _ in 0..num_faucets {
+        for i in 0..num_utxos {
             let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
             total_private_key =
                 total_private_key + &key_manager.get_private_key(&commitment_mask.key_id).await.unwrap();
@@ -96,12 +103,10 @@ mod test {
                 .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await
                 .unwrap();
-            let script = TariScript::new(vec![CheckMultiSigVerifyAggregatePubKey(
-                signature_threshold,
-                address_len,
-                list_of_spend_keys.clone(),
-                Box::new(commitment_bytes),
-            )]);
+            list_of_spend_keys.shuffle(&mut thread_rng());
+            let script = script!(
+                    CheckHeight(lock_height + fail_safe_height)  LeZero IfThen CheckMultiSigVerifyAggregatePubKey(signature_threshold,address_len,list_of_spend_keys.clone(),Box::new(commitment_bytes)) Else PushPubKey(Box::new(backup_address.public_spend_key().clone())) EndIf
+            );
             let output = WalletOutputBuilder::new(amount, commitment_mask.key_id)
                 .with_features(OutputFeatures::new(
                     OutputFeaturesVersion::get_current_version(),
@@ -112,7 +117,7 @@ mod test {
                     RangeProofType::RevealedValue,
                 ))
                 .with_script(script)
-                .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::Empty)
+                .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U64(i.try_into().unwrap()))
                 .await
                 .unwrap()
                 .with_input_data(ExecutionStack::default())
@@ -127,6 +132,7 @@ mod test {
                 .await
                 .unwrap();
             outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
+            lock_height += lock_height_increase;
         }
         // lets create a single kernel for all the outputs
         let r = PrivateKey::random(&mut OsRng);
@@ -148,7 +154,7 @@ mod test {
     // Only run this when you want to create a new utxo file
     #[ignore]
     #[tokio::test]
-    async fn print_faucet() {
+    async fn print_pre_mine() {
         let addresses = vec![
             TariAddress::from_base58(
                 "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
@@ -166,8 +172,22 @@ mod test {
         for address in &addresses {
             println!("{}", address.public_spend_key());
         }
-        // lets create a faucet with 10 outputs of 1000T each
-        let (outputs, kernel) = create_faucets(MicroMinotari::from(2_000_000_000), 20, 2, 5, addresses).await;
+        let backup_address = TariAddress::from_base58(
+            "f4GYN3QVRboH6uwG9oFj3LjmUd4XVd1VDYiT6rNd4gCpZF6pY7iuoCpoajfDfuPynS7kspXU5hKRMWLTP9CRjoe1hZU",
+        )
+        .unwrap();
+        // lets create a pre_mine with 10 outputs of 1000T each
+        let (outputs, kernel) = create_pre_mine(
+            MicroMinotari::from(2_000_000_000),
+            100,
+            2,
+            5,
+            5,
+            addresses,
+            backup_address,
+            200,
+        )
+        .await;
         let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
 
         for output in outputs {

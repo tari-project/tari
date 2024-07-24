@@ -116,11 +116,11 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    FaucetGenerateSessionInfo(FaucetGenerateSessionInfoArgs),
-    FaucetCreatePartyDetails(FaucetCreatePartyDetailsArgs),
-    FaucetEncumberAggregateUtxo(FaucetEncumberAggregateUtxoArgs),
-    FaucetCreateInputOutputSigs(FaucetCreateInputOutputSigArgs),
-    FaucetSpendAggregateUtxo(FaucetSpendAggregateUtxoArgs),
+    PreMineGenerateSessionInfo(PreMineGenerateSessionInfoArgs),
+    PreMineCreatePartyDetails(PreMineCreatePartyDetailsArgs),
+    PreMineEncumberAggregateUtxo(PreMineEncumberAggregateUtxoArgs),
+    PreMineCreateInputOutputSigs(PreMineCreateInputOutputSigArgs),
+    PreMineSpendAggregateUtxo(PreMineSpendAggregateUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -163,7 +163,7 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetGenerateSessionInfoArgs {
+pub struct PreMineGenerateSessionInfoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
@@ -177,7 +177,7 @@ pub struct FaucetGenerateSessionInfoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetCreatePartyDetailsArgs {
+pub struct PreMineCreatePartyDetailsArgs {
     #[clap(long)]
     pub input_file: PathBuf,
     #[clap(long)]
@@ -185,7 +185,7 @@ pub struct FaucetCreatePartyDetailsArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetEncumberAggregateUtxoArgs {
+pub struct PreMineEncumberAggregateUtxoArgs {
     #[clap(long)]
     pub session_id: String,
     #[clap(long)]
@@ -193,13 +193,13 @@ pub struct FaucetEncumberAggregateUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetCreateInputOutputSigArgs {
+pub struct PreMineCreateInputOutputSigArgs {
     #[clap(long)]
     pub session_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetSpendAggregateUtxoArgs {
+pub struct PreMineSpendAggregateUtxoArgs {
     #[clap(long)]
     pub session_id: String,
     #[clap(long)]
