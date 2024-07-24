@@ -30,7 +30,13 @@ use tari_utilities::hex::{from_hex, Hex};
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
     emoji::{EMOJI, REVERSE_EMOJI},
-    tari_address::{TariAddressError, TariAddressFeatures, INTERNAL_SINGLE_SIZE},
+    tari_address::{
+        TariAddressError,
+        TariAddressFeatures,
+        INTERNAL_SINGLE_MAX_BASE58_SIZE,
+        INTERNAL_SINGLE_MIN_BASE58_SIZE,
+        INTERNAL_SINGLE_SIZE,
+    },
     types::PublicKey,
 };
 
@@ -142,7 +148,7 @@ impl SingleAddress {
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
         // Due to the byte length, it can be encoded as 46, 47 or 48 chars
-        if hex_str.len() != 46 && hex_str.len() != 47 && hex_str.len() != 48 {
+        if hex_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE || hex_str.len() > INTERNAL_SINGLE_MAX_BASE58_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
         let result = panic::catch_unwind(|| hex_str.split_at(2));
