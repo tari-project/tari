@@ -66,7 +66,7 @@ impl Display for ProvidedKeysWallet {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerWallet {
-    account: u64,
+    pub account: u64,
     pub public_alpha: Option<PublicKey>,
     pub network: Network,
     pub view_key: Option<PrivateKey>,
@@ -88,9 +88,5 @@ impl LedgerWallet {
             network,
             view_key,
         }
-    }
-
-    pub fn account_bytes(&self) -> Vec<u8> {
-        self.account.to_le_bytes().to_vec()
     }
 }

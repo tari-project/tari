@@ -473,7 +473,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn sign_with_nonce_and_message(
+    async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
@@ -482,7 +482,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.transaction_key_manager_inner
             .read()
             .await
-            .sign_with_nonce_and_message(private_key_id, nonce, challenge)
+            .sign_with_nonce_and_challenge(private_key_id, nonce, challenge)
             .await
     }
 

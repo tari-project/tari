@@ -870,7 +870,7 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PrivateKey;
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::PrivateKey};
     use tari_crypto::signatures::CommitmentAndPublicKeySignature;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -882,7 +882,7 @@ mod test {
         test_helpers::{create_consensus_constants, create_consensus_rules},
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{

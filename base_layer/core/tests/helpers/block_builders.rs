@@ -22,7 +22,10 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::{Commitment, FixedHash};
+use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    types::{Commitment, FixedHash},
+};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{
@@ -35,7 +38,7 @@ use tari_core::{
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        key_manager::{MemoryDbKeyManager, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{

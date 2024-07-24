@@ -26,6 +26,7 @@ mod test {
 
     use rand::rngs::OsRng;
     use tari_common_types::{
+        key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
         types::{Commitment, PrivateKey, PublicKey, Signature},
     };
@@ -40,7 +41,6 @@ mod test {
             key_manager::{
                 create_memory_db_key_manager,
                 SecretTransactionKeyManagerInterface,
-                TransactionKeyManagerBranch,
                 TransactionKeyManagerInterface,
             },
             tari_amount::MicroMinotari,

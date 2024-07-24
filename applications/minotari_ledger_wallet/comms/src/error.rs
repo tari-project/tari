@@ -55,3 +55,9 @@ impl From<ByteArrayError> for LedgerDeviceError {
         LedgerDeviceError::ByteArrayError(e.to_string())
     }
 }
+
+impl From<String> for LedgerDeviceError {
+    fn from(e: String) -> Self {
+        LedgerDeviceError::Processing(e)
+    }
+}

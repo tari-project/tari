@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2024 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// This is the string used to derive the comms/spend key of the wallet
-pub const WALLET_COMMS_AND_SPEND_KEY_BRANCH: &str = "comms";
+use alloc::string::{String, ToString};
 
-pub mod burnt_proof;
-pub mod chain_metadata;
-pub mod dammsum;
-pub mod emoji;
-pub mod encryption;
-pub mod epoch;
-pub mod grpc_authentication;
-pub mod key_branches;
-pub mod serializers;
-pub mod tari_address;
-pub mod transaction;
-mod tx_id;
-pub mod types;
-pub mod wallet_types;
+pub fn u16_to_string(number: u16) -> String {
+    let mut buffer = [0u8; 6]; // Maximum length for a 16-bit integer (including null terminator)
+    let mut pos = 0;
+
+    if number == 0 {
+        buffer[pos] = b'0';
+        pos += 1;
+    } else {
+        let mut num = number;
+
+        let mut digits = [0u8; 6];
+        let mut num_digits = 0;
+
+        while num > 0 {
+            digits[num_digits] = b'0' + (num % 10) as u8;
+            num /= 10;
+            num_digits += 1;
+        }
+
+        while num_digits > 0 {
+            num_digits -= 1;
+            buffer[pos] = digits[num_digits];
+            pos += 1;
+        }
+    }
+
+    String::from_utf8_lossy(&buffer[..pos]).to_string()
+}

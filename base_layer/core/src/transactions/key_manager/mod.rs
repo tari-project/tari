@@ -27,7 +27,6 @@ mod interface;
 pub use interface::{
     SecretTransactionKeyManagerInterface,
     TariKeyId,
-    TransactionKeyManagerBranch,
     TransactionKeyManagerInterface,
     TransactionKeyManagerLabel,
     TxoStage,
@@ -48,3 +47,4 @@ pub use memory_db_key_manager::{
 
 mod error;
 pub use error::CoreKeyManagerError;
+pub use tari_common_types::key_branches::TransactionKeyManagerBranch;

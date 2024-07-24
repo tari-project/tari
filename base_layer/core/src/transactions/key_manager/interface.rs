@@ -25,10 +25,7 @@ use std::str::FromStr;
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
-use tari_common_types::{
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
-    WALLET_COMMS_AND_SPEND_KEY_BRANCH,
-};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
@@ -55,56 +52,6 @@ pub type TariKeyId = KeyId<PublicKey>;
 pub enum TxoStage {
     Input,
     Output,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, EnumIter)]
-// These byte reps must stay in sync with the ledger representations at:
-// applications/minotari_ledger_wallet/wallet/src/main.rs
-pub enum TransactionKeyManagerBranch {
-    DataEncryption = 0x00,
-    MetadataEphemeralNonce = 0x01,
-    CommitmentMask = 0x02,
-    Nonce = 0x03,
-    KernelNonce = 0x04,
-    SenderOffset = 0x05,
-    SenderOffsetLedger = 0x06,
-    Spend = 0x07,
-}
-
-impl TransactionKeyManagerBranch {
-    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
-    /// recovery.
-    pub fn get_branch_key(self) -> String {
-        match self {
-            TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
-            TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
-            TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
-            TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
-            TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
-            TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
-            TransactionKeyManagerBranch::SenderOffsetLedger => "sender offset ledger".to_string(),
-            TransactionKeyManagerBranch::Spend => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
-        }
-    }
-
-    pub fn from_key(key: &str) -> Self {
-        match key {
-            "data encryption" => TransactionKeyManagerBranch::DataEncryption,
-            "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
-            "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
-            "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
-            "sender offset" => TransactionKeyManagerBranch::SenderOffset,
-            "sender offset ledger" => TransactionKeyManagerBranch::SenderOffsetLedger,
-            "nonce" => TransactionKeyManagerBranch::Nonce,
-            WALLET_COMMS_AND_SPEND_KEY_BRANCH => TransactionKeyManagerBranch::Spend,
-            _ => TransactionKeyManagerBranch::Nonce,
-        }
-    }
-
-    pub fn as_byte(self) -> u8 {
-        self as u8
-    }
 }
 
 #[derive(Clone, Copy, EnumIter)]
@@ -279,7 +226,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         challenge: &[u8],
     ) -> Result<CheckSigSchnorrSignature, TransactionError>;
 
-    async fn sign_with_nonce_and_message(
+    async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,

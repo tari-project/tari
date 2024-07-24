@@ -3,7 +3,7 @@
 
 use core::ops::Deref;
 
-use ledger_device_sdk::io::Comm;
+use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
 use crate::{
@@ -15,6 +15,10 @@ use crate::{
 
 pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
+    if data.len() != 56 {
+        SingleMessage::new("Invalid data length").show_and_wait();
+        return Err(AppSW::WrongApduLength);
+    }
 
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&data[0..8]);

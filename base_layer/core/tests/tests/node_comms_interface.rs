@@ -23,6 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use tari_common::configuration::Network;
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -44,7 +45,6 @@ use tari_core::{
         key_manager::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
-            TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
             TransactionKeyManagerLabel,
         },

@@ -5,7 +5,7 @@ use alloc::format;
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use ledger_device_sdk::{io::Comm, random::Random, ui::gadgets::SingleMessage};
+use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey,
@@ -22,7 +22,7 @@ use zeroize::Zeroizing;
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, get_random_nonce},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -31,6 +31,10 @@ use crate::{
 
 pub fn handler_get_script_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
+    if data.len() != 184 {
+        SingleMessage::new("Invalid data length").show_and_wait();
+        return Err(AppSW::WrongApduLength);
+    }
 
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&data[0..8]);
@@ -52,7 +56,7 @@ pub fn handler_get_script_signature(comm: &mut Comm) -> Result<(), AppSW> {
 
     let value: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[56..88])?.into();
-    let spend_private_key: Zeroizing<RistrettoSecretKey> =
+    let commitment_private_key: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[88..120])?.into();
 
     let commitment: PedersenCommitment = get_key_from_canonical_bytes(&data[120..152])?;
@@ -60,9 +64,13 @@ pub fn handler_get_script_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let mut script_message = [0u8; 32];
     script_message.clone_from_slice(&data[152..184]);
 
-    let r_a = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
-    let r_x = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
-    let r_y = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
+    let r_a = get_random_nonce()?;
+    let r_x = get_random_nonce()?;
+    let r_y = get_random_nonce()?;
+    if r_a == r_x || r_a == r_y || r_x == r_y {
+        SingleMessage::new("Nonces not unique!").show_and_wait();
+        return Err(AppSW::ScriptSignatureFail);
+    }
 
     let factory = ExtendedPedersenCommitmentFactory::default();
 
@@ -81,7 +89,7 @@ pub fn handler_get_script_signature(comm: &mut Comm) -> Result<(), AppSW> {
 
     let script_signature = match RistrettoComAndPubSig::sign(
         &value,
-        &spend_private_key,
+        &commitment_private_key,
         &script_private_key,
         &r_a,
         &r_x,

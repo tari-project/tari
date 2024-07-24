@@ -20,6 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod accessor_methods;
-pub mod error;
-pub mod ledger_wallet;
+#![no_std]
+
+//! # Common types shared by the Ledger application and the rest of the Tari codebase.
+/// Note: `ledger-device-rust-sdk` cannot be included in this crate as it can only be compiled for no-std and the
+///        rest of the Tari code base is compiled for std.
+extern crate alloc;
+
+pub mod common_types;
+mod utils;
