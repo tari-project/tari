@@ -64,7 +64,6 @@ use tari_core::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
         },
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
@@ -75,7 +74,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, SerializedKeyString};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -2164,9 +2163,13 @@ async fn scan_for_recovery_test() {
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask_key.key_id.managed_index().unwrap(),
+            key: SerializedKeyString::from(
+                KeyId::<PublicKey>::Managed {
+                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    index: commitment_mask_key.key_id.managed_index().unwrap(),
+                }
+                .to_string(),
+            ),
         };
         let public_script_key = oms
             .key_manager_handle

@@ -26,10 +26,10 @@ use log::*;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
-    types::{FixedHash, PrivateKey},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,
@@ -40,7 +40,7 @@ use tari_core::transactions::{
     },
 };
 use tari_crypto::keys::SecretKey;
-use tari_key_manager::key_manager_service::KeyId;
+use tari_key_manager::key_manager_service::{KeyId, SerializedKeyString};
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
 
@@ -206,9 +206,13 @@ where
             // This is a nop, so we can just create a new key for the input stack.
             let key = if let Some(index) = spending_key.managed_index() {
                 KeyId::Derived {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-                    index,
+                    key: SerializedKeyString::from(
+                        KeyId::<PublicKey>::Managed {
+                            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                            index,
+                        }
+                        .to_string(),
+                    ),
                 }
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());

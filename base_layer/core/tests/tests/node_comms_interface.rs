@@ -23,7 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use tari_common::configuration::Network;
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
+use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::PublicKey};
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -42,12 +42,7 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
-        },
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
@@ -65,7 +60,7 @@ use tari_core::{
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
     OutputSmt,
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, SerializedKeyString};
 use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -307,9 +302,13 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .unwrap();
 
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask_key.key_id.managed_index().unwrap(),
+            key: SerializedKeyString::from(
+                KeyId::<PublicKey>::Managed {
+                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    index: commitment_mask_key.key_id.managed_index().unwrap(),
+                }
+                .to_string(),
+            ),
         };
 
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();

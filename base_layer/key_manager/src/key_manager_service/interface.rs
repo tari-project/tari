@@ -62,6 +62,31 @@ pub struct KeyAndId<PK> {
     pub key_id: KeyId<PK>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SerializedKeyString {
+    inner: String,
+}
+
+impl SerializedKeyString {
+    pub fn from<T: Into<String>>(inner: T) -> Self {
+        Self { inner: inner.into() }
+    }
+}
+
+impl fmt::Display for SerializedKeyString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl<PK> From<KeyId<PK>> for SerializedKeyString
+where PK: ByteArray
+{
+    fn from(key_id: KeyId<PK>) -> Self {
+        Self::from(key_id.to_string())
+    }
+}
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId<PK> {
     Managed {
@@ -69,9 +94,7 @@ pub enum KeyId<PK> {
         index: u64,
     },
     Derived {
-        branch: String,
-        label: String,
-        index: u64,
+        key: SerializedKeyString,
     },
     Imported {
         key: PK,
@@ -86,7 +109,7 @@ where PK: Clone
     pub fn managed_index(&self) -> Option<u64> {
         match self {
             KeyId::Managed { index, .. } => Some(*index),
-            KeyId::Derived { index, .. } => Some(*index),
+            KeyId::Derived { .. } => None,
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -95,7 +118,7 @@ where PK: Clone
     pub fn managed_branch(&self) -> Option<String> {
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
-            KeyId::Derived { branch, .. } => Some(branch.clone()),
+            KeyId::Derived { .. } => None,
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -123,11 +146,7 @@ where PK: ByteArray
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
-            KeyId::Derived {
-                branch: b,
-                label: l,
-                index: i,
-            } => write!(f, "{}.{}.{}.{}", DERIVED_KEY_BRANCH, b, l, i),
+            KeyId::Derived { key: k } => write!(f, "{}.{}", DERIVED_KEY_BRANCH, k),
             KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
@@ -165,16 +184,12 @@ where PK: ByteArray
                 },
                 ZERO_KEY_BRANCH => Ok(KeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    if parts.len() != 4 {
+                    if parts.len() != 3 | 4 {
                         return Err("Wrong format".to_string());
                     }
-                    let index = parts[3]
-                        .parse()
-                        .map_err(|_| "Index for default, invalid u64".to_string())?;
+                    let key = parts[1..].join(".");
                     Ok(KeyId::Derived {
-                        branch: parts[1].into(),
-                        label: parts[2].into(),
-                        index,
+                        key: SerializedKeyString::from(key),
                     })
                 },
                 _ => Err("Wrong format".to_string()),
