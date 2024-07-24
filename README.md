@@ -114,8 +114,8 @@ First you'll need to make sure you have a full development environment set up:
 
 ```
 brew update
-brew install openssl cmake coreutils automake autoconf protobuf tor
-brew install --cask powershell
+brew install coreutils tor openssl \
+  cmake make libtool autoconf automake protobuf
 ```
 
 #### (macOS M1 chipset)

@@ -2958,9 +2958,9 @@ dependencies = [
 
 [[package]]
 name = "libtor"
-version = "46.9.0+0.4.6.x"
+version = "47.13.0+0.4.7.x"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18ca40c5090fd84877853f509dce8f906922e6c6fb0be12f4b61f6116710d457"
+checksum = "1be588c6a2f02b860a1c0e3b2a59edcb171058f8da71b8ca0ddd7bb40f102c5c"
 dependencies = [
  "libtor-derive",
  "libtor-sys",
@@ -2981,14 +2981,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "libtor-sys"
-version = "46.9.1+0.4.6.9"
+name = "libtor-src"
+version = "47.13.0+0.4.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52bf218e9764d77c16b77b9a26f219c5302bf7be010fd82aba63b019dea41fea"
+checksum = "e73bef51ecfbe7e63ce5cb8757ebc59d09dca6985da7f7470931ac22eab00719"
+dependencies = [
+ "fs_extra",
+]
+
+[[package]]
+name = "libtor-sys"
+version = "47.13.0+0.4.7.x"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb0bc2cfc5d03851617d33508acc511e46f0c2b3cbc3cda85defcb50efa628bb"
 dependencies = [
  "autotools",
  "cc",
- "fs_extra",
+ "libtor-src",
  "libz-sys",
  "openssl-sys",
 ]
@@ -6374,7 +6383,6 @@ dependencies = [
  "derivative",
  "libtor",
  "log",
- "openssl",
  "rand",
  "tari_common",
  "tari_p2p",
