@@ -247,7 +247,6 @@ impl TariAddress {
     /// Construct Tari Address from hex
     pub fn from_base58(hex_str: &str) -> Result<TariAddress, TariAddressError> {
         if hex_str.len() < 45 {
-            dbg!(hex_str.len());
             return Err(TariAddressError::InvalidSize);
         }
         let result = panic::catch_unwind(|| hex_str.split_at(2));
