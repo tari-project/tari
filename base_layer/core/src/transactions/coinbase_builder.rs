@@ -23,7 +23,7 @@
 
 use log::*;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{Commitment, PrivateKey},
 };
@@ -502,7 +502,7 @@ pub async fn generate_coinbase_with_wallet_output(
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::{key_manager::TransactionKeyManagerBranch, tari_address::TariAddress, types::Commitment};
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::Commitment};
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},

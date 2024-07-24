@@ -27,7 +27,7 @@ use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},

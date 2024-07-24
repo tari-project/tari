@@ -8,8 +8,8 @@ use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ledger_get_app_name,
         ledger_get_dh_shared_secret,
-        ledger_get_public_alpha,
         ledger_get_public_key,
+        ledger_get_public_spend_key,
         ledger_get_raw_schnorr_signature,
         ledger_get_script_offset,
         ledger_get_script_schnorr_signature,
@@ -37,7 +37,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_crypto::{
@@ -103,7 +103,7 @@ fn main() {
     // GetPublicAlpha
     println!("\ntest: GetPublicAlpha");
     let account = OsRng.next_u64();
-    match ledger_get_public_alpha(account) {
+    match ledger_get_public_spend_key(account) {
         Ok(public_alpha) => println!("public_alpha:   {}", public_alpha.to_hex()),
         Err(e) => {
             println!("\nError: {}\n", e);

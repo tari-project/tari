@@ -870,7 +870,7 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{key_manager::TransactionKeyManagerBranch, types::PrivateKey};
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::PrivateKey};
     use tari_crypto::signatures::CommitmentAndPublicKeySignature;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{inputs, script, ExecutionStack, TariScript};

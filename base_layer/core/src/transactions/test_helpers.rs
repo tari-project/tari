@@ -26,7 +26,7 @@ use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::keys::{PublicKey as PK, SecretKey};

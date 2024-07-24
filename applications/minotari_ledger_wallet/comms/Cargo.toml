@@ -12,11 +12,11 @@ tari_common = { path = "../../../common" }
 tari_common_types = { path = "../../../base_layer/common_types" }
 tari_script = { path = "../../../infrastructure/tari_script" }
 
+minotari_ledger_wallet_common = { path = "../common" }
+
 dialoguer = { version = "0.11" }
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
-num-derive = "0.4.2"
-num-traits = "0.2.15"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.26"
 

@@ -36,7 +36,7 @@ use minotari_app_grpc::{
 };
 use minotari_app_utilities::consts;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };

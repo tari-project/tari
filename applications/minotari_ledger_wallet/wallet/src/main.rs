@@ -44,6 +44,11 @@ use ledger_device_sdk::{
     io::{ApduHeader, Comm, Event, Reply, StatusWords},
     ui::gadgets::SingleMessage,
 };
+use minotari_ledger_wallet_common::common_types::{
+    AppSW as AppSWMapping,
+    Branch as BranchMapping,
+    Instruction as InstructionMapping,
+};
 
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
@@ -89,22 +94,18 @@ unsafe impl critical_section::Impl for MyCriticalSection {
 // Application status words.
 #[repr(u16)]
 pub enum AppSW {
-    Deny = 0xB001,
-    WrongP1P2 = 0xB002,
-    InsNotSupported = 0xB003,
-    ClaNotSupported = 0xB004,
-    ScriptSignatureFail = 0xB005,
-    MetadataSignatureFail = 0xB006,
-    RawSchnorrSignatureFail = 0xB007,
-    SchnorrSignatureFail = 0xB008,
-    ScriptOffsetNotUnique = 0xB009,
-    KeyDeriveFail = 0xB00A,
-    KeyDeriveFromCanonical = 0xB00B,
-    KeyDeriveFromUniform = 0xB00C,
-    VersionParsingFail = 0xB00D,
-    TooManyPayloads = 0xB00E,
-    RandomNonceFail = 0xB00F,
-    BadBranchKey = 0xB010,
+    Deny = AppSWMapping::Deny as u16,
+    WrongP1P2 = AppSWMapping::WrongP1P2 as u16,
+    InsNotSupported = AppSWMapping::InsNotSupported as u16,
+    ScriptSignatureFail = AppSWMapping::ScriptSignatureFail as u16,
+    RawSchnorrSignatureFail = AppSWMapping::RawSchnorrSignatureFail as u16,
+    SchnorrSignatureFail = AppSWMapping::SchnorrSignatureFail as u16,
+    ScriptOffsetNotUnique = AppSWMapping::ScriptOffsetNotUnique as u16,
+    KeyDeriveFail = AppSWMapping::KeyDeriveFail as u16,
+    KeyDeriveFromCanonical = AppSWMapping::KeyDeriveFromCanonical as u16,
+    KeyDeriveFromUniform = AppSWMapping::KeyDeriveFromUniform as u16,
+    RandomNonceFail = AppSWMapping::RandomNonceFail as u16,
+    BadBranchKey = AppSWMapping::BadBranchKey as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
 }
@@ -150,16 +151,18 @@ impl KeyType {
     }
 
     fn from_branch_key(n: u64) -> Result<Self, AppSW> {
-        // These numbers need to match the TransactionKeyManagerBranches in:
-        // base_layer/core/src/transactions/key_manager/interface.rs
-        // See `pub enum TransactionKeyManagerBranch` in
-        // `tari_wallet/src/transaction_service/transaction_key_manager.rs` for the mapping of the branch key to
-        // the key type.
-        match n {
-            6 => Ok(Self::OneSidedSenderOffset),
-            7 => Ok(Self::Spend),
-            8 => Ok(Self::Random),
-            _ => Err(AppSW::BadBranchKey),
+        if n > u64::from(u8::MAX) {
+            return Err(AppSW::BadBranchKey);
+        }
+        if let Some(branch) = BranchMapping::from_byte(n as u8) {
+            match branch {
+                BranchMapping::SenderOffsetLedger => Ok(Self::OneSidedSenderOffset),
+                BranchMapping::Spend => Ok(Self::Spend),
+                BranchMapping::RandomKey => Ok(Self::Random),
+                _ => Err(AppSW::BadBranchKey),
+            }
+        } else {
+            return Err(AppSW::BadBranchKey);
         }
     }
 }
@@ -179,21 +182,22 @@ impl TryFrom<ApduHeader> for Instruction {
     /// Note that CLA is not checked here. Instead the method [`Comm::set_expected_cla`] is used in
     /// [`sample_main`] to have this verification automatically performed by the SDK.
     fn try_from(value: ApduHeader) -> Result<Self, Self::Error> {
-        match (value.ins, value.p1, value.p2) {
-            (0x01, 0, 0) => Ok(Instruction::GetVersion),
-            (0x02, 0, 0) => Ok(Instruction::GetAppName),
-            (0x03, 0, 0) => Ok(Instruction::GetPublicSpendKey),
-            (0x04, 0, 0) => Ok(Instruction::GetPublicKey),
-            (0x05, 0, 0) => Ok(Instruction::GetScriptSignature),
-            (0x06, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
+        let ins = InstructionMapping::from_byte(value.ins).ok_or(AppSW::InsNotSupported)?;
+        match (ins, value.p1, value.p2) {
+            (InstructionMapping::GetVersion, 0, 0) => Ok(Instruction::GetVersion),
+            (InstructionMapping::GetAppName, 0, 0) => Ok(Instruction::GetAppName),
+            (InstructionMapping::GetPublicSpendKey, 0, 0) => Ok(Instruction::GetPublicSpendKey),
+            (InstructionMapping::GetPublicKey, 0, 0) => Ok(Instruction::GetPublicKey),
+            (InstructionMapping::GetScriptSignature, 0, 0) => Ok(Instruction::GetScriptSignature),
+            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk: value.p1,
                 more: value.p2 == P2_MORE,
             }),
-            (0x07, 0, 0) => Ok(Instruction::GetViewKey),
-            (0x08, 0, 0) => Ok(Instruction::GetDHSharedSecret),
-            (0x09, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
-            (0x10, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
-            (0x06, _, _) => Err(AppSW::WrongP1P2),
+            (InstructionMapping::GetViewKey, 0, 0) => Ok(Instruction::GetViewKey),
+            (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
+            (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
+            (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
+            (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }

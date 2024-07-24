@@ -22,11 +22,12 @@
 
 use std::sync::Mutex;
 
+use minotari_ledger_wallet_common::common_types::{AppSW, Instruction};
 use once_cell::sync::Lazy;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::dhke::DiffieHellmanSharedSecret;
@@ -35,7 +36,7 @@ use tari_utilities::ByteArray;
 
 use crate::{
     error::LedgerDeviceError,
-    ledger_wallet::{AppSW, Command, Instruction, EXPECTED_NAME, EXPECTED_VERSION},
+    ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_VERSION},
 };
 
 // hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
@@ -95,7 +96,8 @@ fn verify() -> Result<(), LedgerDeviceError> {
     let private_key_branch = TransactionKeyManagerBranch::SenderOffsetLedger;
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
-    match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
+    let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce)
+    {
         Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
             Ok(public_key) => {
                 if !signature.verify(&public_key, nonce) {
@@ -103,6 +105,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
                         "'Minotari Wallet' application could not create a valid signature".to_string(),
                     ));
                 }
+                signature
             },
             Err(e) => {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -110,6 +113,21 @@ fn verify() -> Result<(), LedgerDeviceError> {
                     e
                 )))
             },
+        },
+        Err(e) => {
+            return Err(LedgerDeviceError::Processing(format!(
+                "'Minotari Wallet' application could not create a signature ({:?})",
+                e
+            )))
+        },
+    };
+    match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
+        Ok(signature_b) => {
+            if signature_a == signature_b {
+                return Err(LedgerDeviceError::Processing(
+                    "'Minotari Wallet' application is not creating unique signatures".to_string(),
+                ));
+            }
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
@@ -165,16 +183,16 @@ pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
 }
 
 /// Get the public alpha key from the ledger device
-pub fn ledger_get_public_alpha(account: u64) -> Result<PublicKey, LedgerDeviceError> {
+pub fn ledger_get_public_spend_key(account: u64) -> Result<PublicKey, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicAlpha, vec![]).execute() {
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetPublicAlpha: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
             let public_alpha = PublicKey::from_canonical_bytes(&result.data()[1..33])?;
@@ -203,7 +221,7 @@ pub fn ledger_get_public_key(
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetPublicAlpha: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
             let public_key = PublicKey::from_canonical_bytes(&result.data()[1..33])?;
@@ -247,7 +265,7 @@ pub fn ledger_get_script_signature(
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptSignature: expected 161 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
             let data = result.data();
@@ -306,7 +324,7 @@ pub fn ledger_get_script_offset(
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptOffset: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
             let script_offset = PrivateKey::from_canonical_bytes(&result.data()[1..33])?;
@@ -326,7 +344,7 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetViewKey: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
             let view_key = PrivateKey::from_canonical_bytes(&result.data()[1..33])?;
@@ -356,7 +374,7 @@ pub fn ledger_get_dh_shared_secret(
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetDHSharedSecret: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
             let shared_secret = DiffieHellmanSharedSecret::<PublicKey>::from_canonical_bytes(&result.data()[1..33])?;
@@ -390,7 +408,7 @@ pub fn ledger_get_raw_schnorr_signature(
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetRawSchnorrSignature: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
 
@@ -427,7 +445,7 @@ pub fn ledger_get_script_schnorr_signature(
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptSchnorrSignature: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
-                    AppSW::from(result.retcode())
+                    AppSW::try_from(result.retcode())?
                 )));
             }
 

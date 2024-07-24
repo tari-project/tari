@@ -27,7 +27,7 @@ use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 #[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_alpha, ledger_get_view_key};
+use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_spend_key, ledger_get_view_key};
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -827,7 +827,7 @@ pub fn prompt_wallet_type(
                 if prompt(connected_hardware_msg) {
                     print!("Scanning for connected Ledger hardware device... ");
                     let account = prompt_ledger_account(boot_mode).expect("An account value");
-                    match ledger_get_public_alpha(account) {
+                    match ledger_get_public_spend_key(account) {
                         Ok(public_alpha) => match ledger_get_view_key(account) {
                             Ok(view_key) => {
                                 let ledger = LedgerWallet::new(

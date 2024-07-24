@@ -38,7 +38,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use strum::IntoEnumIterator;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
@@ -172,10 +172,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             let mut km = self
                 .key_managers
                 .get(branch)
-                .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                    "{}, {}",
-                    branch, self.wallet_type
-                )))?
+                .ok_or(self.unknown_key_branch_error(branch))?
                 .write()
                 .await;
             self.db.increment_key_index(branch)?;
@@ -229,10 +226,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_static_key(&self, branch: &str) -> Result<TariKeyId, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
-            None => Err(KeyManagerServiceError::UnknownKeyBranch(format!(
-                "{}, {}",
-                branch, self.wallet_type
-            ))),
+            None => Err(self.unknown_key_branch_error(branch)),
             Some(_) => Ok(KeyId::Managed {
                 branch: branch.to_string(),
                 index: 0,
@@ -240,7 +234,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
@@ -274,19 +267,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible)?;
                             Ok(PublicKey::from_secret_key(&view_key))
                         },
-                        _ => Err(KeyManagerServiceError::BranchNotSupported(format!(
-                            "{}, {}",
-                            branch, self.wallet_type
-                        ))),
+                        _ => Err(self.branch_not_supported_error(branch)),
                     },
                     _ => {
                         let km = self
                             .key_managers
                             .get(branch)
-                            .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                                "{}, {}",
-                                branch, self.wallet_type
-                            )))?
+                            .ok_or(self.unknown_key_branch_error(branch))?
                             .read()
                             .await;
                         Ok(km.derive_public_key(*index)?.key)
@@ -298,10 +285,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let km = self
                     .key_managers
                     .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                        "{}, {}",
-                        branch, self.wallet_type
-                    )))?
+                    .ok_or(self.unknown_key_branch_error(branch))?
                     .read()
                     .await;
                 let branch_key = km.get_private_key(*index)?;
@@ -319,6 +303,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PublicKey::default()),
         }
+    }
+
+    fn unknown_key_branch_error(&self, branch: &str) -> KeyManagerServiceError {
+        KeyManagerServiceError::UnknownKeyBranch(format!("{}, {}", branch, self.wallet_type))
+    }
+
+    fn branch_not_supported_error(&self, branch: &str) -> KeyManagerServiceError {
+        KeyManagerServiceError::BranchNotSupported(format!("{}, {}", branch, self.wallet_type))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -360,10 +352,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let km = self
                     .key_managers
                     .get(branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                        "{}, {}",
-                        branch, self.wallet_type
-                    )))?
+                    .ok_or(self.unknown_key_branch_error(branch))?
                     .read()
                     .await;
                 let key = km.get_private_key(*index)?;
@@ -375,20 +364,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let km = self
                         .key_managers
                         .get(&TransactionKeyManagerBranch::Spend.get_branch_key())
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                            "{}, {}",
-                            branch, self.wallet_type
-                        )))?
+                        .ok_or(self.unknown_key_branch_error(branch))?
                         .read()
                         .await;
                     let private_alpha = km.get_private_key(0)?;
                     let km = self
                         .key_managers
                         .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                            "{}, {}",
-                            branch, self.wallet_type
-                        )))?
+                        .ok_or(self.unknown_key_branch_error(branch))?
                         .read()
                         .await;
                     let branch_key = km.get_private_key(*index)?;
@@ -409,10 +392,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let km = self
                         .key_managers
                         .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                            "{}, {}",
-                            branch, self.wallet_type
-                        )))?
+                        .ok_or(self.unknown_key_branch_error(branch))?
                         .read()
                         .await;
                     let branch_key = km.get_private_key(*index)?;
@@ -533,10 +513,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let km = self
                     .key_managers
                     .get(&branch)
-                    .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                        "{}, {}",
-                        branch, self.wallet_type
-                    )))?
+                    .ok_or(self.unknown_key_branch_error(&branch))?
                     .read()
                     .await;
                 let key = km.get_private_key(index)?;
@@ -593,10 +570,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let km = self
             .key_managers
             .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                "{}, {}",
-                branch, self.wallet_type
-            )))?
+            .ok_or(self.unknown_key_branch_error(branch))?
             .read()
             .await;
 
@@ -627,10 +601,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let km = self
             .key_managers
             .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                "{}, {}",
-                branch, self.wallet_type
-            )))?
+            .ok_or(self.unknown_key_branch_error(branch))?
             .read()
             .await;
 
@@ -666,10 +637,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let mut km = self
             .key_managers
             .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                "{}, {}",
-                branch, self.wallet_type
-            )))?
+            .ok_or(self.unknown_key_branch_error(branch))?
             .write()
             .await;
         let current_index = km.key_index();
@@ -736,9 +704,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .map_err(TransactionError::LedgerDeviceError)
                         }
                     },
-                    _ => Err(TransactionError::from(KeyManagerServiceError::BranchNotSupported(
-                        format!("{}, {}", branch, self.wallet_type),
-                    ))),
+                    _ => Err(TransactionError::from(self.branch_not_supported_error(branch))),
                 },
                 _ => Err(TransactionError::UnsupportedTariKeyId(format!(
                     "Expected 'KeyId::Managed', got {}",
@@ -782,9 +748,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .map(diffie_hellman_stealth_domain_hasher)
                         }
                     },
-                    _ => Err(TransactionError::from(KeyManagerServiceError::BranchNotSupported(
-                        format!("{}, {}", branch, self.wallet_type),
-                    ))),
+                    _ => Err(TransactionError::from(self.branch_not_supported_error(branch))),
                 },
                 _ => Err(TransactionError::UnsupportedTariKeyId(format!(
                     "Expected 'KeyId::Managed', got {}",
@@ -857,7 +821,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         match (&self.wallet_type, script_key_id) {
             (
                 WalletType::Ledger(ledger),
-                // TODO: Is this correct? Should it not be 'KeyId::Managed'?
                 KeyId::Derived {
                     branch,
                     label: _,
@@ -877,10 +840,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let km = self
                         .key_managers
                         .get(branch)
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                            "{}, {}",
-                            branch, self.wallet_type
-                        )))?
+                        .ok_or(self.unknown_key_branch_error(branch))?
                         .read()
                         .await;
                     let branch_key = km
@@ -1033,7 +993,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     pub async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
@@ -1059,10 +1018,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         let km = self
                             .key_managers
                             .get(branch)
-                            .ok_or(KeyManagerServiceError::UnknownKeyBranch(format!(
-                                "{}, {}",
-                                branch, self.wallet_type
-                            )))?
+                            .ok_or(self.unknown_key_branch_error(branch))?
                             .read()
                             .await;
                         let branch_key = km
@@ -1164,7 +1120,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
-        nonce: &[u8],
+        challenge: &[u8],
     ) -> Result<CheckSigSchnorrSignature, TransactionError> {
         match &self.wallet_type {
             WalletType::Ledger(ledger) => {
@@ -1184,7 +1140,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 ledger.account,
                                 *index,
                                 TransactionKeyManagerBranch::from_key(branch),
-                                nonce,
+                                challenge,
                             )?;
                             Ok(signature)
                         },
@@ -1197,14 +1153,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             _ => {
                 let private_key = self.get_private_key(private_key_id).await?;
-                let signature = CheckSigSchnorrSignature::sign(&private_key, nonce, &mut OsRng)?;
+                let signature = CheckSigSchnorrSignature::sign(&private_key, challenge, &mut OsRng)?;
 
                 Ok(signature)
             },
         }
     }
 
-    pub async fn sign_with_challenge_and_message(
+    pub async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce_key_id: &TariKeyId,

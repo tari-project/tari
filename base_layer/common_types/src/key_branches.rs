@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use minotari_ledger_wallet_common::common_types::Branch;
 use strum_macros::EnumIter;
 
 use crate::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
@@ -29,15 +30,15 @@ use crate::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
 // These byte reps must stay in sync with the ledger representations at:
 // applications/minotari_ledger_wallet/wallet/src/main.rs
 pub enum TransactionKeyManagerBranch {
-    DataEncryption = 0x00,
-    MetadataEphemeralNonce = 0x01,
-    CommitmentMask = 0x02,
-    Nonce = 0x03,
-    KernelNonce = 0x04,
-    SenderOffset = 0x05,
-    SenderOffsetLedger = 0x06,
-    Spend = 0x07,
-    RandomKey = 0x08,
+    DataEncryption = Branch::DataEncryption as u8,
+    MetadataEphemeralNonce = Branch::MetadataEphemeralNonce as u8,
+    CommitmentMask = Branch::CommitmentMask as u8,
+    Nonce = Branch::Nonce as u8,
+    KernelNonce = Branch::KernelNonce as u8,
+    SenderOffset = Branch::SenderOffset as u8,
+    SenderOffsetLedger = Branch::SenderOffsetLedger as u8,
+    Spend = Branch::Spend as u8,
+    RandomKey = Branch::RandomKey as u8,
 }
 
 const DATA_ENCRYPTION: &str = "data encryption";

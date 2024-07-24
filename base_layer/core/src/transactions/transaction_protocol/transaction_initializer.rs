@@ -25,7 +25,7 @@ use std::fmt::{Debug, Error, Formatter};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };

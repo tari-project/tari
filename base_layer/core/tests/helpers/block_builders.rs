@@ -23,7 +23,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{Commitment, FixedHash},
 };
 use tari_core::{

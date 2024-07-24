@@ -43,7 +43,7 @@ use minotari_wallet::{
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
 };

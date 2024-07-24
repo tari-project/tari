@@ -26,7 +26,7 @@ mod test {
 
     use rand::rngs::OsRng;
     use tari_common_types::{
-        key_manager::TransactionKeyManagerBranch,
+        key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
         types::{Commitment, PrivateKey, PublicKey, Signature},
     };

@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use log::*;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{FixedHash, PrivateKey},
 };

@@ -226,7 +226,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         challenge: &[u8],
     ) -> Result<CheckSigSchnorrSignature, TransactionError>;
 
-    async fn sign_with_challenge_and_message(
+    async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,

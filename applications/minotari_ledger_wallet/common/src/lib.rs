@@ -20,44 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::ByteArrayError;
-use thiserror::Error;
+#![no_std]
 
-/// Ledger device errors.
-#[derive(Debug, Error, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub enum LedgerDeviceError {
-    /// HID API error
-    #[error("HID API error `{0}`")]
-    HidApi(String),
-    /// Native HID transport error
-    #[error("Native HID transport error `{0}`")]
-    NativeTransport(String),
-    /// Ledger application not started
-    #[error("Ledger application not started")]
-    ApplicationNotStarted,
-    /// Ledger application instruction error
-    #[error("Ledger application instruction error `{0}`")]
-    Instruction(String),
-    /// Ledger application processing error
-    #[error("Processing error `{0}`")]
-    Processing(String),
-    /// Conversion error to or from ledger
-    #[error("Conversion failed: {0}")]
-    ByteArrayError(String),
-    /// Not yet supported
-    #[error("Ledger is not fully supported")]
-    NotSupported,
-}
+//! # Common types shared by the Ledger application and the rest of the Tari codebase.
+/// Note: `ledger-device-rust-sdk` cannot be included in this crate as it can only be compiled for no-std and the
+///        rest of the Tari code base is compiled for std.
+extern crate alloc;
 
-impl From<ByteArrayError> for LedgerDeviceError {
-    fn from(e: ByteArrayError) -> Self {
-        LedgerDeviceError::ByteArrayError(e.to_string())
-    }
-}
-
-impl From<String> for LedgerDeviceError {
-    fn from(e: String) -> Self {
-        LedgerDeviceError::Processing(e)
-    }
-}
+pub mod common_types;
+mod utils;

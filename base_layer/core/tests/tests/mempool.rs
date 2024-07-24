@@ -25,7 +25,7 @@ use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_comms_dht::domain_message::OutboundDomainMessage;

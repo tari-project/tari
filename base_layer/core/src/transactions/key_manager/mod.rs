@@ -47,4 +47,4 @@ pub use memory_db_key_manager::{
 
 mod error;
 pub use error::CoreKeyManagerError;
-pub use tari_common_types::key_manager::TransactionKeyManagerBranch;
+pub use tari_common_types::key_branches::TransactionKeyManagerBranch;

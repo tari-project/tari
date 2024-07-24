@@ -22,7 +22,7 @@
 
 use derivative::Derivative;
 use tari_common_types::{
-    key_manager::TransactionKeyManagerBranch,
+    key_branches::TransactionKeyManagerBranch,
     types::{ComAndPubSignature, PublicKey},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -259,7 +259,7 @@ impl WalletOutputBuilder {
             &metadata_message,
         );
         let sender_partial_metadata_signature_self = key_manager
-            .sign_with_challenge_and_message(sender_offset_key_id, &ephemeral_pubkey_self.key_id, &challenge)
+            .sign_with_nonce_and_challenge(sender_offset_key_id, &ephemeral_pubkey_self.key_id, &challenge)
             .await?;
 
         let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature_self;
