@@ -35,7 +35,7 @@ pub struct EmissionSchedule {
     decay: &'static [u64],
     inflation_bips: u64,           // Tail inflation in basis points. 100 bips = 1 percentage point
     epoch_length: u64,             // The number of blocks in an inflation epoch
-    initial_supply: MicroMinotari, // The supply at block 0, from premine
+    initial_supply: MicroMinotari, // The supply at block 0, from pre-mine
 }
 
 impl EmissionSchedule {
