@@ -340,7 +340,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
             payment_id: CString::new(
-                String::from_utf8(x.payment_id.as_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
+                String::from_utf8(x.payment_id.to_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
             )
             .expect("failed to obtain string from a payment id")
             .into_raw(),

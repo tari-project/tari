@@ -31,96 +31,96 @@ import "network.proto";
 
 // The gRPC interface for interacting with the wallet.
 service Wallet {
-    // This returns the current version
-    rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
-    // This checks if the wallet is healthy and running
-    rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
-    // Check for new updates
-    rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
-    // This returns the identity information
-    rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
-    // This returns the tari address
-    rpc GetAddress (Empty) returns (GetAddressResponse);
-    // Send Minotari to a number of recipients
-    rpc Transfer (TransferRequest)  returns (TransferResponse);
-    // Returns the transaction details for the given transaction IDs
-    rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
-    // Returns all transactions' details
-    rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
-    // Returns the balance
-    rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
-    // Returns unspent amounts
-    rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
-    // Request the wallet perform a coinsplit
-    rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
-    // Import Utxo to wallet
-    rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
-    // Get Base Node network connectivity status
-    rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
-    // List currently connected peers
-    rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
-    // Cancel pending transaction
-    rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
-    // Will trigger a complete revalidation of all wallet outputs.
-    rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
-    // Will trigger a validation of all wallet outputs.
-    rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
-    // This will send a XTR SHA Atomic swap transaction
-    rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
-    // This will create a burn transaction
-    rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
-    // This will claim a XTR SHA Atomic swap transaction
-    rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
-    // This will claim a HTLC refund transaction
-    rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
-    // Creates a transaction with a template registration output
-    rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
-    rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+  // This returns the current version
+  rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+  // This checks if the wallet is healthy and running
+  rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
+  // Check for new updates
+  rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
+  // This returns the identity information
+  rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
+  // This returns the tari address
+  rpc GetAddress (Empty) returns (GetAddressResponse);
+  // Send Minotari to a number of recipients
+  rpc Transfer (TransferRequest)  returns (TransferResponse);
+  // Returns the transaction details for the given transaction IDs
+  rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
+  // Returns all transactions' details
+  rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
+  // Returns the balance
+  rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+  // Returns unspent amounts
+  rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
+  // Request the wallet perform a coinsplit
+  rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
+  // Import Utxo to wallet
+  rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
+  // Get Base Node network connectivity status
+  rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+  // List currently connected peers
+  rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+  // Cancel pending transaction
+  rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+  // Will trigger a complete revalidation of all wallet outputs.
+  rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+  // Will trigger a validation of all wallet outputs.
+  rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
+  // This will send a XTR SHA Atomic swap transaction
+  rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
+  // This will create a burn transaction
+  rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
+  // This will claim a XTR SHA Atomic swap transaction
+  rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
+  // This will claim a HTLC refund transaction
+  rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
+  // Creates a transaction with a template registration output
+  rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
+  rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
-    rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
+  rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
-    rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 }
 
-message GetVersionRequest { }
+message GetVersionRequest {}
 
 
 message GetVersionResponse {
-    string version = 1;
+  string version = 1;
 }
 
 message GetAddressResponse {
-    bytes address = 1;
+  bytes address = 1;
 }
 
 message TransferRequest {
-    repeated PaymentRecipient recipients = 1;
+  repeated PaymentRecipient recipients = 1;
 }
 
 message SendShaAtomicSwapRequest {
-    PaymentRecipient recipient = 1;
+  PaymentRecipient recipient = 1;
 }
 
 message CreateBurnTransactionRequest{
-    uint64 amount = 1;
-    uint64 fee_per_gram = 2;
-    string message = 3;
-    bytes claim_public_key = 4;
+  uint64 amount = 1;
+  uint64 fee_per_gram = 2;
+  string message = 3;
+  bytes claim_public_key = 4;
 }
 
 
 message PaymentRecipient {
-    string address = 1;
-    uint64 amount = 2;
-    uint64 fee_per_gram = 3;
-    string message = 4;
-    enum PaymentType {
-        STANDARD_MIMBLEWIMBLE = 0;
-        ONE_SIDED = 1;
-        ONE_SIDED_TO_STEALTH_ADDRESS = 2;
-    }
-    PaymentType payment_type = 5;
-    bytes payment_id = 6;
+  string address = 1;
+  uint64 amount = 2;
+  uint64 fee_per_gram = 3;
+  string message = 4;
+  enum PaymentType {
+    STANDARD_MIMBLEWIMBLE = 0;
+    ONE_SIDED = 1;
+    ONE_SIDED_TO_STEALTH_ADDRESS = 2;
+  }
+  PaymentType payment_type = 5;
+  bytes payment_id = 6;
 }
 
 message TransferResponse {
@@ -128,166 +128,167 @@ message TransferResponse {
 }
 
 message SendShaAtomicSwapResponse {
-    uint64 transaction_id = 1;
-    string pre_image = 2;
-    string output_hash = 3;
-    bool is_success = 4;
-    string failure_message = 5;
+  uint64 transaction_id = 1;
+  string pre_image = 2;
+  string output_hash = 3;
+  bool is_success = 4;
+  string failure_message = 5;
 }
 
 message CreateBurnTransactionResponse{
-    uint64 transaction_id = 1;
-    bool is_success = 2;
-    string failure_message = 3;
-    bytes commitment = 4;
-    CommitmentSignature ownership_proof = 5;
-    bytes range_proof = 6;
-    bytes reciprocal_claim_public_key = 7;
+  uint64 transaction_id = 1;
+  bool is_success = 2;
+  string failure_message = 3;
+  bytes commitment = 4;
+  CommitmentSignature ownership_proof = 5;
+  bytes range_proof = 6;
+  bytes reciprocal_claim_public_key = 7;
 }
 
 message TransferResult {
-    string address = 1;
-    uint64 transaction_id = 2;
-    bool is_success = 3;
-    string failure_message = 4;
+  string address = 1;
+  uint64 transaction_id = 2;
+  bool is_success = 3;
+  string failure_message = 4;
 }
 
 message ClaimShaAtomicSwapRequest{
-    string output = 1;
-    string pre_image = 2;
-    uint64 fee_per_gram = 3;
+  string output = 1;
+  string pre_image = 2;
+  uint64 fee_per_gram = 3;
 }
 
 message ClaimShaAtomicSwapResponse {
-    TransferResult results = 1;
+  TransferResult results = 1;
 }
 
 message ClaimHtlcRefundRequest{
-    string output_hash = 1;
-    uint64 fee_per_gram = 2;
+  string output_hash = 1;
+  uint64 fee_per_gram = 2;
 }
 
 message ClaimHtlcRefundResponse {
-    TransferResult results = 1;
+  TransferResult results = 1;
 }
 
 message GetTransactionInfoRequest {
-    repeated uint64 transaction_ids = 1;
+  repeated uint64 transaction_ids = 1;
 }
 
 message GetTransactionInfoResponse {
-    repeated TransactionInfo transactions = 1;
+  repeated TransactionInfo transactions = 1;
 }
 
 message TransactionInfo {
-    uint64 tx_id = 1;
-    bytes source_address = 2;
-    bytes dest_address = 3;
-    TransactionStatus status = 4;
-    TransactionDirection direction = 5;
-    uint64 amount = 6;
-    uint64 fee = 7;
-    bool is_cancelled = 8;
-    bytes excess_sig = 9;
-    uint64 timestamp = 10;
-    string message = 11;
+  uint64 tx_id = 1;
+  bytes source_address = 2;
+  bytes dest_address = 3;
+  TransactionStatus status = 4;
+  TransactionDirection direction = 5;
+  uint64 amount = 6;
+  uint64 fee = 7;
+  bool is_cancelled = 8;
+  bytes excess_sig = 9;
+  uint64 timestamp = 10;
+  string message = 11;
+  bytes payment_id = 12;
 }
 
 enum TransactionDirection {
-    TRANSACTION_DIRECTION_UNKNOWN = 0;
-    TRANSACTION_DIRECTION_INBOUND = 1;
-    TRANSACTION_DIRECTION_OUTBOUND = 2;
+  TRANSACTION_DIRECTION_UNKNOWN = 0;
+  TRANSACTION_DIRECTION_INBOUND = 1;
+  TRANSACTION_DIRECTION_OUTBOUND = 2;
 }
 
 enum TransactionStatus {
-    // This transaction has been completed between the parties but has not been broadcast to the base layer network.
-    TRANSACTION_STATUS_COMPLETED = 0;
-    // This transaction has been broadcast to the base layer network and is currently in one or more base node mempools.
-    TRANSACTION_STATUS_BROADCAST = 1;
-    // This transaction has been mined and included in a block.
-    TRANSACTION_STATUS_MINED_UNCONFIRMED = 2;
-    // This transaction was generated as part of importing a spendable UTXO
-    TRANSACTION_STATUS_IMPORTED = 3;
-    // This transaction is still being negotiated by the parties
-    TRANSACTION_STATUS_PENDING = 4;
-    // This is a created Coinbase Transaction
-    TRANSACTION_STATUS_COINBASE = 5;
-    // This transaction is mined and confirmed at the current base node's height
-    TRANSACTION_STATUS_MINED_CONFIRMED = 6;
-    // The transaction was rejected by the mempool
-    TRANSACTION_STATUS_REJECTED = 7;
-    // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
-    TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED = 8;
-    // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
-    TRANSACTION_STATUS_ONE_SIDED_CONFIRMED = 9;
-    // This transaction is still being queued for sending
-    TRANSACTION_STATUS_QUEUED = 10;
-    // The transaction was not found by the wallet its in transaction database
-    TRANSACTION_STATUS_NOT_FOUND = 11;
-    // This is Coinbase transaction that is detected from chain
-    TRANSACTION_STATUS_COINBASE_UNCONFIRMED = 12;
-    // This is Coinbase transaction that is detected from chain
-    TRANSACTION_STATUS_COINBASE_CONFIRMED = 13;
-    // This is Coinbase transaction that is not currently detected as mined
-    TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN = 14;
+  // This transaction has been completed between the parties but has not been broadcast to the base layer network.
+  TRANSACTION_STATUS_COMPLETED = 0;
+  // This transaction has been broadcast to the base layer network and is currently in one or more base node mempools.
+  TRANSACTION_STATUS_BROADCAST = 1;
+  // This transaction has been mined and included in a block.
+  TRANSACTION_STATUS_MINED_UNCONFIRMED = 2;
+  // This transaction was generated as part of importing a spendable UTXO
+  TRANSACTION_STATUS_IMPORTED = 3;
+  // This transaction is still being negotiated by the parties
+  TRANSACTION_STATUS_PENDING = 4;
+  // This is a created Coinbase Transaction
+  TRANSACTION_STATUS_COINBASE = 5;
+  // This transaction is mined and confirmed at the current base node's height
+  TRANSACTION_STATUS_MINED_CONFIRMED = 6;
+  // The transaction was rejected by the mempool
+  TRANSACTION_STATUS_REJECTED = 7;
+  // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
+  TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED = 8;
+  // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
+  TRANSACTION_STATUS_ONE_SIDED_CONFIRMED = 9;
+  // This transaction is still being queued for sending
+  TRANSACTION_STATUS_QUEUED = 10;
+  // The transaction was not found by the wallet its in transaction database
+  TRANSACTION_STATUS_NOT_FOUND = 11;
+  // This is Coinbase transaction that is detected from chain
+  TRANSACTION_STATUS_COINBASE_UNCONFIRMED = 12;
+  // This is Coinbase transaction that is detected from chain
+  TRANSACTION_STATUS_COINBASE_CONFIRMED = 13;
+  // This is Coinbase transaction that is not currently detected as mined
+  TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN = 14;
 }
 
-message GetCompletedTransactionsRequest { }
+message GetCompletedTransactionsRequest {}
 
 message GetCompletedTransactionsResponse {
-    TransactionInfo transaction = 1;
+  TransactionInfo transaction = 1;
 }
 
-message GetBalanceRequest { }
+message GetBalanceRequest {}
 
 message GetBalanceResponse {
-    uint64 available_balance = 1;
-    uint64 pending_incoming_balance = 2;
-    uint64 pending_outgoing_balance = 3;
-    uint64 timelocked_balance = 4;
+  uint64 available_balance = 1;
+  uint64 pending_incoming_balance = 2;
+  uint64 pending_outgoing_balance = 3;
+  uint64 timelocked_balance = 4;
 }
 
 message GetUnspentAmountsResponse {
-    repeated uint64 amount = 1;
+  repeated uint64 amount = 1;
 }
 
 message CoinSplitRequest {
-    uint64 amount_per_split = 1;
-    uint64 split_count = 2;
-    uint64 fee_per_gram = 3;
-    string message = 4;
-    uint64 lock_height = 5;
+  uint64 amount_per_split = 1;
+  uint64 split_count = 2;
+  uint64 fee_per_gram = 3;
+  string message = 4;
+  uint64 lock_height = 5;
 }
 
 message CoinSplitResponse {
-    uint64 tx_id = 1;
+  uint64 tx_id = 1;
 }
 
 message ImportUtxosRequest {
-    repeated UnblindedOutput outputs = 1;
+  repeated UnblindedOutput outputs = 1;
 }
 
 message ImportUtxosResponse {
-    repeated uint64 tx_ids = 1;
+  repeated uint64 tx_ids = 1;
 }
 
 message CreateTemplateRegistrationRequest {
-    TemplateRegistration template_registration = 1;
-    uint64 fee_per_gram = 2;
+  TemplateRegistration template_registration = 1;
+  uint64 fee_per_gram = 2;
 }
 
 message CreateTemplateRegistrationResponse {
-    uint64 tx_id = 1;
-    bytes template_address = 2;
+  uint64 tx_id = 1;
+  bytes template_address = 2;
 }
 
 message CancelTransactionRequest {
-    uint64 tx_id = 1;
+  uint64 tx_id = 1;
 }
 
 message CancelTransactionResponse {
-    bool is_success = 1;
-    string failure_message = 2;
+  bool is_success = 1;
+  string failure_message = 2;
 }
 
 message RevalidateRequest{}
@@ -299,8 +300,8 @@ message ValidateRequest{}
 message ValidateResponse{}
 
 message SetBaseNodeRequest {
-    string public_key_hex = 1;
-    string net_address = 2;
+  string public_key_hex = 1;
+  string net_address = 2;
 }
 
 message SetBaseNodeResponse{}
@@ -308,12 +309,12 @@ message SetBaseNodeResponse{}
 message GetConnectivityRequest{}
 
 message CheckConnectivityResponse{
-    enum OnlineStatus {
-        Connecting = 0;
-        Online = 1;
-        Offline = 2;
-    }
-    OnlineStatus status = 1;
+  enum OnlineStatus {
+    Connecting = 0;
+    Online = 1;
+    Offline = 2;
+  }
+  OnlineStatus status = 1;
 }
 
 message TransactionEventRequest{
@@ -321,29 +322,30 @@ message TransactionEventRequest{
 }
 
 message TransactionEvent {
-    string event = 1;
-    string tx_id = 2;
-    bytes source_address = 3;
-    bytes dest_address = 4;
-    string status = 5;
-    string direction = 6;
-    uint64 amount = 7;
-    string message = 8;
+  string event = 1;
+  string tx_id = 2;
+  bytes source_address = 3;
+  bytes dest_address = 4;
+  string status = 5;
+  string direction = 6;
+  uint64 amount = 7;
+  string message = 8;
+  bytes payment_id = 9;
 }
 
 message TransactionEventResponse {
-    TransactionEvent transaction  = 1;
+  TransactionEvent transaction = 1;
 }
 
 message RegisterValidatorNodeRequest {
-    bytes validator_node_public_key = 1;
-    Signature validator_node_signature = 2;
-    uint64 fee_per_gram = 3;
-    string message = 4;
+  bytes validator_node_public_key = 1;
+  Signature validator_node_signature = 2;
+  uint64 fee_per_gram = 3;
+  string message = 4;
 }
 
 message RegisterValidatorNodeResponse {
-    uint64 transaction_id = 1;
-    bool is_success = 2;
-    string failure_message = 3;
+  uint64 transaction_id = 1;
+  bool is_success = 2;
+  string failure_message = 3;
 }

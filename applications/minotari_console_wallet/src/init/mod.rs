@@ -24,6 +24,7 @@
 
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
 #[cfg(feature = "ledger")]
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
@@ -59,7 +60,7 @@ use tari_common::{
 };
 use tari_common_types::{
     types::{PrivateKey, PublicKey},
-    wallet_types::{LedgerWallet, WalletType},
+    wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -75,7 +76,7 @@ use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicK
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{encoding::Base58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
 use crate::{
@@ -96,6 +97,7 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
+    ViewAndSpendKey,
 }
 
 /// Get and confirm a passphrase from the user, with feedback
@@ -751,7 +753,8 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
 
         loop {
             println!("1. Create a new wallet.");
-            println!("2. Recover wallet from seed words.");
+            println!("2. Recover wallet from seed words or hardware device.");
+            println!("3. Create a read-only wallet using a view key.");
             let readline = rl.readline(">> ");
             match readline {
                 Ok(line) => {
@@ -763,6 +766,9 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                         "2" | "r" | "s" | "recover" => {
                             // recover wallet
                             return Ok(WalletBoot::Recovery);
+                        },
+                        "3" => {
+                            return Ok(WalletBoot::ViewAndSpendKey);
                         },
                         _ => continue,
                     }
@@ -804,6 +810,10 @@ pub(crate) fn boot_with_password(
             debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
+        WalletBoot::ViewAndSpendKey => {
+            debug!(target: LOG_TARGET, "Prompting for passphrase for view key wallet.");
+            get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
+        },
     };
 
     Ok((boot_mode, password))
@@ -819,6 +829,15 @@ pub fn prompt_wallet_type(
     }
 
     match boot_mode {
+        WalletBoot::ViewAndSpendKey => {
+            let view_key = prompt_private_key("Enter view key: ").expect("View key provided was invalid");
+            let spend_key = prompt_public_key("Enter the public spend key: ").expect("Spend key provided was invalid");
+            Some(WalletType::ProvidedKeys(ProvidedKeysWallet {
+                view_key,
+                public_spend_key: spend_key,
+                private_spend_key: None,
+            }))
+        },
         WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
             return Some(WalletType::default());
@@ -920,6 +939,46 @@ pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
     match input.parse() {
         Ok(num) => Some(num),
         Err(_e) => Some(1),
+    }
+}
+
+pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
+    // see what we type, as we type it
+    let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
+    disable_raw_mode().expect("Could not disable raw mode");
+
+    println!("{} (hex)", prompt);
+    let mut input = "".to_string();
+    io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim();
+    if must_re_enable_raw_mode {
+        enable_raw_mode().expect("Could not enable raw mode");
+    }
+    match PrivateKey::from_canonical_bytes(&Vec::<u8>::from_hex(input).expect("Bad hex data")) {
+        Ok(pk) => Some(pk),
+        Err(e) => {
+            panic!("Bad private key: {}", e)
+        },
+    }
+}
+
+pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
+    // see what we type, as we type it
+    let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
+    disable_raw_mode().expect("Could not disable raw mode");
+    println!("{} (hex or base58)", prompt);
+    let mut input = "".to_string();
+    io::stdin().read_line(&mut input).unwrap();
+    if must_re_enable_raw_mode {
+        enable_raw_mode().expect("Could not enable raw mode");
+    }
+    let input = input.trim();
+    match PublicKey::from_hex(input) {
+        Ok(pk) => Some(pk),
+        Err(_) => match PublicKey::from_base58(input) {
+            Ok(pk) => Some(pk),
+            Err(_) => None,
+        },
     }
 }
 

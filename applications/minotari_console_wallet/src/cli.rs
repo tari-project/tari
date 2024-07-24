@@ -140,6 +140,8 @@ pub enum CliCommands {
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
+    ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
+    Sync,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -290,6 +292,12 @@ pub struct ExportUtxosArgs {
 #[derive(Debug, Args, Clone)]
 pub struct ExportTxArgs {
     pub tx_id: u64,
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportViewKeyAndSpendKeyArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
 }

@@ -98,7 +98,7 @@ impl PaymentId {
         }
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             PaymentId::Empty => Vec::new(),
             PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
@@ -166,7 +166,7 @@ impl EncryptedData {
         let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
         bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
         bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
-        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&payment_id.as_bytes());
+        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&payment_id.to_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);

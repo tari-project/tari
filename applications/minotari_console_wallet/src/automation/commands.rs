@@ -65,7 +65,7 @@ use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -1456,6 +1456,42 @@ pub async fn command_runner(
                     println!();
                 },
                 Err(err) => eprintln!("Error generating certificates: {}", err),
+            },
+            ExportViewKeyAndSpendKey(args) => {
+                let view_key = wallet.key_manager_service.get_view_key().await?;
+                let spend_key = wallet.key_manager_service.get_spend_key().await?;
+                let view_key_hex = view_key.pub_key.to_hex();
+                let private_view_key_hex = wallet
+                    .key_manager_service
+                    .get_private_key(&view_key.key_id)
+                    .await?
+                    .to_hex();
+                let spend_key_hex = spend_key.pub_key.to_hex();
+                let output_file = args.output_file;
+                #[derive(Serialize)]
+                struct ViewKeyFile {
+                    view_key: String,
+                    public_view_key: String,
+                    spend_key: String,
+                }
+                let view_key_file = ViewKeyFile {
+                    view_key: private_view_key_hex.clone(),
+                    public_view_key: view_key_hex.clone(),
+                    spend_key: spend_key_hex.clone(),
+                };
+                let view_key_file_json =
+                    serde_json::to_string(&view_key_file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                if let Some(file) = output_file {
+                    let file = File::create(file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                    let mut file = LineWriter::new(file);
+                    writeln!(file, "{}", view_key_file_json).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                } else {
+                    println!("View key: {}", private_view_key_hex);
+                    println!("Spend key: {}", spend_key_hex);
+                }
+            },
+            Sync => {
+                todo!()
             },
         }
     }

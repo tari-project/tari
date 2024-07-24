@@ -784,6 +784,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .get_signature()
                             .to_vec(),
                         message: txn.message.clone(),
+                        payment_id: txn.payment_id.as_ref().map(|id| id.to_bytes()).unwrap_or_default(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1100,6 +1101,7 @@ fn simple_event(event: &str) -> TransactionEvent {
         direction: event.to_string(),
         amount: 0,
         message: String::default(),
+        payment_id: vec![],
     }
 }
 
@@ -1121,6 +1123,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
             message: tx.message,
+            payment_id: vec![],
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1134,6 +1137,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
             message: tx.message,
+            payment_id: vec![],
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1151,6 +1155,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
             message: tx.message,
+            payment_id: tx.payment_id.map(|id| id.to_bytes()).unwrap_or_default(),
         },
     }
 }
