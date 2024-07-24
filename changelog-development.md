@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.18](https://github.com/tari-project/tari/compare/v1.0.0-pre.17...v1.0.0-pre.18) (2024-07-24)
+
+
+### Features
+
+* encode max allowable  encrypted bytes into struct ([#6425](https://github.com/tari-project/tari/issues/6425)) ([65567d5](https://github.com/tari-project/tari/commit/65567d5a99aec4d6b1ff650ea7ff2eeba77468f0))
+
+
+### Bug Fixes
+
+* wallet address deserialize ([#6428](https://github.com/tari-project/tari/issues/6428)) ([1ffce47](https://github.com/tari-project/tari/commit/1ffce47f2e921e8066057f353e3fb48783145849))
+
 ## [1.0.0-pre.17](https://github.com/tari-project/tari/compare/v1.0.0-pre.16...v1.0.0-pre.17) (2024-07-23)
 
 
