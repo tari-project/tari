@@ -30,7 +30,13 @@ use tari_utilities::hex::{from_hex, Hex};
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
     emoji::{EMOJI, REVERSE_EMOJI},
-    tari_address::{TariAddressError, TariAddressFeatures, INTERNAL_DUAL_SIZE},
+    tari_address::{
+        TariAddressError,
+        TariAddressFeatures,
+        INTERNAL_DUAL_BASE58_MAX_SIZE,
+        INTERNAL_DUAL_BASE58_MIN_SIZE,
+        INTERNAL_DUAL_SIZE,
+    },
     types::PublicKey,
 };
 
@@ -159,7 +165,7 @@ impl DualAddress {
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
         // Due to the byte length, it can be encoded as 90 or 91
-        if hex_str.len() != 90 && hex_str.len() != 91 {
+        if hex_str.len() < INTERNAL_DUAL_BASE58_MIN_SIZE || hex_str.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
         let result = panic::catch_unwind(|| hex_str.split_at(2));
@@ -426,7 +432,6 @@ mod test {
         assert_eq!(address_emoji.network(), address.network());
         assert_eq!(address_emoji.features(), address.features());
     }
-
     #[test]
     /// Test invalid size
     fn invalid_size() {
