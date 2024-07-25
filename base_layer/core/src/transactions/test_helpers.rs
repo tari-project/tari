@@ -741,7 +741,7 @@ pub async fn create_stx_protocol_internal(
             .unwrap();
         let script_key_id = KeyId::Derived {
             key: SerializedKeyString::from(
-                KeyId::<PublicKey>::Managed {
+                TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index: commitment_mask.key_id.managed_index().unwrap(),
                 }

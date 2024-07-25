@@ -60,11 +60,7 @@ use tari_core::{
     proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TransactionKeyManagerInterface,
-        },
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
@@ -2164,7 +2160,7 @@ async fn scan_for_recovery_test() {
             .unwrap();
         let script_key_id = KeyId::Derived {
             key: SerializedKeyString::from(
-                KeyId::<PublicKey>::Managed {
+                TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index: commitment_mask_key.key_id.managed_index().unwrap(),
                 }

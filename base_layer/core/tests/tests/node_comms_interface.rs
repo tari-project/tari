@@ -23,7 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use tari_common::configuration::Network;
-use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::PublicKey};
+use tari_common_types::key_branches::TransactionKeyManagerBranch;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -42,7 +42,7 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
@@ -303,7 +303,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
 
         let script_key_id = KeyId::Derived {
             key: SerializedKeyString::from(
-                KeyId::<PublicKey>::Managed {
+                TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index: commitment_mask_key.key_id.managed_index().unwrap(),
                 }

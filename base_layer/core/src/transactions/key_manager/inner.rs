@@ -281,7 +281,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 }
             },
             KeyId::Derived { key } => {
-                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
@@ -368,7 +368,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(key)
             },
             KeyId::Derived { key } => {
-                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
@@ -479,7 +479,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
         let script_key_id = KeyId::Derived {
             key: SerializedKeyString::from(
-                KeyId::<PublicKey>::Managed {
+                TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index,
                 }
@@ -557,7 +557,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         };
         let script_key_id = KeyId::Derived {
             key: SerializedKeyString::from(
-                KeyId::<PublicKey>::Managed {
+                TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                     index,
                 }
@@ -830,7 +830,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         match (&self.wallet_type, script_key_id) {
             (WalletType::Ledger(ledger), KeyId::Derived { key }) => {
-                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                 let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
@@ -1014,7 +1014,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id).await?
                 },
                 KeyId::Derived { key } => {
-                    let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                    let key = TariKeyId::from_str(key.to_string().as_str())
                         .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                     let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
                     let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
@@ -1068,7 +1068,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 sender_offset_indexes.push(*index);
                             },
                             TariKeyId::Derived { key } => {
-                                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                                let key = TariKeyId::from_str(key.to_string().as_str())
                                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
                                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
                                 sender_offset_indexes.push(index);

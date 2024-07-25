@@ -26,7 +26,7 @@ use log::*;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
-    types::{FixedHash, PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
@@ -207,7 +207,7 @@ where
             let key = if let Some(index) = spending_key.managed_index() {
                 KeyId::Derived {
                     key: SerializedKeyString::from(
-                        KeyId::<PublicKey>::Managed {
+                        TariKeyId::Managed {
                             branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
                             index,
                         }
