@@ -283,16 +283,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
-                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
                 let public_alpha = self.get_spend_key().await?.pub_key;
-                let km = self
-                    .key_managers
-                    .get(&branch)
-                    .ok_or(self.unknown_key_branch_error(&branch))?
-                    .read()
-                    .await;
-                let branch_key = km.get_private_key(index)?;
+                let branch_key = self.get_private_key(&key).await?;
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     HASHER_LABEL_STEALTH_KEY,
                 );
