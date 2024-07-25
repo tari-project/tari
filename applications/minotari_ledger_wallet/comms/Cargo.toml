@@ -22,3 +22,4 @@ thiserror = "1.0.26"
 
 rand = "0.9.0-alpha.1"
 once_cell = "1.19.0"
+log = "0.4.20"

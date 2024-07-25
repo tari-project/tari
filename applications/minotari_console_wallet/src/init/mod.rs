@@ -51,6 +51,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
     types::{PrivateKey, PublicKey},
     wallet_types::{LedgerWallet, WalletType},
 };
@@ -62,10 +63,18 @@ use tari_comms::{
 };
 use tari_core::{
     consensus::ConsensusManager,
-    transactions::{transaction_components::TransactionError, CryptoFactories},
+    transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
+        transaction_components::TransactionError,
+        CryptoFactories,
+    },
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInterface},
+    mnemonic::MnemonicLanguage,
+};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray, SafePassword};
@@ -561,6 +570,35 @@ pub async fn start_wallet(
     base_node: &Peer,
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
+    // Verify ledger build if wallet type is Ledger
+    if let WalletType::Ledger(_) = wallet.key_manager_service.get_wallet_type().await {
+        #[cfg(not(feature = "ledger"))]
+        {
+            return Err(ExitError::new(
+                ExitCode::WalletError,
+                "Ledger is not supported in this build, please enable the \"ledger\" feature for console wallet and \
+                 core"
+                    .to_string(),
+            ));
+        }
+
+        #[cfg(feature = "ledger")]
+        {
+            let key_id = TariKeyId::Managed {
+                branch: TransactionKeyManagerBranch::RandomKey.get_branch_key(),
+                index: 0,
+            };
+            match wallet.key_manager_service.get_public_key_at_key_id(&key_id).await {
+                Ok(public_key) => {},
+                Err(e) => {
+                    if e.to_string().contains("Ledger is not supported in this build") {
+                        return Err(ExitError::new(ExitCode::WalletError, format!(" {}", e)));
+                    }
+                },
+            }
+        }
+    }
+
     debug!(target: LOG_TARGET, "Setting base node peer");
 
     let net_address = base_node

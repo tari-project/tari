@@ -39,46 +39,63 @@ use tari_core::transactions::{
 };
 use tari_script::{CheckSigSchnorrSignature, ExecutionStack, TariScript};
 
-// Outputs for self with `PreMineCreatePartyDetails`
+// Step 1 outputs for leader with `PreMineCreateScriptInputs`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step1SessionInfo {
+struct PreMineCreateStep1ForLeader {
+    pub index: u64,
+    script_public_key: PublicKey,
+    verification_signature: CheckSigSchnorrSignature,
+}
+
+// Step 1 outputs for all with `PreMineSpendSessionInfo`
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct PreMineSpendStep1SessionInfo {
     session_id: String,
     fee_per_gram: MicroMinotari,
     commitment_to_spend: String,
     output_hash: String,
     recipient_address: TariAddress,
+    output_index: usize,
 }
 
-// Outputs for self with `PreMineCreatePartyDetails`
+impl SessionId for PreMineSpendStep1SessionInfo {
+    fn session_id(&self) -> String {
+        self.session_id.clone()
+    }
+}
+
+// Step 2 outputs for self with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step2OutputsForSelf {
+struct PreMineSpendStep2OutputsForSelf {
     alias: String,
     wallet_spend_key_id: TariKeyId,
     script_nonce_key_id: TariKeyId,
     sender_offset_key_id: TariKeyId,
     sender_offset_nonce_key_id: TariKeyId,
+    pre_mine_script_key_id: TariKeyId,
 }
 
-// Outputs for leader with `PreMineCreatePartyDetails`
+// Step 2 outputs for leader with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step2OutputsForLeader {
+struct PreMineSpendStep2OutputsForLeader {
     script_input_signature: CheckSigSchnorrSignature,
     wallet_public_spend_key: PublicKey,
     public_script_nonce_key: PublicKey,
     public_sender_offset_key: PublicKey,
     public_sender_offset_nonce_key: PublicKey,
     dh_shared_secret_public_key: PublicKey,
+    pre_mine_public_script_key: PublicKey,
 }
 
-// Outputs for self with `PreMineEncumberAggregateUtxo`
+// Step 3 outputs for self with `PreMineSpendEncumberAggregateUtxo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step3OutputsForSelf {
+struct PreMineSpendStep3OutputsForSelf {
     tx_id: TxId,
 }
 
-// Outputs for parties with `PreMineEncumberAggregateUtxo`
+// Step 3 outputs for parties with `PreMineSpendEncumberAggregateUtxo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step3OutputsForParties {
+struct PreMineSpendStep3OutputsForParties {
     input_stack: ExecutionStack,
     input_script: TariScript,
     total_script_key: PublicKey,
@@ -92,10 +109,14 @@ struct Step3OutputsForParties {
     output_features: OutputFeatures,
 }
 
-// Outputs for leader with `PreMineCreateScriptSig` and `PreMineCreateMetaSig`
+// Step 4 outputs for leader with `PreMineSpendInputOutputSigs`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step4OutputsForLeader {
+struct PreMineSpendStep4OutputsForLeader {
     script_signature: Signature,
     metadata_signature: Signature,
     script_offset: PrivateKey,
+}
+
+trait SessionId {
+    fn session_id(&self) -> String;
 }

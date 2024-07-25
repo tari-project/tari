@@ -22,6 +22,7 @@
 
 use std::sync::Mutex;
 
+use log::debug;
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction};
 use once_cell::sync::Lazy;
 use rand::{rngs::OsRng, RngCore};
@@ -39,8 +40,7 @@ use crate::{
     ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_VERSION},
 };
 
-// hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
-// type CheckSigSchnorrSignature = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, CheckSigHashDomain>;
+const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
 
 /// Verify that the ledger application is working properly.
 pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
@@ -184,13 +184,14 @@ pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
 
 /// Get the public alpha key from the ledger device
 pub fn ledger_get_public_spend_key(account: u64) -> Result<PublicKey, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account {}", account);
     verify_ledger_application()?;
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetPublicAlpha: expected 33 bytes, got {} ({:?})",
+                    "GetPublicSpendKey: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -198,7 +199,7 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<PublicKey, LedgerDevi
             let public_alpha = PublicKey::from_canonical_bytes(&result.data()[1..33])?;
             Ok(public_alpha)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicAlpha: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {}", e))),
     }
 }
 
@@ -208,6 +209,7 @@ pub fn ledger_get_public_key(
     index: u64,
     branch: TransactionKeyManagerBranch,
 ) -> Result<PublicKey, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_public_key: account {}, index {}, branch {:?}", account, index, branch);
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -219,7 +221,7 @@ pub fn ledger_get_public_key(
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetPublicAlpha: expected 33 bytes, got {} ({:?})",
+                    "GetPublicKey: expected 33 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -242,6 +244,7 @@ pub fn ledger_get_script_signature(
     commitment: &Commitment,
     script_message: [u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_script_signature: account {}", account);
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -289,6 +292,7 @@ pub fn ledger_get_script_offset(
     derived_key_commitments: &[PrivateKey],
     sender_offset_indexes: &[u64],
 ) -> Result<PrivateKey, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_script_offset: account {}", account);
     verify_ledger_application()?;
 
     let num_commitments = derived_key_commitments.len() as u64;
@@ -336,6 +340,7 @@ pub fn ledger_get_script_offset(
 
 /// Get the view key from the ledger device
 pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_view_key: account {}", account);
     verify_ledger_application()?;
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetViewKey, vec![]).execute() {
@@ -361,6 +366,7 @@ pub fn ledger_get_dh_shared_secret(
     branch: TransactionKeyManagerBranch,
     public_key: &PublicKey,
 ) -> Result<DiffieHellmanSharedSecret<PublicKey>, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_dh_shared_secret: account {}, index {}, branch {:?}", account, index, branch);
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -393,6 +399,8 @@ pub fn ledger_get_raw_schnorr_signature(
     nonce_branch: TransactionKeyManagerBranch,
     challenge: &[u8; 64],
 ) -> Result<Signature, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_raw_schnorr_signature: account {}, pk index {}, pk branch {:?}, nonce index {}, nonce branch {:?}",
+        account, private_key_index, private_key_branch, nonce_index, nonce_branch);
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -429,6 +437,8 @@ pub fn ledger_get_script_schnorr_signature(
     private_key_branch: TransactionKeyManagerBranch,
     nonce: &[u8],
 ) -> Result<CheckSigSchnorrSignature, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_raw_schnorr_signature: account {}, pk index {}, pk branch {:?}",
+        account, private_key_index, private_key_branch);
     verify_ledger_application()?;
 
     let mut data = Vec::new();

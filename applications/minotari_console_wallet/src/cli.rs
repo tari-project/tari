@@ -116,11 +116,14 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    PreMineGenerateSessionInfo(PreMineGenerateSessionInfoArgs),
-    PreMineCreatePartyDetails(PreMineCreatePartyDetailsArgs),
-    PreMineEncumberAggregateUtxo(PreMineEncumberAggregateUtxoArgs),
-    PreMineCreateInputOutputSigs(PreMineCreateInputOutputSigArgs),
-    PreMineSpendAggregateUtxo(PreMineSpendAggregateUtxoArgs),
+    PreMineCreateScriptInputs(PreMineCreateScriptInputsArgs),
+    PreMineCreateGenesisFile(PreMineCreateGenesisFileArgs),
+    PreMineCreateVerifyGenesisFile(PreMineCreateVerifyGenesisFileArgs),
+    PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
+    PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
+    PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),
+    PreMineSpendInputOutputSigs(PreMineSpendInputOutputSigArgs),
+    PreMineSpendAggregateTransaction(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
@@ -165,13 +168,37 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineGenerateSessionInfoArgs {
+pub struct PreMineCreateScriptInputsArgs {
+    #[clap(long)]
+    pub alias: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineCreateGenesisFileArgs {
+    #[clap(long)]
+    pub party_file_names: Vec<PathBuf>,
+    #[clap(long)]
+    pub fail_safe_file_name: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineCreateVerifyGenesisFileArgs {
+    #[clap(long)]
+    pub session_id: String,
+    #[clap(long)]
+    pub party_file_names: Vec<String>,
+    #[clap(long)]
+    pub fail_safe_file_name: String,
+    #[clap(long)]
+    pub pre_mine_file_name: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendSessionInfoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
-    pub commitment: String,
-    #[clap(long)]
-    pub output_hash: String,
+    pub output_index: usize,
     #[clap(long)]
     pub recipient_address: TariAddress,
     #[clap(long)]
@@ -179,15 +206,17 @@ pub struct PreMineGenerateSessionInfoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineCreatePartyDetailsArgs {
+pub struct PreMineSpendPartyDetailsArgs {
     #[clap(long)]
     pub input_file: PathBuf,
+    #[clap(long)]
+    pub output_index: usize,
     #[clap(long)]
     pub alias: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineEncumberAggregateUtxoArgs {
+pub struct PreMineSpendEncumberAggregateUtxoArgs {
     #[clap(long)]
     pub session_id: String,
     #[clap(long)]
@@ -195,13 +224,13 @@ pub struct PreMineEncumberAggregateUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineCreateInputOutputSigArgs {
+pub struct PreMineSpendInputOutputSigArgs {
     #[clap(long)]
     pub session_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineSpendAggregateUtxoArgs {
+pub struct PreMineSpendAggregateTransactionArgs {
     #[clap(long)]
     pub session_id: String,
     #[clap(long)]

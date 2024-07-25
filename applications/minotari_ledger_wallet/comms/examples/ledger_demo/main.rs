@@ -114,13 +114,33 @@ fn main() {
     // GetPublicKey
     println!("\ntest: GetPublicKey");
     let index = OsRng.next_u64();
-    let branch = TransactionKeyManagerBranch::RandomKey;
 
+    for branch in &[
+        TransactionKeyManagerBranch::SenderOffsetLedger,
+        TransactionKeyManagerBranch::Spend,
+        TransactionKeyManagerBranch::RandomKey,
+        TransactionKeyManagerBranch::PreMine,
+    ] {
+        match ledger_get_public_key(account, index, *branch) {
+            Ok(public_key) => println!("public_key:     {}", public_key.to_hex()),
+            Err(e) => {
+                println!("\nError: {}\n", e);
+                return;
+            },
+        }
+    }
+
+    let branch = TransactionKeyManagerBranch::CommitmentMask;
     match ledger_get_public_key(account, index, branch) {
-        Ok(public_key) => println!("public_key:     {}", public_key.to_hex()),
-        Err(e) => {
-            println!("\nError: {}\n", e);
+        Ok(_public_key) => {
+            println!("\nError: Should not have returned a public key for '{:?}'\n", branch);
             return;
+        },
+        Err(e) => {
+            if e != LedgerDeviceError::Processing("GetPublicKey: expected 33 bytes, got 0 (BadBranchKey)".to_string()) {
+                println!("\nError: Unexpected response ({})\n", e);
+                return;
+            }
         },
     }
 
