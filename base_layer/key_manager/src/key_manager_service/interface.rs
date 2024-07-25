@@ -281,8 +281,6 @@ mod test {
         let zero_key_id_str = zero_key_id.to_string();
         let derived_key_id_str = derived_key_id.to_string();
 
-        println!("{:?}", derived_key_id_str);
-
         assert_eq!(managed_key_id, KeyId::from_str(&managed_key_id_str).unwrap());
         assert_eq!(imported_key_id, KeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, KeyId::from_str(&zero_key_id_str).unwrap());
