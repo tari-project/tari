@@ -22,6 +22,8 @@
 
 use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 
+use blake2::Blake2b;
+use chacha20poly1305::consts::U64;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
@@ -67,7 +69,9 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{keys::SecretKey, ristretto::pedersen::PedersenCommitment};
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey, ristretto::pedersen::PedersenCommitment};
+use tari_hashing::KeyManagerTransactionsHashDomain;
+use tari_key_manager::key_manager_service::SerializedKeyString;
 use tari_script::{
     inputs,
     push_pubkey_script,
@@ -2987,13 +2991,18 @@ where
                     }
 
                     // Compute the stealth address offset
-                    let stealth_address_offset = PrivateKey::from_uniform_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake2b<U64>>' has correct size");
-                    let stealth_key = self
-                        .resources
-                        .key_manager
-                        .import_add_offset_to_private_key(&spend_key.key_id, stealth_address_offset)
-                        .await?;
+                    let hasher =
+                        DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                            "script key",
+                        );
+                    let hasher = hasher.chain("script key").finalize();
+                    let stealth_address = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                        OutputManagerError::BuildError("Invalid private key for sender offset private key".to_string())
+                    })?;
+                    let stealth_key = self.resources.key_manager.import_key(stealth_address).await?;
+                    let stealth_key = TariKeyId::Derived {
+                        key: SerializedKeyString::from(stealth_key.to_string()),
+                    };
 
                     let shared_secret = self
                         .resources

@@ -765,15 +765,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    pub async fn import_add_offset_to_private_key(
-        &self,
-        secret_key_id: &TariKeyId,
-        offset: PrivateKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
-        let secret_key = self.get_private_key(secret_key_id).await?;
-        self.import_key(secret_key + offset).await
-    }
-
     pub async fn generate_burn_proof(
         &self,
         commitment_mask_key_id: &TariKeyId,
