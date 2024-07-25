@@ -289,6 +289,7 @@ mod test {
     use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
     use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+    use tari_key_manager::key_manager_service::{KeyId, SerializedKeyString};
 
     use crate::transactions::key_manager::TariKeyId;
 
@@ -313,14 +314,20 @@ mod test {
             key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         };
         let zero_key_id: TariKeyId = TariKeyId::Zero;
+        let derived_key_id: KeyId<PublicKey> = KeyId::Derived {
+            key: SerializedKeyString::from(managed_key_id.clone().to_string()),
+        };
 
         let managed_key_id_str = managed_key_id.to_string();
         let imported_key_id_str = imported_key_id.to_string();
         let zero_key_id_str = zero_key_id.to_string();
+        let derived_key_id_str = derived_key_id.to_string();
+
+        println!("{:?}", derived_key_id_str);
 
         assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
-        println!("imported_key_id_str: {}", imported_key_id_str);
         assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
+        assert_eq!(derived_key_id, TariKeyId::from_str(&derived_key_id_str).unwrap());
     }
 }
