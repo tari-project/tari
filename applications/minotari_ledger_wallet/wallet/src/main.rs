@@ -200,8 +200,8 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
             (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
+            (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Ok(Instruction::GetOneSidedMetadataSignature),
             (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
-            (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Err(Instruction::GetOneSidedMetadataSignature),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
