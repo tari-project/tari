@@ -37,6 +37,8 @@ pub enum KeyManagerServiceError {
     UnknownKeyBranch(String),
     #[error("Key ID without an index, most likely `Imported`")]
     KeyIdWithoutIndex,
+    #[error("Key ID without a branch, most likely `Imported`")]
+    KeyIdWithoutBranch,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]

@@ -190,7 +190,7 @@ fn main() {
     // GetDHSharedSecret
     println!("\ntest: GetDHSharedSecret");
     let index = OsRng.next_u64();
-    let branch = TransactionKeyManagerBranch::SenderOffsetLedger;
+    let branch = TransactionKeyManagerBranch::OneSidedSenderOffset;
     let public_key = PublicKey::from_secret_key(&get_random_nonce());
 
     match ledger_get_dh_shared_secret(account, index, branch, &public_key) {

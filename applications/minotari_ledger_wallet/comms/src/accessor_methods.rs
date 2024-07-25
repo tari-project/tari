@@ -93,7 +93,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
 
     let account = OsRng.next_u64();
     let private_key_index = OsRng.next_u64();
-    let private_key_branch = TransactionKeyManagerBranch::SenderOffsetLedger;
+    let private_key_branch = TransactionKeyManagerBranch::OneSidedSenderOffset;
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);
     let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce)
@@ -457,6 +457,56 @@ pub fn ledger_get_script_schnorr_signature(
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!(
             "GetScriptSchnorrSignature: {}",
+            e
+        ))),
+    }
+}
+
+/// Get the one sided metadata signature
+pub fn ledger_get_one_sided_metadata_signature(
+    account: u64,
+    network: Network,
+    txo_version: u8,
+    spend_key_id: u64,
+    sender_offset_key_index: u64,
+    value_as_private_key: &PrivateKey,
+    metadata_signature_message: &[u8; 32],
+) -> Result<ComAndPubSignature, LedgerDeviceError> {
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
+    data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
+    data.extend_from_slice(&spend_key_id.to_le_bytes());
+    data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+    data.extend_from_slice(&value_as_private_key.to_vec());
+    data.extend_from_slice(&metadata_signature_message.to_vec());
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 161 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
+                    result.data().len(),
+                    result
+                )));
+            }
+            let data = result.data();
+            Ok(ComAndPubSignature::new(
+                Commitment::from_canonical_bytes(&data[1..33])
+                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                PublicKey::from_canonical_bytes(&data[33..65])
+                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                PrivateKey::from_canonical_bytes(&data[65..97])
+                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                PrivateKey::from_canonical_bytes(&data[97..129])
+                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                PrivateKey::from_canonical_bytes(&data[129..161])
+                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+            ))
+        },
+        Err(e) => Err(LedgerDeviceError::Instruction(format!(
+            "GetOneSidedMetadataSignature: {}",
             e
         ))),
     }

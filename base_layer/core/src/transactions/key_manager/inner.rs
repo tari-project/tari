@@ -27,6 +27,7 @@ use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_dh_shared_secret,
+    ledger_get_one_sided_metadata_signature,
     ledger_get_public_key,
     ledger_get_raw_schnorr_signature,
     ledger_get_script_offset,
@@ -57,7 +58,6 @@ use tari_crypto::{
 use tari_hashing::KeyManagerTransactionsHashDomain;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    error::KeyManagerError,
     key_manager::KeyManager,
     key_manager_service::{
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
@@ -81,10 +81,7 @@ use crate::{
     common::ConfidentialOutputHasher,
     one_sided::diffie_hellman_stealth_domain_hasher,
     transactions::{
-        key_manager::{
-            interface::{TxoStage},
-            TariKeyId,
-        },
+        key_manager::{interface::TxoStage, TariKeyId},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -244,7 +241,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     // If we have the unique case of being a ledger wallet, and the key is a Managed EphemeralNonce, or
                     // SenderOffset than we fetch from the ledger, all other keys are fetched below.
                     WalletType::Ledger(ledger) => match TransactionKeyManagerBranch::from_key(branch) {
-                        TransactionKeyManagerBranch::SenderOffsetLedger | TransactionKeyManagerBranch::RandomKey => {
+                        TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                             #[cfg(not(feature = "ledger"))]
                             {
                                 Err(KeyManagerServiceError::LedgerError(
@@ -286,13 +283,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Derived { key } => {
                 let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
+                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
                 let public_alpha = self.get_spend_key().await?.pub_key;
                 let km = self
                     .key_managers
                     .get(&branch)
-                    .ok_or(self.unknown_key_branch_error(branch))?
+                    .ok_or(self.unknown_key_branch_error(&branch))?
                     .read()
                     .await;
                 let branch_key = km.get_private_key(index)?;
@@ -325,6 +322,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     #[allow(clippy::too_many_lines)]
     pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
+            KeyId::Zero => Ok(PrivateKey::default()),
+            KeyId::Imported { key } => {
+                let pvt_key = self.db.get_imported_key(key)?;
+                Ok(pvt_key)
+            },
             KeyId::Managed { branch, index } => {
                 match &self.wallet_type {
                     WalletType::DerivedKeys => {},
@@ -366,10 +368,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(key)
             },
             KeyId::Derived { key } => {
-                    let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
-                        .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                    let branch = key.managed_branch().ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
-                    let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
+                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
+                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
                 match &self.wallet_type {
                     WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
                     WalletType::DerivedKeys => {
@@ -386,7 +388,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .ok_or(self.unknown_key_branch_error(&branch))?
                             .read()
                             .await;
-                        let branch_key = km.get_private_key(*index)?;
+                        let branch_key = km.get_private_key(index)?;
                         let hasher =
                             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                                 HASHER_LABEL_STEALTH_KEY,
@@ -410,7 +412,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .ok_or(self.unknown_key_branch_error(&branch))?
                             .read()
                             .await;
-                        let branch_key = km.get_private_key(*index)?;
+                        let branch_key = km.get_private_key(index)?;
                         let hasher =
                             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                                 HASHER_LABEL_STEALTH_KEY,
@@ -422,13 +424,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         let private_key = private_key + private_alpha;
                         Ok(private_key)
                     },
-                    KeyId::Imported { key } => {
-                        let pvt_key = self.db.get_imported_key(key)?;
-                        Ok(pvt_key)
-                    },
-                    KeyId::Zero => Ok(PrivateKey::default()),
                 }
-            }
+            },
+        }
     }
 
     pub async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
@@ -832,6 +830,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         match (&self.wallet_type, script_key_id) {
             (WalletType::Ledger(ledger), KeyId::Derived { key }) => {
+                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
+                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
+
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
@@ -842,16 +845,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 #[cfg(feature = "ledger")]
                 {
-                    let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
-                        .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                    let branch = key.managed_branch().ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
-                    let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
-
                     let km = self
                         .key_managers
                         .get(&branch)
-                        .ok_or(self.unknown_key_branch_error(branch))?
-                        .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                        .ok_or(self.unknown_key_branch_error(&branch))?
                         .read()
                         .await;
                     let branch_key = km
@@ -1016,33 +1013,30 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 KeyId::Imported { .. } | KeyId::Managed { .. } | KeyId::Zero => {
                     total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id).await?
                 },
-                KeyId::Derived {
-                    key,
-                } => {
-                let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
-                .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
-                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
-                match &self.wallet_type
-                 {
-                    WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                        total_script_private_key =
-                            &total_script_private_key + self.get_private_key(script_key_id).await?;
-                    },
-                    WalletType::Ledger(_) => {
-                        let km = self
-                            .key_managers
-                            .get(branch)
-                            .ok_or(self.unknown_key_branch_error(&branch))?
-                            .read()
-                            .await;
-                        let branch_key = km
-                            .get_private_key(index)
-                            .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
-                        derived_key_commitments.push(branch_key);
-                    },
-                }
-
+                KeyId::Derived { key } => {
+                    let key = KeyId::<PublicKey>::from_str(key.to_string().as_str())
+                        .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                    let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
+                    let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
+                    match &self.wallet_type {
+                        WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+                            total_script_private_key =
+                                &total_script_private_key + self.get_private_key(script_key_id).await?;
+                        },
+                        WalletType::Ledger(_) => {
+                            let km = self
+                                .key_managers
+                                .get(&branch)
+                                .ok_or(self.unknown_key_branch_error(&branch))?
+                                .read()
+                                .await;
+                            let branch_key = km
+                                .get_private_key(index)
+                                .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
+                            derived_key_commitments.push(branch_key);
+                        },
+                    }
+                },
             }
         }
 
@@ -1278,6 +1272,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
+    #[allow(unused_variables)]
     pub async fn get_one_sided_metadata_signature(
         &self,
         spending_key_id: &TariKeyId,
@@ -1302,64 +1297,35 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
-                    return Err(KeyManagerServiceError::LedgerError(
-                        "Ledger is not supported".to_string(),
-                    ));
+                    Err(TransactionError::LedgerNotSupported(
+                        "One sided metadata signature was called for ledger, but ledger is not supported.".to_string(),
+                    ))
                 }
 
                 #[cfg(feature = "ledger")]
                 {
                     let sender_offset_key_index = sender_offset_key_id.managed_index().ok_or_else(|| {
                         debug!(target: LOG_TARGET, "Invalid key id {:?}", sender_offset_key_id);
-                        TransactionError::KeyManagerError(KeyManagerError::InvalidKeyID.to_string())
+                        TransactionError::KeyManagerError("Invalid index for sender offset".to_string())
                     })?;
 
                     let spend_key_id = spending_key_id.managed_index().ok_or_else(|| {
-                        debug!(target: LOG_TARGET, "Invalid key id {:?}", sender_offset_key_id);
-                        TransactionError::KeyManagerError(KeyManagerError::InvalidKeyID.to_string())
+                        debug!(target: LOG_TARGET, "Invalid key id {:?}", spending_key_id);
+                        TransactionError::KeyManagerError("Invalid index for spend key".to_string())
                     })?;
 
-                    let mut data = u64::from(ledger.network.as_byte()).to_le_bytes().to_vec();
-                    data.extend_from_slice(&u64::from(txo_version.as_u8()).to_le_bytes());
-                    data.extend_from_slice(&spend_key_id.to_le_bytes());
-                    data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
-                    data.extend_from_slice(&value_as_private_key.to_vec());
-                    data.extend_from_slice(&metadata_signature_message.to_vec());
+                    let comm_and_pub_sig = ledger_get_one_sided_metadata_signature(
+                        ledger.account,
+                        ledger.network,
+                        txo_version.as_u8(),
+                        spend_key_id,
+                        sender_offset_key_index,
+                        value_as_private_key,
+                        metadata_signature_message,
+                    )
+                    .map_err(TransactionError::LedgerDeviceError)?;
 
-                    let command = ledger.build_command(Instruction::GetOneSidedMetadataSignature, data);
-                    let transport = get_transport().map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-
-                    match command.execute_with_transport(&transport) {
-                        Ok(result) => {
-                            if result.data().len() < 161 {
-                                debug!(target: LOG_TARGET, "result less than 161");
-                                return Err(LedgerDeviceError::Processing(format!(
-                                    "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes \
-                                     ({:?})",
-                                    result.data().len(),
-                                    result
-                                ))
-                                .into());
-                            }
-                            let data = result.data();
-                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                            Ok(ComAndPubSignature::new(
-                                Commitment::from_canonical_bytes(&data[1..33])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PublicKey::from_canonical_bytes(&data[33..65])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PrivateKey::from_canonical_bytes(&data[65..97])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PrivateKey::from_canonical_bytes(&data[97..129])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                                PrivateKey::from_canonical_bytes(&data[129..161])
-                                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?,
-                            ))
-                        },
-                        Err(e) => {
-                            Err(LedgerDeviceError::Instruction(format!("GetOneSidedMetadataSignature: {}", e)).into())
-                        },
-                    }
+                    Ok(comm_and_pub_sig)
                 }
             },
         }

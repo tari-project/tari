@@ -159,7 +159,7 @@ impl KeyType {
         }
         if let Some(branch) = BranchMapping::from_byte(n as u8) {
             match branch {
-                BranchMapping::SenderOffsetLedger => Ok(Self::OneSidedSenderOffset),
+                BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
                 BranchMapping::Spend => Ok(Self::Spend),
                 BranchMapping::RandomKey => Ok(Self::Random),
                 _ => Err(AppSW::BadBranchKey),
