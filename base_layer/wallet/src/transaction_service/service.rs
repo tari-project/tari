@@ -30,6 +30,7 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use itertools::Itertools;
 use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
@@ -1092,13 +1093,13 @@ where
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        if destination.network() != self.resources.interactive_tari_address.network() {
+        if let Err(e) = self.verify_send(&destination, TariAddressFeatures::create_interactive_only()) {
             let _result = reply_channel
                 .send(Err(TransactionServiceError::InvalidNetwork))
                 .inspect_err(|_| {
                     warn!(target: LOG_TARGET, "Failed to send service reply");
                 });
-            return Err(TransactionServiceError::InvalidNetwork);
+            return Err(e);
         }
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if &self
@@ -1595,6 +1596,7 @@ where
         >,
     ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
         let tx_id = TxId::new_random();
+        self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
         let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
@@ -1608,7 +1610,7 @@ where
             HashSha256 PushHash(Box::new(hash)) Equal IfThen
                 PushPubKey(Box::new(destination.public_spend_key().clone()))
             Else
-                CheckHeightVerify(height) PushPubKey(Box::new(self.resources.node_identity.public_key().clone()))
+                CheckHeightVerify(height) PushPubKey(Box::new(self.resources.one_sided_tari_address.public_spend_key().clone()))
             EndIf
         );
 
@@ -1830,6 +1832,7 @@ where
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // For a stealth transaction, the script is not provided because the public key that should be included
         // is not known at this stage. This will only be known later. For now,
@@ -2063,9 +2066,6 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
-        if destination.network() != self.resources.one_sided_tari_address.network() {
-            return Err(TransactionServiceError::InvalidNetwork);
-        }
         let dest_pubkey = destination.public_spend_key().clone();
         self.send_one_sided_or_stealth(
             destination,
@@ -2394,10 +2394,6 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
-        if destination.network() != self.resources.one_sided_tari_address.network() {
-            return Err(TransactionServiceError::InvalidNetwork);
-        }
-
         self.send_one_sided_or_stealth(
             destination,
             amount,
@@ -3533,6 +3529,23 @@ where
 
     fn connectivity(&self) -> &TWalletConnectivity {
         &self.resources.connectivity
+    }
+
+    fn verify_send(
+        &self,
+        address: &TariAddress,
+        sending_method: TariAddressFeatures,
+    ) -> Result<(), TransactionServiceError> {
+        if address.network() != self.resources.interactive_tari_address.network() {
+            return Err(TransactionServiceError::InvalidNetwork);
+        }
+        if !address.features().contains(&sending_method) {
+            return Err(TransactionServiceError::InvalidAddress(format!(
+                "Address does not support feature {} ",
+                sending_method
+            )));
+        }
+        Ok(())
     }
 }
 
