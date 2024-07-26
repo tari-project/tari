@@ -121,6 +121,7 @@ pub enum CliCommands {
     PreMineEncumberAggregateUtxo(PreMineEncumberAggregateUtxoArgs),
     PreMineCreateInputOutputSigs(PreMineCreateInputOutputSigArgs),
     PreMineSpendAggregateUtxo(PreMineSpendAggregateUtxoArgs),
+    PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -204,6 +205,18 @@ pub struct PreMineSpendAggregateUtxoArgs {
     pub session_id: String,
     #[clap(long)]
     pub input_file_names: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendBackupUtxoArgs {
+    #[clap(long)]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub commitment: String,
+    #[clap(long)]
+    pub output_hash: String,
+    #[clap(long)]
+    pub recipient_address: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]

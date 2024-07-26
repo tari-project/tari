@@ -199,6 +199,19 @@ async fn encumber_aggregate_utxo(
         .map_err(CommandError::TransactionServiceError)
 }
 
+async fn spend_backup_pre_mine_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroMinotari,
+    output_hash: HashOutput,
+    expected_commitment: PedersenCommitment,
+    recipient_address: TariAddress,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .spend_backup_pre_mine_utxo(fee_per_gram, output_hash, expected_commitment, recipient_address)
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
 /// finalises an already encumbered a n-of-m transaction
 async fn finalise_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
@@ -793,6 +806,36 @@ pub async fn command_runner(
                 println!("Session info saved to:              '{}'", out_file.display());
                 println!("Send '{}' to parties for step 2", get_file_name(SESSION_INFO, None));
                 println!();
+            },
+            PreMineSpendBackupUtxo(args) => {
+                let commitment = if let Ok(val) = Commitment::from_hex(&args.commitment) {
+                    val
+                } else {
+                    eprintln!("\nError: Invalid 'commitment' provided!\n");
+                    continue;
+                };
+                let hash = if let Ok(val) = FixedHash::from_hex(&args.output_hash) {
+                    val
+                } else {
+                    eprintln!("\nError: Invalid 'output_hash' provided!\n");
+                    continue;
+                };
+                match spend_backup_pre_mine_utxo(
+                    transaction_service.clone(),
+                    args.fee_per_gram,
+                    hash,
+                    commitment.clone(),
+                    args.recipient_address,
+                )
+                .await
+                {
+                    Ok(tx_id) => {
+                        println!();
+                        println!("Spend utxo: {} with tx_id: {}", commitment.to_hex(), tx_id);
+                        println!();
+                    },
+                    Err(e) => eprintln!("\nError:Spent pre-mine transaction error! {}\n", e),
+                }
             },
             PreMineCreatePartyDetails(args) => {
                 if args.alias.is_empty() || args.alias.contains(" ") {

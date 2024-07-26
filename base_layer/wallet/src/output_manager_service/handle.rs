@@ -73,6 +73,13 @@ pub enum OutputManagerRequest {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
     },
+    SpendBackupPreMineUtxo {
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
+        recipient_address: TariAddress,
+    },
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroMinotari,
@@ -167,6 +174,18 @@ impl fmt::Display for OutputManagerRequest {
                 expected_commitment.to_hex(),
                 output_hash
             ),
+            SpendBackupPreMineUtxo {
+                tx_id,
+                output_hash,
+                expected_commitment,
+                ..
+            } => write!(
+                f,
+                "spending backup pre-mine utxo with tx_id: {} and output: ({},{})",
+                tx_id,
+                expected_commitment.to_hex(),
+                output_hash
+            ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { message, .. } => write!(f, "PrepareToSendTransaction ({})", message),
@@ -250,6 +269,7 @@ pub enum OutputManagerResponse {
             PublicKey,
         ),
     ),
+    SpendBackupPreMineUtxo((Transaction, MicroMinotari, MicroMinotari)),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
@@ -813,6 +833,30 @@ impl OutputManagerHandle {
                 total_metadata_ephemeral_public_key,
                 total_script_nonce,
             )),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn spend_backup_pre_mine_utxo(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
+        recipient_address: TariAddress,
+    ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::SpendBackupPreMineUtxo {
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address,
+            })
+            .await??
+        {
+            OutputManagerResponse::SpendBackupPreMineUtxo((transaction, amount, fee)) => Ok((transaction, amount, fee)),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
