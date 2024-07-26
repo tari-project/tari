@@ -25,7 +25,6 @@ use std::{
     fmt,
     fs,
     io::Write,
-    panic,
     path::{Path, PathBuf},
 };
 
@@ -129,17 +128,11 @@ fn get_commit() -> Result<String, anyhow::Error> {
     let repo = git2::Repository::open(git_root)?;
     let head = repo.revparse_single("HEAD")?;
     let id = format!("{:?}", head.id());
-    let result = panic::catch_unwind(|| id.split_at(7));
-    let id = match result {
-        Ok((first, _)) => first.to_string(),
-        Err(_) => return Err(anyhow::anyhow!("invalid utf8 in commit id")),
-    };
 
-    // replace after stable 1.80 release
-    // id.split_at_checked(7)
-    //     .ok_or(anyhow::anyhow!("invalid utf8 in commit id"))?
-    //     .0
-    //     .to_string();
+    id.split_at_checked(7)
+        .ok_or(anyhow::anyhow!("invalid utf8 in commit id"))?
+        .0
+        .to_string();
     Ok(id)
 }
 
