@@ -22,8 +22,6 @@
 
 use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 
-use blake2::Blake2b;
-use chacha20poly1305::consts::U64;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
@@ -69,8 +67,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey, ristretto::pedersen::PedersenCommitment};
-use tari_hashing::KeyManagerTransactionsHashDomain;
+use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_key_manager::key_manager_service::SerializedKeyString;
 use tari_script::{
     inputs,
@@ -2941,6 +2938,7 @@ where
     }
 
     // Scanning outputs addressed to this wallet
+    #[allow(clippy::too_many_lines)]
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
@@ -2957,7 +2955,6 @@ where
             ));
         }
 
-        let spend_key = self.resources.key_manager.get_spend_key().await?;
         let view_key = self.resources.key_manager.get_view_key().await?;
 
         let mut scanned_outputs = vec![];
@@ -2970,51 +2967,96 @@ where
                         .key_manager
                         .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)
                         .await?;
-                    scanned_outputs.push((
-                        output.clone(),
-                        OutputSource::OneSided,
-                        matched_key.1.clone(),
-                        shared_secret,
-                    ));
+
+                    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                    let script_private_key = matched_key.clone().1;
+
+                    if let Ok((committed_value, spending_key, payment_id)) =
+                        EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
+                    {
+                        if output.verify_mask(
+                            &self.resources.factories.range_proof,
+                            &spending_key,
+                            committed_value.into(),
+                        )? {
+                            let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                            let rewound_output = WalletOutput::new_with_rangeproof(
+                                output.version,
+                                committed_value,
+                                spending_key_id,
+                                output.features,
+                                output.script,
+                                ExecutionStack::new(vec![]),
+                                script_private_key,
+                                output.sender_offset_public_key,
+                                output.metadata_signature,
+                                0,
+                                output.covenant,
+                                output.encrypted_data,
+                                output.minimum_value_promise,
+                                output.proof,
+                                payment_id,
+                            );
+
+                            scanned_outputs.push((rewound_output, OutputSource::OneSided));
+                        }
+                    }
                 }
                 // it is not some known key, so lets try and see if this is a stealth tx for us
                 else {
-                    let stealth_address_hasher = self
-                        .resources
-                        .key_manager
-                        .get_diffie_hellman_stealth_domain_hasher(&view_key.key_id, &output.sender_offset_public_key)
-                        .await?;
-                    let script_spending_key =
-                        stealth_address_script_spending_key(&stealth_address_hasher, &spend_key.pub_key);
-                    if &script_spending_key != scanned_pk.as_ref() {
-                        continue;
-                    }
-
-                    // Compute the stealth address offset
-                    let hasher =
-                        DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-                            "script key",
-                        );
-                    let hasher = hasher.chain("script key").finalize();
-                    let stealth_address = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                        OutputManagerError::BuildError("Invalid private key for sender offset private key".to_string())
-                    })?;
-                    let stealth_key = self.resources.key_manager.import_key(stealth_address).await?;
-                    let stealth_key = TariKeyId::Derived {
-                        key: SerializedKeyString::from(stealth_key.to_string()),
-                    };
-
                     let shared_secret = self
                         .resources
                         .key_manager
                         .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)
                         .await?;
-                    scanned_outputs.push((
-                        output.clone(),
-                        OutputSource::StealthOneSided,
-                        stealth_key,
-                        shared_secret,
-                    ));
+
+                    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                    if let Ok((committed_value, commitment_mask_private_key, payment_id)) =
+                        EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
+                    {
+                        if output.verify_mask(
+                            &self.resources.factories.range_proof,
+                            &commitment_mask_private_key,
+                            committed_value.into(),
+                        )? {
+                            let script_spending_key = stealth_address_script_spending_key(
+                                &commitment_mask_private_key,
+                                &self.resources.key_manager.get_spend_key().await?.pub_key,
+                            )?;
+
+                            if script_spending_key != **scanned_pk {
+                                continue;
+                            }
+                            let commitment_mask = self
+                                .resources
+                                .key_manager
+                                .import_key(commitment_mask_private_key)
+                                .await?;
+                            let script_key = TariKeyId::Derived {
+                                key: SerializedKeyString::from(commitment_mask.to_string()),
+                            };
+
+                            let rewound_output = WalletOutput::new_with_rangeproof(
+                                output.version,
+                                committed_value,
+                                commitment_mask,
+                                output.features,
+                                output.script,
+                                ExecutionStack::new(vec![]),
+                                script_key,
+                                output.sender_offset_public_key,
+                                output.metadata_signature,
+                                0,
+                                output.covenant,
+                                output.encrypted_data,
+                                output.minimum_value_promise,
+                                output.proof,
+                                payment_id,
+                            );
+
+                            scanned_outputs.push((rewound_output, OutputSource::StealthOneSided));
+                        }
+                    }
                 }
             }
         }
@@ -3025,78 +3067,48 @@ where
     // Import scanned outputs into the wallet
     async fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(TransactionOutput, OutputSource, TariKeyId, CommsDHKE)>,
+        scanned_outputs: Vec<(WalletOutput, OutputSource)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
-            let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-            if let Ok((committed_value, spending_key, payment_id)) =
-                EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
+        for (output, output_source) in scanned_outputs {
+            let tx_id = TxId::new_random();
+            let db_output = DbWalletOutput::from_wallet_output(
+                output.clone(),
+                &self.resources.key_manager,
+                None,
+                output_source,
+                Some(tx_id),
+                None,
+            )
+            .await?;
+            let hash = db_output.hash;
+
+            match self
+                .resources
+                .db
+                .add_unspent_output_with_tx_id(tx_id, db_output.clone())
             {
-                if output.verify_mask(
-                    &self.resources.factories.range_proof,
-                    &spending_key,
-                    committed_value.into(),
-                )? {
-                    let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
-                    let hash = output.hash();
-                    let rewound_output = WalletOutput::new_with_rangeproof(
-                        output.version,
-                        committed_value,
-                        spending_key_id,
-                        output.features,
-                        output.script,
-                        tari_script::ExecutionStack::new(vec![]),
-                        script_private_key,
-                        output.sender_offset_public_key,
-                        output.metadata_signature,
-                        0,
-                        output.covenant,
-                        output.encrypted_data,
-                        output.minimum_value_promise,
-                        output.proof,
-                        payment_id,
+                Ok(_) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "One-sided payment Output {} with value {} recovered",
+                        db_output.commitment.to_hex(),
+                        db_output.wallet_output.value,
                     );
 
-                    let tx_id = TxId::new_random();
-                    let db_output = DbWalletOutput::from_wallet_output(
-                        rewound_output.clone(),
-                        &self.resources.key_manager,
-                        None,
-                        output_source,
-                        Some(tx_id),
-                        None,
-                    )
-                    .await?;
-
-                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
-                        Ok(_) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                "One-sided payment Output {} with value {} recovered",
-                                output.commitment.to_hex(),
-                                committed_value,
-                            );
-
-                            rewound_outputs.push(RecoveredOutput {
-                                output: rewound_output,
-                                tx_id,
-                                hash,
-                            })
-                        },
-                        Err(OutputManagerStorageError::DuplicateOutput) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
-                                output.commitment.to_hex()
-                            );
-                        },
-                        Err(err) => {
-                            return Err(err.into());
-                        },
-                    }
-                }
+                    rewound_outputs.push(RecoveredOutput { output, tx_id, hash })
+                },
+                Err(OutputManagerStorageError::DuplicateOutput) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                        db_output.commitment.to_hex()
+                    );
+                },
+                Err(err) => {
+                    return Err(err.into());
+                },
             }
         }
 

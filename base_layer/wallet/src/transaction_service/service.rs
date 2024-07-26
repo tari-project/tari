@@ -1943,25 +1943,6 @@ where
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
 
-        if use_stealth_address {
-            // lets fix the script with the correct one
-            let c = self
-                .resources
-                .transaction_key_manager_service
-                .get_diffie_hellman_stealth_domain_hasher(
-                    &sender_offset_private_key,
-                    dest_address
-                        .public_view_key()
-                        .ok_or(TransactionServiceError::OneSidedTransactionError(
-                            "Missing public view key".to_string(),
-                        ))?,
-                )
-                .await?;
-
-            let script_spending_key = stealth_address_script_spending_key(&c, dest_address.public_spend_key());
-            script = push_pubkey_script(&script_spending_key);
-        }
-
         let shared_secret = self
             .resources
             .transaction_key_manager_service
@@ -1975,8 +1956,14 @@ where
                     ))?,
             )
             .await?;
-        let spending_key = shared_secret_to_output_spending_key(&shared_secret)
+        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        if use_stealth_address {
+            let script_spending_key =
+                stealth_address_script_spending_key(&commitment_mask_private_key, dest_address.public_spend_key())?;
+            script = push_pubkey_script(&script_spending_key);
+        }
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.transaction_key_manager_service)
@@ -1993,7 +1980,7 @@ where
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(spending_key)
+            .import_key(commitment_mask_private_key)
             .await?;
 
         let sender_offset_public_key = self
