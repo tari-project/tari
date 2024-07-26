@@ -15,7 +15,6 @@ tari_comms_dht = { path = "../../comms/dht", version = "1.0.0-pre.18" }
 tari_contacts = { path = "../../base_layer/contacts", version = "1.0.0-pre.18" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto"], version = "1.0.0-pre.18" }
 tari_crypto = { version = "0.20.3" }
-tari_hashing = { path = "../../hashing", version = "1.0.0-pre.18" }
 tari_key_manager = { path = "../key_manager", features = ["key_manager_service"], version = "1.0.0-pre.18" }
 tari_p2p = { path = "../p2p", features = ["auto-update"], version = "1.0.0-pre.18" }
 tari_script = { path = "../../infrastructure/tari_script", version = "1.0.0-pre.18" }
