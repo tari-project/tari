@@ -1511,6 +1511,7 @@ where
         ))
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn spend_backup_pre_mine_utxo(
         &mut self,
         tx_id: TxId,
