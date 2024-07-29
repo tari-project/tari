@@ -237,10 +237,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
-                match &self.wallet_type {
+                if let WalletType::Ledger(ledger) = &self.wallet_type {
                     // If we have the unique case of being a ledger wallet, and the key is a Managed EphemeralNonce, or
                     // SenderOffset than we fetch from the ledger, all other keys are fetched below.
-                    WalletType::Ledger(ledger) => match TransactionKeyManagerBranch::from_key(branch) {
+                    match TransactionKeyManagerBranch::from_key(branch) {
                         TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                             #[cfg(not(feature = "ledger"))]
                             {
@@ -257,7 +257,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                     TransactionKeyManagerBranch::from_key(branch),
                                 )
                                 .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                                Ok(public_key)
+                                return Ok(public_key);
                             }
                         },
                         TransactionKeyManagerBranch::DataEncryption => {
@@ -265,20 +265,19 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 .view_key
                                 .clone()
                                 .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible)?;
-                            Ok(PublicKey::from_secret_key(&view_key))
+                            return Ok(PublicKey::from_secret_key(&view_key));
                         },
-                        _ => Err(self.branch_not_supported_error(branch)),
-                    },
-                    _ => {
-                        let km = self
-                            .key_managers
-                            .get(branch)
-                            .ok_or(self.unknown_key_branch_error(branch))?
-                            .read()
-                            .await;
-                        Ok(km.derive_public_key(*index)?.key)
-                    },
-                }
+                        _ => {},
+                    }
+                };
+
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or_else(|| self.unknown_key_branch_error(&branch))?
+                    .read()
+                    .await;
+                Ok(km.derive_public_key(*index)?.key)
             },
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
@@ -370,14 +369,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         let km = self
                             .key_managers
                             .get(&TransactionKeyManagerBranch::Spend.get_branch_key())
-                            .ok_or(self.unknown_key_branch_error(&branch))?
+                            .ok_or_else(|| self.unknown_key_branch_error(&branch))?
                             .read()
                             .await;
                         let private_alpha = km.get_private_key(0)?;
                         let km = self
                             .key_managers
                             .get(&branch)
-                            .ok_or(self.unknown_key_branch_error(&branch))?
+                            .ok_or_else(|| self.unknown_key_branch_error(&branch))?
                             .read()
                             .await;
                         let branch_key = km.get_private_key(index)?;
@@ -401,7 +400,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         let km = self
                             .key_managers
                             .get(&branch)
-                            .ok_or(self.unknown_key_branch_error(&branch))?
+                            .ok_or_else(|| self.unknown_key_branch_error(&branch))?
                             .read()
                             .await;
                         let branch_key = km.get_private_key(index)?;
@@ -525,7 +524,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let km = self
                     .key_managers
                     .get(&branch)
-                    .ok_or(self.unknown_key_branch_error(&branch))?
+                    .ok_or_else(|| self.unknown_key_branch_error(&branch))?
                     .read()
                     .await;
                 let key = km.get_private_key(index)?;
@@ -683,10 +682,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<CommsDHKE, TransactionError> {
-        match &self.wallet_type {
-            WalletType::Ledger(ledger) => match secret_key_id {
-                KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
-                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
+        if let WalletType::Ledger(ledger) = &self.wallet_type {
+            if let KeyId::Managed { branch, index } = secret_key_id {
+                match TransactionKeyManagerBranch::from_key(branch) {
+                    TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                         #[cfg(not(feature = "ledger"))]
                         {
                             Err(TransactionError::LedgerNotSupported(format!(
@@ -697,28 +696,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                         #[cfg(feature = "ledger")]
                         {
-                            ledger_get_dh_shared_secret(
+                            return ledger_get_dh_shared_secret(
                                 ledger.account,
                                 *index,
                                 TransactionKeyManagerBranch::from_key(branch),
                                 public_key,
                             )
-                            .map_err(TransactionError::LedgerDeviceError)
+                            .map_err(TransactionError::LedgerDeviceError);
                         }
                     },
-                    _ => Err(TransactionError::from(self.branch_not_supported_error(branch))),
-                },
-                _ => Err(TransactionError::UnsupportedTariKeyId(format!(
-                    "Expected 'KeyId::Managed', got {}",
-                    secret_key_id
-                ))),
-            },
-            _ => {
-                let secret_key = self.get_private_key(secret_key_id).await?;
-                let shared_secret = CommsDHKE::new(&secret_key, public_key);
-                Ok(shared_secret)
-            },
+                    _ => {},
+                }
+            }
         }
+
+        let secret_key = self.get_private_key(secret_key_id).await?;
+        let shared_secret = CommsDHKE::new(&secret_key, public_key);
+        Ok(shared_secret)
     }
 
     pub async fn get_diffie_hellman_stealth_domain_hasher(
@@ -831,7 +825,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let km = self
                         .key_managers
                         .get(&branch)
-                        .ok_or(self.unknown_key_branch_error(&branch))?
+                        .ok_or_else(|| self.unknown_key_branch_error(&branch))?
                         .read()
                         .await;
                     let branch_key = km
@@ -1010,7 +1004,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             let km = self
                                 .key_managers
                                 .get(&branch)
-                                .ok_or(self.unknown_key_branch_error(&branch))?
+                                .ok_or_else(|| self.unknown_key_branch_error(&branch))?
                                 .read()
                                 .await;
                             let branch_key = km
