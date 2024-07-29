@@ -613,6 +613,7 @@ mod test {
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
+                CliCommands::PreMineSpendBackupUtxo(_) => {},
             }
         }
         assert!(

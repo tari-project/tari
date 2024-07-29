@@ -767,7 +767,7 @@ where
             } => self
                 .spend_backup_pre_mine_utxo(fee_per_gram, output_hash, expected_commitment, recipient_address)
                 .await
-                .map(|tx_id| TransactionServiceResponse::TransactionSent(tx_id)),
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
                 let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
                 Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
