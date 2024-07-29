@@ -91,7 +91,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-
+use minotari_wallet::utxo_scanner_service::handle::UtxoScannerEvent;
 use super::error::CommandError;
 use crate::{
     automation::{
@@ -1500,6 +1500,75 @@ pub async fn command_runner(
                 },
                 Err(err) => eprintln!("Error generating certificates: {}", err),
             },
+            Sync(args) =>{
+                let mut utxo_scanner = wallet.utxo_scanner_service.clone();
+                let receiver = utxo_scanner.get_event_receiver();
+
+                if !online {
+                    match wait_for_comms(&connectivity_requester).await {
+                        Ok(..) => {
+                            online = true;
+                        },
+                        Err(e) => {
+                            eprintln!("Sync error! {}", e);
+                            continue;
+                        },
+                    }
+                }
+
+                loop{
+                    match receiver.recv().await {
+                        Ok(event) => {
+                            match event {
+                                UtxoScannerEvent::ConnectingToBaseNode(Node) => {
+                                    println!("Connecting to base node...");
+                                },
+                                UtxoScannerEvent::ConnectedToBaseNode(_,_) => {
+                                    println!("Connected to base node");
+                                },
+                                UtxoScannerEvent::ConnectionFailedToBaseNode{..} => {
+                                    println!("Failed to connect to base node");
+                                },
+                                UtxoScannerEvent::ScanningRoundFailed {
+                                    num_retries,
+                                    retry_limit,
+                                    error,
+                                }=> {
+                                    println!("Scanning round failed. Retries: {}/{}. Error: {}", num_retries, retry_limit, error);
+                                },
+                                UtxoScannerEvent::Progress {
+                                    current_height,
+                                    tip_height,
+                                }=> {
+                                    println!("Progress: {}/{}", current_height, tip_height);
+                                    if current_height => args.sync_to_height{
+                                        break;
+                                    }
+                                }
+                                UtxoScannerEvent::Completed {
+                                    final_height,
+                                    num_recovered,
+                                    value_recovered,
+                                    time_taken,
+                                }=> {
+                                    println!("Completed! Height: {}, UTXOs recovered: {}, Value recovered: {}, Time taken: {}", final_height, num_recovered, value_recovered, time_taken);
+
+                                    break;
+                                },
+                                UtxoScannerEvent::ScanningFailed=> {
+                                    println!("Scanning failed");
+                                    break;
+                                },
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("Sync error! {}", e);
+                            break;
+                        },
+                    }
+                }
+
+            }
         }
     }
 
