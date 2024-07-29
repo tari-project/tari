@@ -759,6 +759,15 @@ where
                         )
                     },
                 ),
+            TransactionServiceRequest::SpendBackupPreMineUtxo {
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address,
+            } => self
+                .spend_backup_pre_mine_utxo(fee_per_gram, output_hash, expected_commitment, recipient_address)
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::FetchUnspentOutputs { output_hashes } => {
                 let unspent_outputs = self.fetch_unspent_outputs_from_node(output_hashes).await?;
                 Ok(TransactionServiceResponse::UnspentOutputs(unspent_outputs))
@@ -1485,6 +1494,51 @@ where
                     total_metadata_ephemeral_public_key,
                     total_script_nonce,
                 ))
+            },
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub async fn spend_backup_pre_mine_utxo(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
+        recipient_address: TariAddress,
+    ) -> Result<TxId, TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        match self
+            .resources
+            .output_manager_service
+            .spend_backup_pre_mine_utxo(
+                tx_id,
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address.clone(),
+            )
+            .await
+        {
+            Ok((transaction, amount, fee)) => {
+                let completed_tx = CompletedTransaction::new(
+                    tx_id,
+                    self.resources.interactive_tari_address.clone(),
+                    recipient_address,
+                    amount,
+                    fee,
+                    transaction.clone(),
+                    TransactionStatus::Pending,
+                    "claimed n-of-m utxo".to_string(),
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Outbound,
+                    None,
+                    None,
+                    None,
+                )
+                .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+                self.db.insert_completed_transaction(tx_id, completed_tx)?;
+                Ok(tx_id)
             },
             Err(e) => Err(e.into()),
         }

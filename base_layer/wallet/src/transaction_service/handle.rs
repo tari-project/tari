@@ -122,6 +122,12 @@ pub enum TransactionServiceRequest {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
     },
+    SpendBackupPreMineUtxo {
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
+        recipient_address: TariAddress,
+    },
     FetchUnspentOutputs {
         output_hashes: Vec<HashOutput>,
     },
@@ -230,6 +236,19 @@ impl fmt::Display for TransactionServiceRequest {
             } => f.write_str(&format!(
                 "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
                 amount, n, m
+            )),
+            Self::SpendBackupPreMineUtxo {
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address,
+            } => f.write_str(&format!(
+                "Spending backup pre-mine utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, recipient \
+                 = {}",
+                fee_per_gram,
+                output_hash,
+                expected_commitment.to_hex(),
+                recipient_address,
             )),
             Self::EncumberAggregateUtxo {
                 fee_per_gram,
@@ -778,6 +797,28 @@ impl TransactionServiceHandle {
                 *total_metadata_ephemeral_public_key,
                 *total_script_nonce,
             )),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn spend_backup_pre_mine_utxo(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
+        recipient_address: TariAddress,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SpendBackupPreMineUtxo {
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
