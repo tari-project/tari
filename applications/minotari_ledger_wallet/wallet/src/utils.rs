@@ -10,7 +10,7 @@ use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     io::SyscallError,
     random::LedgerRng,
-    ui::gadgets::SingleMessage,
+    ui::gadgets::{MessageScroller, SingleMessage},
 };
 use rand_core::RngCore;
 use tari_crypto::{
@@ -197,12 +197,12 @@ pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<Zeroizing<RistrettoSec
     match RistrettoSecretKey::from_uniform_bytes(bytes) {
         Ok(val) => Ok(Zeroizing::new(val)),
         Err(e) => {
-            SingleMessage::new(&format!(
+            MessageScroller::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
                 e.to_string(),
                 &bytes.len()
             ))
-            .show_and_wait();
+            .event_loop();
             SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             return Err(AppSW::KeyDeriveFromUniform);
         },
@@ -213,12 +213,12 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
-            SingleMessage::new(&format!(
+            MessageScroller::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
                 e.to_string(),
                 &bytes.len()
             ))
-            .show_and_wait();
+            .event_loop();
             SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             return Err(AppSW::KeyDeriveFromCanonical);
         },

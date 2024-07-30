@@ -274,7 +274,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 let km = self
                     .key_managers
                     .get(branch)
-                    .ok_or_else(|| self.unknown_key_branch_error(&branch))?
+                    .ok_or_else(|| self.unknown_key_branch_error(branch))?
                     .read()
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
@@ -361,7 +361,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
+                let branch = key.managed_branch().ok_or_else(|| {
+                    KeyManagerServiceError::KeyIdWithoutBranch
+                })?;
                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
                 match &self.wallet_type {
                     WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
@@ -809,34 +811,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             (WalletType::Ledger(ledger), KeyId::Derived { key }) => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
-                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
+                let key = self.get_private_key(&key).await?;
 
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "Ledger {} (has script_key_id {}, branch {}, index {}) is not supported",
-                        ledger, script_key_id, branch, index
+                        "Ledger {} (has script_key_id {}) is not supported",
+                        ledger, script_key_id,
                     )))
                 }
 
                 #[cfg(feature = "ledger")]
                 {
-                    let km = self
-                        .key_managers
-                        .get(&branch)
-                        .ok_or_else(|| self.unknown_key_branch_error(&branch))?
-                        .read()
-                        .await;
-                    let branch_key = km
-                        .get_private_key(index)
-                        .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
-
                     let signature = ledger_get_script_signature(
                         ledger.account,
                         ledger.network,
                         txi_version.as_u8(),
-                        &branch_key,
+                        &key,
                         value,
                         &commitment_private_key,
                         &commitment,
@@ -993,24 +984,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 KeyId::Derived { key } => {
                     let key = TariKeyId::from_str(key.to_string().as_str())
                         .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                    let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
-                    let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
+                    let key = self.get_private_key(&key).await?;
+
                     match &self.wallet_type {
                         WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                            total_script_private_key =
-                                &total_script_private_key + self.get_private_key(script_key_id).await?;
+                            total_script_private_key = &total_script_private_key + key
                         },
                         WalletType::Ledger(_) => {
-                            let km = self
-                                .key_managers
-                                .get(&branch)
-                                .ok_or_else(|| self.unknown_key_branch_error(&branch))?
-                                .read()
-                                .await;
-                            let branch_key = km
-                                .get_private_key(index)
-                                .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?;
-                            derived_key_commitments.push(branch_key);
+                            derived_key_commitments.push(key);
                         },
                     }
                 },
@@ -1252,7 +1233,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     #[allow(unused_variables)]
     pub async fn get_one_sided_metadata_signature(
         &self,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
@@ -1262,7 +1243,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         match &self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 self.get_metadata_signature(
-                    spending_key_id,
+                    commitment_mask_key_id,
                     value_as_private_key,
                     sender_offset_key_id,
                     txo_version,
@@ -1286,17 +1267,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         TransactionError::KeyManagerError("Invalid index for sender offset".to_string())
                     })?;
 
-                    let spend_key_id = spending_key_id.managed_index().ok_or_else(|| {
-                        debug!(target: LOG_TARGET, "Invalid key id {:?}", spending_key_id);
-                        TransactionError::KeyManagerError("Invalid index for spend key".to_string())
-                    })?;
+                    let commitment_mask = self.get_private_key(commitment_mask_key_id).await?;
 
                     let comm_and_pub_sig = ledger_get_one_sided_metadata_signature(
                         ledger.account,
                         ledger.network,
                         txo_version.as_u8(),
-                        spend_key_id,
                         sender_offset_key_index,
+                        &commitment_mask,
                         value_as_private_key,
                         metadata_signature_message,
                     )

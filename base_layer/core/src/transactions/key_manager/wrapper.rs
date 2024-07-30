@@ -451,7 +451,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_one_sided_metadata_signature(
         &self,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
@@ -462,7 +462,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .get_one_sided_metadata_signature(
-                spending_key_id,
+                commitment_mask_key_id,
                 value_as_private_key,
                 sender_offset_key_id,
                 txo_version,

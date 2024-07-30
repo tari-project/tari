@@ -467,8 +467,8 @@ pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
     txo_version: u8,
-    spend_key_id: u64,
     sender_offset_key_index: u64,
+    commitment_mask: &PrivateKey,
     value_as_private_key: &PrivateKey,
     metadata_signature_message: &[u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
@@ -477,8 +477,8 @@ pub fn ledger_get_one_sided_metadata_signature(
     let mut data = Vec::new();
     data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
     data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
-    data.extend_from_slice(&spend_key_id.to_le_bytes());
     data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+    data.extend_from_slice(&commitment_mask.to_vec());
     data.extend_from_slice(&value_as_private_key.to_vec());
     data.extend_from_slice(&metadata_signature_message.to_vec());
 

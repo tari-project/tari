@@ -152,7 +152,9 @@ where
             KeyId::Derived { key } => {
                 let key = KeyId::<PK>::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or(KeyManagerServiceError::KeyIdWithoutBranch)?;
+                let branch = key.managed_branch().ok_or_else(|| {
+                    KeyManagerServiceError::KeyIdWithoutBranch
+                })?;
                 let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
                 let km = self
                     .key_managers

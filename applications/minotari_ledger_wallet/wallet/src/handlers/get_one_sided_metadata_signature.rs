@@ -44,21 +44,19 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     txo_version_bytes.clone_from_slice(&data[16..24]);
     let txo_version = u64::from_le_bytes(txo_version_bytes);
 
-    let mut spend_key_index_bytes = [0u8; 8];
-    spend_key_index_bytes.clone_from_slice(&data[24..32]);
-    let spend_key_index = u64::from_le_bytes(spend_key_index_bytes);
-    let spend_private_key = derive_from_bip32_key(account, spend_key_index, KeyType::Spend)?;
-
     let mut sender_offset_key_index_bytes = [0u8; 8];
-    sender_offset_key_index_bytes.clone_from_slice(&data[32..40]);
+    sender_offset_key_index_bytes.clone_from_slice(&data[24..32]);
     let sender_offset_key_index = u64::from_le_bytes(sender_offset_key_index_bytes);
 
     let sender_offset_private_key =
         derive_from_bip32_key(account, sender_offset_key_index, KeyType::OneSidedSenderOffset)?;
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_private_key);
 
+    let commitment_mask: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[32..64])?.into();
+
     let value: Zeroizing<RistrettoSecretKey> =
-        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[64..96])?.into();
 
     let r_a = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
     let r_x = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
@@ -66,12 +64,12 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let factory = ExtendedPedersenCommitmentFactory::default();
 
-    let commitment = factory.commit(&spend_private_key, value.deref());
+    let commitment = factory.commit(&commitment_mask, value.deref());
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
     let mut metadata_signature_message = [0u8; 32];
-    metadata_signature_message.clone_from_slice(&data[72..104]);
+    metadata_signature_message.clone_from_slice(&data[96..128]);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -85,7 +83,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let metadata_signature = match RistrettoComAndPubSig::sign(
         &value,
-        &spend_private_key,
+        &commitment_mask,
         &sender_offset_private_key,
         &r_a,
         &r_x,
