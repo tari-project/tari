@@ -285,6 +285,7 @@ pub fn ledger_get_script_signature(
 /// Get the script offset from the ledger device
 pub fn ledger_get_script_offset(
     account: u64,
+    total_script_private_key: &PrivateKey,
     derived_key_commitments: &[PrivateKey],
     sender_offset_indexes: &[u64],
 ) -> Result<PrivateKey, LedgerDeviceError> {
@@ -297,7 +298,6 @@ pub fn ledger_get_script_offset(
     instructions.extend_from_slice(&num_commitments.to_le_bytes());
 
     let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
-    let total_script_private_key = PrivateKey::default();
     data.push(total_script_private_key.to_vec());
 
     for sender_offset_index in sender_offset_indexes {

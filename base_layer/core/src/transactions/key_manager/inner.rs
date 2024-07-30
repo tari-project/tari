@@ -330,7 +330,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         }
 
                         // If we're trying to access any of the private keys, just say no bueno
-                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch
+                        {
                             return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible);
                         }
                     },
@@ -1019,25 +1021,32 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 #[cfg(feature = "ledger")]
                 {
+                    let mut total_script_private_key = PrivateKey::default();
                     let mut sender_offset_indexes = vec![];
                     for sender_offset_key_id in sender_offset_key_ids {
+                        debug!(target: LOG_TARGET, "sender offset key ids: {}", sender_offset_key_id);
                         match sender_offset_key_id {
-                            TariKeyId::Managed { branch: _, index } => {
-                                sender_offset_indexes.push(*index);
+                            TariKeyId::Managed { branch, index } => {
+                                if &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch {
+                                    sender_offset_indexes.push(*index);
+                                } else {
+                                    total_script_private_key =
+                                        total_script_private_key + self.get_private_key(sender_offset_key_id).await?;
+                                }
                             },
-                            TariKeyId::Derived { key } => {
-                                let key = TariKeyId::from_str(key.to_string().as_str())
-                                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
-                                sender_offset_indexes.push(index);
-                            },
-                            TariKeyId::Imported { .. } | TariKeyId::Zero => {},
+                            TariKeyId::Derived { .. } | TariKeyId::Imported { .. } | TariKeyId::Zero => {},
                         }
                     }
 
-                    let script_offset =
-                        ledger_get_script_offset(ledger.account, &derived_key_commitments, &sender_offset_indexes)
-                            .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?;
+                    debug!(target: LOG_TARGET, "Total script private key: {}", total_script_private_key.to_hex());
+
+                    let script_offset = ledger_get_script_offset(
+                        ledger.account,
+                        &total_script_private_key,
+                        &derived_key_commitments,
+                        &sender_offset_indexes,
+                    )
+                    .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?;
                     Ok(script_offset)
                 }
             },
