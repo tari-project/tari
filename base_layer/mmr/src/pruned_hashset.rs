@@ -24,7 +24,6 @@ use std::convert::TryFrom;
 
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common::DomainDigest;
 
 use crate::{common::find_peaks, error::MerkleMountainRangeError, ArrayLike, Hash, MerkleMountainRange};
 
@@ -51,7 +50,7 @@ pub struct PrunedHashSet {
 
 impl<D, B> TryFrom<&MerkleMountainRange<D, B>> for PrunedHashSet
 where
-    D: Digest + DomainDigest,
+    D: Digest,
     B: ArrayLike<Value = Hash>,
 {
     type Error = MerkleMountainRangeError;

@@ -6033,7 +6033,6 @@ name = "tari_common"
 version = "1.0.0-pre.18"
 dependencies = [
  "anyhow",
- "blake2",
  "config",
  "dirs-next 1.0.2",
  "git2",
@@ -6047,7 +6046,6 @@ dependencies = [
  "serde_yaml",
  "sha2 0.10.8",
  "structopt",
- "tari_crypto",
  "tari_features",
  "tari_test_utils",
  "tempfile",
@@ -6471,7 +6469,6 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "tari_common",
  "tari_crypto",
  "tari_utilities",
  "thiserror",
