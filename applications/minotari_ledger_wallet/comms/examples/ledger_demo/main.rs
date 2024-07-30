@@ -161,6 +161,7 @@ fn main() {
 
     // GetScriptOffset
     println!("\ntest: GetScriptOffset");
+    let total_script_private_key = PrivateKey::default();
     let mut derived_key_commitments = Vec::new();
     let mut sender_offset_indexes = Vec::new();
     for _i in 0..5 {
@@ -168,7 +169,12 @@ fn main() {
         sender_offset_indexes.push(OsRng.next_u64());
     }
 
-    match ledger_get_script_offset(account, &derived_key_commitments, &sender_offset_indexes) {
+    match ledger_get_script_offset(
+        account,
+        &total_script_private_key,
+        &derived_key_commitments,
+        &sender_offset_indexes,
+    ) {
         Ok(script_offset) => println!("script_offset:  {}", script_offset.to_hex()),
         Err(e) => {
             println!("\nError: {}\n", e);

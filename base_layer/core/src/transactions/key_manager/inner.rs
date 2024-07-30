@@ -363,34 +363,28 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let branch = key.managed_branch().ok_or_else(|| {
-                    KeyManagerServiceError::KeyIdWithoutBranch
-                })?;
-                let index = key.managed_index().ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
+
+                let commitment_mask = Box::pin(self.get_private_key(&key)).await?;
+
                 match &self.wallet_type {
                     WalletType::Ledger(_) => Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible),
                     WalletType::DerivedKeys => {
                         let km = self
                             .key_managers
                             .get(&TransactionKeyManagerBranch::Spend.get_branch_key())
-                            .ok_or_else(|| self.unknown_key_branch_error(&branch))?
+                            .ok_or_else(|| {
+                                self.unknown_key_branch_error(&TransactionKeyManagerBranch::Spend.get_branch_key())
+                            })?
                             .read()
                             .await;
                         let private_alpha = km.get_private_key(0)?;
-                        let km = self
-                            .key_managers
-                            .get(&branch)
-                            .ok_or_else(|| self.unknown_key_branch_error(&branch))?
-                            .read()
-                            .await;
-                        let branch_key = km.get_private_key(index)?;
                         let hasher =
                             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                                 HASHER_LABEL_STEALTH_KEY,
                             );
-                        let hasher = hasher.chain(branch_key.as_bytes()).finalize();
+                        let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
                         let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                            KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", branch))
+                            KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
                         })?;
                         let private_key = private_key + private_alpha;
                         Ok(private_key)
@@ -401,20 +395,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             .clone()
                             .ok_or(KeyManagerServiceError::ImportedPrivateKeyInaccessible)?;
 
-                        let km = self
-                            .key_managers
-                            .get(&branch)
-                            .ok_or_else(|| self.unknown_key_branch_error(&branch))?
-                            .read()
-                            .await;
-                        let branch_key = km.get_private_key(index)?;
                         let hasher =
                             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                                 HASHER_LABEL_STEALTH_KEY,
                             );
-                        let hasher = hasher.chain(branch_key.as_bytes()).finalize();
+                        let hasher = hasher.chain(commitment_mask.as_bytes()).finalize();
                         let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
-                            KeyManagerServiceError::UnknownError(format!("Invalid private key for {}", branch))
+                            KeyManagerServiceError::UnknownError("Invalid private key for Spend".to_string())
                         })?;
                         let private_key = private_key + private_alpha;
                         Ok(private_key)
@@ -983,19 +970,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 KeyId::Imported { .. } | KeyId::Managed { .. } | KeyId::Zero => {
                     total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id).await?
                 },
-                KeyId::Derived { key } => {
-                    let key = TariKeyId::from_str(key.to_string().as_str())
-                        .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                    let key = self.get_private_key(&key).await?;
+                KeyId::Derived { key } => match &self.wallet_type {
+                    WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+                        total_script_private_key =
+                            &total_script_private_key + self.get_private_key(script_key_id).await?;
+                    },
+                    WalletType::Ledger(_) => {
+                        let key = TariKeyId::from_str(key.to_string().as_str())
+                            .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
 
-                    match &self.wallet_type {
-                        WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                            total_script_private_key = &total_script_private_key + key
-                        },
-                        WalletType::Ledger(_) => {
-                            derived_key_commitments.push(key);
-                        },
-                    }
+                        let key = self.get_private_key(&key).await?;
+                        derived_key_commitments.push(key);
+                    },
                 },
             }
         }
@@ -1031,7 +1017,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                     sender_offset_indexes.push(*index);
                                 } else {
                                     total_script_private_key =
-                                        total_script_private_key + self.get_private_key(sender_offset_key_id).await?;
+                                        total_script_private_key - self.get_private_key(sender_offset_key_id).await?;
                                 }
                             },
                             TariKeyId::Derived { .. } | TariKeyId::Imported { .. } | TariKeyId::Zero => {},
