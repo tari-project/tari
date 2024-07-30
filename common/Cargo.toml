@@ -14,11 +14,9 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { version = "0.20.3" }
 tari_features = { path = "./tari_features", version = "1.0.0-pre.18"}
 
 anyhow = "1.0.53"
-blake2 = "0.10"
 config = { version = "0.14.0", default-features = false, features = ["toml"] }
 dirs-next = "1.0.2"
 git2 = { version = "0.18", default-features = false, optional = true }
