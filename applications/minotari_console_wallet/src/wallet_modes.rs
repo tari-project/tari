@@ -614,6 +614,7 @@ mod test {
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
+                CliCommands::Sync(_) => {},
             }
         }
         assert!(
