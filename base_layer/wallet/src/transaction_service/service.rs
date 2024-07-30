@@ -30,7 +30,6 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
-use itertools::Itertools;
 use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
@@ -3539,7 +3538,7 @@ where
         if address.network() != self.resources.interactive_tari_address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }
-        if !address.features().contains(&sending_method) {
+        if !address.features().contains(sending_method) {
             return Err(TransactionServiceError::InvalidAddress(format!(
                 "Address does not support feature {} ",
                 sending_method
