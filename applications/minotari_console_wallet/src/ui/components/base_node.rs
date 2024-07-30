@@ -69,6 +69,7 @@ impl<B: Backend> Component<B> for BaseNode {
                 let base_node_state = app_state.get_base_node_state();
                 if let Some(ref metadata) = base_node_state.chain_metadata {
                     let tip = metadata.best_block_height();
+                    let scanned_height = app_state.get_wallet_scanned_height();
 
                     let synced = base_node_state.is_synced.unwrap_or_default();
                     let (tip_color, sync_text) = if synced {
@@ -102,7 +103,7 @@ impl<B: Backend> Component<B> for BaseNode {
                     let mut tip_info = vec![
                         Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                         Span::raw(" "),
-                        Span::styled(format!("#{}", tip), Style::default().fg(tip_color)),
+                        Span::styled(format!("#{}({})", tip, scanned_height), Style::default().fg(tip_color)),
                         Span::raw("  "),
                         Span::styled(sync_text.to_string(), Style::default().fg(Color::White)),
                         Span::raw("  "),
