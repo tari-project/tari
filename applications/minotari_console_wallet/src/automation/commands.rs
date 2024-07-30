@@ -38,11 +38,15 @@ use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerHandle},
+        UtxoSelectionCriteria,
+    },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
         storage::models::WalletTransaction,
     },
+    utxo_scanner_service::handle::UtxoScannerEvent,
     TransactionStage,
     WalletConfig,
     WalletSqlite,
@@ -91,7 +95,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-use minotari_wallet::utxo_scanner_service::handle::UtxoScannerEvent;
+
 use super::error::CommandError;
 use crate::{
     automation::{
@@ -1500,9 +1504,9 @@ pub async fn command_runner(
                 },
                 Err(err) => eprintln!("Error generating certificates: {}", err),
             },
-            Sync(args) =>{
+            Sync(args) => {
                 let mut utxo_scanner = wallet.utxo_scanner_service.clone();
-                let receiver = utxo_scanner.get_event_receiver();
+                let mut receiver = utxo_scanner.get_event_receiver();
 
                 if !online {
                     match wait_for_comms(&connectivity_requester).await {
@@ -1516,50 +1520,57 @@ pub async fn command_runner(
                     }
                 }
 
-                loop{
+                loop {
                     match receiver.recv().await {
-                        Ok(event) => {
-                            match event {
-                                UtxoScannerEvent::ConnectingToBaseNode(Node) => {
-                                    println!("Connecting to base node...");
-                                },
-                                UtxoScannerEvent::ConnectedToBaseNode(_,_) => {
-                                    println!("Connected to base node");
-                                },
-                                UtxoScannerEvent::ConnectionFailedToBaseNode{..} => {
-                                    println!("Failed to connect to base node");
-                                },
-                                UtxoScannerEvent::ScanningRoundFailed {
-                                    num_retries,
-                                    retry_limit,
-                                    error,
-                                }=> {
-                                    println!("Scanning round failed. Retries: {}/{}. Error: {}", num_retries, retry_limit, error);
-                                },
-                                UtxoScannerEvent::Progress {
-                                    current_height,
-                                    tip_height,
-                                }=> {
-                                    println!("Progress: {}/{}", current_height, tip_height);
-                                    if current_height => args.sync_to_height{
-                                        break;
-                                    }
+                        Ok(event) => match event {
+                            UtxoScannerEvent::ConnectingToBaseNode(_) => {
+                                println!("Connecting to base node...");
+                            },
+                            UtxoScannerEvent::ConnectedToBaseNode(_, _) => {
+                                println!("Connected to base node");
+                            },
+                            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {
+                                println!("Failed to connect to base node");
+                            },
+                            UtxoScannerEvent::ScanningRoundFailed {
+                                num_retries,
+                                retry_limit,
+                                error,
+                            } => {
+                                println!(
+                                    "Scanning round failed. Retries: {}/{}. Error: {}",
+                                    num_retries, retry_limit, error
+                                );
+                            },
+                            UtxoScannerEvent::Progress {
+                                current_height,
+                                tip_height,
+                            } => {
+                                println!("Progress: {}/{}", current_height, tip_height);
+                                if current_height >= args.sync_to_height && args.sync_to_height > 0 {
+                                    break;
                                 }
-                                UtxoScannerEvent::Completed {
+                            },
+                            UtxoScannerEvent::Completed {
+                                final_height,
+                                num_recovered,
+                                value_recovered,
+                                time_taken,
+                            } => {
+                                println!(
+                                    "Completed! Height: {}, UTXOs recovered: {}, Value recovered: {}, Time taken: {}",
                                     final_height,
                                     num_recovered,
                                     value_recovered,
-                                    time_taken,
-                                }=> {
-                                    println!("Completed! Height: {}, UTXOs recovered: {}, Value recovered: {}, Time taken: {}", final_height, num_recovered, value_recovered, time_taken);
+                                    time_taken.as_secs()
+                                );
 
-                                    break;
-                                },
-                                UtxoScannerEvent::ScanningFailed=> {
-                                    println!("Scanning failed");
-                                    break;
-                                },
-                            }
+                                break;
+                            },
+                            UtxoScannerEvent::ScanningFailed => {
+                                println!("Scanning failed");
+                                break;
+                            },
                         },
                         Err(e) => {
                             eprintln!("Sync error! {}", e);
@@ -1567,8 +1578,39 @@ pub async fn command_runner(
                         },
                     }
                 }
-
-            }
+                println!("Starting validation process");
+                let mut oms = wallet.output_manager_service.clone();
+                oms.validate_txos().await?;
+                let mut event = oms.get_event_stream();
+                loop {
+                    match event.recv().await {
+                        Ok(event) => match *event {
+                            OutputManagerEvent::TxoValidationSuccess(_) => {
+                                println!("Validation succeeded");
+                                break;
+                            },
+                            OutputManagerEvent::TxoValidationAlreadyBusy(_) => {
+                                println!("Validation already busy");
+                            },
+                            _ => {
+                                println!("Validation failed");
+                                break;
+                            },
+                        },
+                        Err(e) => {
+                            eprintln!("Sync error! {}", e);
+                            break;
+                        },
+                    }
+                }
+                println!("balance as of scanning height");
+                match output_service.clone().get_balance().await {
+                    Ok(balance) => {
+                        println!("{}", balance);
+                    },
+                    Err(e) => eprintln!("GetBalance error! {}", e),
+                }
+            },
         }
     }
 
