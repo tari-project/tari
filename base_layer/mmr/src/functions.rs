@@ -23,7 +23,6 @@
 use std::{convert::TryFrom, marker::PhantomData};
 
 use digest::Digest;
-use tari_common::DomainDigest;
 
 use crate::{error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, ArrayLike, Hash, MerkleMountainRange};
 
@@ -36,7 +35,7 @@ pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 /// `validate` will throw an error.
 pub fn prune_mmr<D, B>(mmr: &MerkleMountainRange<D, B>) -> Result<PrunedMmr<D>, MerkleMountainRangeError>
 where
-    D: Digest + DomainDigest,
+    D: Digest,
     B: ArrayLike<Value = Hash>,
 {
     let backend = PrunedHashSet::try_from(mmr)?;
@@ -51,7 +50,7 @@ pub fn calculate_mmr_root<D, B>(
     additions: Vec<Hash>,
 ) -> Result<Hash, MerkleMountainRangeError>
 where
-    D: Digest + DomainDigest,
+    D: Digest,
     B: ArrayLike<Value = Hash>,
 {
     let mut mmr = prune_mmr(src)?;
