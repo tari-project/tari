@@ -238,6 +238,8 @@ async fn finalise_aggregate_utxo(
     script_signatures: Vec<Signature>,
     wallet_script_secret_key: PrivateKey,
 ) -> Result<TxId, CommandError> {
+    trace!(target: LOG_TARGET, "finalise_aggregate_utxo: start");
+
     let mut meta_sig = Signature::default();
     for sig in &meta_signatures {
         meta_sig = &meta_sig + sig;
@@ -246,6 +248,7 @@ async fn finalise_aggregate_utxo(
     for sig in &script_signatures {
         script_sig = &script_sig + sig;
     }
+    trace!(target: LOG_TARGET, "finalise_aggregate_utxo: aggregated signatures");
 
     wallet_transaction_service
         .finalize_aggregate_utxo(tx_id, meta_sig, script_sig, wallet_script_secret_key)
@@ -824,7 +827,7 @@ pub async fn command_runner(
                             break;
                         },
                     };
-                    let signature = match key_manager_service
+                    let verification_signature = match key_manager_service
                         .sign_script_message(&key_id, PrivateKey::from(index).as_bytes())
                         .await
                     {
@@ -838,7 +841,7 @@ pub async fn command_runner(
                     outputs_for_leader.push(PreMineCreateStep1ForLeader {
                         index,
                         script_public_key,
-                        verification_signature: signature,
+                        verification_signature,
                     });
                 }
                 if error {
@@ -1203,6 +1206,14 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendSessionInfo(args) => {
+                match key_manager_service.get_wallet_type().await {
+                    WalletType::Ledger(_) => {},
+                    _ => {
+                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
+                        break;
+                    },
+                }
+
                 let embedded_output = match get_embedded_pre_mine_outputs(vec![args.output_index]) {
                     Ok(outputs) => outputs[0].clone(),
                     Err(e) => {
@@ -1288,6 +1299,14 @@ pub async fn command_runner(
             },
             PreMineCreatePartyDetails(args) => {
             PreMineSpendPartyDetails(args) => {
+                match key_manager_service.get_wallet_type().await {
+                    WalletType::Ledger(_) => {},
+                    _ => {
+                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
+                        break;
+                    },
+                }
+
                 if args.alias.is_empty() || args.alias.contains(" ") {
                     eprintln!("\nError: Alias cannot contain spaces!\n");
                     break;
@@ -1361,15 +1380,13 @@ pub async fn command_runner(
                         break;
                     },
                 };
-
                 let script_input_signature = key_manager_service
-                    .sign_script_message(&wallet_spend_key.key_id, commitment.as_bytes())
+                    .sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())
                     .await?;
 
                 let out_dir = out_dir(&session_info.session_id, Context::Spend)?;
                 let step_2_outputs_for_leader = PreMineSpendStep2OutputsForLeader {
                     script_input_signature,
-                    wallet_public_spend_key: wallet_spend_key.pub_key,
                     public_script_nonce_key: script_nonce_key.pub_key,
                     public_sender_offset_key: sender_offset_key.pub_key,
                     public_sender_offset_nonce_key: sender_offset_nonce.pub_key,
@@ -1403,6 +1420,14 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendEncumberAggregateUtxo(args) => {
+                match key_manager_service.get_wallet_type().await {
+                    WalletType::Ledger(_) => {},
+                    _ => {
+                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
+                        break;
+                    },
+                }
+
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
 
@@ -1489,6 +1514,14 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendInputOutputSigs(args) => {
+                match key_manager_service.get_wallet_type().await {
+                    WalletType::Ledger(_) => {},
+                    _ => {
+                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
+                        break;
+                    },
+                }
+
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
                 // Read leader input
@@ -1532,7 +1565,7 @@ pub async fn command_runner(
 
                 // Metadata signature
                 let script_offset = key_manager_service
-                    .get_script_offset(&vec![party_info.wallet_spend_key_id], &vec![party_info
+                    .get_script_offset(&vec![party_info.pre_mine_script_key_id], &vec![party_info
                         .sender_offset_key_id
                         .clone()])
                     .await?;
@@ -1593,6 +1626,14 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendAggregateTransaction(args) => {
+                match key_manager_service.get_wallet_type().await {
+                    WalletType::Ledger(_) => {},
+                    _ => {
+                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
+                        break;
+                    },
+                }
+
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
 

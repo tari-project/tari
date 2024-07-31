@@ -48,7 +48,10 @@ pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
     if let Ok(mut verified) = VERIFIED.try_lock() {
         if verified.is_none() {
             match verify() {
-                Ok(_) => *verified = Some(Ok(())),
+                Ok(_) => {
+                    debug!(target: LOG_TARGET, "Ledger application 'Minotari Wallet' running and verified");
+                    *verified = Some(Ok(()))
+                },
                 Err(e) => return Err(e),
             }
         }

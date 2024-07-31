@@ -79,7 +79,6 @@ struct PreMineSpendStep2OutputsForSelf {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep2OutputsForLeader {
     script_input_signature: CheckSigSchnorrSignature,
-    wallet_public_spend_key: PublicKey,
     public_script_nonce_key: PublicKey,
     public_sender_offset_key: PublicKey,
     public_sender_offset_nonce_key: PublicKey,
