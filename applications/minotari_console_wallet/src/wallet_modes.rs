@@ -177,7 +177,8 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> bool {
             CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
             CliCommands::PreMineSpendAggregateTransaction(_) |
             CliCommands::PreMineSpendPartyDetails(_) |
-            CliCommands::PreMineSpendInputOutputSigs(_)
+            CliCommands::PreMineSpendInputOutputSigs(_) |
+            CliCommands::PreMineSpendBackupUtxo(_)
     )
 }
 

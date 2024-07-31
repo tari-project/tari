@@ -64,7 +64,7 @@ use tari_comms::{
 use tari_core::{
     consensus::ConsensusManager,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
+        key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
         transaction_components::TransactionError,
         CryptoFactories,
     },
@@ -576,9 +576,7 @@ pub async fn start_wallet(
         {
             return Err(ExitError::new(
                 ExitCode::WalletError,
-                "Ledger is not supported in this build, please enable the \"ledger\" feature for console wallet and \
-                 core"
-                    .to_string(),
+                format!("{}", LEDGER_NOT_SUPPORTED),
             ));
         }
 
@@ -591,7 +589,7 @@ pub async fn start_wallet(
             match wallet.key_manager_service.get_public_key_at_key_id(&key_id).await {
                 Ok(public_key) => {},
                 Err(e) => {
-                    if e.to_string().contains("Ledger is not supported in this build") {
+                    if e.to_string().contains(LEDGER_NOT_SUPPORTED) {
                         return Err(ExitError::new(ExitCode::WalletError, format!(" {}", e)));
                     }
                 },

@@ -98,7 +98,7 @@ impl TransactionKeyManagerBranch {
             Some(Branch::Nonce) => Some(TransactionKeyManagerBranch::Nonce),
             Some(Branch::KernelNonce) => Some(TransactionKeyManagerBranch::KernelNonce),
             Some(Branch::SenderOffset) => Some(TransactionKeyManagerBranch::SenderOffset),
-            Some(Branch::SenderOffsetLedger) => Some(TransactionKeyManagerBranch::SenderOffsetLedger),
+            Some(Branch::OneSidedSenderOffset) => Some(TransactionKeyManagerBranch::OneSidedSenderOffset),
             Some(Branch::Spend) => Some(TransactionKeyManagerBranch::Spend),
             Some(Branch::RandomKey) => Some(TransactionKeyManagerBranch::RandomKey),
             Some(Branch::PreMine) => Some(TransactionKeyManagerBranch::PreMine),
@@ -119,10 +119,10 @@ mod test {
             KERNEL_NONCE,
             METADATA_EPHEMERAL_NONCE,
             NONCE,
+            ONE_SIDED_SENDER_OFFSET,
             PRE_MINE,
             RANDOM_KEY,
             SENDER_OFFSET,
-            SENDER_OFFSET_LEDGER,
         },
         WALLET_COMMS_AND_SPEND_KEY_BRANCH,
     };
@@ -158,9 +158,9 @@ mod test {
                 SENDER_OFFSET,
             ),
             (
-                Branch::SenderOffsetLedger as u8,
-                TransactionKeyManagerBranch::SenderOffsetLedger,
-                SENDER_OFFSET_LEDGER,
+                Branch::OneSidedSenderOffset as u8,
+                TransactionKeyManagerBranch::OneSidedSenderOffset,
+                ONE_SIDED_SENDER_OFFSET,
             ),
             (
                 Branch::Spend as u8,
@@ -213,7 +213,7 @@ mod test {
                     assert_eq!(&branch.get_branch_key(), *key);
                     assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
                 },
-                TransactionKeyManagerBranch::SenderOffsetLedger => {
+                TransactionKeyManagerBranch::OneSidedSenderOffset => {
                     assert_eq!(branch.as_byte(), *expected_byte);
                     assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
                     assert_eq!(&branch.get_branch_key(), *key);

@@ -67,8 +67,7 @@ use tari_core::{
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
-use tari_key_manager::key_manager_service::SerializedKeyString;
-use tari_key_manager::key_manager_service::{KeyAndId, KeyId};
+use tari_key_manager::key_manager_service::{KeyAndId, KeyId, SerializedKeyString};
 use tari_script::{
     inputs,
     push_pubkey_script,
@@ -1395,7 +1394,7 @@ where
         stp.change_recipient_sender_offset_private_key(
             self.resources
                 .key_manager
-                .get_next_key(TransactionKeyManagerBranch::SenderOffsetLedger.get_branch_key())
+                .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
                 .await?
                 .key_id,
         )?;

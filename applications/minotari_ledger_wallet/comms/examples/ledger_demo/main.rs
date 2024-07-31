@@ -116,7 +116,7 @@ fn main() {
     let index = OsRng.next_u64();
 
     for branch in &[
-        TransactionKeyManagerBranch::SenderOffsetLedger,
+        TransactionKeyManagerBranch::OneSidedSenderOffset,
         TransactionKeyManagerBranch::Spend,
         TransactionKeyManagerBranch::RandomKey,
         TransactionKeyManagerBranch::PreMine,

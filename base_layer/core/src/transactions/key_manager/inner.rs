@@ -76,6 +76,8 @@ const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
 const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 
+pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
+
 use crate::{
     common::ConfidentialOutputHasher,
     one_sided::diffie_hellman_stealth_domain_hasher,
@@ -188,12 +190,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_random_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         match &self.wallet_type {
             WalletType::Ledger(ledger) => {
-                debug!(target: LOG_TARGET, "get_random_key: wallet type {}", self.wallet_type);
+                debug!(target: LOG_TARGET, "get_random_key: {}", self.wallet_type);
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(KeyManagerServiceError::LedgerError(format!(
-                        "Ledger {} is not supported in this build, please enable the \"ledger\" feature for core",
-                        ledger
+                        "{} 'get_random_key' was called. ({})",
+                        LEDGER_NOT_SUPPORTED, ledger
                     )))
                 }
                 #[cfg(feature = "ledger")]
@@ -240,13 +242,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 if let WalletType::Ledger(ledger) = &self.wallet_type {
                     match TransactionKeyManagerBranch::from_key(branch) {
                         TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
+                            debug!(target: LOG_TARGET, "get_public_key_at_key_id: {}", self.wallet_type);
                             #[cfg(not(feature = "ledger"))]
                             {
-                                Err(KeyManagerServiceError::LedgerError(
-                                    "Ledger is not supported in this build, please enable the \"ledger\" feature for \
-                                     core"
-                                        .to_string(),
-                                ))
+                                Err(KeyManagerServiceError::LedgerError(format!(
+                                    "{} 'get_public_key_at_key_id' was called.",
+                                    LEDGER_NOT_SUPPORTED
+                                )))
                             }
 
                             #[cfg(feature = "ledger")]
@@ -667,13 +669,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             if let KeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
-                        debug!(target: LOG_TARGET, "get_diffie_hellman_shared_secret: wallet type {}", self.wallet_type);
+                        debug!(target: LOG_TARGET, "get_diffie_hellman_shared_secret: {}", self.wallet_type);
                         #[cfg(not(feature = "ledger"))]
                         {
                             return Err(TransactionError::LedgerNotSupported(format!(
-                                "Ledger {} (has index {}) is not supported in this build, please enable the \
-                                 \"ledger\" feature for core",
-                                ledger, index
+                                "{} 'get_diffie_hellman_shared_secret' was called. ({} (has index {}))",
+                                LEDGER_NOT_SUPPORTED, ledger, index
                             )));
                         }
 
@@ -707,13 +708,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             WalletType::Ledger(ledger) => match secret_key_id {
                 KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                        debug!(target: LOG_TARGET, "get_diffie_hellman_stealth_domain_hasher: allet type {}", self.wallet_type);
+                        debug!(target: LOG_TARGET, "get_diffie_hellman_stealth_domain_hasher: {}", self.wallet_type);
                         #[cfg(not(feature = "ledger"))]
                         {
                             Err(TransactionError::LedgerNotSupported(format!(
-                                "Ledger {} (has index {}) is not supported in this build, please enable the \
-                                 \"ledger\" feature for core",
-                                ledger, index
+                                "{} 'get_diffie_hellman_stealth_domain_hasher' was called. ({} (has index {}))",
+                                LEDGER_NOT_SUPPORTED, ledger, index
                             )))
                         }
 
@@ -792,13 +792,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         match (&self.wallet_type, script_key_id) {
             (WalletType::Ledger(ledger), KeyId::Derived { key }) => {
-                debug!(target: LOG_TARGET, "get_script_signature: wallet type {}", self.wallet_type);
+                debug!(target: LOG_TARGET, "get_script_signature: {}", self.wallet_type);
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "Ledger {} (has script_key_id {}, branch {}, index {}) is not supported in this build, please \
-                         enable the \"ledger\" feature for core",
-                        ledger, script_key_id, branch, index
+                        "{} 'get_script_signature' was called. ({} (has key {}))",
+                        LEDGER_NOT_SUPPORTED, ledger, key
                     )))
                 }
 
@@ -993,12 +992,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(script_offset)
             },
             WalletType::Ledger(ledger) => {
-                debug!(target: LOG_TARGET, "get_script_offset: wallet type {}", self.wallet_type);
+                debug!(target: LOG_TARGET, "get_script_offset: {}", self.wallet_type);
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "Ledger {} is not supported in this build, please enable the \"ledger\" feature for core",
-                        ledger
+                        "{} 'get_script_offset' was called. ({})",
+                        LEDGER_NOT_SUPPORTED, ledger
                     )))
                 }
 
@@ -1082,12 +1081,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<CheckSigSchnorrSignature, TransactionError> {
         match &self.wallet_type {
             WalletType::Ledger(ledger) => {
-                debug!(target: LOG_TARGET, "sign_script_message: wallet type {}", self.wallet_type);
+                debug!(target: LOG_TARGET, "sign_script_message: {}", self.wallet_type);
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "Ledger {} is not supported in this build, please enable the \"ledger\" feature for core",
-                        ledger
+                        "{} 'sign_script_message' was called. ({})",
+                        LEDGER_NOT_SUPPORTED, ledger
                     )))
                 }
 
@@ -1127,12 +1126,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<Signature, TransactionError> {
         match &self.wallet_type {
             WalletType::Ledger(ledger) => {
-                debug!(target: LOG_TARGET, "sign_with_nonce_and_challenge: wallet type {}", self.wallet_type);
+                debug!(target: LOG_TARGET, "sign_with_nonce_and_challenge: {}", self.wallet_type);
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "Ledger {} is not supported in this build, please enable the \"ledger\" feature for core",
-                        ledger
+                        "{} 'sign_with_nonce_and_challenge' was called. ({})",
+                        LEDGER_NOT_SUPPORTED, ledger
                     )))
                 }
 
@@ -1245,11 +1244,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 .await
             },
             WalletType::Ledger(ledger) => {
+                debug!(target: LOG_TARGET, "get_one_sided_metadata_signature: {}", self.wallet_type);
                 #[cfg(not(feature = "ledger"))]
                 {
-                    Err(TransactionError::LedgerNotSupported(
-                        "One sided metadata signature was called for ledger, but ledger is not supported.".to_string(),
-                    ))
+                    Err(TransactionError::LedgerNotSupported(format!(
+                        "{} 'get_one_sided_metadata_signature' was called. ({})",
+                        LEDGER_NOT_SUPPORTED, ledger
+                    )))
                 }
 
                 #[cfg(feature = "ledger")]

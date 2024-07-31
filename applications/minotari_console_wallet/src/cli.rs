@@ -242,9 +242,7 @@ pub struct PreMineSpendBackupUtxoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
-    pub commitment: String,
-    #[clap(long)]
-    pub output_hash: String,
+    pub output_index: usize,
     #[clap(long)]
     pub recipient_address: TariAddress,
 }

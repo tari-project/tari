@@ -47,10 +47,7 @@ use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
-    one_sided::{
-        shared_secret_to_output_encryption_key,
-        shared_secret_to_output_spending_key,
-    },
+    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
         key_manager::TransactionKeyManagerInterface,

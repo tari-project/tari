@@ -1268,22 +1268,28 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendBackupUtxo(args) => {
-                let commitment = if let Ok(val) = Commitment::from_hex(&args.commitment) {
-                    val
-                } else {
-                    eprintln!("\nError: Invalid 'commitment' provided!\n");
-                    continue;
+                match key_manager_service.get_wallet_type().await {
+                    WalletType::Ledger(_) => {},
+                    _ => {
+                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
+                        break;
+                    },
+                }
+
+                let embedded_output = match get_embedded_pre_mine_outputs(vec![args.output_index]) {
+                    Ok(outputs) => outputs[0].clone(),
+                    Err(e) => {
+                        eprintln!("\nError: {}\n", e);
+                        break;
+                    },
                 };
-                let hash = if let Ok(val) = FixedHash::from_hex(&args.output_hash) {
-                    val
-                } else {
-                    eprintln!("\nError: Invalid 'output_hash' provided!\n");
-                    continue;
-                };
+                let commitment = embedded_output.commitment.clone();
+                let output_hash = embedded_output.hash();
+
                 match spend_backup_pre_mine_utxo(
                     transaction_service.clone(),
                     args.fee_per_gram,
-                    hash,
+                    output_hash,
                     commitment.clone(),
                     args.recipient_address,
                 )
@@ -1294,10 +1300,12 @@ pub async fn command_runner(
                         println!("Spend utxo: {} with tx_id: {}", commitment.to_hex(), tx_id);
                         println!();
                     },
-                    Err(e) => eprintln!("\nError:Spent pre-mine transaction error! {}\n", e),
+                    Err(e) => {
+                        eprintln!("\nError: Spent pre-mine transaction error! {}\n", e);
+                        break;
+                    },
                 }
             },
-            PreMineCreatePartyDetails(args) => {
             PreMineSpendPartyDetails(args) => {
                 match key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
