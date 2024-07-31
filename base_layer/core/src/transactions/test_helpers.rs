@@ -46,7 +46,6 @@ use crate::{
             MemoryDbKeyManager,
             TariKeyId,
             TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
             TransactionKeyManagerWrapper,
             TxoStage,
         },
@@ -736,9 +735,7 @@ pub async fn create_stx_protocol_internal(
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask.key_id.managed_index().unwrap(),
+            key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &schema.input_data {

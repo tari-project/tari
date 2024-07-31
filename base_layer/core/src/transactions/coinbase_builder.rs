@@ -38,11 +38,7 @@ use crate::{
         ConsensusConstants,
     },
     covenants::Covenant,
-    one_sided::{
-        shared_secret_to_output_encryption_key,
-        shared_secret_to_output_spending_key,
-        stealth_address_script_spending_key,
-    },
+    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
         key_manager::{CoreKeyManagerError, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari},
@@ -450,22 +446,15 @@ pub async fn generate_coinbase_with_wallet_output(
         )
         .await?;
     let commitment_mask = shared_secret_to_output_spending_key(&shared_secret)?;
+    let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
 
     let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
     let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
 
-    let commitment_mask_key_id = key_manager.import_key(commitment_mask).await?;
-
     let script_spending_pubkey = if stealth_payment {
-        let c = key_manager
-            .get_diffie_hellman_stealth_domain_hasher(
-                &sender_offset.key_id,
-                wallet_payment_address
-                    .public_view_key()
-                    .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
-            )
-            .await?;
-        stealth_address_script_spending_key(&c, wallet_payment_address.public_spend_key())
+        key_manager
+            .stealth_address_script_spending_key(&commitment_mask_key_id, wallet_payment_address.public_spend_key())
+            .await?
     } else {
         wallet_payment_address.public_spend_key().clone()
     };

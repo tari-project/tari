@@ -31,7 +31,7 @@ use tari_utilities::ByteArray;
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-pub const EXPECTED_VERSION: &str = "1.0.0-pre.16";
+pub const EXPECTED_VERSION: &str = env!("CARGO_PKG_VERSION");
 const WALLET_CLA: u8 = 0x80;
 
 pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {

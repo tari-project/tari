@@ -15,6 +15,7 @@ mod app_ui {
 }
 mod handlers {
     pub mod get_dh_shared_secret;
+    pub mod get_one_sided_metadata_signature;
     pub mod get_public_key;
     pub mod get_public_spend_key;
     pub mod get_schnorr_signature;
@@ -30,6 +31,7 @@ use app_ui::menu::ui_menu_main;
 use critical_section::RawRestoreState;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
+    get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
     get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
@@ -128,6 +130,7 @@ pub enum Instruction {
     GetDHSharedSecret,
     GetRawSchnorrSignature,
     GetScriptSchnorrSignature,
+    GetOneSidedMetadataSignature,
 }
 
 const P2_MORE: u8 = 0x01;
@@ -156,7 +159,7 @@ impl KeyType {
         }
         if let Some(branch) = BranchMapping::from_byte(n as u8) {
             match branch {
-                BranchMapping::SenderOffsetLedger => Ok(Self::OneSidedSenderOffset),
+                BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
                 BranchMapping::Spend => Ok(Self::Spend),
                 BranchMapping::RandomKey => Ok(Self::Random),
                 _ => Err(AppSW::BadBranchKey),
@@ -197,6 +200,7 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
             (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
+            (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Ok(Instruction::GetOneSidedMetadataSignature),
             (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -246,5 +250,6 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
         Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),
         Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
+        Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
     }
 }

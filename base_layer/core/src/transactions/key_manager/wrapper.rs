@@ -260,18 +260,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn import_add_offset_to_private_key(
-        &self,
-        secret_key_id: &TariKeyId,
-        offset: PrivateKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .import_add_offset_to_private_key(secret_key_id, offset)
-            .await
-    }
-
     async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -461,6 +449,29 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_one_sided_metadata_signature(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        value: MicroMinotari,
+        sender_offset_key_id: &TariKeyId,
+        txo_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+        range_proof_type: RangeProofType,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_one_sided_metadata_signature(
+                commitment_mask_key_id,
+                value,
+                sender_offset_key_id,
+                txo_version,
+                metadata_signature_message,
+                range_proof_type,
+            )
+            .await
+    }
+
     async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
@@ -547,6 +558,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
+            .await
+    }
+
+    async fn stealth_address_script_spending_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        spend_key: &PublicKey,
+    ) -> Result<PublicKey, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
             .await
     }
 }

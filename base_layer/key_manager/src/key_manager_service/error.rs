@@ -36,13 +36,17 @@ pub enum KeyManagerServiceError {
     #[error("Branch does not exist: `{0}`")]
     UnknownKeyBranch(String),
     #[error("Key ID without an index, most likely `Imported`")]
-    KyeIdWithoutIndex,
+    KeyIdWithoutIndex,
+    #[error("Key ID without a branch, most likely `Imported`")]
+    KeyIdWithoutBranch,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]
     KeyNotFoundInKeyChain,
     #[error("Storage error: `{0}`")]
     KeyManagerStorageError(#[from] KeyManagerStorageError),
+    #[error("Could not be serialized from string")]
+    KeySerializationError,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]

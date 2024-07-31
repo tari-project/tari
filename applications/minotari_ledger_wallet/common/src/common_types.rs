@@ -82,6 +82,7 @@ pub enum Instruction {
     GetDHSharedSecret = 0x08,
     GetRawSchnorrSignature = 0x09,
     GetScriptSchnorrSignature = 0x10,
+    GetOneSidedMetadataSignature = 0x11,
 }
 
 impl Instruction {
@@ -101,6 +102,7 @@ impl Instruction {
             0x08 => Some(Instruction::GetDHSharedSecret),
             0x09 => Some(Instruction::GetRawSchnorrSignature),
             0x10 => Some(Instruction::GetScriptSchnorrSignature),
+            0x11 => Some(Instruction::GetOneSidedMetadataSignature),
             _ => None,
         }
     }
@@ -116,7 +118,7 @@ pub enum Branch {
     Nonce = 0x03,
     KernelNonce = 0x04,
     SenderOffset = 0x05,
-    SenderOffsetLedger = 0x06,
+    OneSidedSenderOffset = 0x06,
     Spend = 0x07,
     RandomKey = 0x08,
 }
@@ -134,7 +136,7 @@ impl Branch {
             0x03 => Some(Branch::Nonce),
             0x04 => Some(Branch::KernelNonce),
             0x05 => Some(Branch::SenderOffset),
-            0x06 => Some(Branch::SenderOffsetLedger),
+            0x06 => Some(Branch::OneSidedSenderOffset),
             0x07 => Some(Branch::Spend),
             0x08 => Some(Branch::RandomKey),
             _ => None,
@@ -270,6 +272,10 @@ mod test {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
+                Instruction::GetOneSidedMetadataSignature => {
+                    assert_eq!(instruction.as_byte(), *expected_byte);
+                    assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
+                },
             }
         }
     }
@@ -285,7 +291,7 @@ mod test {
             (0x03, Branch::Nonce),
             (0x04, Branch::KernelNonce),
             (0x05, Branch::SenderOffset),
-            (0x06, Branch::SenderOffsetLedger),
+            (0x06, Branch::OneSidedSenderOffset),
             (0x07, Branch::Spend),
             (0x08, Branch::RandomKey),
         ];
@@ -316,7 +322,7 @@ mod test {
                     assert_eq!(branch.as_byte(), *expected_byte);
                     assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
                 },
-                Branch::SenderOffsetLedger => {
+                Branch::OneSidedSenderOffset => {
                     assert_eq!(branch.as_byte(), *expected_byte);
                     assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
                 },

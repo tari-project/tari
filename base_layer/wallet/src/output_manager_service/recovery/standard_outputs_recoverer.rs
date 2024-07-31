@@ -20,16 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Instant;
+use std::{str::FromStr, time::Instant};
 
 use log::*;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,
@@ -204,12 +203,8 @@ where
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop) {
             // This is a nop, so we can just create a new key for the input stack.
-            let key = if let Some(index) = spending_key.managed_index() {
-                KeyId::Derived {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-                    index,
-                }
+            let key = if let KeyId::Derived { key } = spending_key {
+                TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());
                 self.master_key_manager.import_key(private_key).await?

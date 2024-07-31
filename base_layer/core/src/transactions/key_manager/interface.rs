@@ -124,12 +124,6 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         public_key: &PublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError>;
 
-    async fn import_add_offset_to_private_key(
-        &self,
-        secret_key_id: &TariKeyId,
-        offset: PrivateKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError>;
-
     async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError>;
 
     async fn construct_range_proof(
@@ -220,6 +214,16 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn get_one_sided_metadata_signature(
+        &self,
+        spending_key_id: &TariKeyId,
+        value: MicroMinotari,
+        sender_offset_key_id: &TariKeyId,
+        txo_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+        range_proof_type: RangeProofType,
+    ) -> Result<ComAndPubSignature, TransactionError>;
+
     async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
@@ -263,6 +267,12 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
+
+    async fn stealth_address_script_spending_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        spend_key: &PublicKey,
+    ) -> Result<PublicKey, TransactionError>;
 }
 
 #[async_trait::async_trait]
@@ -279,6 +289,7 @@ mod test {
     use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
     use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+    use tari_key_manager::key_manager_service::KeyId;
 
     use crate::transactions::key_manager::TariKeyId;
 
@@ -303,14 +314,18 @@ mod test {
             key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         };
         let zero_key_id: TariKeyId = TariKeyId::Zero;
+        let derived_key_id: KeyId<PublicKey> = KeyId::Derived {
+            key: managed_key_id.clone().into(),
+        };
 
         let managed_key_id_str = managed_key_id.to_string();
         let imported_key_id_str = imported_key_id.to_string();
         let zero_key_id_str = zero_key_id.to_string();
+        let derived_key_id_str = derived_key_id.to_string();
 
         assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
-        println!("imported_key_id_str: {}", imported_key_id_str);
         assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
+        assert_eq!(derived_key_id, TariKeyId::from_str(&derived_key_id_str).unwrap());
     }
 }
