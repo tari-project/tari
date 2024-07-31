@@ -238,8 +238,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         match key_id {
             KeyId::Managed { branch, index } => {
                 if let WalletType::Ledger(ledger) = &self.wallet_type {
-                    // If we have the unique case of being a ledger wallet, and the key is a Managed EphemeralNonce, or
-                    // SenderOffset than we fetch from the ledger, all other keys are fetched below.
                     match TransactionKeyManagerBranch::from_key(branch) {
                         TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                             #[cfg(not(feature = "ledger"))]
@@ -257,7 +255,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                     TransactionKeyManagerBranch::from_key(branch),
                                 )
                                 .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                                return Ok(public_key);
+                                Ok(public_key)
                             }
                         },
                         TransactionKeyManagerBranch::DataEncryption => {
@@ -265,19 +263,27 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 .view_key
                                 .clone()
                                 .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible)?;
-                            return Ok(PublicKey::from_secret_key(&view_key));
+                            Ok(PublicKey::from_secret_key(&view_key))
                         },
-                        _ => {},
+                        _ => {
+                            let km = self
+                                .key_managers
+                                .get(branch)
+                                .ok_or_else(|| self.unknown_key_branch_error(branch))?
+                                .read()
+                                .await;
+                            Ok(km.derive_public_key(*index)?.key)
+                        },
                     }
-                };
-
-                let km = self
-                    .key_managers
-                    .get(branch)
-                    .ok_or_else(|| self.unknown_key_branch_error(branch))?
-                    .read()
-                    .await;
-                Ok(km.derive_public_key(*index)?.key)
+                } else {
+                    let km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or_else(|| self.unknown_key_branch_error(branch))?
+                        .read()
+                        .await;
+                    Ok(km.derive_public_key(*index)?.key)
+                }
             },
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
@@ -679,10 +685,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
                         #[cfg(not(feature = "ledger"))]
                         {
-                            Err(TransactionError::LedgerNotSupported(format!(
+                            return Err(TransactionError::LedgerNotSupported(format!(
                                 "Ledger {} (has index {}) is not supported",
                                 ledger, index
-                            )))
+                            )));
                         }
 
                         #[cfg(feature = "ledger")]
@@ -798,20 +804,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         match (&self.wallet_type, script_key_id) {
             (WalletType::Ledger(ledger), KeyId::Derived { key }) => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                let key = self.get_private_key(&key).await?;
-
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "Ledger {} (has script_key_id {}) is not supported",
-                        ledger, script_key_id,
+                        "Ledger {} (has script_key_id {}) with key {} is not supported",
+                        ledger, script_key_id, key,
                     )))
                 }
 
                 #[cfg(feature = "ledger")]
                 {
+                    let key = TariKeyId::from_str(key.to_string().as_str())
+                        .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
+                    let key = self.get_private_key(&key).await?;
+
                     let signature = ledger_get_script_signature(
                         ledger.account,
                         ledger.network,
@@ -1010,7 +1016,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     let mut total_script_private_key = PrivateKey::default();
                     let mut sender_offset_indexes = vec![];
                     for sender_offset_key_id in sender_offset_key_ids {
-                        debug!(target: LOG_TARGET, "sender offset key ids: {}", sender_offset_key_id);
                         match sender_offset_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 if &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch {
@@ -1023,8 +1028,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             TariKeyId::Derived { .. } | TariKeyId::Imported { .. } | TariKeyId::Zero => {},
                         }
                     }
-
-                    debug!(target: LOG_TARGET, "Total script private key: {}", total_script_private_key.to_hex());
 
                     let script_offset = ledger_get_script_offset(
                         ledger.account,
