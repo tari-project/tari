@@ -141,6 +141,7 @@ pub enum CliCommands {
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
+    Sync(SyncArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -361,4 +362,10 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_signature: Vec<u8>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SyncArgs {
+    #[clap(short, long, default_value = "0")]
+    pub sync_to_height: u64,
 }
