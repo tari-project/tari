@@ -41,7 +41,6 @@ use tari_core::{
         public_key_to_output_encryption_key,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
-        stealth_address_script_spending_key,
     },
     proto::base_node::FetchMatchingUtxos,
     transactions::{
@@ -3014,15 +3013,25 @@ where
                     if let Ok((committed_value, commitment_mask_private_key, payment_id)) =
                         EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
                     {
+                        let commitment_mask_key_id = &self
+                            .resources
+                            .key_manager
+                            .import_key(commitment_mask_private_key.clone())
+                            .await?;
+
                         if output.verify_mask(
                             &self.resources.factories.range_proof,
                             &commitment_mask_private_key,
                             committed_value.into(),
                         )? {
-                            let script_spending_key = stealth_address_script_spending_key(
-                                &commitment_mask_private_key,
-                                &self.resources.key_manager.get_spend_key().await?.pub_key,
-                            )?;
+                            let script_spending_key = self
+                                .resources
+                                .key_manager
+                                .stealth_address_script_spending_key(
+                                    commitment_mask_key_id,
+                                    &self.resources.key_manager.get_spend_key().await?.pub_key,
+                                )
+                                .await?;
 
                             if script_spending_key != **scanned_pk {
                                 continue;

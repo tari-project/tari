@@ -27,9 +27,9 @@ use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
-    keys::{PublicKey as PKtrait, SecretKey as SKtrait},
+    keys::SecretKey as SKtrait,
 };
-use tari_hashing::{KeyManagerTransactionsHashDomain, WalletOutputEncryptionKeysDomain};
+use tari_hashing::WalletOutputEncryptionKeysDomain;
 use tari_utilities::{byte_array::ByteArrayError, ByteArray};
 
 hash_domain!(
@@ -92,17 +92,4 @@ pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: CommsDHKE) -> Domain
     WalletHasher::new_with_label("stealth_address")
         .chain(diffie_hellman.as_bytes())
         .finalize()
-}
-
-/// Stealth payment script spending key
-pub fn stealth_address_script_spending_key(
-    commitment_mask_private_key: &PrivateKey,
-    spend_key: &PublicKey,
-) -> Result<PublicKey, ByteArrayError> {
-    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-    let hasher = hasher.chain(commitment_mask_private_key.as_bytes()).finalize();
-    let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())?;
-    let public_key = PublicKey::from_secret_key(&private_key);
-    let public_key = spend_key + &public_key;
-    Ok(public_key)
 }

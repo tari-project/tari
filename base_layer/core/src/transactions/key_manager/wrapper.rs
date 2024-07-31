@@ -560,6 +560,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .generate_burn_proof(spending_key, amount, claim_public_key)
             .await
     }
+
+    async fn stealth_address_script_spending_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        spend_key: &PublicKey,
+    ) -> Result<PublicKey, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
+            .await
+    }
 }
 
 #[async_trait::async_trait]

@@ -51,7 +51,6 @@ use tari_core::{
         public_key_to_output_encryption_key,
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
-        stealth_address_script_spending_key,
     },
     proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
@@ -1958,10 +1957,18 @@ where
             .await?;
         let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let commitment_mask_key_id = &self
+            .resources
+            .transaction_key_manager_service
+            .import_key(commitment_mask_private_key.clone())
+            .await?;
 
         if use_stealth_address {
-            let script_spending_key =
-                stealth_address_script_spending_key(&commitment_mask_private_key, dest_address.public_spend_key())?;
+            let script_spending_key = self
+                .resources
+                .transaction_key_manager_service
+                .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())
+                .await?;
             script = push_pubkey_script(&script_spending_key);
         }
 

@@ -1480,4 +1480,20 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         };
         Ok((key, value, payment_id))
     }
+
+    pub async fn stealth_address_script_spending_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        spend_key: &PublicKey,
+    ) -> Result<PublicKey, TransactionError> {
+        let private_key = self.get_private_key(commitment_mask_key_id).await?;
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+        let hasher = hasher.chain(private_key.as_bytes()).finalize();
+        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
+            .map_err(|_| KeyManagerServiceError::UnknownError("Invalid commitment mask private key".to_string()))?;
+        let public_key = PublicKey::from_secret_key(&private_key);
+        let public_key = spend_key + &public_key;
+        Ok(public_key)
+    }
 }

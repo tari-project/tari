@@ -267,6 +267,12 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;
+
+    async fn stealth_address_script_spending_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        spend_key: &PublicKey,
+    ) -> Result<PublicKey, TransactionError>;
 }
 
 #[async_trait::async_trait]
