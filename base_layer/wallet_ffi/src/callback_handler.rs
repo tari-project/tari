@@ -55,6 +55,7 @@ use minotari_wallet::{
             models::{CompletedTransaction, InboundTransaction},
         },
     },
+    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
@@ -85,12 +86,14 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
+    callback_wallet_scanned_height: unsafe extern "C" fn(u64),
     callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     db: TransactionDatabase<TBackend>,
     base_node_service_event_stream: BaseNodeEventReceiver,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
     output_manager_service: OutputManagerHandle,
+    utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
     dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_address: TariAddress,
@@ -109,6 +112,7 @@ where TBackend: TransactionBackend + 'static
         transaction_service_event_stream: TransactionEventReceiver,
         output_manager_service_event_stream: OutputManagerEventReceiver,
         output_manager_service: OutputManagerHandle,
+        utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_address: TariAddress,
@@ -130,6 +134,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
+        callback_wallet_scanned_height: unsafe extern "C" fn(u64),
         callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     ) -> Self {
         info!(
@@ -196,6 +201,10 @@ where TBackend: TransactionBackend + 'static
             target: LOG_TARGET,
             "ConnectivityStatusCallback -> Assigning Fn:  {:?}", callback_connectivity_status
         );
+        info!(
+            target: LOG_TARGET,
+            "WalletScannedHeight -> Assigning Fn:  {:?}", callback_wallet_scanned_height
+        );
 
         Self {
             callback_received_transaction,
@@ -214,12 +223,14 @@ where TBackend: TransactionBackend + 'static
             callback_transaction_validation_complete,
             callback_saf_messages_received,
             callback_connectivity_status,
+            callback_wallet_scanned_height,
             callback_base_node_state,
             db,
             base_node_service_event_stream,
             transaction_service_event_stream,
             output_manager_service_event_stream,
             output_manager_service,
+            utxo_scanner_service_events,
             dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_address,
@@ -332,6 +343,28 @@ where TBackend: TransactionBackend + 'static
                         },
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
+                },
+
+                result = self.utxo_scanner_service_events.recv() => match result {
+                        Ok(event) => {
+                            match event {
+                                UtxoScannerEvent::Progress {
+                                    current_height,..
+                                }=> {
+                                    self.scanned_height_changed(current_height);
+                                }
+                                UtxoScannerEvent::Completed {
+                                    final_height,
+                                    ..
+                                }=> {
+                                self.scanned_height_changed(final_height);
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
+                        },
                 },
 
                 result = self.dht_event_stream.recv() => {
@@ -649,6 +682,16 @@ where TBackend: TransactionBackend + 'static
         );
         unsafe {
             (self.callback_connectivity_status)(status as u64);
+        }
+    }
+
+    fn scanned_height_changed(&mut self, height: u64) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Scanned height changed callback function"
+        );
+        unsafe {
+            (self.callback_wallet_scanned_height)(height);
         }
     }
 

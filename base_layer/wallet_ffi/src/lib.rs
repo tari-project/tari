@@ -5693,6 +5693,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
+    callback_wallet_scanned_height: unsafe extern "C" fn(u64),
     callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
@@ -5961,6 +5962,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
                 w.output_manager_service.clone(),
+                w.utxo_scanner_service.get_event_receiver(),
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 wallet_address,
@@ -5982,6 +5984,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
                 callback_connectivity_status,
+                callback_wallet_scanned_height,
                 callback_base_node_state,
             );
 
