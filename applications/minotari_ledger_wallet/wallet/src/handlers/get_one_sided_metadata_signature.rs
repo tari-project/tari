@@ -1,12 +1,19 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::format;
+use alloc::{format, string::String};
 use core::ops::Deref;
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use ledger_device_sdk::{io::Comm, random::Random, ui::gadgets::SingleMessage};
+use ledger_device_sdk::{
+    io::Comm,
+    random::Random,
+    ui::{
+        bitmaps::{CROSSMARK, EYE, VALIDATE_14},
+        gadgets::{Field, MultiFieldReview, SingleMessage},
+    },
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey,
@@ -52,11 +59,14 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         derive_from_bip32_key(account, sender_offset_key_index, KeyType::OneSidedSenderOffset)?;
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_private_key);
 
-    let commitment_mask: Zeroizing<RistrettoSecretKey> =
-        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[32..64])?.into();
+    let mut value_bytes = [0u8; 8];
+    value_bytes.clone_from_slice(&data[32..40]);
+    let value_u64 = u64::from_le_bytes(value_bytes);
+    let value = Minotari::new(u64::from_le_bytes(value_bytes));
+    let value_as_private_key: Zeroizing<RistrettoSecretKey> = Zeroizing::new(value_u64.into());
 
-    let value: Zeroizing<RistrettoSecretKey> =
-        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[64..96])?.into();
+    let commitment_mask: Zeroizing<RistrettoSecretKey> =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
 
     let r_a = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
     let r_x = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
@@ -64,12 +74,12 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let factory = ExtendedPedersenCommitmentFactory::default();
 
-    let commitment = factory.commit(&commitment_mask, value.deref());
+    let commitment = factory.commit(&commitment_mask, value_as_private_key.deref());
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
     let mut metadata_signature_message = [0u8; 32];
-    metadata_signature_message.clone_from_slice(&data[96..128]);
+    metadata_signature_message.clone_from_slice(&data[72..104]);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -82,7 +92,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     );
 
     let metadata_signature = match RistrettoComAndPubSig::sign(
-        &value,
+        &value_as_private_key,
         &commitment_mask,
         &sender_offset_private_key,
         &r_a,
@@ -98,9 +108,30 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&metadata_signature.to_vec());
-    comm.reply_ok();
+    let fields = [Field {
+        name: "Amount",
+        value: &format!("{}", value.to_string()),
+    }];
+    let review = MultiFieldReview::new(
+        &fields,
+        &["Review ", "Transaction"],
+        Some(&EYE),
+        "Approve",
+        Some(&VALIDATE_14),
+        "Reject",
+        Some(&CROSSMARK),
+    );
+
+    match review.show() {
+        true => {
+            comm.append(&[RESPONSE_VERSION]); // version
+            comm.append(&metadata_signature.to_vec());
+            comm.reply_ok();
+        },
+        false => {
+            return Err(AppSW::UserCancelled);
+        },
+    }
 
     Ok(())
 }
@@ -124,4 +155,21 @@ fn finalize_metadata_signature_challenge(
             .finalize();
 
     challenge.into()
+}
+
+struct Minotari(pub u64);
+
+impl Minotari {
+    fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    fn to_string(&self) -> String {
+        if self.0 < 1_000_000 {
+            format!("{} uT", self.0)
+        } else {
+            let value = self.0 as f64 / 1_000_000.0;
+            format!("{:.2} T", value)
+        }
+    }
 }

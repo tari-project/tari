@@ -217,7 +217,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     async fn get_one_sided_metadata_signature(
         &self,
         spending_key_id: &TariKeyId,
-        value_as_private_key: &PrivateKey,
+        value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],

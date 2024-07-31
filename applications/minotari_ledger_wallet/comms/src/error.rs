@@ -48,6 +48,8 @@ pub enum LedgerDeviceError {
     /// Not yet supported
     #[error("Ledger is not fully supported")]
     NotSupported,
+    #[error("User cancelled the transaction")]
+    UserCancelled,
 }
 
 impl From<ByteArrayError> for LedgerDeviceError {

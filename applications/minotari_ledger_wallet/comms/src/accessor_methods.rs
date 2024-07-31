@@ -467,9 +467,9 @@ pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
     txo_version: u8,
+    value: u64,
     sender_offset_key_index: u64,
     commitment_mask: &PrivateKey,
-    value_as_private_key: &PrivateKey,
     metadata_signature_message: &[u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
     verify_ledger_application()?;
@@ -478,12 +478,15 @@ pub fn ledger_get_one_sided_metadata_signature(
     data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
     data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
     data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+    data.extend_from_slice(&value.to_le_bytes());
     data.extend_from_slice(&commitment_mask.to_vec());
-    data.extend_from_slice(&value_as_private_key.to_vec());
     data.extend_from_slice(&metadata_signature_message.to_vec());
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
         Ok(result) => {
+            if result.retcode() == AppSW::UserCancelled as u16 {
+                return Err(LedgerDeviceError::UserCancelled);
+            }
             if result.data().len() < 161 {
                 return Err(LedgerDeviceError::Processing(format!(
                     "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",

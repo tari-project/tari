@@ -224,7 +224,7 @@ impl WalletOutputBuilder {
         let metadata_signature = key_manager
             .get_one_sided_metadata_signature(
                 &self.commitment_mask_key_id,
-                &self.value.into(),
+                self.value,
                 sender_offset_key_id,
                 &self.version,
                 &metadata_message,

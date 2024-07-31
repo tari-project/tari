@@ -452,7 +452,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn get_one_sided_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        value_as_private_key: &PrivateKey,
+        value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
@@ -463,7 +463,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
             .get_one_sided_metadata_signature(
                 commitment_mask_key_id,
-                value_as_private_key,
+                value,
                 sender_offset_key_id,
                 txo_version,
                 metadata_signature_message,

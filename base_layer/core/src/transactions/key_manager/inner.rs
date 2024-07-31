@@ -1232,7 +1232,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     pub async fn get_one_sided_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        value_as_private_key: &PrivateKey,
+        value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
@@ -1240,9 +1240,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     ) -> Result<ComAndPubSignature, TransactionError> {
         match &self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+                let value = value.into();
                 self.get_metadata_signature(
                     commitment_mask_key_id,
-                    value_as_private_key,
+                    &value,
                     sender_offset_key_id,
                     txo_version,
                     metadata_signature_message,
@@ -1271,9 +1272,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         ledger.account,
                         ledger.network,
                         txo_version.as_u8(),
+                        value.into(),
                         sender_offset_key_index,
                         &commitment_mask,
-                        value_as_private_key,
                         metadata_signature_message,
                     )
                     .map_err(TransactionError::LedgerDeviceError)?;
