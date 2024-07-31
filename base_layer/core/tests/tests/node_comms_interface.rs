@@ -42,7 +42,7 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
@@ -60,7 +60,7 @@ use tari_core::{
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
     OutputSmt,
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, SerializedKeyString};
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -302,13 +302,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .unwrap();
 
         let script_key_id = KeyId::Derived {
-            key: SerializedKeyString::from(
-                TariKeyId::Managed {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index: commitment_mask_key.key_id.managed_index().unwrap(),
-                }
-                .to_string(),
-            ),
+            key: (&commitment_mask_key.key_id).into(),
         };
 
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();

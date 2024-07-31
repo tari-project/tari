@@ -44,14 +44,7 @@ use crate::{
         stealth_address_script_spending_key,
     },
     transactions::{
-        key_manager::{
-            CoreKeyManagerError,
-            MemoryDbKeyManager,
-            SecretTransactionKeyManagerInterface,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TxoStage,
-        },
+        key_manager::{CoreKeyManagerError, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -457,15 +450,13 @@ pub async fn generate_coinbase_with_wallet_output(
         )
         .await?;
     let commitment_mask = shared_secret_to_output_spending_key(&shared_secret)?;
+    let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
 
     let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
     let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
 
-    let commitment_mask_key_id = key_manager.import_key(commitment_mask).await?;
-    let commitment_mask_private_key = key_manager.get_private_key(&commitment_mask_key_id).await?;
-
     let script_spending_pubkey = if stealth_payment {
-        stealth_address_script_spending_key(&commitment_mask_private_key, wallet_payment_address.public_spend_key())?
+        stealth_address_script_spending_key(&commitment_mask, wallet_payment_address.public_spend_key())?
     } else {
         wallet_payment_address.public_spend_key().clone()
     };

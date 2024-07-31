@@ -283,7 +283,7 @@ mod test {
     use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
     use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
-    use tari_key_manager::key_manager_service::{KeyId, SerializedKeyString};
+    use tari_key_manager::key_manager_service::KeyId;
 
     use crate::transactions::key_manager::TariKeyId;
 
@@ -309,7 +309,7 @@ mod test {
         };
         let zero_key_id: TariKeyId = TariKeyId::Zero;
         let derived_key_id: KeyId<PublicKey> = KeyId::Derived {
-            key: SerializedKeyString::from(managed_key_id.clone().to_string()),
+            key: managed_key_id.clone().into(),
         };
 
         let managed_key_id_str = managed_key_id.to_string();

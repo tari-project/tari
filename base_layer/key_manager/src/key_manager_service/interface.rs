@@ -67,8 +67,14 @@ pub struct SerializedKeyString {
     inner: String,
 }
 
-impl SerializedKeyString {
-    pub fn from<T: Into<String>>(inner: T) -> Self {
+impl From<String> for SerializedKeyString {
+    fn from(inner: String) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<&str> for SerializedKeyString {
+    fn from(inner: &str) -> Self {
         Self { inner: inner.into() }
     }
 }
@@ -83,6 +89,14 @@ impl<PK> From<KeyId<PK>> for SerializedKeyString
 where PK: ByteArray
 {
     fn from(key_id: KeyId<PK>) -> Self {
+        Self::from(key_id.to_string())
+    }
+}
+
+impl<PK> From<&KeyId<PK>> for SerializedKeyString
+where PK: ByteArray
+{
+    fn from(key_id: &KeyId<PK>) -> Self {
         Self::from(key_id.to_string())
     }
 }
@@ -249,7 +263,7 @@ mod test {
     use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 
-    use crate::key_manager_service::{KeyId, SerializedKeyString};
+    use crate::key_manager_service::KeyId;
 
     fn random_string(len: usize) -> String {
         iter::repeat(())
@@ -273,7 +287,7 @@ mod test {
         };
         let zero_key_id: KeyId<PublicKey> = KeyId::Zero;
         let derived_key_id: KeyId<PublicKey> = KeyId::Derived {
-            key: SerializedKeyString::from(managed_key_id.clone().to_string()),
+            key: (&managed_key_id).into(),
         };
 
         let managed_key_id_str = managed_key_id.to_string();

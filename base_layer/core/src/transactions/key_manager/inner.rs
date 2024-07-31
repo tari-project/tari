@@ -66,7 +66,6 @@ use tari_key_manager::{
         KeyDigest,
         KeyId,
         KeyManagerServiceError,
-        SerializedKeyString,
     },
 };
 use tari_script::CheckSigSchnorrSignature;
@@ -461,18 +460,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let commitment_mask = self
             .get_next_key(&TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await?;
-        let index = commitment_mask
-            .key_id
-            .managed_index()
-            .ok_or(KeyManagerServiceError::KeyIdWithoutIndex)?;
         let script_key_id = KeyId::Derived {
-            key: SerializedKeyString::from(
-                TariKeyId::Managed {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index,
-                }
-                .to_string(),
-            ),
+            key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
         Ok((commitment_mask, KeyAndId {
@@ -537,20 +526,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment_mask_key_id: &TariKeyId,
         public_script_key: Option<&PublicKey>,
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
-        let index = match commitment_mask_key_id {
-            KeyId::Managed { index, .. } => *index,
-            KeyId::Derived { .. } => return Ok(None),
-            KeyId::Imported { .. } => return Ok(None),
-            KeyId::Zero => return Ok(None),
-        };
         let script_key_id = KeyId::Derived {
-            key: SerializedKeyString::from(
-                TariKeyId::Managed {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index,
-                }
-                .to_string(),
-            ),
+            key: commitment_mask_key_id.into(),
         };
 
         if let Some(key) = public_script_key {

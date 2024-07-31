@@ -60,7 +60,7 @@ use tari_core::{
     proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
@@ -70,7 +70,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, SerializedKeyString};
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -2159,13 +2159,7 @@ async fn scan_for_recovery_test() {
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            key: SerializedKeyString::from(
-                TariKeyId::Managed {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index: commitment_mask_key.key_id.managed_index().unwrap(),
-                }
-                .to_string(),
-            ),
+            key: (&commitment_mask_key.key_id).into(),
         };
         let public_script_key = oms
             .key_manager_handle

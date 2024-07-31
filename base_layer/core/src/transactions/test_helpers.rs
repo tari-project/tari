@@ -30,12 +30,7 @@ use tari_common_types::{
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::{
-    storage::sqlite_db::KeyManagerSqliteDatabase,
-    KeyId,
-    KeyManagerInterface,
-    SerializedKeyString,
-};
+use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
@@ -740,13 +735,7 @@ pub async fn create_stx_protocol_internal(
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            key: SerializedKeyString::from(
-                TariKeyId::Managed {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index: commitment_mask.key_id.managed_index().unwrap(),
-                }
-                .to_string(),
-            ),
+            key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &schema.input_data {
