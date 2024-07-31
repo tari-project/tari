@@ -55,7 +55,7 @@ use minotari_wallet::{
             models::{CompletedTransaction, InboundTransaction},
         },
     },
-    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
+    utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
