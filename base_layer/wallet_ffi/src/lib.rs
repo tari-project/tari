@@ -5693,6 +5693,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
+    callback_wallet_scanned_height: unsafe extern "C" fn(u64),
     callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
@@ -5954,6 +5955,8 @@ pub unsafe extern "C" fn wallet_create(
                 },
             };
 
+            let mut utxo_scanner = w.utxo_scanner_service.clone();
+
             // Start Callback Handler
             let callback_handler = CallbackHandler::new(
                 TransactionDatabase::new(transaction_backend),
@@ -5961,6 +5964,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
                 w.output_manager_service.clone(),
+                utxo_scanner.get_event_receiver(),
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 wallet_address,
@@ -5982,6 +5986,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
                 callback_connectivity_status,
+                callback_wallet_scanned_height,
                 callback_base_node_state,
             );
 
@@ -9467,6 +9472,10 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
+    unsafe extern "C" fn wallet_scanned_height_callback(_height: u64) {
+        // assert!(true); //optimized out by compiler
+    }
+
     unsafe extern "C" fn base_node_state_callback(_state: *mut TariBaseNodeState) {
         // assert!(true); //optimized out by compiler
     }
@@ -10153,6 +10162,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10199,6 +10209,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10314,6 +10325,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10540,6 +10552,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10606,6 +10619,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10684,6 +10698,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10860,6 +10875,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -10997,6 +11013,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -11214,6 +11231,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -11439,6 +11457,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -11698,6 +11717,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -12075,6 +12095,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
@@ -12138,6 +12159,7 @@ mod test {
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 connectivity_status_callback,
+                wallet_scanned_height_callback,
                 base_node_state_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
