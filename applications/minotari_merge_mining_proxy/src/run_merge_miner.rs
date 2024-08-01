@@ -26,12 +26,7 @@ use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
 use minotari_app_grpc::tls::protocol_string;
-use minotari_app_utilities::parse_miner_input::{
-    base_node_socket_address,
-    verify_base_node_grpc_mining_responses,
-    wallet_payment_address,
-    BaseNodeGrpcClient,
-};
+use minotari_app_utilities::parse_miner_input::{base_node_socket_address, verify_base_node_grpc_mining_responses, wallet_payment_address, BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use tari_common::{configuration::StringList, load_configuration, DefaultConfigLoader};
@@ -39,6 +34,7 @@ use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
+use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -82,6 +78,18 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             return Err(e.into());
         },
     };
+
+    let p2pool_client = if  config.p2pool_enabled {
+        Some(connect_sha_p2pool(&config).await.map_err(|e| {
+            error!(target: LOG_TARGET, "Could not connect to p2pool node: {}", e);
+            let msg = "Could not connect to p2pool node. \nIs the p2pool node's gRPC running? Try running it with \
+                       `--enable-grpc` or enable it in the config.";
+            println!("{}", msg);
+            e
+        })?)
+    } else {
+        None
+    };
     if let Err(e) = verify_base_node_responses(&mut base_node_client).await {
         if let MmProxyError::BaseNodeNotResponding(_) = e {
             error!(target: LOG_TARGET, "{}", e.to_string());
@@ -101,6 +109,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         config,
         client,
         base_node_client,
+        p2pool_client,
         BlockTemplateRepository::new(),
         randomx_factory,
         wallet_payment_address,
@@ -141,6 +150,8 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
     Ok(())
 }
 
+
+
 async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGrpcClient, MmProxyError> {
     let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
@@ -169,6 +180,43 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
         .await
         .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
     let node_conn = BaseNodeClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
+    );
+
+    Ok(node_conn)
+}
+
+
+async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
+    // TODO: Merge this code in the sha miner
+    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
+    let base_node_addr = format!(
+        "{}{}",
+        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
+        socketaddr,
+    );
+
+    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", base_node_addr);
+    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+
+    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
+        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
+            .await
+            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+        endpoint = endpoint
+            .tls_config(tls)
+            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+    }
+
+    let channel = endpoint
+        .connect()
+        .await
+        .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+    let node_conn = ShaP2PoolClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
     );

@@ -380,7 +380,7 @@ fn determine_sync_mode(
         }
 
         // This is to test the block propagation by delaying lagging.
-        if local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height {
+        if network_tip_height > local_tip_height && local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height {
             info!(
                 target: LOG_TARGET,
                 "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
