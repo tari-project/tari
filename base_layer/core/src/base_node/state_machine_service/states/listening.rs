@@ -384,13 +384,15 @@ fn determine_sync_mode(
         if blocks_behind_before_considered_lagging > 0 {
             // Otherwise, only wait when the tip is above us, otherwise
             // chains with a lower height will never be reorged to.
-            if network_tip_height > local_tip_height && local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height {
+            if network_tip_height > local_tip_height &&
+                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height
+            {
                 info!(
-                target: LOG_TARGET,
-                "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
-                 waiting for the propagated blocks",
-                blocks_behind_before_considered_lagging
-            );
+                    target: LOG_TARGET,
+                    "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
+                     waiting for the propagated blocks",
+                    blocks_behind_before_considered_lagging
+                );
                 return SyncStatus::BehindButNotYetLagging {
                     local: local.clone(),
                     network: network.claimed_chain_metadata().clone(),
