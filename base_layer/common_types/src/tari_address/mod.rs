@@ -26,7 +26,6 @@ mod single_address;
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
-    panic,
     str::FromStr,
 };
 
@@ -253,19 +252,9 @@ impl TariAddress {
         if hex_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
-        let result = panic::catch_unwind(|| hex_str.split_at(2));
-        let (first, rest) = match result {
-            Ok((first, rest)) => (first, rest),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        let result = panic::catch_unwind(|| first.split_at(1));
-        let (network, features) = match result {
-            Ok((network, features)) => (network, features),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        // replace this after 1.80 stable
-        // let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
-        // let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
+
+        let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
+        let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
         let mut result = bs58::decode(network)
             .into_vec()
             .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
