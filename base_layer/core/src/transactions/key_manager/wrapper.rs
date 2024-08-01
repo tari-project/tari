@@ -96,6 +96,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             )?)),
         })
     }
+
+    /// Get the wallet type
+    pub async fn get_wallet_type(&self) -> WalletType {
+        self.transaction_key_manager_inner.read().await.get_wallet_type()
+    }
 }
 
 #[async_trait::async_trait]

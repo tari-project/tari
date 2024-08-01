@@ -170,11 +170,15 @@ pub(crate) fn command_mode(
 fn force_exit_for_pre_mine_commands(command: &CliCommands) -> bool {
     matches!(
         command,
-        CliCommands::PreMineGenerateSessionInfo(_) |
-            CliCommands::PreMineEncumberAggregateUtxo(_) |
-            CliCommands::PreMineSpendAggregateUtxo(_) |
-            CliCommands::PreMineCreatePartyDetails(_) |
-            CliCommands::PreMineCreateInputOutputSigs(_)
+        CliCommands::PreMineCreateScriptInputs(_) |
+            CliCommands::PreMineCreateGenesisFile(_) |
+            CliCommands::PreMineCreateVerifyGenesisFile(_) |
+            CliCommands::PreMineSpendSessionInfo(_) |
+            CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
+            CliCommands::PreMineSpendAggregateTransaction(_) |
+            CliCommands::PreMineSpendPartyDetails(_) |
+            CliCommands::PreMineSpendInputOutputSigs(_) |
+            CliCommands::PreMineSpendBackupUtxo(_)
     )
 }
 
@@ -529,22 +533,32 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            pre-mine-generate-session-info --fee-per-gram 2 --commitment \
-             f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --output-hash \
-             f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --recipient-address \
+            pre-mine-create-script-inputs --alias alice
+
+            pre-mine-create-genesis-file --party-file-names=step_1_for_leader_from_alice.json \
+             --party-file-names=step_1_for_leader_from_bob.json --party-file-names=step_1_for_leader_from_carol.json \
+             --fail-safe-file-name step_1_for_leader_from_dave.json
+
+            pre-mine-create-verify-genesis-file --session-id ee1643655c \
+             --party-file-names=step_1_for_leader_from_alice.json --party-file-names=step_1_for_leader_from_bob.json \
+             --party-file-names=step_1_for_leader_from_carol.json --fail-safe-file-name \
+             step_1_for_leader_from_dave.json --pre-mine-file-name ./step_2_for_parties.json
+
+            pre-mine-spend-session-info --fee-per-gram 2 --output-index 123 --recipient-address \
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
              --verify-unspent-outputs
 
-            pre-mine-create-party-details --input-file ./step_1_session_info.txt --alias alice
+            pre-mine-spend-party-details --input-file ./step_1_session_info.txt --output-index 123 --alias alice
 
-            pre-mine-encumber-aggregate-utxo --session-id ee1643655c \
+            pre-mine-spend-encumber-aggregate-utxo --session-id ee1643655c \
              --input-file-names=step_2_for_leader_from_alice.txt --input-file-names=step_2_for_leader_from_bob.txt \
              --input-file-names=step_2_for_leader_from_carol.txt
 
-            pre-mine-create-input-output-sigs --session-id ee1643655c
+            pre-mine-spend-input-output-sigs --session-id ee1643655c
 
-            pre-mine-spend-aggregate-utxo --session-id ee1643655c --input-file-names=step_4_for_leader_from_alice.txt \
-             --input-file-names=step_4_for_leader_from_bob.txt --input-file-names=step_4_for_leader_from_carol.txt
+            pre-mine-spend-aggregate-transaction --session-id ee1643655c \
+             --input-file-names=step_4_for_leader_from_alice.txt --input-file-names=step_4_for_leader_from_bob.txt \
+             --input-file-names=step_4_for_leader_from_carol.txt
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
@@ -565,11 +579,14 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut pre_mine_generate_session_info = false;
-        let mut pre_mine_encumber_aggregate_utxo = false;
-        let mut pre_mine_spend_aggregate_utxo = false;
-        let mut pre_mine_create_party_details = false;
-        let mut pre_mine_create_input_output_sigs = false;
+        let mut pre_mine_create_script_inputs = false;
+        let mut pre_mine_create_genesis_file = false;
+        let mut pre_mine_create_verify_genesis_file = false;
+        let mut pre_mine_spend_session_info = false;
+        let mut pre_mine_spend_encumber_aggregate_utxo = false;
+        let mut pre_mine_spend_aggregate_transaction = false;
+        let mut pre_mine_spend_party_details = false;
+        let mut pre_mine_spend_input_output_sigs = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -581,11 +598,14 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::PreMineGenerateSessionInfo(_) => pre_mine_generate_session_info = true,
-                CliCommands::PreMineEncumberAggregateUtxo(_) => pre_mine_encumber_aggregate_utxo = true,
-                CliCommands::PreMineSpendAggregateUtxo(_) => pre_mine_spend_aggregate_utxo = true,
-                CliCommands::PreMineCreatePartyDetails(_) => pre_mine_create_party_details = true,
-                CliCommands::PreMineCreateInputOutputSigs(_) => pre_mine_create_input_output_sigs = true,
+                CliCommands::PreMineCreateScriptInputs(_) => pre_mine_create_script_inputs = true,
+                CliCommands::PreMineCreateGenesisFile(_) => pre_mine_create_genesis_file = true,
+                CliCommands::PreMineCreateVerifyGenesisFile(_) => pre_mine_create_verify_genesis_file = true,
+                CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
+                CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
+                CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
+                CliCommands::PreMineSpendInputOutputSigs(_) => pre_mine_spend_input_output_sigs = true,
+                CliCommands::PreMineSpendAggregateTransaction(_) => pre_mine_spend_aggregate_transaction = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
@@ -621,11 +641,14 @@ mod test {
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                pre_mine_generate_session_info &&
-                pre_mine_encumber_aggregate_utxo &&
-                pre_mine_spend_aggregate_utxo &&
-                pre_mine_create_party_details &&
-                pre_mine_create_input_output_sigs &&
+                pre_mine_create_script_inputs &&
+                pre_mine_create_genesis_file &&
+                pre_mine_create_verify_genesis_file &&
+                pre_mine_spend_session_info &&
+                pre_mine_spend_encumber_aggregate_utxo &&
+                pre_mine_spend_aggregate_transaction &&
+                pre_mine_spend_party_details &&
+                pre_mine_spend_input_output_sigs &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&

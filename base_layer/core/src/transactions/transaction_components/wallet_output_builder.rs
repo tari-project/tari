@@ -21,10 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
-    types::{ComAndPubSignature, PublicKey},
-};
+use tari_common_types::types::{ComAndPubSignature, PublicKey};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
@@ -264,9 +261,7 @@ impl WalletOutputBuilder {
         let aggregate_sender_offset_public_key =
             aggregated_sender_offset_public_key_shares + &sender_offset_public_key_self;
 
-        let ephemeral_pubkey_self = key_manager
-            .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
-            .await?;
+        let ephemeral_pubkey_self = key_manager.get_random_key().await?;
         let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + &ephemeral_pubkey_self.pub_key;
 
         let receiver_partial_metadata_signature = key_manager
@@ -349,6 +344,7 @@ impl WalletOutputBuilder {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::key_branches::TransactionKeyManagerBranch;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;

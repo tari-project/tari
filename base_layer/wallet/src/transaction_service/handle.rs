@@ -102,15 +102,6 @@ pub enum TransactionServiceRequest {
         message: String,
         claim_public_key: Option<PublicKey>,
     },
-    CreateNMUtxo {
-        amount: MicroMinotari,
-        fee_per_gram: MicroMinotari,
-        n: u8,
-        m: u8,
-        public_keys: Vec<PublicKey>,
-        message: [u8; 32],
-        maturity: u64,
-    },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
@@ -225,18 +216,6 @@ impl fmt::Display for TransactionServiceRequest {
                 amount, destination, message
             ),
             Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
-            Self::CreateNMUtxo {
-                amount,
-                fee_per_gram: _,
-                n,
-                m,
-                public_keys: _,
-                message: _,
-                maturity: _,
-            } => f.write_str(&format!(
-                "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
-                amount, n, m
-            )),
             Self::SpendBackupPreMineUtxo {
                 fee_per_gram,
                 output_hash,
@@ -724,34 +703,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::BurntTransactionSent { tx_id, proof } => Ok((tx_id, *proof)),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn create_aggregate_signature_utxo(
-        &mut self,
-        amount: MicroMinotari,
-        fee_per_gram: MicroMinotari,
-        n: u8,
-        m: u8,
-        public_keys: Vec<PublicKey>,
-        message: [u8; 32],
-        maturity: u64,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::CreateNMUtxo {
-                amount,
-                fee_per_gram,
-                n,
-                m,
-                public_keys,
-                message,
-                maturity,
-            })
-            .await??
-        {
-            TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash) => Ok((tx_id, output_hash)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -146,6 +146,7 @@ pub enum KeyType {
     ViewKey = 0x03,
     OneSidedSenderOffset = 0x04,
     Random = 0x06,
+    PreMine = 0x07,
 }
 
 impl KeyType {
@@ -162,6 +163,7 @@ impl KeyType {
                 BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
                 BranchMapping::Spend => Ok(Self::Spend),
                 BranchMapping::RandomKey => Ok(Self::Random),
+                BranchMapping::PreMine => Ok(Self::PreMine),
                 _ => Err(AppSW::BadBranchKey),
             }
         } else {

@@ -36,6 +36,7 @@ mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;
 
 mod inner;
+pub use inner::LEDGER_NOT_SUPPORTED;
 /// This is a memory database implementation of the `TransactionKeyManager` trait.
 mod memory_db_key_manager;
 pub use inner::TransactionKeyManagerInner;

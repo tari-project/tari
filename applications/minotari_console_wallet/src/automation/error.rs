@@ -82,6 +82,8 @@ pub enum CommandError {
     IoError(#[from] io::Error),
     #[error("General error: {0}")]
     General(String),
+    #[error("Pre-mine error: {0}")]
+    PreMine(String),
     #[error("FixedHash size error `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("ByteArrayError {0}")]
