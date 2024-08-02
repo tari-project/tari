@@ -107,13 +107,19 @@ fn extract_branch_and_index(data: &[u8]) -> Result<(KeyType, u64), AppSW> {
     Ok((branch, index))
 }
 
-fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
+fn derive_key_from_alpha(
+    account: u64,
+    data: &[u8],
+    offset_ctx: &mut ScriptOffsetCtx,
+) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
     if data.len() != 32 {
         return Err(AppSW::WrongApduLength);
     }
     let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
     let blinding_factor: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+
+    offset_ctx.add_unique_key(alpha.clone());
 
     alpha_hasher(alpha, blinding_factor)
 }
@@ -170,18 +176,16 @@ pub fn handler_get_script_offset(
     // 5. Derived sender offsets key
     let end_derived_offset_keys = end_script_indexes + offset_ctx.total_derived_offset_keys;
     if (end_script_indexes..end_derived_offset_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data)?;
+        let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
 
-        offset_ctx.add_unique_key(k.clone());
         offset_ctx.sender_offset_sum = Zeroizing::new(offset_ctx.sender_offset_sum.deref() + k.deref());
     }
 
     // 6. Derived script key
     let end_derived_script_keys = end_derived_offset_keys + offset_ctx.total_derived_script_keys;
     if (end_derived_offset_keys..end_derived_script_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data)?;
+        let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
 
-        offset_ctx.add_unique_key(k.clone());
         offset_ctx.script_private_key_sum = Zeroizing::new(offset_ctx.script_private_key_sum.deref() + k.deref());
     }
 

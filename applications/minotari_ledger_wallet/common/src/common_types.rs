@@ -76,13 +76,14 @@ pub enum Instruction {
     GetAppName = 0x02,
     GetPublicSpendKey = 0x03,
     GetPublicKey = 0x04,
-    GetScriptSignature = 0x05,
+    GetScriptSignatureDerived = 0x05,
     GetScriptOffset = 0x06,
     GetViewKey = 0x07,
     GetDHSharedSecret = 0x08,
     GetRawSchnorrSignature = 0x09,
     GetScriptSchnorrSignature = 0x10,
     GetOneSidedMetadataSignature = 0x11,
+    GetScriptSignatureManaged = 0x12,
 }
 
 impl Instruction {
@@ -96,13 +97,14 @@ impl Instruction {
             0x02 => Some(Instruction::GetAppName),
             0x03 => Some(Instruction::GetPublicSpendKey),
             0x04 => Some(Instruction::GetPublicKey),
-            0x05 => Some(Instruction::GetScriptSignature),
+            0x05 => Some(Instruction::GetScriptSignatureDerived),
             0x06 => Some(Instruction::GetScriptOffset),
             0x07 => Some(Instruction::GetViewKey),
             0x08 => Some(Instruction::GetDHSharedSecret),
             0x09 => Some(Instruction::GetRawSchnorrSignature),
             0x10 => Some(Instruction::GetScriptSchnorrSignature),
             0x11 => Some(Instruction::GetOneSidedMetadataSignature),
+            0x12 => Some(Instruction::GetScriptSignatureManaged),
             _ => None,
         }
     }
@@ -224,12 +226,13 @@ mod test {
             (0x02, Instruction::GetAppName),
             (0x03, Instruction::GetPublicSpendKey),
             (0x04, Instruction::GetPublicKey),
-            (0x05, Instruction::GetScriptSignature),
+            (0x05, Instruction::GetScriptSignatureDerived),
             (0x06, Instruction::GetScriptOffset),
             (0x07, Instruction::GetViewKey),
             (0x08, Instruction::GetDHSharedSecret),
             (0x09, Instruction::GetRawSchnorrSignature),
             (0x10, Instruction::GetScriptSchnorrSignature),
+            (0x11, Instruction::GetScriptSignatureManaged),
         ];
 
         for (expected_byte, instruction) in &mappings {
@@ -250,7 +253,7 @@ mod test {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
-                Instruction::GetScriptSignature => {
+                Instruction::GetScriptSignatureDerived => {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
@@ -275,6 +278,10 @@ mod test {
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
                 Instruction::GetOneSidedMetadataSignature => {
+                    assert_eq!(instruction.as_byte(), *expected_byte);
+                    assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
+                },
+                Instruction::GetScriptSignatureManaged => {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },

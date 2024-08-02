@@ -36,7 +36,7 @@ use handlers::{
     get_public_spend_key::handler_get_public_spend_key,
     get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
-    get_script_signature::handler_get_script_signature,
+    get_script_signature::{handler_get_script_signature_derived, handler_get_script_signature_managed},
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
@@ -124,7 +124,8 @@ pub enum Instruction {
     GetAppName,
     GetPublicKey,
     GetPublicSpendKey,
-    GetScriptSignature,
+    GetScriptSignatureManaged,
+    GetScriptSignatureDerived,
     GetScriptOffset { chunk_number: u8, more: bool },
     GetViewKey,
     GetDHSharedSecret,
@@ -193,7 +194,8 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetAppName, 0, 0) => Ok(Instruction::GetAppName),
             (InstructionMapping::GetPublicSpendKey, 0, 0) => Ok(Instruction::GetPublicSpendKey),
             (InstructionMapping::GetPublicKey, 0, 0) => Ok(Instruction::GetPublicKey),
-            (InstructionMapping::GetScriptSignature, 0, 0) => Ok(Instruction::GetScriptSignature),
+            (InstructionMapping::GetScriptSignatureManaged, 0, 0) => Ok(Instruction::GetScriptSignatureManaged),
+            (InstructionMapping::GetScriptSignatureDerived, 0, 0) => Ok(Instruction::GetScriptSignatureDerived),
             (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
                 chunk_number: value.p1,
                 more: value.p2 == P2_MORE,
@@ -246,7 +248,8 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetPublicSpendKey => handler_get_public_spend_key(comm),
-        Instruction::GetScriptSignature => handler_get_script_signature(comm),
+        Instruction::GetScriptSignatureManaged => handler_get_script_signature_managed(comm),
+        Instruction::GetScriptSignatureDerived => handler_get_script_signature_derived(comm),
         Instruction::GetScriptOffset { chunk_number, more } => {
             handler_get_script_offset(comm, chunk_number, more, offset_ctx)
         },

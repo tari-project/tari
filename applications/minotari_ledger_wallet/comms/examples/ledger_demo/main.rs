@@ -29,6 +29,7 @@ use minotari_ledger_wallet_comms::{
         ledger_get_version,
         ledger_get_view_key,
         verify_ledger_application,
+        ScriptSignatureKey,
     },
     error::LedgerDeviceError,
     ledger_wallet::get_transport,
@@ -147,35 +148,44 @@ fn main() {
     println!("\ntest: GetScriptSignature");
     let network = Network::LocalNet;
     let version = 0u8;
-    let branch_key = get_random_nonce();
     let value = PrivateKey::from(123456);
     let spend_private_key = get_random_nonce();
     let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&get_random_nonce()));
     let mut script_message = [0u8; 32];
     script_message.copy_from_slice(&get_random_nonce().to_vec());
 
-    match ledger_get_script_signature(
-        account,
-        network,
-        version,
-        &branch_key,
-        &value,
-        &spend_private_key,
-        &commitment,
-        script_message,
-    ) {
-        Ok(signature) => println!(
-            "script_sig:     ({},{},{},{},{})",
-            signature.ephemeral_commitment().to_hex(),
-            signature.ephemeral_pubkey().to_hex(),
-            signature.u_x().to_hex(),
-            signature.u_a().to_hex(),
-            signature.u_y().to_hex()
-        ),
-        Err(e) => {
-            println!("\nError: {}\n", e);
-            return;
+    for branch_key in [
+        ScriptSignatureKey::Derived {
+            branch_key: get_random_nonce(),
         },
+        ScriptSignatureKey::Managed {
+            branch: TransactionKeyManagerBranch::Spend,
+            index: OsRng.next_u64(),
+        },
+    ] {
+        match ledger_get_script_signature(
+            account,
+            network,
+            version,
+            &branch_key,
+            &value,
+            &spend_private_key,
+            &commitment,
+            script_message,
+        ) {
+            Ok(signature) => println!(
+                "script_sig:     ({},{},{},{},{})",
+                signature.ephemeral_commitment().to_hex(),
+                signature.ephemeral_pubkey().to_hex(),
+                signature.u_x().to_hex(),
+                signature.u_a().to_hex(),
+                signature.u_y().to_hex()
+            ),
+            Err(e) => {
+                println!("\nError: {}\n", e);
+                return;
+            },
+        }
     }
 
     // GetScriptOffset

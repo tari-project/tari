@@ -42,6 +42,17 @@ use crate::{
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
 
+/// The script signature key
+pub enum ScriptSignatureKey {
+    Managed {
+        branch: TransactionKeyManagerBranch,
+        index: u64,
+    },
+    Derived {
+        branch_key: PrivateKey,
+    },
+}
+
 /// Verify that the ledger application is working properly.
 pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
     static VERIFIED: Lazy<Mutex<Option<Result<(), LedgerDeviceError>>>> = Lazy::new(|| Mutex::new(None));
@@ -245,7 +256,7 @@ pub fn ledger_get_script_signature(
     account: u64,
     network: Network,
     version: u8,
-    branch_key: &PrivateKey,
+    signature_key: &ScriptSignatureKey,
     value: &PrivateKey,
     commitment_private_key: &PrivateKey,
     commitment: &Commitment,
@@ -259,8 +270,7 @@ pub fn ledger_get_script_signature(
     data.extend_from_slice(&network);
     let version = u64::from(version).to_le_bytes();
     data.extend_from_slice(&version);
-    let branch_key = branch_key.to_vec();
-    data.extend_from_slice(&branch_key);
+
     let value = value.to_vec();
     data.extend_from_slice(&value);
     let commitment_private_key = commitment_private_key.to_vec();
@@ -269,7 +279,24 @@ pub fn ledger_get_script_signature(
     data.extend_from_slice(&commitment);
     data.extend_from_slice(&message);
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetScriptSignature, data).execute() {
+    match signature_key {
+        ScriptSignatureKey::Managed { branch, index } => {
+            let branch = u64::from(branch.as_byte()).to_le_bytes();
+            data.extend_from_slice(&branch);
+            let index = index.to_le_bytes();
+            data.extend_from_slice(&index);
+        },
+        ScriptSignatureKey::Derived { branch_key } => {
+            data.extend_from_slice(&branch_key.to_vec());
+        },
+    }
+
+    let instruction = match signature_key {
+        ScriptSignatureKey::Managed { .. } => Instruction::GetScriptSignatureManaged,
+        ScriptSignatureKey::Derived { .. } => Instruction::GetScriptSignatureDerived,
+    };
+
+    match Command::<Vec<u8>>::build_command(account, instruction, data).execute() {
         Ok(result) => {
             if result.data().len() < 161 {
                 return Err(LedgerDeviceError::Processing(format!(

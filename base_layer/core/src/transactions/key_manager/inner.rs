@@ -33,6 +33,7 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_script_offset,
     ledger_get_script_schnorr_signature,
     ledger_get_script_signature,
+    ScriptSignatureKey,
 };
 use rand::rngs::OsRng;
 #[cfg(feature = "ledger")]
@@ -858,21 +859,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 #[cfg(feature = "ledger")]
                 {
-                    let branch_key = match script_key_id {
-                        TariKeyId::Managed { branch, index } => {
-                            let km = self
-                                .key_managers
-                                .get(branch)
-                                .ok_or_else(|| self.unknown_key_branch_error("get_script_signature", branch))?
-                                .read()
-                                .await;
-                            km.get_private_key(*index)
-                                .map_err(|e| TransactionError::KeyManagerError(e.to_string()))?
+                    let signature_key = match script_key_id {
+                        TariKeyId::Managed { branch, index } => ScriptSignatureKey::Managed {
+                            branch: TransactionKeyManagerBranch::from_key(branch),
+                            index: *index,
                         },
                         TariKeyId::Derived { key: key_str } => {
                             let key = TariKeyId::from_str(key_str.to_string().as_str())
                                 .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
-                            self.get_private_key(&key).await?
+                            ScriptSignatureKey::Derived {
+                                branch_key: self.get_private_key(&key).await?,
+                            }
                         },
                         _ => {
                             return Err(self.key_id_not_supported_error(
@@ -887,7 +884,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         ledger.account,
                         ledger.network,
                         txi_version.as_u8(),
-                        &branch_key,
+                        &signature_key,
                         value,
                         &commitment_private_key,
                         &commitment,
@@ -1074,14 +1071,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         match script_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend | TransactionKeyManagerBranch::PreMine => {
+                                    TransactionKeyManagerBranch::Spend |
+                                    TransactionKeyManagerBranch::PreMine |
+                                    TransactionKeyManagerBranch::RandomKey |
+                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         script_key_indexes
                                             .push((TransactionKeyManagerBranch::from_key(branch), *index));
                                     },
                                     _ => {
-                                        return Err(TransactionError::from(
-                                            self.branch_not_supported_error("get_script_offset", branch),
-                                        ));
+                                        partial_script_offset =
+                                            &partial_script_offset + self.get_private_key(script_key_id).await?
                                     },
                                 }
                             },
@@ -1097,13 +1096,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 partial_script_offset =
                                     &partial_script_offset + self.get_private_key(script_key_id).await?
                             },
-                            TariKeyId::Zero => {
-                                return Err(self.key_id_not_supported_error(
-                                    "get_script_offset",
-                                    "KeyId::Managed or TariKeyId::Imported",
-                                    script_key_id,
-                                ));
-                            },
+                            TariKeyId::Zero => {},
                         }
                     }
 
@@ -1113,19 +1106,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         match sender_offset_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::OneSidedSenderOffset |
-                                    TransactionKeyManagerBranch::RandomKey => {
+                                    TransactionKeyManagerBranch::Spend |
+                                    TransactionKeyManagerBranch::PreMine |
+                                    TransactionKeyManagerBranch::RandomKey |
+                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         sender_offset_indexes
                                             .push((TransactionKeyManagerBranch::from_key(branch), *index));
                                     },
-                                    TransactionKeyManagerBranch::SenderOffset => {
+                                    _ => {
                                         partial_script_offset =
                                             partial_script_offset - self.get_private_key(sender_offset_key_id).await?;
-                                    },
-                                    _ => {
-                                        return Err(TransactionError::from(
-                                            self.branch_not_supported_error("get_script_offset", branch),
-                                        ));
                                     },
                                 }
                             },
@@ -1141,13 +1131,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 partial_script_offset =
                                     partial_script_offset - self.get_private_key(sender_offset_key_id).await?;
                             },
-                            TariKeyId::Zero => {
-                                return Err(self.key_id_not_supported_error(
-                                    "get_script_offset",
-                                    "KeyId::Managed or TariKeyId::Imported",
-                                    sender_offset_key_id,
-                                ));
-                            },
+                            TariKeyId::Zero => {},
                         }
                     }
 
