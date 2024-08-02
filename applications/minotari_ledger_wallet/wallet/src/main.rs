@@ -125,7 +125,7 @@ pub enum Instruction {
     GetPublicKey,
     GetPublicSpendKey,
     GetScriptSignature,
-    GetScriptOffset { chunk: u8, more: bool },
+    GetScriptOffset { chunk_number: u8, more: bool },
     GetViewKey,
     GetDHSharedSecret,
     GetRawSchnorrSignature,
@@ -139,7 +139,7 @@ const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number b
 const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum KeyType {
     Spend = 0x01,
     Nonce = 0x02,
@@ -195,7 +195,7 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetPublicKey, 0, 0) => Ok(Instruction::GetPublicKey),
             (InstructionMapping::GetScriptSignature, 0, 0) => Ok(Instruction::GetScriptSignature),
             (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
-                chunk: value.p1,
+                chunk_number: value.p1,
                 more: value.p2 == P2_MORE,
             }),
             (InstructionMapping::GetViewKey, 0, 0) => Ok(Instruction::GetViewKey),
@@ -247,7 +247,9 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetPublicKey => handler_get_public_key(comm),
         Instruction::GetPublicSpendKey => handler_get_public_spend_key(comm),
         Instruction::GetScriptSignature => handler_get_script_signature(comm),
-        Instruction::GetScriptOffset { chunk, more } => handler_get_script_offset(comm, chunk, more, offset_ctx),
+        Instruction::GetScriptOffset { chunk_number, more } => {
+            handler_get_script_offset(comm, chunk_number, more, offset_ctx)
+        },
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
         Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),

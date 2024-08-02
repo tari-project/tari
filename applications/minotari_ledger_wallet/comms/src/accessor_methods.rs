@@ -33,7 +33,7 @@ use tari_common_types::{
 };
 use tari_crypto::dhke::DiffieHellmanSharedSecret;
 use tari_script::CheckSigSchnorrSignature;
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     error::LedgerDeviceError,
@@ -187,7 +187,7 @@ pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
 
 /// Get the public alpha key from the ledger device
 pub fn ledger_get_public_spend_key(account: u64) -> Result<PublicKey, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account {}", account);
+    debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{}'", account);
     verify_ledger_application()?;
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
@@ -212,7 +212,11 @@ pub fn ledger_get_public_key(
     index: u64,
     branch: TransactionKeyManagerBranch,
 ) -> Result<PublicKey, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_public_key: account {}, index {}, branch {:?}", account, index, branch);
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_public_key: account '{}', index '{}', branch '{:?}'",
+        account, index, branch
+    );
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -245,9 +249,9 @@ pub fn ledger_get_script_signature(
     value: &PrivateKey,
     commitment_private_key: &PrivateKey,
     commitment: &Commitment,
-    script_message: [u8; 32],
+    message: [u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_script_signature: account {}", account);
+    debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{}', message '{}'", account, message.to_hex());
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -263,7 +267,7 @@ pub fn ledger_get_script_signature(
     data.extend_from_slice(&commitment_private_key);
     let commitment = commitment.to_vec();
     data.extend_from_slice(&commitment);
-    data.extend_from_slice(&script_message);
+    data.extend_from_slice(&message);
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetScriptSignature, data).execute() {
         Ok(result) => {
@@ -291,28 +295,55 @@ pub fn ledger_get_script_signature(
 /// Get the script offset from the ledger device
 pub fn ledger_get_script_offset(
     account: u64,
-    total_script_private_key: &PrivateKey,
-    derived_key_commitments: &[PrivateKey],
-    sender_offset_indexes: &[u64],
+    partial_script_offset: &PrivateKey,
+    derived_script_keys: &[PrivateKey],
+    script_key_indexes: &[(TransactionKeyManagerBranch, u64)],
+    derived_sender_offsets: &[PrivateKey],
+    sender_offset_indexes: &[(TransactionKeyManagerBranch, u64)],
 ) -> Result<PrivateKey, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_script_offset: account {}", account);
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_script_offset: account '{}', partial_script_offset '{}', derived_script_keys: '{:?}', \
+        script_key_indexes: '{:?}', derived_sender_offsets '{:?}', sender_offset_indexes '{:?}'",
+        account,
+        partial_script_offset.to_hex(),
+        derived_script_keys,
+        script_key_indexes,
+        derived_sender_offsets,
+        sender_offset_indexes
+    );
     verify_ledger_application()?;
 
-    let num_commitments = derived_key_commitments.len() as u64;
-    let num_offset_key = sender_offset_indexes.len() as u64;
-
-    let mut instructions = num_offset_key.to_le_bytes().to_vec();
-    instructions.extend_from_slice(&num_commitments.to_le_bytes());
-
+    // 1. data sizes
+    let mut instructions: Vec<u8> = Vec::new();
+    instructions.extend_from_slice(&(sender_offset_indexes.len() as u64).to_le_bytes());
+    instructions.extend_from_slice(&(script_key_indexes.len() as u64).to_le_bytes());
+    instructions.extend_from_slice(&(derived_sender_offsets.len() as u64).to_le_bytes());
+    instructions.extend_from_slice(&(derived_script_keys.len() as u64).to_le_bytes());
     let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
-    data.push(total_script_private_key.to_vec());
 
-    for sender_offset_index in sender_offset_indexes {
-        data.push(sender_offset_index.to_le_bytes().to_vec());
+    // 2. partial_script_offset
+    data.push(partial_script_offset.to_vec());
+
+    // 3. sender_offset_indexes
+    for (branch, index) in sender_offset_indexes {
+        let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
+        payload.extend_from_slice(&index.to_le_bytes());
+        data.push(payload);
     }
-
-    for derived_key_commitment in derived_key_commitments {
-        data.push(derived_key_commitment.to_vec());
+    // 4. script_key_indexes
+    for (branch, index) in script_key_indexes {
+        let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
+        payload.extend_from_slice(&index.to_le_bytes());
+        data.push(payload);
+    }
+    // 5. derived_sender_offsets
+    for sender_offset in derived_sender_offsets {
+        data.push(sender_offset.to_vec());
+    }
+    // 6. derived_script_keys
+    for script_key in derived_script_keys {
+        data.push(script_key.to_vec());
     }
 
     let commands = Command::<Vec<u8>>::chunk_command(account, Instruction::GetScriptOffset, data);
@@ -343,7 +374,7 @@ pub fn ledger_get_script_offset(
 
 /// Get the view key from the ledger device
 pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_view_key: account {}", account);
+    debug!(target: LOG_TARGET, "ledger_get_view_key: account '{}'", account);
     verify_ledger_application()?;
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetViewKey, vec![]).execute() {
@@ -369,7 +400,11 @@ pub fn ledger_get_dh_shared_secret(
     branch: TransactionKeyManagerBranch,
     public_key: &PublicKey,
 ) -> Result<DiffieHellmanSharedSecret<PublicKey>, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_dh_shared_secret: account {}, index {}, branch {:?}", account, index, branch);
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_dh_shared_secret: account '{}', index '{}', branch '{:?}'",
+        account, index, branch
+    );
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -402,8 +437,12 @@ pub fn ledger_get_raw_schnorr_signature(
     nonce_branch: TransactionKeyManagerBranch,
     challenge: &[u8; 64],
 ) -> Result<Signature, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_raw_schnorr_signature: account {}, pk index {}, pk branch {:?}, nonce index {}, nonce branch {:?}",
-        account, private_key_index, private_key_branch, nonce_index, nonce_branch);
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}', nonce index '{}', \
+        nonce branch' {:?}', challenge '{}'",
+        account, private_key_index, private_key_branch, nonce_index, nonce_branch, challenge.to_hex()
+    );
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -440,8 +479,11 @@ pub fn ledger_get_script_schnorr_signature(
     private_key_branch: TransactionKeyManagerBranch,
     nonce: &[u8],
 ) -> Result<CheckSigSchnorrSignature, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_raw_schnorr_signature: account {}, pk index {}, pk branch {:?}",
-        account, private_key_index, private_key_branch);
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}'",
+        account, private_key_index, private_key_branch
+    );
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -483,8 +525,13 @@ pub fn ledger_get_one_sided_metadata_signature(
     value: u64,
     sender_offset_key_index: u64,
     commitment_mask: &PrivateKey,
-    metadata_signature_message: &[u8; 32],
+    message: &[u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_one_sided_metadata_signature: account '{}', message '{}'",
+        account, message.to_hex()
+    );
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -493,7 +540,7 @@ pub fn ledger_get_one_sided_metadata_signature(
     data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
     data.extend_from_slice(&value.to_le_bytes());
     data.extend_from_slice(&commitment_mask.to_vec());
-    data.extend_from_slice(&metadata_signature_message.to_vec());
+    data.extend_from_slice(&message.to_vec());
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
         Ok(result) => {
