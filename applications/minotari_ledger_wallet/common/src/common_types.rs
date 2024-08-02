@@ -232,7 +232,8 @@ mod test {
             (0x08, Instruction::GetDHSharedSecret),
             (0x09, Instruction::GetRawSchnorrSignature),
             (0x10, Instruction::GetScriptSchnorrSignature),
-            (0x11, Instruction::GetScriptSignatureManaged),
+            (0x11, Instruction::GetOneSidedMetadataSignature),
+            (0x12, Instruction::GetScriptSignatureManaged),
         ];
 
         for (expected_byte, instruction) in &mappings {

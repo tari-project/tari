@@ -852,8 +852,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 #[cfg(not(feature = "ledger"))]
                 {
                     Err(TransactionError::LedgerNotSupported(format!(
-                        "{} 'get_script_signature' was called. ({} (has key {}))",
-                        LEDGER_NOT_SUPPORTED, ledger, key_str
+                        "{} 'get_script_signature' was called. ({})",
+                        LEDGER_NOT_SUPPORTED, ledger
                     )))
                 }
 
