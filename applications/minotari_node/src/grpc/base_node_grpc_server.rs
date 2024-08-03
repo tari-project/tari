@@ -147,6 +147,7 @@ impl BaseNodeGrpcServer {
             GrpcMethod::SubmitBlock,
             GrpcMethod::SubmitBlockBlob,
             GrpcMethod::GetTipInfo,
+            GrpcMethod::Identify
         ];
 
         let second_layer_methods = [
