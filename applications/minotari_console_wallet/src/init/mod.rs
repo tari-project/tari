@@ -25,8 +25,6 @@
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
-#[cfg(feature = "ledger")]
-use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 #[cfg(feature = "ledger")]
