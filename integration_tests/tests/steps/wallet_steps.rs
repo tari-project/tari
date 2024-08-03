@@ -2434,8 +2434,8 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         .tx_ids;
 }
 #[allow(clippy::too_many_lines)]
-#[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
-async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+#[then(expr = "I import {word} unspent outputs as pre_mine outputs to {word}")]
+async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();

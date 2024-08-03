@@ -9,8 +9,10 @@ use digest::{consts::U64, Digest};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     io::SyscallError,
-    ui::gadgets::SingleMessage,
+    random::LedgerRng,
+    ui::gadgets::{MessageScroller, SingleMessage},
 };
+use rand_core::RngCore;
 use tari_crypto::{
     hashing::DomainSeparatedHasher,
     keys::SecretKey,
@@ -158,6 +160,9 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key_buffer.as_mut(), Some(&mut [])) {
         Ok(_) => {
             let binding = &key_buffer.as_ref()[..BIP32_KEY_LENGTH];
+            if binding == &[0u8; BIP32_KEY_LENGTH] {
+                return Err(cx_error_to_string(CxError::InternalError));
+            }
             let mut key_bytes = Zeroizing::new([0u8; BIP32_KEY_LENGTH]);
             // `copy_from_slice` will not panic as the length of the slice is equal to the length of the array
             key_bytes.as_mut().copy_from_slice(binding);
@@ -192,12 +197,12 @@ pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<Zeroizing<RistrettoSec
     match RistrettoSecretKey::from_uniform_bytes(bytes) {
         Ok(val) => Ok(Zeroizing::new(val)),
         Err(e) => {
-            SingleMessage::new(&format!(
+            MessageScroller::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
                 e.to_string(),
                 &bytes.len()
             ))
-            .show_and_wait();
+            .event_loop();
             SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             return Err(AppSW::KeyDeriveFromUniform);
         },
@@ -208,12 +213,12 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
-            SingleMessage::new(&format!(
+            MessageScroller::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
                 e.to_string(),
                 &bytes.len()
             ))
-            .show_and_wait();
+            .event_loop();
             SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             return Err(AppSW::KeyDeriveFromCanonical);
         },
@@ -257,4 +262,15 @@ pub fn derive_from_bip32_key(
             return Err(AppSW::KeyDeriveFail);
         },
     }
+}
+
+pub fn get_random_nonce() -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
+    let mut raw_bytes = [0u8; 64];
+    LedgerRng.fill_bytes(&mut raw_bytes);
+    if raw_bytes == [0u8; 64] {
+        return Err(AppSW::RandomNonceFail);
+    }
+    Ok(Zeroizing::new(
+        RistrettoSecretKey::from_uniform_bytes(&raw_bytes).expect("will not fail"),
+    ))
 }

@@ -26,7 +26,6 @@ mod single_address;
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
-    panic,
     str::FromStr,
 };
 
@@ -45,6 +44,10 @@ use crate::{
 
 const INTERNAL_DUAL_SIZE: usize = 67; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_SIZE: usize = 35; // number of bytes used for the internal representation
+const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the internal representation
+const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 91; // number of bytes used for the internal representation
+const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
+const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TariAddressFeatures(u8);
@@ -246,22 +249,12 @@ impl TariAddress {
 
     /// Construct Tari Address from hex
     pub fn from_base58(hex_str: &str) -> Result<TariAddress, TariAddressError> {
-        if hex_str.len() < 47 {
+        if hex_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
-        let result = panic::catch_unwind(|| hex_str.split_at(2));
-        let (first, rest) = match result {
-            Ok((first, rest)) => (first, rest),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        let result = panic::catch_unwind(|| first.split_at(1));
-        let (network, features) = match result {
-            Ok((network, features)) => (network, features),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        // replace this after 1.80 stable
-        // let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
-        // let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
+
+        let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
+        let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
         let mut result = bs58::decode(network)
             .into_vec()
             .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
@@ -715,7 +708,6 @@ mod test {
         );
         test_addres(address);
     }
-
     #[test]
     /// Test invalid size
     fn invalid_size() {

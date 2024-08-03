@@ -123,6 +123,8 @@ jobs:
     #  on stable Rust.
     name: cargo check with stable
     runs-on: [self-hosted, ubuntu-high-cpu]
+    env:
+      RUSTUP_PERMIT_COPY_RENAME: true
     steps:
       - name: checkout
         uses: actions/checkout@v4

@@ -171,8 +171,13 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), PeerV
     const ONION3_PUBKEY_SIZE: usize = 32;
     const ONION3_CHECKSUM_SIZE: usize = 2;
 
-    let (pub_key, checksum_version) = addr.hash().split_at(ONION3_PUBKEY_SIZE);
-    let (checksum, version) = checksum_version.split_at(ONION3_CHECKSUM_SIZE);
+    let (pub_key, checksum_version) = addr
+        .hash()
+        .split_at_checked(ONION3_PUBKEY_SIZE)
+        .ok_or(PeerValidatorError::InvalidMultiaddr("Unable to split data".to_string()))?;
+    let (checksum, version) = checksum_version
+        .split_at_checked(ONION3_CHECKSUM_SIZE)
+        .ok_or(PeerValidatorError::InvalidMultiaddr("Unable to split data".to_string()))?;
 
     if version != b"\x03" {
         return Err(PeerValidatorError::InvalidMultiaddr(

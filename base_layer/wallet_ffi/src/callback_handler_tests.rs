@@ -28,6 +28,7 @@ mod test {
                 sqlite_db::TransactionServiceSqliteDatabase,
             },
         },
+        utxo_scanner_service::handle::UtxoScannerEvent,
     };
     use once_cell::sync::Lazy;
     use rand::{rngs::OsRng, RngCore};
@@ -92,6 +93,7 @@ mod test {
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
         pub connectivity_status_callback_called: u64,
+        pub wallet_scanner_height_callback_called: u64,
         pub base_node_state_changed_callback_invoked: bool,
     }
 
@@ -121,6 +123,7 @@ mod test {
                 tx_cancellation_callback_called_outbound: false,
                 saf_messages_received: false,
                 connectivity_status_callback_called: 0,
+                wallet_scanner_height_callback_called: 0,
                 base_node_state_changed_callback_invoked: false,
             }
         }
@@ -252,6 +255,12 @@ mod test {
     unsafe extern "C" fn connectivity_status_callback(status: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.connectivity_status_callback_called += status + 1;
+        drop(lock);
+    }
+
+    unsafe extern "C" fn wallet_scanner_height_callback(height: u64) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.wallet_scanner_height_callback_called += height;
         drop(lock);
     }
 
@@ -466,6 +475,8 @@ mod test {
         let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
         let (contacts_liveness_events_sender, _) = broadcast::channel(250);
         let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
+        let (utxo_scanner_events_sender, _) = broadcast::channel(250);
+        let utxo_scanner_events = utxo_scanner_events_sender.subscribe();
         let comms_address = TariAddress::new_dual_address_with_default_features(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -478,6 +489,7 @@ mod test {
             transaction_event_receiver,
             oms_event_receiver,
             oms_handle,
+            utxo_scanner_events,
             dht_event_receiver,
             shutdown_signal.to_signal(),
             comms_address,
@@ -499,6 +511,7 @@ mod test {
             transaction_validation_complete_callback,
             saf_messages_received_callback,
             connectivity_status_callback,
+            wallet_scanner_height_callback,
             base_node_state_changed_callback,
         );
 
@@ -843,6 +856,24 @@ mod test {
 
         thread::sleep(Duration::from_secs(10));
 
+        utxo_scanner_events_sender
+            .send(UtxoScannerEvent::Progress {
+                current_height: 500,
+                tip_height: 600,
+            })
+            .unwrap();
+
+        thread::sleep(Duration::from_secs(2));
+        utxo_scanner_events_sender
+            .send(UtxoScannerEvent::Completed {
+                final_height: 600,
+                num_recovered: 0,
+                value_recovered: 0.into(),
+                time_taken: Duration::from_secs(0),
+            })
+            .unwrap();
+
+        thread::sleep(Duration::from_secs(2));
         let lock = CALLBACK_STATE.lock().unwrap();
         assert!(lock.received_tx_callback_called);
         assert!(lock.received_tx_reply_callback_called);
@@ -867,6 +898,7 @@ mod test {
         assert_eq!(lock.callback_balance_updated, 7);
         assert_eq!(lock.callback_transaction_validation_complete, 13);
         assert_eq!(lock.connectivity_status_callback_called, 7);
+        assert_eq!(lock.wallet_scanner_height_callback_called, 1100);
 
         drop(lock);
     }

@@ -24,7 +24,6 @@ use std::{
     cmp,
     convert::TryInto,
     future::Future,
-    panic,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -649,18 +648,12 @@ impl InnerService {
             .iter()
             .position(|x| x == &last_used_url)
             .unwrap_or(0);
-        // replace after rust stable 1.80 release
-        // let (left, right) = self
-        //     .config
-        //     .monerod_url
-        //     .split_at_checked(pos)
-        //     .ok_or(MmProxyError::ConversionError("Invalid utf 8 url".to_string()))?;
-        let url = self.config.monerod_url.clone();
-        let result = panic::catch_unwind(|| url.split_at(pos));
-        let (left, right) = match result {
-            Ok((left, right)) => (left, right),
-            Err(_) => return Err(MmProxyError::ConversionError("Invalid utf 8 url".to_string())),
-        };
+
+        let (left, right) = self
+            .config
+            .monerod_url
+            .split_at_checked(pos)
+            .ok_or(MmProxyError::ConversionError("Invalid utf 8 url".to_string()))?;
         let left = left.to_vec();
         let right = right.to_vec();
         let iter = right.iter().chain(left.iter()).chain(right.iter()).chain(left.iter());

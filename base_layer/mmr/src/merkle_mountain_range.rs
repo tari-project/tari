@@ -27,7 +27,6 @@ use std::{
 };
 
 use digest::Digest;
-use tari_common::DomainDigest;
 
 use crate::{
     backend::ArrayLike,
@@ -62,7 +61,7 @@ pub struct MerkleMountainRange<D, B> {
 
 impl<D, B> MerkleMountainRange<D, B>
 where
-    D: Digest + DomainDigest,
+    D: Digest,
     B: ArrayLike<Value = Hash>,
 {
     /// Create a new Merkle mountain range using the given backend for storage
@@ -282,7 +281,7 @@ where
 
 impl<D, B, B2> PartialEq<MerkleMountainRange<D, B2>> for MerkleMountainRange<D, B>
 where
-    D: Digest + DomainDigest,
+    D: Digest,
     B: ArrayLike<Value = Hash>,
     B2: ArrayLike<Value = Hash>,
 {

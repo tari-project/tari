@@ -30,12 +30,7 @@ use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 #[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::ledger_wallet::LedgerCommands;
-#[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::{
-    error::LedgerDeviceError,
-    ledger_wallet::{get_transport, Instruction},
-};
+use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_spend_key, ledger_get_view_key};
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -59,6 +54,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
     types::{PrivateKey, PublicKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
@@ -70,10 +66,18 @@ use tari_comms::{
 };
 use tari_core::{
     consensus::ConsensusManager,
-    transactions::{transaction_components::TransactionError, CryptoFactories},
+    transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
+        transaction_components::TransactionError,
+        CryptoFactories,
+    },
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInterface},
+    mnemonic::MnemonicLanguage,
+};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{encoding::Base58, hex::Hex, ByteArray, SafePassword};
@@ -570,6 +574,33 @@ pub async fn start_wallet(
     base_node: &Peer,
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
+    // Verify ledger build if wallet type is Ledger
+    if let WalletType::Ledger(_) = wallet.key_manager_service.get_wallet_type().await {
+        #[cfg(not(feature = "ledger"))]
+        {
+            return Err(ExitError::new(
+                ExitCode::WalletError,
+                format!("{}", LEDGER_NOT_SUPPORTED),
+            ));
+        }
+
+        #[cfg(feature = "ledger")]
+        {
+            let key_id = TariKeyId::Managed {
+                branch: TransactionKeyManagerBranch::RandomKey.get_branch_key(),
+                index: 0,
+            };
+            match wallet.key_manager_service.get_public_key_at_key_id(&key_id).await {
+                Ok(public_key) => {},
+                Err(e) => {
+                    if e.to_string().contains(LEDGER_NOT_SUPPORTED) {
+                        return Err(ExitError::new(ExitCode::WalletError, format!(" {}", e)));
+                    }
+                },
+            }
+        }
+    }
+
     debug!(target: LOG_TARGET, "Setting base node peer");
 
     let net_address = base_node
@@ -852,66 +883,19 @@ pub fn prompt_wallet_type(
                 };
                 if prompt(connected_hardware_msg) {
                     print!("Scanning for connected Ledger hardware device... ");
-                    match get_transport() {
-                        Ok(hid) => {
-                            println!("Device found.");
-                            let account = prompt_ledger_account(boot_mode).expect("An account value");
-                            let ledger = LedgerWallet::new(account, wallet_config.network, None, None);
-                            match ledger
-                                .build_command(Instruction::GetPublicAlpha, vec![])
-                                .execute_with_transport(&hid)
-                            {
-                                Ok(result) => {
-                                    debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                                    if result.data().len() < 33 {
-                                        debug!(target: LOG_TARGET, "result less than 33");
-                                        panic!(
-                                            "'get_public_key' insufficient data - expected 33 got {} bytes ({:?})",
-                                            result.data().len(),
-                                            result
-                                        );
-                                    }
-
-                                    let public_alpha = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
-                                        Ok(k) => k,
-                                        Err(e) => panic!("{}", e),
-                                    };
-
-                                    match ledger
-                                        .build_command(Instruction::GetViewKey, vec![])
-                                        .execute_with_transport(&hid)
-                                    {
-                                        Ok(result) => {
-                                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                                            if result.data().len() < 33 {
-                                                debug!(target: LOG_TARGET, "result less than 33");
-                                                panic!(
-                                                    "'get_view_key' insufficient data - expected 33 got {} bytes \
-                                                     ({:?})",
-                                                    result.data().len(),
-                                                    result
-                                                );
-                                            }
-
-                                            let view_key = match PrivateKey::from_canonical_bytes(&result.data()[1..33])
-                                            {
-                                                Ok(k) => k,
-                                                Err(e) => panic!("{}", e),
-                                            };
-
-                                            let ledger = LedgerWallet::new(
-                                                account,
-                                                wallet_config.network,
-                                                Some(public_alpha),
-                                                Some(view_key),
-                                            );
-                                            Some(WalletType::Ledger(ledger))
-                                        },
-                                        Err(e) => panic!("{}", e),
-                                    }
-                                },
-                                Err(e) => panic!("{}", e),
-                            }
+                    let account = prompt_ledger_account(boot_mode).expect("An account value");
+                    match ledger_get_public_spend_key(account) {
+                        Ok(public_alpha) => match ledger_get_view_key(account) {
+                            Ok(view_key) => {
+                                let ledger = LedgerWallet::new(
+                                    account,
+                                    wallet_config.network,
+                                    Some(public_alpha),
+                                    Some(view_key),
+                                );
+                                Some(WalletType::Ledger(ledger))
+                            },
+                            Err(e) => panic!("{}", e),
                         },
                         Err(e) => panic!("{}", e),
                     }

@@ -25,7 +25,10 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    types::{Commitment, PrivateKey, PublicKey, Signature},
+};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -42,9 +45,7 @@ use crate::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TariKeyId,
-            TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
             TransactionKeyManagerWrapper,
             TxoStage,
         },
@@ -734,9 +735,7 @@ pub async fn create_stx_protocol_internal(
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask.key_id.managed_index().unwrap(),
+            key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &schema.input_data {

@@ -1,13 +1,15 @@
 [package]
 name = "minotari_ledger_wallet"
-version = "1.0.0-pre.17"
+version = "1.0.0-pre.18"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
 tari_crypto = { version = "0.20.3", default-features = false, features = ["borsh"]}
-tari_hashing = { path = "../../../hashing", version = "1.0.0-pre.17" }
+tari_hashing = { path = "../../../hashing", version = "1.0.0-pre.18" }
+
+minotari_ledger_wallet_common = { path = "../common" }
 
 blake2 = { version = "0.10", default-features = false }
 borsh = { version = "1.2", default-features = false }
@@ -15,7 +17,8 @@ critical-section = { version = "1.1.1" }
 digest = { version = "0.10", default-features = false }
 embedded-alloc = "0.5.0"
 include_gif = "1.0.1"
-ledger_device_sdk = "1.7.1"
+ledger_device_sdk = "1.7"
+rand_core = { version = "0.6", default_features = false }
 zeroize = { version = "1", default-features = false }
 
 # once_cell defined here just to lock the version. Other dependencies may try to go to 1.19 which is incompatabile with
@@ -32,7 +35,7 @@ lto = "fat" # same as `true`
 panic = "abort"
 
 [features]
-default = ["pending_review_screen"]
+default = []
 pending_review_screen = []
 
 [package.metadata.ledger]
@@ -40,7 +43,6 @@ curve = ["ed25519"]
 flags = "0"
 path = ["44'/535348'"]
 name = "MinoTari Wallet"
-api_level = "1"
 
 [package.metadata.ledger.nanos]
 icon = "key.gif"

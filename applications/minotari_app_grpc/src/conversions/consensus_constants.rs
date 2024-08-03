@@ -119,7 +119,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             block_weight_outputs: weight_params.output_weight,
             block_weight_kernels: weight_params.kernel_weight,
             max_script_byte_size: cc.max_script_byte_size() as u64,
-            faucet_value: cc.faucet_value().as_u64(),
+            pre_mine_value: cc.pre_mine_value().as_u64(),
             effective_from_height: cc.effective_from_height(),
             input_version_range: Some(input_version_range),
             kernel_version_range: Some(kernel_version_range),

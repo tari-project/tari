@@ -26,7 +26,7 @@
 //! Encrypted data using the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt,
     fmt::{Display, Formatter},
     mem::size_of,
@@ -60,14 +60,14 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::transactions::tari_amount::MicroMinotari;
-
+use crate::{consensus::MaxSizeBytes, transactions::tari_amount::MicroMinotari};
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
 const SIZE_VALUE: usize = size_of::<u64>();
 const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
 pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
+const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
 
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating
 const DISPLAY_CUTOFF: usize = 16;
@@ -75,7 +75,7 @@ const DISPLAY_CUTOFF: usize = 16;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
 pub struct EncryptedData {
     #[serde(with = "tari_utilities::serde::hex")]
-    data: Vec<u8>,
+    data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -185,7 +185,10 @@ impl EncryptedData {
         data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
             .clone_from_slice(bytes.as_slice());
 
-        Ok(Self { data })
+        Ok(Self {
+            data: MaxSizeBytes::try_from(data)
+                .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))?,
+        })
     }
 
     /// Authenticate and decrypt the value and mask
@@ -235,19 +238,22 @@ impl EncryptedData {
                 bytes.len()
             )));
         }
-        let mut data = vec![0; bytes.len()];
-        data.copy_from_slice(bytes);
-        Ok(Self { data })
+        Ok(Self {
+            data: MaxSizeBytes::from_bytes_checked(bytes)
+                .ok_or(EncryptedDataError::IncorrectLength("Data too long".to_string()))?,
+        })
     }
 
     #[cfg(test)]
     pub fn from_vec_unsafe(data: Vec<u8>) -> Self {
-        Self { data }
+        Self {
+            data: MaxSizeBytes::from_bytes_checked(data).unwrap(),
+        }
     }
 
     /// Get a byte vector with the encrypted data contents
     pub fn to_byte_vec(&self) -> Vec<u8> {
-        self.data.clone()
+        self.data.clone().into()
     }
 
     /// Get a byte slice with the encrypted data contents
@@ -290,11 +296,11 @@ impl Hex for EncryptedData {
         to_hex(&self.to_byte_vec())
     }
 }
-
 impl Default for EncryptedData {
     fn default() -> Self {
         Self {
-            data: vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL],
+            data: MaxSizeBytes::try_from(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL])
+                .expect("This will always be less then the max length"),
         }
     }
 }

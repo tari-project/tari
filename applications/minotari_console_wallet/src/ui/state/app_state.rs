@@ -39,6 +39,7 @@ use minotari_wallet::{
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
     util::wallet_identity::WalletIdentity,
+    utxo_scanner_service::handle::UtxoScannerHandle,
     WalletConfig,
     WalletSqlite,
 };
@@ -556,6 +557,10 @@ impl AppState {
         &self.cached_data.base_node_state
     }
 
+    pub fn get_wallet_scanned_height(&self) -> u64 {
+        self.cached_data.wallet_scanned_height
+    }
+
     pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
         self.wallet_connectivity.clone()
     }
@@ -968,7 +973,12 @@ impl AppStateInner {
     pub async fn refresh_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
         self.data.base_node_selected = peer;
         self.updated = true;
+        Ok(())
+    }
 
+    pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64) -> Result<(), UiError> {
+        self.data.wallet_scanned_height = height;
+        self.updated = true;
         Ok(())
     }
 
@@ -994,6 +1004,10 @@ impl AppStateInner {
 
     pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
         self.wallet.wallet_connectivity.clone()
+    }
+
+    pub fn get_wallet_utxo_scanner(&self) -> UtxoScannerHandle {
+        self.wallet.utxo_scanner_service.clone()
     }
 
     pub fn get_base_node_event_stream(&self) -> BaseNodeEventReceiver {
@@ -1221,6 +1235,7 @@ struct AppStateData {
     all_events: VecDeque<EventListItem>,
     notifications: Vec<(DateTime<Local>, String)>,
     new_notification_count: u32,
+    wallet_scanned_height: u64,
 }
 
 #[derive(Clone)]
@@ -1299,6 +1314,7 @@ impl AppStateData {
             all_events: VecDeque::new(),
             notifications: Vec::new(),
             new_notification_count: 0,
+            wallet_scanned_height: 0,
         }
     }
 }

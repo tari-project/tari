@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, panic};
+use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
@@ -30,7 +30,13 @@ use tari_utilities::hex::{from_hex, Hex};
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
     emoji::{EMOJI, REVERSE_EMOJI},
-    tari_address::{TariAddressError, TariAddressFeatures, INTERNAL_DUAL_SIZE},
+    tari_address::{
+        TariAddressError,
+        TariAddressFeatures,
+        INTERNAL_DUAL_BASE58_MAX_SIZE,
+        INTERNAL_DUAL_BASE58_MIN_SIZE,
+        INTERNAL_DUAL_SIZE,
+    },
     types::PublicKey,
 };
 
@@ -159,21 +165,12 @@ impl DualAddress {
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
         // Due to the byte length, it can be encoded as 90 or 91
-        if hex_str.len() != 90 && hex_str.len() != 91 {
+        if hex_str.len() < INTERNAL_DUAL_BASE58_MIN_SIZE || hex_str.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
-        let result = panic::catch_unwind(|| hex_str.split_at(2));
-        let (first, rest) = match result {
-            Ok((first, rest)) => (first, rest),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        let result = panic::catch_unwind(|| first.split_at(1));
-        let (network, features) = match result {
-            Ok((network, features)) => (network, features),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        // let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
-        // let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
+
+        let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
+        let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
         let mut result = bs58::decode(network)
             .into_vec()
             .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
@@ -426,7 +423,6 @@ mod test {
         assert_eq!(address_emoji.network(), address.network());
         assert_eq!(address_emoji.features(), address.features());
     }
-
     #[test]
     /// Test invalid size
     fn invalid_size() {

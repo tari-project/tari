@@ -24,40 +24,27 @@ use std::ops::Deref;
 
 use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
-use tari_common_types::wallet_types::LedgerWallet;
+use minotari_ledger_wallet_common::common_types::Instruction;
+use once_cell::sync::Lazy;
+use tari_utilities::ByteArray;
 
 use crate::error::LedgerDeviceError;
 
-#[repr(u8)]
-#[derive(FromPrimitive, Debug, Copy, Clone, PartialEq)]
-pub enum Instruction {
-    GetVersion = 0x01,
-    GetAppName = 0x02,
-    GetPublicAlpha = 0x03,
-    GetPublicKey = 0x04,
-    GetScriptSignature = 0x05,
-    GetScriptOffset = 0x06,
-    GetMetadataSignature = 0x07,
-    GetScriptSignatureFromChallenge = 0x08,
-    GetViewKey = 0x09,
-    GetDHSharedSecret = 0x10,
-}
-
-impl Instruction {
-    pub fn as_byte(self) -> u8 {
-        self as u8
-    }
-
-    pub fn from_byte(value: u8) -> Option<Self> {
-        FromPrimitive::from_u8(value)
-    }
-}
+pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
+pub const EXPECTED_VERSION: &str = env!("CARGO_PKG_VERSION");
+const WALLET_CLA: u8 = 0x80;
 
 pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {
-    let hid = HidApi::new().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
-    TransportNativeHID::new(&hid).map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+    let hid = hidapi()?;
+    let transport = TransportNativeHID::new(hid).map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))?;
+    Ok(transport)
+}
+
+fn hidapi() -> Result<&'static HidApi, LedgerDeviceError> {
+    static HIDAPI: Lazy<Result<HidApi, String>> =
+        Lazy::new(|| HidApi::new().map_err(|e| format!("Unable to get HIDAPI: {}", e)));
+
+    HIDAPI.as_ref().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))
 }
 
 #[derive(Debug, Clone)]
@@ -84,18 +71,9 @@ impl<D: Deref<Target = [u8]>> Command<D> {
             .exchange(&self.inner)
             .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
     }
-}
 
-pub trait LedgerCommands {
-    fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>>;
-    fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>>;
-}
-
-const WALLET_CLA: u8 = 0x80;
-
-impl LedgerCommands for LedgerWallet {
-    fn build_command(&self, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
-        let mut base_data = self.account_bytes();
+    pub fn build_command(account: u64, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
+        let mut base_data = account.to_le_bytes().to_vec();
         base_data.extend_from_slice(&data);
 
         Command::new(APDUCommand {
@@ -107,7 +85,7 @@ impl LedgerCommands for LedgerWallet {
         })
     }
 
-    fn chunk_command(&self, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
+    pub fn chunk_command(account: u64, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
         let num_chunks = data.len();
         let mut more;
         let mut commands = vec![];
@@ -122,7 +100,7 @@ impl LedgerCommands for LedgerWallet {
             // Prepend the account on the first payload
             let mut base_data = vec![];
             if i == 0 {
-                base_data.extend_from_slice(&self.account_bytes());
+                base_data.extend_from_slice(&account.to_le_bytes().to_vec());
             }
             base_data.extend_from_slice(chunk);
 

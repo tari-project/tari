@@ -43,6 +43,7 @@ use minotari_wallet::{
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
 };
@@ -59,13 +60,7 @@ use tari_core::{
     proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
-        },
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
@@ -2164,9 +2159,7 @@ async fn scan_for_recovery_test() {
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask_key.key_id.managed_index().unwrap(),
+            key: (&commitment_mask_key.key_id).into(),
         };
         let public_script_key = oms
             .key_manager_handle
