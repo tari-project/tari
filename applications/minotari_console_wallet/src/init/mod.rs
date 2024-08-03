@@ -760,6 +760,10 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
         return Ok(WalletBoot::Recovery);
     }
 
+    if !wallet_exists && cli.view_private_key.is_some() && cli.spend_key.is_some() {
+        return Ok(WalletBoot::ViewAndSpendKey);
+    }
+
     if wallet_exists {
         // normal startup of existing wallet
         Ok(WalletBoot::Existing)
@@ -852,15 +856,41 @@ pub fn prompt_wallet_type(
     boot_mode: WalletBoot,
     wallet_config: &WalletConfig,
     non_interactive: bool,
+    view_private_key: Option<String>,
+    spend_key: Option<String>,
 ) -> Option<WalletType> {
-    if non_interactive {
+    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey) {
         return Some(WalletType::default());
     }
 
     match boot_mode {
         WalletBoot::ViewAndSpendKey => {
-            let view_key = prompt_private_key("Enter view key: ").expect("View key provided was invalid");
-            let spend_key = prompt_public_key("Enter the public spend key: ").expect("Spend key provided was invalid");
+            let view_key = if let Some(vk) = view_private_key  {
+                match PrivateKey::from_base58(&vk) {
+                    Ok(pk) => pk,
+                    Err(_) => {
+                        println!("Invalid view key provided");
+                        panic!("Invalid view key provided");
+                    },
+                }
+            } else {
+                prompt_private_key("Enter view key: ").expect("View key provided was invalid")
+            };
+            let spend_key = if
+             let Some(sk) = spend_key {
+                let spend_key = match PublicKey::from_base58(&sk) {
+                    Ok(pk) => pk,
+                    Err(_) => {
+                        println!("Invalid spend key provided");
+                        panic!("Invalid spend key provided");
+                    },
+                };
+                spend_key
+            } else {
+                let spend_key = prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid");
+                spend_key
+            };
+
             Some(WalletType::ProvidedKeys(ProvidedKeysWallet {
                 view_key,
                 public_spend_key: spend_key,

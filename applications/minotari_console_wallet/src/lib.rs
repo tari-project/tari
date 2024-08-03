@@ -98,6 +98,8 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         grpc_address: None,
         command2: None,
         profile_with_tokio_console: false,
+        view_private_key: None,
+        spend_key: None
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -128,7 +130,7 @@ pub fn run_wallet_with_cli(
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
-    let wallet_type = prompt_wallet_type(boot_mode, &config.wallet, cli.non_interactive_mode);
+    let wallet_type = prompt_wallet_type(boot_mode, &config.wallet, cli.non_interactive_mode, cli.view_private_key.clone(), cli.spend_key.clone());
 
     // get command line password if provided
     let seed_words_file_name = cli.seed_words_file_name.clone();

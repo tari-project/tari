@@ -88,6 +88,11 @@ pub struct Cli {
     pub command2: Option<CliCommands>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    // For read only wallets
+    #[clap(long)]
+    pub view_private_key: Option<String>,
+    #[clap(long)]
+    pub spend_key: Option<String>,
 }
 
 impl ConfigOverrideProvider for Cli {
