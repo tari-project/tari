@@ -65,6 +65,25 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
     )
 }
 
+pub fn create_memory_db_key_manager_from_seed(seed: CipherSeed, rangeproof_size: usize) -> MemoryDbKeyManager {
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
+    let cipher = seed;
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+    let factory = CryptoFactories::new(rangeproof_size);
+
+    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
+        cipher,
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+        WalletType::default(),
+    )
+    .unwrap()
+}
+
 pub fn create_memory_db_key_manager() -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
     create_memory_db_key_manager_with_range_proof_size(64)
 }
