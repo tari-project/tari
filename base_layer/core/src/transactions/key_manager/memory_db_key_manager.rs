@@ -65,8 +65,11 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
     )
 }
 
-pub fn create_memory_db_key_manager_from_seed(seed: CipherSeed, rangeproof_size: usize) -> MemoryDbKeyManager {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
+pub fn create_memory_db_key_manager_from_seed(
+    seed: CipherSeed,
+    rangeproof_size: usize,
+) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)))?;
     let cipher = seed;
 
     let mut key = [0u8; size_of::<Key>()];
@@ -81,7 +84,6 @@ pub fn create_memory_db_key_manager_from_seed(seed: CipherSeed, rangeproof_size:
         factory,
         WalletType::default(),
     )
-    .unwrap()
 }
 
 pub fn create_memory_db_key_manager() -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
