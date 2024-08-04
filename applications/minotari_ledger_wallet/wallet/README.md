@@ -13,11 +13,12 @@ The Ledger device must be properly setup and accessible via Ledger Live. To veri
 
 ### Firmware
 
-The minimum firmware version required for the Tari Ledger application 'Minotari Wallet' is checked upon startup. If not
-up to date, the desktop application will not start and produce an error with a message to update the firmware.
+The minimum firmware version required for the Tari Ledger application 'Minotari Wallet' is checked each time the 
+connected desktop application (example _Minotari Console Wallet_) is started. If not up to date, the desktop application
+will not start and produce an error with a message to update the firmware.
 
 If the firmware needs to be updated, it must be done via Ledger Live. To update the firmware, open Ledger Live, select
-open Ledger Live, select `My Ledger` and follow the instructions.
+`My Ledger` and follow the instructions.
 
 ## Development environment setup
 
@@ -92,7 +93,8 @@ where TARGET = nanosplus, nanos, etc.
 
 **Notes:** 
 - The application has to be installed on the device manually. Please see the _**Manual installation**_ section below.
-- If any issues are encountered, please try to follow the instructions at [ledger-app-builder](https://github.com/LedgerHQ/ledger-app-builder/).
+- If any issues are encountered, please try to follow the instructions at 
+  [ledger-app-builder](https://github.com/LedgerHQ/ledger-app-builder/).
 
 
 ### Option 2: Native build
@@ -160,7 +162,8 @@ errors:
 
 ### Testing all functions on the ledger application
 
-From the main Tari project root, run the following demo program. The Ledger application can be started or not started, as the demo program will prompt the user to perform the necessary actions.
+From the main Tari project root, run the following demo program. The Ledger application can be started or not started, 
+as the demo program will prompt the user to perform the necessary actions.
 
 ```
 cargo run --release --example ledger_demo
