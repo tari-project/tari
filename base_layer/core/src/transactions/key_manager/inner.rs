@@ -513,7 +513,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(key_id)
     }
 
-    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         match &self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {

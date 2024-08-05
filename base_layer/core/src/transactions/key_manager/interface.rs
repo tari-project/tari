@@ -98,6 +98,8 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
+    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError>;
+
     async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
     async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
