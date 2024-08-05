@@ -116,21 +116,25 @@ fn verify() -> Result<(), LedgerDeviceError> {
             Ok(public_key) => {
                 if !signature.verify(&public_key, nonce) {
                     return Err(LedgerDeviceError::Processing(
-                        "'Minotari Wallet' application could not create a valid signature".to_string(),
+                        "'Minotari Wallet' application could not create a valid signature. Please update the firmware \
+                         on your device."
+                            .to_string(),
                     ));
                 }
                 signature
             },
             Err(e) => {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "'Minotari Wallet' application could not retrieve a public key ({:?})",
+                    "'Minotari Wallet' application could not retrieve a public key ({:?}). Please update the firmware \
+                     on your device.",
                     e
                 )))
             },
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "'Minotari Wallet' application could not create a signature ({:?})",
+                "'Minotari Wallet' application could not create a signature ({:?}). Please update the firmware on \
+                 your device.",
                 e
             )))
         },
@@ -139,13 +143,16 @@ fn verify() -> Result<(), LedgerDeviceError> {
         Ok(signature_b) => {
             if signature_a == signature_b {
                 return Err(LedgerDeviceError::Processing(
-                    "'Minotari Wallet' application is not creating unique signatures".to_string(),
+                    "'Minotari Wallet' application is not creating unique signatures. Please update the firmware on \
+                     your device."
+                        .to_string(),
                 ));
             }
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "'Minotari Wallet' application could not create a signature ({:?})",
+                "'Minotari Wallet' application could not create a signature ({:?}). Please update the firmware on \
+                 your device.",
                 e
             )))
         },
