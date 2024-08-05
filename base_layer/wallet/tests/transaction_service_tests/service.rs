@@ -2104,7 +2104,6 @@ async fn manage_multiple_transactions() {
 
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    // TODO: When using a memory type db connection this test fails at `assert_eq!(tx_reply, 3, "Need 3 replies");`
     let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (carol_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));

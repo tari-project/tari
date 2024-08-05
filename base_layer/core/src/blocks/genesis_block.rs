@@ -209,7 +209,50 @@ fn get_nextnet_genesis_block_raw() -> Block {
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
-    unimplemented!()
+    let mut block = get_mainnet_genesis_block_raw();
+
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB: `stagenet_genesis_sanity_check` must pass
+        let file_contents = include_str!("pre_mine/mainnet_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
+        // Enable print only if you need to generate new Merkle roots, then disable it again
+        let print_values = false;
+        print_mr_values(&mut block, print_values);
+
+        // Hardcode the Merkle roots once they've been computed above
+        block.header.kernel_mr =
+            FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
+        block.header.output_mr =
+            FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
+        block.header.validator_node_mr =
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+    }
+
+    let accumulated_data = BlockHeaderAccumulatedData {
+        hash: block.hash(),
+        total_kernel_offset: block.header.total_kernel_offset.clone(),
+        achieved_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        target_difficulty: Difficulty::min(),
+    };
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
+}
+
+fn get_mainnet_genesis_block_raw() -> Block {
+    // Set genesis timestamp
+    let genesis_timestamp = DateTime::parse_from_rfc2822("05 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let not_before_proof = b"I am the standin mainnet genesis block, \
+        \
+       I am not the real mainnet block \
+        \
+        I am only a standin \
+        \
+       Do not take me for the real one. I am only a placeholder for the real one";
+    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
 }
 
 pub fn get_igor_genesis_block() -> ChainBlock {
