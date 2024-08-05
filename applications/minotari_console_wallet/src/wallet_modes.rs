@@ -635,6 +635,7 @@ mod test {
                 CliCommands::CreateTlsCerts => {},
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
                 CliCommands::Sync(_) => {},
+                CliCommands::ExportViewKeyAndSpendKey(_) => {},
             }
         }
         assert!(
