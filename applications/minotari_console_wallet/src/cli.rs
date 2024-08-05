@@ -88,6 +88,11 @@ pub struct Cli {
     pub command2: Option<CliCommands>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    // For read only wallets
+    #[clap(long)]
+    pub view_private_key: Option<String>,
+    #[clap(long)]
+    pub spend_key: Option<String>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -145,6 +150,7 @@ pub enum CliCommands {
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
     Sync(SyncArgs),
+    ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -331,6 +337,12 @@ pub struct ExportUtxosArgs {
 #[derive(Debug, Args, Clone)]
 pub struct ExportTxArgs {
     pub tx_id: u64,
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportViewKeyAndSpendKeyArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
 }

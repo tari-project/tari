@@ -2163,6 +2163,35 @@ pub async fn command_runner(
                     Err(e) => eprintln!("GetBalance error! {}", e),
                 }
             },
+            ExportViewKeyAndSpendKey(args) => {
+                let view_key = wallet.key_manager_service.get_view_key().await?;
+                let spend_key = wallet.key_manager_service.get_spend_key().await?;
+                let view_key_hex = view_key.pub_key.to_hex();
+                let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
+                let spend_key_hex = spend_key.pub_key.to_hex();
+                let output_file = args.output_file;
+                #[derive(Serialize)]
+                struct ViewKeyFile {
+                    view_key: String,
+                    public_view_key: String,
+                    spend_key: String,
+                }
+                let view_key_file = ViewKeyFile {
+                    view_key: private_view_key_hex.clone(),
+                    public_view_key: view_key_hex.clone(),
+                    spend_key: spend_key_hex.clone(),
+                };
+                let view_key_file_json =
+                    serde_json::to_string(&view_key_file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                if let Some(file) = output_file {
+                    let file = File::create(file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                    let mut file = LineWriter::new(file);
+                    writeln!(file, "{}", view_key_file_json).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                } else {
+                    println!("View key: {}", private_view_key_hex);
+                    println!("Spend key: {}", spend_key_hex);
+                }
+            },
         }
     }
 
