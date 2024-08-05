@@ -211,6 +211,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.transaction_key_manager_inner.read().await.get_view_key().await
     }
 
+    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_private_view_key()
+            .await
+    }
+
     async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_spend_key().await
     }
