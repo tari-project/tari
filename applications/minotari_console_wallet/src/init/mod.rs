@@ -865,8 +865,8 @@ pub fn prompt_wallet_type(
 
     match boot_mode {
         WalletBoot::ViewAndSpendKey => {
-            let view_key = if let Some(vk) = view_private_key  {
-                match PrivateKey::from_base58(&vk) {
+            let view_key = if let Some(vk) = view_private_key {
+                match PrivateKey::from_hex(&vk) {
                     Ok(pk) => pk,
                     Err(_) => {
                         println!("Invalid view key provided");
@@ -876,19 +876,16 @@ pub fn prompt_wallet_type(
             } else {
                 prompt_private_key("Enter view key: ").expect("View key provided was invalid")
             };
-            let spend_key = if
-             let Some(sk) = spend_key {
-                let spend_key = match PublicKey::from_base58(&sk) {
+            let spend_key = if let Some(sk) = spend_key {
+                match PublicKey::from_hex(&sk) {
                     Ok(pk) => pk,
                     Err(_) => {
                         println!("Invalid spend key provided");
                         panic!("Invalid spend key provided");
                     },
-                };
-                spend_key
+                }
             } else {
-                let spend_key = prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid");
-                spend_key
+                prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid")
             };
 
             Some(WalletType::ProvidedKeys(ProvidedKeysWallet {

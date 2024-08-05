@@ -75,7 +75,7 @@ use tari_core::{
     blocks::pre_mine::{create_pre_mine_genesis_block_file, get_pre_mine_items, PreMineItem},
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -2167,11 +2167,7 @@ pub async fn command_runner(
                 let view_key = wallet.key_manager_service.get_view_key().await?;
                 let spend_key = wallet.key_manager_service.get_spend_key().await?;
                 let view_key_hex = view_key.pub_key.to_hex();
-                let private_view_key_hex = wallet
-                    .key_manager_service
-                    .get_private_key(&view_key.key_id)
-                    .await?
-                    .to_hex();
+                let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
                 let spend_key_hex = spend_key.pub_key.to_hex();
                 let output_file = args.output_file;
                 #[derive(Serialize)]

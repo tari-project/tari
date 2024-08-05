@@ -230,6 +230,8 @@ pub fn get_default_cli() -> Cli {
         grpc_address: None,
         command2: None,
         profile_with_tokio_console: false,
+        view_private_key: None,
+        spend_key: None,
     }
 }
 
