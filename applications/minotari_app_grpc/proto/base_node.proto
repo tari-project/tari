@@ -339,10 +339,11 @@ message MetaData {
     uint64 best_block_height = 1;
     // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     bytes best_block_hash = 2;
-    // This is the min height this node can provide complete blocks for. A 0 here means this node is archival and can provide complete blocks for every height.
-    uint64 pruned_height = 6;
     // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
     bytes accumulated_difficulty = 5;
+    // This is the min height this node can provide complete blocks for. A 0 here means this node is archival and can provide complete blocks for every height.
+    uint64 pruned_height = 6;
+    uint64 timestamp = 7;
 }
 
 message SyncInfoResponse {
