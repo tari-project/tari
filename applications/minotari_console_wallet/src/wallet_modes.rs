@@ -157,28 +157,32 @@ pub(crate) fn command_mode(
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
+    let (force_exit, force_interactive) = force_exit_for_pre_mine_commands(&command);
     wallet_or_exit(
         handle,
         cli,
         config,
         base_node_config,
         wallet,
-        force_exit_for_pre_mine_commands(&command),
+        force_exit,
+        force_interactive,
     )
 }
 
-fn force_exit_for_pre_mine_commands(command: &CliCommands) -> bool {
-    matches!(
-        command,
-        CliCommands::PreMineCreateScriptInputs(_) |
-            CliCommands::PreMineCreateGenesisFile(_) |
-            CliCommands::PreMineCreateVerifyGenesisFile(_) |
-            CliCommands::PreMineSpendSessionInfo(_) |
-            CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
-            CliCommands::PreMineSpendAggregateTransaction(_) |
-            CliCommands::PreMineSpendPartyDetails(_) |
-            CliCommands::PreMineSpendInputOutputSigs(_) |
-            CliCommands::PreMineSpendBackupUtxo(_)
+fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
+    (
+        matches!(
+            command,
+            CliCommands::PreMineCreateScriptInputs(_) |
+                CliCommands::PreMineCreateGenesisFile(_) |
+                CliCommands::PreMineCreateVerifyGenesisFile(_) |
+                CliCommands::PreMineSpendSessionInfo(_) |
+                CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
+                CliCommands::PreMineSpendPartyDetails(_) |
+                CliCommands::PreMineSpendInputOutputSigs(_) |
+                CliCommands::PreMineSpendBackupUtxo(_)
+        ),
+        matches!(command, CliCommands::PreMineSpendAggregateTransaction(_)),
     )
 }
 
@@ -226,16 +230,17 @@ pub(crate) fn script_mode(
 
     println!("Parsing commands...");
     let commands = parse_command_file(script)?;
-    let mut exit_wallet = false;
+    let mut force_exit = false;
+    let mut force_interactive = false;
     for command in &commands {
-        if force_exit_for_pre_mine_commands(command) {
-            println!("Pre-mine commands may not run in script mode!");
-            exit_wallet = true;
+        (force_exit, force_interactive) = force_exit_for_pre_mine_commands(command);
+        if force_exit || force_interactive {
+            println!("Pre-mine command '{:?}' may not run in script mode!", command);
             break;
         }
     }
 
-    if !exit_wallet {
+    if !force_exit {
         println!("{} commands parsed successfully.", commands.len());
 
         // Do not remove this println!
@@ -252,7 +257,15 @@ pub(crate) fn script_mode(
         info!(target: LOG_TARGET, "Completed wallet script mode");
     }
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet, exit_wallet)
+    wallet_or_exit(
+        handle,
+        cli,
+        config,
+        base_node_config,
+        wallet,
+        force_exit,
+        force_interactive,
+    )
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -263,36 +276,42 @@ fn wallet_or_exit(
     base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     force_exit: bool,
+    force_interactive: bool,
 ) -> Result<(), ExitError> {
-    if cli.command_mode_auto_exit {
-        info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
-        return Ok(());
-    }
-    if force_exit {
-        info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
-        return Ok(());
-    }
-
-    if cli.non_interactive_mode {
-        info!(target: LOG_TARGET, "Starting GRPC server.");
-        grpc_mode(handle, config, wallet)
+    if force_interactive {
+        info!(target: LOG_TARGET, "Starting TUI.");
+        tui_mode(handle.clone(), config, base_node_config, wallet.clone())
     } else {
-        debug!(target: LOG_TARGET, "Prompting for run or exit key.");
-        println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
-        let mut buf = String::new();
-        std::io::stdin()
-            .read_line(&mut buf)
-            .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+        if cli.command_mode_auto_exit {
+            info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
+            return Ok(());
+        }
+        if force_exit {
+            info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
+            return Ok(());
+        }
 
-        match buf.as_str().trim() {
-            "quit" | "q" | "exit" => {
-                info!(target: LOG_TARGET, "Exiting.");
-                Ok(())
-            },
-            _ => {
-                info!(target: LOG_TARGET, "Starting TUI.");
-                tui_mode(handle, config, base_node_config, wallet)
-            },
+        if cli.non_interactive_mode {
+            info!(target: LOG_TARGET, "Starting GRPC server.");
+            grpc_mode(handle, config, wallet)
+        } else {
+            debug!(target: LOG_TARGET, "Prompting for run or exit key.");
+            println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
+            let mut buf = String::new();
+            std::io::stdin()
+                .read_line(&mut buf)
+                .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+
+            match buf.as_str().trim() {
+                "quit" | "q" | "exit" => {
+                    info!(target: LOG_TARGET, "Exiting.");
+                    Ok(())
+                },
+                _ => {
+                    info!(target: LOG_TARGET, "Starting TUI.");
+                    tui_mode(handle, config, base_node_config, wallet)
+                },
+            }
         }
     }
 }
