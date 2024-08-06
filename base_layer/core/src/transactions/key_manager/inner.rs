@@ -380,7 +380,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             // return wallet.private_spend_key.clone().ok_or(
                             //     KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
                             // );
-                            return Ok(PrivateKey::default())
+                            return Ok(PrivateKey::default());
                         }
                     },
                 }
@@ -536,14 +536,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let index = 0;
 
         match self.wallet_type {
-            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+            WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: branch.clone(),
                     index,
                 })
                 .await
             },
-            WalletType::Ledger(_) => {
+            WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => {
                 let km = self
                     .key_managers
                     .get(&branch)
