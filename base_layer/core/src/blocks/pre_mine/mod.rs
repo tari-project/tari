@@ -20,9 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    iter::once,
+};
 
 use rand::{prelude::SliceRandom, rngs::OsRng, thread_rng};
+use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     types::{Commitment, PrivateKey, PublicKey, Signature},
@@ -57,6 +61,8 @@ use crate::{
         transaction_protocol::TransactionMetadata,
     },
 };
+
+const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
 
 /// Token unlock schedule
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -95,6 +101,8 @@ pub struct ReleaseCadence {
     pub monthly_fraction_denominator: u64,
     /// Upfront release percentage
     pub upfront_release: Option<UpfrontRelease>,
+    /// Expected payout period in blocks from after the initial lockup
+    pub expected_payout_period_blocks: u64,
 }
 
 /// The upfront percentage of the total tokens to be released
@@ -106,8 +114,19 @@ pub struct UpfrontRelease {
     pub number_of_tokens: u64,
 }
 
+fn get_expected_payout_period_blocks(network: Network) -> u64 {
+    match network {
+        Network::MainNet => {
+            BLOCKS_PER_DAY * 30 * 6 // 6 months
+        },
+        _ => {
+            BLOCKS_PER_DAY // 1 day
+        },
+    }
+}
+
 /// Get the tokenomics unlock schedule as per the specification - see `https://tari.substack.com/p/tari-tokenomics`
-pub fn get_tokenomics_pre_mine_unlock_schedule() -> UnlockSchedule {
+pub fn get_tokenomics_pre_mine_unlock_schedule(network: Network) -> UnlockSchedule {
     UnlockSchedule {
         network_rewards: Apportionment {
             beneficiary: "network_rewards".to_string(),
@@ -126,6 +145,7 @@ pub fn get_tokenomics_pre_mine_unlock_schedule() -> UnlockSchedule {
                     percentage: 40,
                     number_of_tokens: 20,
                 }),
+                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
             }),
         },
         community: Apportionment {
@@ -136,6 +156,7 @@ pub fn get_tokenomics_pre_mine_unlock_schedule() -> UnlockSchedule {
                 initial_lockup_days: 180,
                 monthly_fraction_denominator: 12,
                 upfront_release: None,
+                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
             }),
         },
         contributors: Apportionment {
@@ -146,6 +167,7 @@ pub fn get_tokenomics_pre_mine_unlock_schedule() -> UnlockSchedule {
                 initial_lockup_days: 365,
                 monthly_fraction_denominator: 60,
                 upfront_release: None,
+                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
             }),
         },
         participants: Apportionment {
@@ -156,6 +178,7 @@ pub fn get_tokenomics_pre_mine_unlock_schedule() -> UnlockSchedule {
                 initial_lockup_days: 365,
                 monthly_fraction_denominator: 24,
                 upfront_release: None,
+                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
             }),
         },
     }
@@ -166,6 +189,7 @@ pub fn get_tokenomics_pre_mine_unlock_schedule() -> UnlockSchedule {
 pub struct PreMineItem {
     pub value: MicroMinotari,
     pub maturity: u64,
+    pub fail_safe_height: u64,
     pub beneficiary: String,
 }
 
@@ -173,10 +197,9 @@ pub struct PreMineItem {
 /// apportionment and release cadence where 1 day equals 24 * 60 / 2 blocks.
 pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<PreMineItem>, String> {
     let mut values_with_maturity = Vec::new();
-    let blocks_per_day = 24 * 60 / 2;
     let days_per_month = 365.25 / 12f64;
     #[allow(clippy::cast_possible_truncation)]
-    let blocks_per_month = (days_per_month * blocks_per_day as f64) as u64;
+    let blocks_per_month = (days_per_month * BLOCKS_PER_DAY as f64) as u64;
     for apportionment in &[
         &schedule.network_rewards,
         &schedule.protocol,
@@ -209,6 +232,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                     values_with_maturity.push(PreMineItem {
                         value: MicroMinotari::from(value_per_round),
                         maturity: 0,
+                        fail_safe_height: schedule.expected_payout_period_blocks,
                         beneficiary: apportionment.beneficiary.clone(),
                     });
                     assigned_tokens += value_per_round;
@@ -216,6 +240,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                 values_with_maturity.push(PreMineItem {
                     value: MicroMinotari::from(upfront_tokens - assigned_tokens),
                     maturity: 0,
+                    fail_safe_height: schedule.expected_payout_period_blocks,
                     beneficiary: apportionment.beneficiary.clone(),
                 });
             }
@@ -224,10 +249,11 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
             let mut maturity = 0;
             for i in 0..schedule.monthly_fraction_denominator - 1 {
                 total_tokens += monthly_tokens;
-                maturity = schedule.initial_lockup_days * blocks_per_day + i * blocks_per_month;
+                maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY + i * blocks_per_month;
                 values_with_maturity.push(PreMineItem {
                     value: MicroMinotari::from(monthly_tokens),
                     maturity,
+                    fail_safe_height: schedule.expected_payout_period_blocks,
                     beneficiary: apportionment.beneficiary.clone(),
                 });
             }
@@ -235,6 +261,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
             values_with_maturity.push(PreMineItem {
                 value: MicroMinotari::from(last_tokens),
                 maturity: maturity + blocks_per_month,
+                fail_safe_height: schedule.expected_payout_period_blocks,
                 beneficiary: apportionment.beneficiary.clone(),
             });
         }
@@ -243,8 +270,8 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
 }
 
 /// Get the pre-mine items according to the pre-mine specification
-pub async fn get_pre_mine_items() -> Result<Vec<PreMineItem>, String> {
-    let schedule = get_tokenomics_pre_mine_unlock_schedule();
+pub async fn get_pre_mine_items(network: Network) -> Result<Vec<PreMineItem>, String> {
+    let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
     create_pre_mine_output_values(schedule)
 }
 
@@ -256,14 +283,56 @@ fn get_signature_threshold(number_of_keys: usize) -> Result<u8, String> {
     u8::try_from(number_of_keys / 2 + 1).map_err(|e| e.to_string())
 }
 
-/// Create a pre-mine genesis block file with the given pre-mine items and party public keys
-pub async fn create_pre_mine_genesis_block_file(
+/// Verify that the script keys for the given index match the expected keys
+pub fn verify_script_keys_for_index(
+    index: usize,
+    script_threshold_keys: &[PublicKey],
+    script_backup_key: &PublicKey,
+    expected_threshold_keys: &[PublicKey],
+    expected_backup_key: &PublicKey,
+) -> Result<(), String> {
+    let mut all_script_keys = script_threshold_keys
+        .iter()
+        .chain(once(script_backup_key))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut all_expected_keys = expected_threshold_keys
+        .iter()
+        .chain(once(expected_backup_key))
+        .cloned()
+        .collect::<Vec<_>>();
+    all_script_keys.sort();
+    all_expected_keys.sort();
+    if all_script_keys.len() != all_expected_keys.len() {
+        return Err(format!(
+            "Output at index {} script key count mismatch ({} != {})",
+            index,
+            all_script_keys.len(),
+            all_expected_keys.len()
+        ));
+    }
+    all_script_keys.dedup();
+    if all_expected_keys.len() != all_script_keys.len() {
+        return Err(format!("Output at index {} script keys not unique", index));
+    }
+    for (index, (script_key, party_key)) in all_script_keys.iter().zip(all_expected_keys).enumerate() {
+        if script_key != &party_key {
+            return Err(format!(
+                "\nError: Output {} script key mismatch ({} != {})\n",
+                index, script_key, party_key
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Create pre-mine genesis block info with the given pre-mine items and party public keys
+pub async fn create_pre_mine_genesis_block_info(
     pre_mine_items: &[PreMineItem],
     threshold_spend_keys: &[Vec<PublicKey>],
     backup_spend_keys: &[PublicKey],
 ) -> Result<(Vec<TransactionOutput>, TransactionKernel), String> {
-    // 1 month fail-safe height for each pre-mine output at which time the backup_address can spend the output
-    let fail_safe_height = 720 * 30;
     let mut outputs = Vec::new();
     let mut total_private_key = PrivateKey::default();
     for (i, ((item, public_keys), backup_key)) in pre_mine_items
@@ -295,7 +364,7 @@ pub async fn create_pre_mine_genesis_block_file(
         let mut public_keys = public_keys.clone();
         public_keys.shuffle(&mut thread_rng());
         let script = script!(
-            CheckHeight(item.maturity + fail_safe_height) LeZero
+            CheckHeight(item.maturity + item.fail_safe_height) LeZero
             IfThen
             CheckMultiSigVerifyAggregatePubKey(signature_threshold, address_len, public_keys.clone(), Box::new(commitment_bytes))
             Else
@@ -346,29 +415,41 @@ pub async fn create_pre_mine_genesis_block_file(
 
 #[cfg(test)]
 mod test {
-    use std::{fs, fs::File, io::Write};
+    use std::{fs, fs::File, io::Write, ops::Deref};
 
-    use tari_common_types::tari_address::TariAddress;
+    use tari_common::configuration::Network;
+    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
+    use tari_script::{Opcode, Opcode::CheckHeight};
 
     use crate::{
         blocks::pre_mine::{
-            create_pre_mine_genesis_block_file,
+            create_pre_mine_genesis_block_info,
             create_pre_mine_output_values,
+            get_expected_payout_period_blocks,
             get_signature_threshold,
             get_tokenomics_pre_mine_unlock_schedule,
+            verify_script_keys_for_index,
             Apportionment,
             PreMineItem,
             ReleaseCadence,
             UpfrontRelease,
+            BLOCKS_PER_DAY,
         },
-        transactions::tari_amount::MicroMinotari,
+        transactions::{
+            tari_amount::MicroMinotari,
+            transaction_components::{TransactionKernel, TransactionOutput},
+        },
     };
 
-    // Only run this when you want to create a new utxo file
-    #[ignore]
-    #[tokio::test]
-    async fn print_pre_mine() {
-        let addresses_for_round = vec![
+    async fn genesis_block_test_info(
+        pre_mine_items: &[PreMineItem],
+    ) -> (
+        Vec<TransactionOutput>,
+        TransactionKernel,
+        Vec<Vec<PublicKey>>,
+        Vec<PublicKey>,
+    ) {
+        let threshold_addresses_for_index = vec![
             // This wil be public keys
             TariAddress::from_base58(
                 "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
@@ -383,37 +464,36 @@ mod test {
             )
             .unwrap(),
         ];
-        let backup_address = TariAddress::from_base58(
-            "f4GYN3QVRboH6uwG9oFj3LjmUd4XVd1VDYiT6rNd4gCpZF6pY7iuoCpoajfDfuPynS7kspXU5hKRMWLTP9CRjoe1hZU",
+        let backup_address_for_index = TariAddress::from_base58(
+            "f27nBFv1GQBW6SuPPCUhjpLRJm3Y5uJxhbEh5EHkunsgqEi78mvzZ7uH1eEuLoRLWVSAeZTKP1BCQyrjeRJZW2pr6DR",
         )
         .unwrap();
-        let public_spend_keys_for_round: Vec<_> = addresses_for_round
+        let threshold_spend_keys_for_index: Vec<_> = threshold_addresses_for_index
             .iter()
             .map(|address| address.public_spend_key().clone())
             .collect();
 
-        let schedule = get_tokenomics_pre_mine_unlock_schedule();
-        let mut pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
-        // Add some test outputs
-        for _ in 0..20 {
-            pre_mine_items.push(PreMineItem {
-                value: MicroMinotari::from(1_000_000),
-                maturity: 0,
-                beneficiary: "test_output".to_string(),
-            });
-        }
-        let mut public_spend_keys = Vec::with_capacity(pre_mine_items.len());
-        let mut backup_public_spend_keys = Vec::with_capacity(pre_mine_items.len());
+        let mut threshold_spend_keys = Vec::with_capacity(pre_mine_items.len());
+        let mut backup_spend_keys = Vec::with_capacity(pre_mine_items.len());
         for _ in 0..pre_mine_items.len() {
-            public_spend_keys.push(public_spend_keys_for_round.clone());
-            backup_public_spend_keys.push(backup_address.public_spend_key().clone());
+            threshold_spend_keys.push(threshold_spend_keys_for_index.clone());
+            backup_spend_keys.push(backup_address_for_index.public_spend_key().clone());
         }
 
         let (outputs, kernel) =
-            create_pre_mine_genesis_block_file(&pre_mine_items, &public_spend_keys, &backup_public_spend_keys)
+            create_pre_mine_genesis_block_info(pre_mine_items, &threshold_spend_keys, &backup_spend_keys)
                 .await
                 .unwrap();
+        (outputs, kernel, threshold_spend_keys, backup_spend_keys)
+    }
 
+    // Only run this when you want to create a new utxo file
+    #[ignore]
+    #[tokio::test]
+    async fn print_pre_mine() {
+        let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::MainNet);
+        let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
+        let (outputs, kernel, _, _) = genesis_block_test_info(&pre_mine_items).await;
         let base_dir = dirs_next::document_dir().unwrap();
         let file_path = base_dir.join("tari_pre_mine").join("create").join("utxos.json");
         if let Some(path) = file_path.parent() {
@@ -438,84 +518,106 @@ mod test {
 
     #[test]
     fn test_get_tokenomics_pre_mine_unlock_schedule() {
-        let schedule = get_tokenomics_pre_mine_unlock_schedule();
-        assert_eq!(schedule.network_rewards, Apportionment {
-            beneficiary: "network_rewards".to_string(),
-            percentage: 70,
-            tokens_amount: 14_700_000_000,
-            schedule: None,
-        });
-        assert_eq!(schedule.protocol, Apportionment {
-            beneficiary: "protocol".to_string(),
-            percentage: 9,
-            tokens_amount: 1_890_000_000,
-            schedule: Some(ReleaseCadence {
-                initial_lockup_days: 180,
-                monthly_fraction_denominator: 48,
-                upfront_release: Some(UpfrontRelease {
-                    percentage: 40,
-                    number_of_tokens: 20
+        for network in [
+            Network::LocalNet,
+            Network::MainNet,
+            Network::Esmeralda,
+            Network::Igor,
+            Network::NextNet,
+            Network::StageNet,
+        ] {
+            let expected_payout_period_blocks = match network {
+                Network::MainNet => {
+                    BLOCKS_PER_DAY * 30 * 6 // 6 months
+                },
+                _ => {
+                    BLOCKS_PER_DAY // 1 day
+                },
+            };
+            let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
+            assert_eq!(schedule.network_rewards, Apportionment {
+                beneficiary: "network_rewards".to_string(),
+                percentage: 70,
+                tokens_amount: 14_700_000_000,
+                schedule: None,
+            });
+            assert_eq!(schedule.protocol, Apportionment {
+                beneficiary: "protocol".to_string(),
+                percentage: 9,
+                tokens_amount: 1_890_000_000,
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 180,
+                    monthly_fraction_denominator: 48,
+                    upfront_release: Some(UpfrontRelease {
+                        percentage: 40,
+                        number_of_tokens: 20
+                    }),
+                    expected_payout_period_blocks,
                 }),
-            }),
-        });
-        assert_eq!(
-            schedule.protocol.tokens_amount * schedule.protocol.schedule.unwrap().upfront_release.unwrap().percentage /
-                100,
-            756_000_000
-        );
-        assert_eq!(schedule.community, Apportionment {
-            beneficiary: "community".to_string(),
-            percentage: 5,
-            tokens_amount: 1_050_000_000,
-            schedule: Some(ReleaseCadence {
-                initial_lockup_days: 180,
-                monthly_fraction_denominator: 12,
-                upfront_release: None,
-            }),
-        });
-        assert_eq!(schedule.contributors, Apportionment {
-            beneficiary: "contributors".to_string(),
-            percentage: 4,
-            tokens_amount: 840_000_000,
-            schedule: Some(ReleaseCadence {
-                initial_lockup_days: 365,
-                monthly_fraction_denominator: 60,
-                upfront_release: None,
-            }),
-        });
-        assert_eq!(schedule.participants, Apportionment {
-            beneficiary: "participants".to_string(),
-            percentage: 12,
-            tokens_amount: 2_520_000_000,
-            schedule: Some(ReleaseCadence {
-                initial_lockup_days: 365,
-                monthly_fraction_denominator: 24,
-                upfront_release: None,
-            }),
-        });
+            });
+            assert_eq!(
+                schedule.protocol.tokens_amount *
+                    schedule.protocol.schedule.unwrap().upfront_release.unwrap().percentage /
+                    100,
+                756_000_000
+            );
+            assert_eq!(schedule.community, Apportionment {
+                beneficiary: "community".to_string(),
+                percentage: 5,
+                tokens_amount: 1_050_000_000,
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 180,
+                    monthly_fraction_denominator: 12,
+                    upfront_release: None,
+                    expected_payout_period_blocks,
+                }),
+            });
+            assert_eq!(schedule.contributors, Apportionment {
+                beneficiary: "contributors".to_string(),
+                percentage: 4,
+                tokens_amount: 840_000_000,
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 365,
+                    monthly_fraction_denominator: 60,
+                    upfront_release: None,
+                    expected_payout_period_blocks,
+                }),
+            });
+            assert_eq!(schedule.participants, Apportionment {
+                beneficiary: "participants".to_string(),
+                percentage: 12,
+                tokens_amount: 2_520_000_000,
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 365,
+                    monthly_fraction_denominator: 24,
+                    upfront_release: None,
+                    expected_payout_period_blocks,
+                }),
+            });
 
-        assert_eq!(
-            schedule.participants.percentage +
-                schedule.contributors.percentage +
-                schedule.community.percentage +
-                schedule.protocol.percentage +
-                schedule.network_rewards.percentage,
-            100
-        );
+            assert_eq!(
+                schedule.participants.percentage +
+                    schedule.contributors.percentage +
+                    schedule.community.percentage +
+                    schedule.protocol.percentage +
+                    schedule.network_rewards.percentage,
+                100
+            );
 
-        assert_eq!(
-            schedule.participants.tokens_amount +
-                schedule.contributors.tokens_amount +
-                schedule.community.tokens_amount +
-                schedule.protocol.tokens_amount +
-                schedule.network_rewards.tokens_amount,
-            21_000_000_000
-        );
+            assert_eq!(
+                schedule.participants.tokens_amount +
+                    schedule.contributors.tokens_amount +
+                    schedule.community.tokens_amount +
+                    schedule.protocol.tokens_amount +
+                    schedule.network_rewards.tokens_amount,
+                21_000_000_000
+            );
+        }
     }
 
     #[test]
     fn test_create_pre_mine_output_values() {
-        let schedule = get_tokenomics_pre_mine_unlock_schedule();
+        let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::default());
         let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
         for item in &pre_mine_items {
             println!("{:?}", item);
@@ -581,6 +683,66 @@ mod test {
             participants_tokens,
             MicroMinotari::from(schedule.participants.tokens_amount * 1_000_000)
         );
+    }
+
+    #[tokio::test]
+    async fn test_create_genesis_block_info() {
+        for network in [
+            Network::LocalNet,
+            Network::MainNet,
+            Network::Esmeralda,
+            Network::Igor,
+            Network::NextNet,
+            Network::StageNet,
+        ] {
+            let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
+            let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
+            let (outputs, kernel, threshold_spend_keys, backup_spend_keys) =
+                genesis_block_test_info(&pre_mine_items).await;
+            assert!(kernel.verify_signature().is_ok());
+            let fail_safe_height = get_expected_payout_period_blocks(network);
+            for (index, (output, (pre_mine_item, (threshold_keys, backup_key)))) in outputs
+                .iter()
+                .zip(
+                    pre_mine_items
+                        .iter()
+                        .zip(threshold_spend_keys.iter().zip(backup_spend_keys.iter())),
+                )
+                .enumerate()
+            {
+                let script_height = if let Some(CheckHeight(height)) = output.script.as_slice().first() {
+                    *height
+                } else {
+                    panic!("Expected CheckHeight opcode in script at index {}", index);
+                };
+                let script_threshold_keys =
+                    if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) =
+                        output.script.as_slice().get(3)
+                    {
+                        keys.clone()
+                    } else {
+                        panic!(
+                            "Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {}",
+                            index
+                        );
+                    };
+                let script_backup_key = if let Some(Opcode::PushPubKey(key)) = output.script.as_slice().get(5) {
+                    key.deref().clone()
+                } else {
+                    panic!("Expected PushPubKey opcode in script at index {}", index);
+                };
+                assert_eq!(script_height, pre_mine_item.maturity + fail_safe_height);
+                assert_eq!(output.features.maturity, pre_mine_item.maturity);
+                assert!(verify_script_keys_for_index(
+                    index,
+                    &script_threshold_keys,
+                    &script_backup_key,
+                    threshold_keys,
+                    backup_key
+                )
+                .is_ok());
+            }
+        }
     }
 
     #[test]
