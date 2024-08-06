@@ -892,6 +892,7 @@ pub fn prompt_wallet_type(
                 view_key,
                 public_spend_key: spend_key,
                 private_spend_key: None,
+                private_comms_key: None,
             }))
         },
         WalletBoot::New | WalletBoot::Recovery => {

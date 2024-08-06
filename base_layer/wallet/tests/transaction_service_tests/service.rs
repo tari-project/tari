@@ -231,6 +231,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         public_spend_key: PublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
+        private_comms_key: Some(node_identity.secret_key().clone()),
     });
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))

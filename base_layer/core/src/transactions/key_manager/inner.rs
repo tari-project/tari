@@ -534,7 +534,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let branch = TransactionKeyManagerBranch::Spend.get_branch_key();
         let index = 0;
 
-        match self.wallet_type {
+        match &self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: branch.clone(),
@@ -542,7 +542,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 })
                 .await
             },
-            WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => {
+            WalletType::ProvidedKeys(wallet) => {
+                if let Some(pvt_comms_key) = &wallet.private_comms_key {
+                    Ok(pvt_comms_key.clone())
+                } else {
+                    let km = self
+                        .key_managers
+                        .get(&branch)
+                        .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?
+                        .read()
+                        .await;
+                    let key = km.get_private_key(index)?;
+                    Ok(key)
+                }
+            },
+            WalletType::Ledger(_) => {
                 let km = self
                     .key_managers
                     .get(&branch)
