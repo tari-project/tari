@@ -365,7 +365,7 @@ mod test {
     };
 
     // Only run this when you want to create a new utxo file
-#[ignore]
+    #[ignore]
     #[tokio::test]
     async fn print_pre_mine() {
         let addresses_for_round = vec![
