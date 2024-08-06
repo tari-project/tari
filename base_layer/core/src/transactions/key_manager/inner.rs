@@ -377,6 +377,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                         // If we're trying to access any of the private keys, just say no bueno
                         if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
+                            // return wallet.private_spend_key.clone().ok_or(
+                            //     KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
+                            // );
+                            return Ok(PrivateKey::default());
                             return wallet.private_spend_key.clone().ok_or(
                                 KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
                             );
