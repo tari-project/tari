@@ -55,6 +55,7 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
+use tari_common_types::wallet_types::WalletType;
 use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -128,8 +129,6 @@ pub fn run_wallet_with_cli(
     // check for recovery based on existence of wallet file
     let (mut boot_mode, password) = boot_with_password(&cli, &config.wallet)?;
 
-    let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
-
     let wallet_type = prompt_wallet_type(
         boot_mode,
         &config.wallet,
@@ -137,6 +136,8 @@ pub fn run_wallet_with_cli(
         cli.view_private_key.clone(),
         cli.spend_key.clone(),
     );
+
+    let recovery_seed = get_recovery_seed(boot_mode, &cli, &wallet_type)?;
 
     // get command line password if provided
     let seed_words_file_name = cli.seed_words_file_name.clone();
@@ -168,6 +169,7 @@ pub fn run_wallet_with_cli(
 
     let on_init = matches!(boot_mode, WalletBoot::New);
     let not_recovery = recovery_seed.is_none();
+    let hardware_wallet = matches!(wallet_type, Some(WalletType::Ledger(_)));
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
@@ -195,7 +197,7 @@ pub fn run_wallet_with_cli(
     }
 
     // if wallet is being set for the first time, wallet seed words are prompted on the screen
-    if !cli.non_interactive_mode && not_recovery && on_init {
+    if !cli.non_interactive_mode && not_recovery && on_init && !hardware_wallet {
         match confirm_seed_words(&mut wallet) {
             Ok(()) => {
                 print!("\x1Bc"); // Clear the screen
@@ -263,8 +265,12 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
         .map(|s| s.to_owned())
 }
 
-fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
-    if matches!(boot_mode, WalletBoot::Recovery) {
+fn get_recovery_seed(
+    boot_mode: WalletBoot,
+    cli: &Cli,
+    wallet_type: &Option<WalletType>,
+) -> Result<Option<CipherSeed>, ExitError> {
+    if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(WalletType::Ledger(_))) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words)?
         } else {
