@@ -2351,7 +2351,7 @@ fn create_pre_mine_output_dir() -> Result<(String, PathBuf), CommandError> {
 fn get_embedded_pre_mine_outputs(output_indexes: Vec<usize>) -> Result<Vec<TransactionOutput>, CommandError> {
     let pre_mine_contents = match Network::get_current_or_user_setting_or_default() {
         Network::MainNet => {
-            unimplemented!("MainNet pre-mine not yet implemented");
+            include_str!("../../../../base_layer/core/src/blocks/pre_mine/mainnet_pre_mine.json")
         },
         Network::StageNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/stagenet_pre_mine.json")
