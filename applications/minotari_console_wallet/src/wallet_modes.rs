@@ -173,10 +173,7 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     (
         matches!(
             command,
-            CliCommands::PreMineCreateScriptInputs(_) |
-                CliCommands::PreMineCreateGenesisFile(_) |
-                CliCommands::PreMineCreateVerifyGenesisFile(_) |
-                CliCommands::PreMineSpendSessionInfo(_) |
+            CliCommands::PreMineSpendSessionInfo(_) |
                 CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
                 CliCommands::PreMineSpendPartyDetails(_) |
                 CliCommands::PreMineSpendInputOutputSigs(_) |
@@ -552,17 +549,6 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            pre-mine-create-script-inputs --alias alice
-
-            pre-mine-create-genesis-file --party-file-names=step_1_for_leader_from_alice.json \
-             --party-file-names=step_1_for_leader_from_bob.json --party-file-names=step_1_for_leader_from_carol.json \
-             --fail-safe-file-name step_1_for_leader_from_dave.json
-
-            pre-mine-create-verify-genesis-file --session-id ee1643655c \
-             --party-file-names=step_1_for_leader_from_alice.json --party-file-names=step_1_for_leader_from_bob.json \
-             --party-file-names=step_1_for_leader_from_carol.json --fail-safe-file-name \
-             step_1_for_leader_from_dave.json --pre-mine-file-name ./step_2_for_parties.json
-
             pre-mine-spend-session-info --fee-per-gram 2 --output-index 123 --recipient-address \
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
              --verify-unspent-outputs
@@ -598,9 +584,6 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut pre_mine_create_script_inputs = false;
-        let mut pre_mine_create_genesis_file = false;
-        let mut pre_mine_create_verify_genesis_file = false;
         let mut pre_mine_spend_session_info = false;
         let mut pre_mine_spend_encumber_aggregate_utxo = false;
         let mut pre_mine_spend_aggregate_transaction = false;
@@ -617,9 +600,6 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::PreMineCreateScriptInputs(_) => pre_mine_create_script_inputs = true,
-                CliCommands::PreMineCreateGenesisFile(_) => pre_mine_create_genesis_file = true,
-                CliCommands::PreMineCreateVerifyGenesisFile(_) => pre_mine_create_verify_genesis_file = true,
                 CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
                 CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
                 CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
@@ -661,9 +641,6 @@ mod test {
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                pre_mine_create_script_inputs &&
-                pre_mine_create_genesis_file &&
-                pre_mine_create_verify_genesis_file &&
                 pre_mine_spend_session_info &&
                 pre_mine_spend_encumber_aggregate_utxo &&
                 pre_mine_spend_aggregate_transaction &&
