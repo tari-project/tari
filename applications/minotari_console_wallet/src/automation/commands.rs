@@ -72,7 +72,12 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
-    blocks::pre_mine::{create_pre_mine_genesis_block_file, get_pre_mine_items, PreMineItem},
+    blocks::pre_mine::{
+        create_pre_mine_genesis_block_info,
+        get_pre_mine_items,
+        verify_script_keys_for_index,
+        PreMineItem,
+    },
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
@@ -795,7 +800,7 @@ pub async fn command_runner(
                 }
 
                 // Get the pre-mine items according to the unlock schedule specification
-                let pre_mine_items = match get_pre_mine_items().await {
+                let pre_mine_items = match get_pre_mine_items(Network::Esmeralda).await {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -874,7 +879,7 @@ pub async fn command_runner(
                 )?;
 
                 // Get the pre-mine items according to the unlock schedule specification
-                let pre_mine_items = match get_pre_mine_items().await {
+                let pre_mine_items = match get_pre_mine_items(Network::Esmeralda).await {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -905,7 +910,7 @@ pub async fn command_runner(
                     };
 
                 // Create the pre-mine genesis block outputs and kernel
-                let (outputs, kernel) = match create_pre_mine_genesis_block_file(
+                let (outputs, kernel) = match create_pre_mine_genesis_block_info(
                     &pre_mine_items,
                     &threshold_spend_keys,
                     &backup_spend_keys,
@@ -1030,7 +1035,7 @@ pub async fn command_runner(
                 }
 
                 // Get the pre-mine items according to the unlock schedule specification
-                let pre_mine_items = match get_pre_mine_items().await {
+                let pre_mine_items = match get_pre_mine_items(Network::Esmeralda).await {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -1133,45 +1138,14 @@ pub async fn command_runner(
                         break;
                     };
                     // Verify that the script keys correspond to the threshold and backup keys from the party members
-                    let mut all_script_keys = script_threshold_keys
-                        .iter()
-                        .chain(once(&script_backup_key))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    let mut all_party_keys = threshold_keys
-                        .iter()
-                        .chain(once(&backup_key))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    all_script_keys.sort();
-                    all_party_keys.sort();
-                    if all_script_keys.len() != all_party_keys.len() {
-                        eprintln!(
-                            "\nError: Output {} script key count mismatch ({} != {})\n",
-                            index,
-                            all_script_keys.len(),
-                            all_party_keys.len()
-                        );
-                        error = true;
-                        break;
-                    }
-                    all_script_keys.dedup();
-                    if all_party_keys.len() != all_script_keys.len() {
-                        eprintln!("\nError: Output {} script keys not unique\n", index,);
-                        error = true;
-                        break;
-                    }
-                    for (index, (script_key, party_key)) in all_script_keys.iter().zip(all_party_keys).enumerate() {
-                        if script_key != &party_key {
-                            eprintln!(
-                                "\nError: Output {} script key mismatch ({} != {})\n",
-                                index, script_key, party_key
-                            );
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
+                    if let Err(e) = verify_script_keys_for_index(
+                        index,
+                        &script_threshold_keys,
+                        &script_backup_key,
+                        &threshold_keys,
+                        &backup_key,
+                    ) {
+                        eprintln!("\nError: {}\n", e);
                         break;
                     }
                     // Verify that script key owned by this wallet can be retrieved via the key id
@@ -1187,6 +1161,11 @@ pub async fn command_runner(
                             break;
                         },
                     };
+                    let all_script_keys = script_threshold_keys
+                        .iter()
+                        .chain(once(&script_backup_key))
+                        .cloned()
+                        .collect::<Vec<_>>();
                     if !all_script_keys.iter().any(|k| k == &expected_script_key) {
                         eprintln!(
                             "\nError: Output {} script key mismatch ({} not found in script)\n",
