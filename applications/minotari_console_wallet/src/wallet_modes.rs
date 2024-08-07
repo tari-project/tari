@@ -173,10 +173,7 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     (
         matches!(
             command,
-            CliCommands::PreMineCreateScriptInputs(_) |
-                CliCommands::PreMineCreateGenesisFile(_) |
-                CliCommands::PreMineCreateVerifyGenesisFile(_) |
-                CliCommands::PreMineSpendSessionInfo(_) |
+            CliCommands::PreMineSpendSessionInfo(_) |
                 CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
                 CliCommands::PreMineSpendPartyDetails(_) |
                 CliCommands::PreMineSpendInputOutputSigs(_) |
