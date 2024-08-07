@@ -1686,12 +1686,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
@@ -1832,6 +1826,12 @@ where
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new(
@@ -1940,11 +1940,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
@@ -2090,6 +2085,12 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let fee = stp
             .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
