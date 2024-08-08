@@ -49,6 +49,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::PublicKey,
+    wallet_types::WalletType,
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -650,6 +651,11 @@ impl AppState {
     pub async fn get_network(&self) -> Network {
         self.inner.read().await.get_network()
     }
+
+    pub async fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+        let inner = self.inner.write().await;
+        inner.get_wallet_type()
+    }
 }
 pub struct AppStateInner {
     updated: bool,
@@ -671,6 +677,14 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+        self.wallet
+            .db
+            .get_wallet_type()
+            .map_err(UiError::WalletStorageError)
+            .and_then(|opt| opt.ok_or(UiError::WalletTypeError))
     }
 
     pub fn get_network(&self) -> Network {
