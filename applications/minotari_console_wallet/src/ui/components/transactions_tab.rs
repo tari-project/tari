@@ -111,7 +111,7 @@ impl TransactionsTab {
 
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.destination_address),
+                    app_state.get_alias(t.destination_address.to_base58()),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -123,7 +123,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_address),
+                    app_state.get_alias(t.source_address.to_base58()),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -209,11 +209,18 @@ impl TransactionsTab {
         for t in windowed_view {
             let cancelled = t.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
+
+            let address_text = match (&t.direction, &t.coinbase, &t.burn) {
+                (_, true, _) => "Mining reward",
+                (_, _, true) => "Burned output",
+                (TransactionDirection::Outbound, _, _) => &app_state.get_alias(t.destination_address.to_base58()),
+                _ => &app_state.get_alias(t.source_address.to_base58()),
+            };
+            column0_items.push(ListItem::new(Span::styled(
+                app_state.get_alias(address_text.to_string()),
+                Style::default().fg(text_color),
+            )));
             if t.direction == TransactionDirection::Outbound {
-                column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.destination_address),
-                    Style::default().fg(text_color),
-                )));
                 let amount_style = if t.cancelled.is_some() {
                     Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
                 } else {
@@ -222,10 +229,6 @@ impl TransactionsTab {
                 let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
-                column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_address),
-                    Style::default().fg(text_color),
-                )));
                 let color = match (t.cancelled.is_some(), chain_height) {
                     // cancelled
                     (true, _) => Color::DarkGray,

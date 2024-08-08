@@ -244,8 +244,10 @@ impl AppState {
     }
 
     // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, address: &TariAddress) -> String {
-        let address_string = address.to_base58();
+    pub fn get_alias(&self, address_string: String) -> String {
+        if address_string == TariAddress::default().to_base58() {
+            return "Offline payment".to_string();
+        }
 
         match self
             .cached_data
@@ -1186,6 +1188,8 @@ pub struct CompletedTransactionInfo {
     pub inputs_count: usize,
     pub outputs_count: usize,
     pub payment_id: Option<PaymentId>,
+    pub coinbase: bool,
+    pub burn: bool,
 }
 
 impl CompletedTransactionInfo {
@@ -1207,6 +1211,8 @@ impl CompletedTransactionInfo {
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
+        let coinbase = tx.transaction.body.contains_coinbase();
+        let burn = tx.transaction.body.contains_burn();
 
         Ok(Self {
             tx_id: tx.tx_id,
@@ -1233,6 +1239,8 @@ impl CompletedTransactionInfo {
             inputs_count,
             outputs_count,
             payment_id: tx.payment_id,
+            coinbase,
+            burn,
         })
     }
 }

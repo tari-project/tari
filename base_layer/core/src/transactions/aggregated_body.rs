@@ -424,6 +424,18 @@ impl AggregateBody {
             kernels: self.kernels.clone(),
         }
     }
+
+    // Searches though all outputs to see if it contains a burned feature flag
+    pub fn contains_burn(&self) -> bool {
+        self.outputs.iter().any(|k| k.features.output_type == OutputType::Burn)
+    }
+
+    // Searches though all outputs to see if it contains a coinbase feature flag
+    pub fn contains_coinbase(&self) -> bool {
+        self.outputs
+            .iter()
+            .any(|k| k.features.output_type == OutputType::Coinbase)
+    }
 }
 
 impl PartialEq for AggregateBody {

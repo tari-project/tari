@@ -174,6 +174,7 @@ pub async fn setup() -> (
     );
     let interactive_tari_address =
         TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+    let wallet_type = core_key_manager_service_handle.get_wallet_type().await;
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -192,6 +193,7 @@ pub async fn setup() -> (
             ..TransactionServiceConfig::default()
         },
         shutdown_signal: shutdown.to_signal(),
+        wallet_type,
     };
 
     (
