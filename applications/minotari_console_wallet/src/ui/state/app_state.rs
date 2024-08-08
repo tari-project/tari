@@ -1193,11 +1193,17 @@ impl CompletedTransactionInfo {
         tx: CompletedTransaction,
         transaction_weighting: &TransactionWeight,
     ) -> Result<Self, TransactionError> {
-        let excess_signature = tx
-            .transaction
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_default();
+        let excess_signature = format!(
+            "{},{}",
+            tx.transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_default(),
+            tx.transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_public_nonce().to_hex())
+                .unwrap_or_default()
+        );
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();

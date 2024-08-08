@@ -193,6 +193,8 @@ pub enum TransactionServiceError {
     Oversized,
     #[error("Transaction has invalid address: `{0}`")]
     InvalidAddress(String),
+    #[error("Transaction is not supported: `{0}`")]
+    NotSupported(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

@@ -766,7 +766,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendSessionInfo(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -828,7 +828,7 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendBackupUtxo(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -867,7 +867,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendPartyDetails(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -988,7 +988,7 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendEncumberAggregateUtxo(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1082,7 +1082,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendInputOutputSigs(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1194,7 +1194,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendAggregateTransaction(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");

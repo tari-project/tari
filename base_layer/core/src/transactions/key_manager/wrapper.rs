@@ -85,7 +85,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-        wallet_type: WalletType,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
             transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerInner::new(
@@ -98,7 +98,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     /// Get the wallet type
-    pub async fn get_wallet_type(&self) -> WalletType {
+    pub async fn get_wallet_type(&self) -> Arc<WalletType> {
         self.transaction_key_manager_inner.read().await.get_wallet_type()
     }
 }

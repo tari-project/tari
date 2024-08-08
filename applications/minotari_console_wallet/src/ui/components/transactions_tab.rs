@@ -289,10 +289,10 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 15];
+        let constraints = [Constraint::Length(1); 14];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
-        let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
+        let excess_sig = Span::styled("Excess sig(nonce, sig):", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
@@ -302,14 +302,13 @@ impl TransactionsTab {
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
         let imported_timestamp = Span::styled("Imported At (Local):", Style::default().fg(Color::Magenta));
         let mined_timestamp = Span::styled("Mined At (Local):", Style::default().fg(Color::Magenta));
-        let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
         let maturity = Span::styled("Maturity:", Style::default().fg(Color::Magenta));
         let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
-        let paragraph = Paragraph::new(tx_id).wrap(trim);
+        let paragraph = Paragraph::new(excess_sig).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
         let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
@@ -329,23 +328,21 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[8]);
         let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(excess).wrap(trim);
-        f.render_widget(paragraph, label_layout[10]);
         let paragraph = Paragraph::new(confirmations).wrap(trim);
-        f.render_widget(paragraph, label_layout[11]);
+        f.render_widget(paragraph, label_layout[10]);
         let paragraph = Paragraph::new(mined_height).wrap(trim);
-        f.render_widget(paragraph, label_layout[12]);
+        f.render_widget(paragraph, label_layout[11]);
         let paragraph = Paragraph::new(maturity).wrap(trim);
-        f.render_widget(paragraph, label_layout[13]);
+        f.render_widget(paragraph, label_layout[12]);
         let paragraph = Paragraph::new(payment_id).wrap(trim);
-        f.render_widget(paragraph, label_layout[14]);
+        f.render_widget(paragraph, label_layout[13]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 15];
+            let constraints = [Constraint::Length(1); 14];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
-            let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
+            let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
             let source_address =
                 if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Outbound {
@@ -406,7 +403,6 @@ impl TransactionsTab {
                 Style::default().fg(Color::White),
             );
 
-            let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
                 format!("{} required confirmations met", required_confirmations)
@@ -447,7 +443,7 @@ impl TransactionsTab {
             };
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let paragraph = Paragraph::new(tx_id).wrap(trim);
+            let paragraph = Paragraph::new(excess_sig).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
@@ -467,16 +463,14 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[8]);
             let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(excess).wrap(trim);
-            f.render_widget(paragraph, content_layout[10]);
             let paragraph = Paragraph::new(confirmations).wrap(trim);
-            f.render_widget(paragraph, content_layout[11]);
+            f.render_widget(paragraph, content_layout[10]);
             let paragraph = Paragraph::new(mined_height).wrap(trim);
-            f.render_widget(paragraph, content_layout[12]);
+            f.render_widget(paragraph, content_layout[11]);
             let paragraph = Paragraph::new(maturity).wrap(trim);
-            f.render_widget(paragraph, content_layout[13]);
+            f.render_widget(paragraph, content_layout[12]);
             let paragraph = Paragraph::new(payment_id).wrap(trim);
-            f.render_widget(paragraph, content_layout[14]);
+            f.render_widget(paragraph, content_layout[13]);
         }
     }
 }
@@ -489,7 +483,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(17),
+                    Constraint::Length(16),
                 ]
                 .as_ref(),
             )
