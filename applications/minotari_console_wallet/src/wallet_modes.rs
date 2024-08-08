@@ -173,7 +173,8 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     (
         matches!(
             command,
-            CliCommands::PreMineSpendSessionInfo(_) |
+            CliCommands::PreMineSpendGetOutputStatus |
+                CliCommands::PreMineSpendSessionInfo(_) |
                 CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
                 CliCommands::PreMineSpendPartyDetails(_) |
                 CliCommands::PreMineSpendInputOutputSigs(_) |
@@ -549,6 +550,8 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
+            pre-mine-spend-get-output-status
+
             pre-mine-spend-session-info --fee-per-gram 2 --output-index 123 --recipient-address \
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
              --verify-unspent-outputs
@@ -584,6 +587,7 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
+        let mut pre_mine_spend_get_output_status = false;
         let mut pre_mine_spend_session_info = false;
         let mut pre_mine_spend_encumber_aggregate_utxo = false;
         let mut pre_mine_spend_aggregate_transaction = false;
@@ -600,6 +604,7 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
+                CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
                 CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
                 CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
                 CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
@@ -641,6 +646,7 @@ mod test {
             get_balance &&
                 send_tari &&
                 burn_tari &&
+                pre_mine_spend_get_output_status &&
                 pre_mine_spend_session_info &&
                 pre_mine_spend_encumber_aggregate_utxo &&
                 pre_mine_spend_aggregate_transaction &&

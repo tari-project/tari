@@ -32,7 +32,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use digest::{crypto_common::rand_core::OsRng, Digest};
+use digest::Digest;
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
@@ -70,6 +70,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
+    blocks::pre_mine::get_pre_mine_items,
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
@@ -87,13 +88,10 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::{
-    keys::SecretKey,
-    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
-};
+use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{script, CheckSigSchnorrSignature};
-use tari_utilities::{encoding::Base58, hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -103,6 +101,7 @@ use super::error::CommandError;
 use crate::{
     automation::{
         utils::{
+            create_pre_mine_output_dir,
             get_file_name,
             move_session_file_to_session_dir,
             out_dir,
@@ -765,6 +764,65 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
+            PreMineSpendGetOutputStatus => {
+                let pre_mine_outputs = get_all_embedded_pre_mine_outputs()?;
+                let output_hashes: Vec<HashOutput> = pre_mine_outputs.iter().map(|v| v.hash()).collect();
+                let unspent_outputs = transaction_service.fetch_unspent_outputs(output_hashes).await?;
+
+                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()).await {
+                    Ok(items) => items,
+                    Err(e) => {
+                        eprintln!("\nError: {}\n", e);
+                        return Ok(());
+                    },
+                };
+
+                let (session_id, out_dir) = match create_pre_mine_output_dir(Some("pre_mine_status")) {
+                    Ok(values) => values,
+                    Err(e) => {
+                        eprintln!("\nError: {}\n", e);
+                        return Ok(());
+                    },
+                };
+                let csv_file_name = "pre_mine_items_with_status.csv";
+                let csv_out_file = out_dir.join(csv_file_name);
+                let mut file_stream =
+                    File::create(&csv_out_file).expect("Could not create 'pre_mine_items_with_status.csv'");
+                if let Err(e) =
+                    file_stream.write_all("index,value,maturity,fail_safe_height,beneficiary,spent_status\n".as_bytes())
+                {
+                    eprintln!("\nError: Could not write pre-mine header ({})\n", e);
+                    return Ok(());
+                }
+
+                for (index, item) in pre_mine_items.iter().enumerate() {
+                    let unspent = unspent_outputs
+                        .iter()
+                        .any(|u| u.commitment() == &pre_mine_outputs[index].commitment);
+                    if let Err(e) = file_stream.write_all(
+                        format!(
+                            "{},{},{},{},{},{}\n",
+                            index,
+                            item.value,
+                            item.maturity,
+                            item.maturity + item.fail_safe_height,
+                            item.beneficiary,
+                            if unspent { "unspent" } else { "spent" },
+                        )
+                        .as_bytes(),
+                    ) {
+                        eprintln!("\nError: Could not write pre-mine item ({})\n", e);
+                        return Ok(());
+                    }
+                }
+
+                println!();
+                println!("Concluded step 0 'pre-mine-spend-get-output-status'");
+                println!("Your session ID is:                    '{}'", session_id);
+                println!("Your session's output directory is:    '{}'", out_dir.display());
+                println!("Pre-mine output spent status saved to: '{}'", csv_file_name);
+                println!();
+            },
             PreMineSpendSessionInfo(args) => {
                 match key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
@@ -803,8 +861,13 @@ pub async fn command_runner(
                     }
                 }
 
-                let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
-                session_id.truncate(16);
+                let (session_id, out_dir) = match create_pre_mine_output_dir(None) {
+                    Ok(values) => values,
+                    Err(e) => {
+                        eprintln!("\nError: {}\n", e);
+                        return Ok(());
+                    },
+                };
                 let session_info = PreMineSpendStep1SessionInfo {
                     session_id: session_id.clone(),
                     commitment_to_spend: commitment.to_hex(),
@@ -813,11 +876,11 @@ pub async fn command_runner(
                     fee_per_gram: args.fee_per_gram,
                     output_index: args.output_index,
                 };
-                let out_dir = out_dir(&session_info.session_id)?;
+
                 let out_file = out_dir.join(get_file_name(SPEND_SESSION_INFO, None));
                 write_to_json_file(&out_file, true, session_info)?;
                 println!();
-                println!("Concluded step 1 'pre-mine-generate-session-info'");
+                println!("Concluded step 1 'pre-mine-spend-session-info'");
                 println!("Your session ID is:                 '{}'", session_id);
                 println!("Your session's output directory is: '{}'", out_dir.display());
                 println!("Session info saved to:              '{}'", out_file.display());
@@ -857,6 +920,7 @@ pub async fn command_runner(
                 {
                     Ok(tx_id) => {
                         println!();
+                        println!("Concluded 'pre-mine-spend-backup-utxo'");
                         println!("Spend utxo: {} with tx_id: {}", commitment.to_hex(), tx_id);
                         println!();
                     },
@@ -978,7 +1042,7 @@ pub async fn command_runner(
                 write_json_object_to_file_as_line(&out_file_self, false, step_2_outputs_for_self)?;
 
                 println!();
-                println!("Concluded step 2 'pre-mine-create-party-details'");
+                println!("Concluded step 2 'pre-mine-spend-party-details'");
                 println!("Your session's output directory is '{}'", out_dir.display());
                 move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
                 println!(
@@ -1071,7 +1135,7 @@ pub async fn command_runner(
                         write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_parties)?;
 
                         println!();
-                        println!("Concluded step 3 'pre-mine-encumber-aggregate-utxo'");
+                        println!("Concluded step 3 'pre-mine-spend-encumber-aggregate-utxo'");
                         println!(
                             "Send '{}' to parties for step 4",
                             get_file_name(SPEND_STEP_3_PARTIES, None)
@@ -1185,7 +1249,7 @@ pub async fn command_runner(
                     write_json_object_to_file_as_line(&out_file, false, step_4_outputs_for_leader)?;
 
                     println!();
-                    println!("Concluded step 4 'pre-mine-create-input-output-sigs'");
+                    println!("Concluded step 4 'pre-mine-spend-input-output-sigs'");
                     println!(
                         "Send '{}' to leader for step 5",
                         get_file_name(SPEND_STEP_4_LEADER, Some(party_info.alias))
@@ -1238,7 +1302,7 @@ pub async fn command_runner(
                 {
                     Ok(_v) => {
                         println!();
-                        println!("Concluded step 5 'pre-mine-spend-aggregate-utxo'");
+                        println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                         println!();
                     },
                     Err(e) => println!("\nError: Error completing transaction! {}\n", e),
@@ -1794,6 +1858,23 @@ pub async fn command_runner(
 }
 
 fn get_embedded_pre_mine_outputs(output_indexes: Vec<usize>) -> Result<Vec<TransactionOutput>, CommandError> {
+    let utxos = get_all_embedded_pre_mine_outputs()?;
+
+    let mut fetched_outputs = Vec::with_capacity(output_indexes.len());
+    for index in output_indexes {
+        if index >= utxos.len() {
+            return Err(CommandError::PreMine(format!(
+                "Error: Invalid 'output_index' {} provided pre-mine outputs only number {}!",
+                index,
+                utxos.len()
+            )));
+        }
+        fetched_outputs.push(utxos[index].clone());
+    }
+    Ok(fetched_outputs)
+}
+
+fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, CommandError> {
     let pre_mine_contents = match Network::get_current_or_user_setting_or_default() {
         Network::MainNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/mainnet_pre_mine.json")
@@ -1828,18 +1909,7 @@ fn get_embedded_pre_mine_outputs(output_indexes: Vec<usize>) -> Result<Vec<Trans
         counter += 1;
     }
 
-    let mut fetched_outputs = Vec::with_capacity(output_indexes.len());
-    for index in output_indexes {
-        if index >= utxos.len() {
-            return Err(CommandError::PreMine(format!(
-                "Error: Invalid 'output_index' {} provided pre-mine outputs only number {}!",
-                index,
-                utxos.len()
-            )));
-        }
-        fetched_outputs.push(utxos[index].clone());
-    }
-    Ok(fetched_outputs)
+    Ok(utxos)
 }
 
 fn write_utxos_to_csv_file(
