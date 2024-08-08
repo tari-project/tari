@@ -121,6 +121,7 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
+    PreMineSpendGetOutputStatus,
     PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
     PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
     PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),

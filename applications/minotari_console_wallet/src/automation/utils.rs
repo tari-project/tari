@@ -27,7 +27,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use digest::crypto_common::rand_core::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
+use tari_common_types::types::PrivateKey;
+use tari_crypto::keys::SecretKey;
+use tari_utilities::encoding::Base58;
 
 use crate::automation::{
     commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
@@ -125,6 +129,20 @@ fn append_to_json_file<P: AsRef<Path>, T: Serialize>(file: P, data: T) -> Result
     let json = serde_json::to_string_pretty(&data).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     writeln!(file_object, "{json}").map_err(|e| CommandError::JsonFile(e.to_string()))?;
     Ok(())
+}
+
+/// Create a unique session-based output directory
+pub(crate) fn create_pre_mine_output_dir(alias: Option<&str>) -> Result<(String, PathBuf), CommandError> {
+    let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
+    session_id.truncate(if alias.is_some() { 8 } else { 16 });
+    if let Some(alias) = alias {
+        session_id.push('_');
+        session_id.push_str(alias);
+    }
+    let out_dir = out_dir(&session_id)?;
+    fs::create_dir_all(out_dir.clone())
+        .map_err(|e| CommandError::JsonFile(format!("{} ({})", e, out_dir.display())))?;
+    Ok((session_id, out_dir))
 }
 
 /// Return the output directory for the session
