@@ -110,9 +110,10 @@ fn main_inner() -> Result<(), ExitError> {
         console_subscriber::init();
     }
 
+    let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("base_node"),
-        &cli.common.get_base_path(),
+        cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
     )?;
     info!(
