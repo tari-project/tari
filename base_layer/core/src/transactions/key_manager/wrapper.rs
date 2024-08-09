@@ -40,7 +40,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{CheckSigSchnorrSignature, TariScript};
 use tokio::sync::RwLock;
 
 use crate::transactions::{
@@ -468,8 +468,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
-        metadata_signature_message: &[u8; 32],
+        metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
+        script: &TariScript,
+        receiver_public_spend_key: &PublicKey,
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -479,8 +481,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 value,
                 sender_offset_key_id,
                 txo_version,
-                metadata_signature_message,
+                metadata_signature_message_common,
                 range_proof_type,
+                script,
+                receiver_public_spend_key,
             )
             .await
     }

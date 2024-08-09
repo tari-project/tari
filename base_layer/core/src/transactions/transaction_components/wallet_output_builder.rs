@@ -204,15 +204,15 @@ impl WalletOutputBuilder {
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
+        receiver_public_spend_key: &PublicKey,
     ) -> Result<Self, TransactionError> {
         let script = self
             .script
             .as_ref()
             .ok_or_else(|| TransactionError::BuilderError("Cannot sign metadata without a script".to_string()))?;
         let sender_offset_public_key = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
-        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+        let metadata_message_common = TransactionOutput::metadata_signature_message_common_from_parts(
             &self.version,
-            script,
             &self.features,
             &self.covenant,
             &self.encrypted_data,
@@ -224,8 +224,10 @@ impl WalletOutputBuilder {
                 self.value,
                 sender_offset_key_id,
                 &self.version,
-                &metadata_message,
+                &metadata_message_common,
                 self.features.range_proof_type,
+                script,
+                receiver_public_spend_key,
             )
             .await?;
         self.metadata_signature = Some(metadata_signature);

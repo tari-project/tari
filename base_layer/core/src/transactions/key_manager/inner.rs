@@ -69,7 +69,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{CheckSigSchnorrSignature, TariScript};
 use tari_utilities::ByteArray;
 use tokio::sync::RwLock;
 
@@ -1379,8 +1379,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
-        metadata_signature_message: &[u8; 32],
+        metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
+        script: &TariScript,
+        receiver_public_spend_key: &PublicKey,
     ) -> Result<ComAndPubSignature, TransactionError> {
         #[cfg(feature = "ledger")]
         {
@@ -1394,13 +1396,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
         match &self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+                let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
+                    script,
+                    metadata_signature_message_common,
+                );
                 let value = value.into();
                 self.get_metadata_signature(
                     commitment_mask_key_id,
                     &value,
                     sender_offset_key_id,
                     txo_version,
-                    metadata_signature_message,
+                    &metadata_signature_message,
                     range_proof_type,
                 )
                 .await
@@ -1435,7 +1441,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         value.into(),
                         sender_offset_key_index,
                         &commitment_mask,
-                        metadata_signature_message,
+                        receiver_public_spend_key,
+                        metadata_signature_message_common,
                     )
                     .map_err(TransactionError::LedgerDeviceError)?;
 

@@ -29,7 +29,7 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{CheckSigSchnorrSignature, TariScript};
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
@@ -222,8 +222,10 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
-        metadata_signature_message: &[u8; 32],
+        metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
+        script: &TariScript,
+        receiver_public_spend_key: &PublicKey,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
     async fn sign_script_message(

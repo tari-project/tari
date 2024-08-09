@@ -5,7 +5,7 @@ use alloc::{format, string::String};
 use core::ops::Deref;
 
 use blake2::Blake2b;
-use digest::consts::U64;
+use digest::consts::{U32, U64};
 use ledger_device_sdk::{
     io::Comm,
     random::Random,
@@ -16,6 +16,7 @@ use ledger_device_sdk::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hashing::DomainSeparatedHasher,
     keys::PublicKey,
     ristretto::{
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -23,14 +24,15 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
+    tari_utilities::ByteArray,
 };
-use tari_hashing::TransactionHashDomain;
+use tari_hashing::{KeyManagerTransactionsHashDomain, TransactionHashDomain};
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
+    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, get_key_from_uniform_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -78,8 +80,15 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
-    let mut metadata_signature_message = [0u8; 32];
-    metadata_signature_message.clone_from_slice(&data[72..104]);
+    let receiver_public_spend_key: Zeroizing<RistrettoPublicKey> =
+        get_key_from_canonical_bytes::<RistrettoPublicKey>(&data[72..104])?.into();
+
+    let mut metadata_signature_message_common = [0u8; 32];
+    metadata_signature_message_common.clone_from_slice(&data[104..136]);
+
+    let script = generate_tari_script(network, &commitment_mask, &receiver_public_spend_key)?;
+    let metadata_signature_message =
+        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -155,6 +164,34 @@ fn finalize_metadata_signature_challenge(
             .finalize();
 
     challenge.into()
+}
+
+fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8; 32], common: &[u8; 32]) -> [u8; 32] {
+    DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
+        .chain(script)
+        .chain(common)
+        .finalize()
+        .into()
+}
+
+fn generate_tari_script(
+    network: u64,
+    private_key: &Zeroizing<RistrettoSecretKey>,
+    spend_key: &Zeroizing<RistrettoPublicKey>,
+) -> Result<[u8; 32], AppSW> {
+    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+    let hasher = hasher.chain(private_key.as_bytes()).finalize();
+    let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
+    let public_key = Zeroizing::new(RistrettoPublicKey::from_secret_key(&private_key));
+    let public_key = Zeroizing::new(spend_key.deref() + public_key.deref());
+
+    // Push into push_pub tari script
+    // TODO CREATE TARISCRIPT
+    let script: [u8; 32] = public_key.as_bytes();
+
+    DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
+        .chain(&script)
+        .finalize()
 }
 
 struct Minotari(pub u64);

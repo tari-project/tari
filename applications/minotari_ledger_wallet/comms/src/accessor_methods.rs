@@ -559,6 +559,7 @@ pub fn ledger_get_one_sided_metadata_signature(
     value: u64,
     sender_offset_key_index: u64,
     commitment_mask: &PrivateKey,
+    receiver_public_spend_key: &PublicKey,
     message: &[u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
     debug!(
@@ -574,6 +575,7 @@ pub fn ledger_get_one_sided_metadata_signature(
     data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
     data.extend_from_slice(&value.to_le_bytes());
     data.extend_from_slice(&commitment_mask.to_vec());
+    data.extend_from_slice(&receiver_public_spend_key.to_vec());
     data.extend_from_slice(&message.to_vec());
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
