@@ -110,6 +110,12 @@ pub enum UniIdError {
     Nonconvertible,
 }
 
+impl UniPublicKey {
+    pub fn as_public_key(&self) -> &PublicKey {
+        &self.0
+    }
+}
+
 impl FromStr for UniNodeId {
     type Err = UniIdError;
 

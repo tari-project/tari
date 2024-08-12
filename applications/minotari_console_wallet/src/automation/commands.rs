@@ -1816,6 +1816,76 @@ pub async fn command_runner(
                     println!("Spend key: {}", spend_key_hex);
                 }
             },
+            CreateCommitmentProof(args) => {
+                match output_service.get_unspent_outputs().await {
+                    Ok(utxos) => {
+                        // Parse into outputs and commitments
+                        let utxos: Vec<(WalletOutput, Commitment)> = utxos
+                            .into_iter()
+                            .map(|v| (v.wallet_output, v.commitment))
+                            .filter(|(_, c)| c.as_public_key() == args.commitment.as_public_key())
+                            .collect();
+
+                        // Make sure we have a single unspent output corresponding to the requested commitment
+                        let count = utxos.len();
+                        if count == 0 {
+                            eprintln!("No unspent outputs match this commitment");
+                            continue;
+                        }
+                        if count > 1 {
+                            eprintln!("Multiple unspent outputs match this commitment");
+                            continue;
+                        }
+
+                        // Try to generate the requested commitment proof
+                        match output_service
+                            .create_commitment_proof(utxos[0].1.clone(), args.message, args.minimum_value)
+                            .await
+                        {
+                            Ok(proof) => {
+                                println!("Commitment proof: {}", proof.to_hex());
+                            },
+                            Err(e) => eprintln!("CreateCommitmentProof error! {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("CreateCommitmentProof error! {}", e),
+                }
+            },
+            VerifyCommitmentProof(args) => {
+                match output_service.get_unspent_outputs().await {
+                    Ok(utxos) => {
+                        // Parse into outputs and commitments
+                        let utxos: Vec<(WalletOutput, Commitment)> = utxos
+                            .into_iter()
+                            .map(|v| (v.wallet_output, v.commitment))
+                            .filter(|(_, c)| c.as_public_key() == args.commitment.as_public_key())
+                            .collect();
+
+                        // Make sure we have a single unspent output corresponding to the requested commitment
+                        let count = utxos.len();
+                        if count == 0 {
+                            eprintln!("No unspent outputs match this commitment");
+                            continue;
+                        }
+                        if count > 1 {
+                            eprintln!("Multiple unspent outputs match this commitment");
+                            continue;
+                        }
+
+                        // Try to verify the requested commitment proof
+                        match output_service
+                            .verify_commitment_proof(utxos[0].1.clone(), args.message, args.minimum_value, args.proof)
+                            .await
+                        {
+                            Ok(()) => {
+                                println!("Commitment proof verified!");
+                            },
+                            Err(e) => eprintln!("VerifyProof error! {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("VerifyCommitmentProof error! {}", e),
+                }
+            },
         }
     }
 
