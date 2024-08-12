@@ -20,6 +20,7 @@ use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ledger_get_app_name,
         ledger_get_dh_shared_secret,
+        ledger_get_one_sided_metadata_signature,
         ledger_get_public_key,
         ledger_get_public_spend_key,
         ledger_get_raw_schnorr_signature,
@@ -282,6 +283,38 @@ fn main() {
             "signature:      ({},{})",
             signature.get_signature().to_hex(),
             signature.get_public_nonce().to_hex()
+        ),
+        Err(e) => {
+            println!("\nError: {}\n", e);
+            return;
+        },
+    }
+
+    // GetOneSidedMetadataSignature
+    println!("\ntest: GetOneSidedMetadataSignature");
+    let sender_offset_key_index = OsRng.next_u64();
+    let mut metadata_signature_message_common = [0u8; 32];
+    OsRng.fill_bytes(&mut metadata_signature_message_common);
+    let receiver_public_spend_key = PublicKey::from_secret_key(&get_random_nonce());
+    let commitment_mask = get_random_nonce();
+
+    match ledger_get_one_sided_metadata_signature(
+        account,
+        network,
+        version,
+        12345,
+        sender_offset_key_index,
+        &commitment_mask,
+        &receiver_public_spend_key,
+        &metadata_signature_message_common,
+    ) {
+        Ok(signature) => println!(
+            "signature:      ({},{},{},{},{})",
+            signature.ephemeral_commitment().to_hex(),
+            signature.ephemeral_pubkey().to_hex(),
+            signature.u_a().to_hex(),
+            signature.u_x().to_hex(),
+            signature.u_y().to_hex()
         ),
         Err(e) => {
             println!("\nError: {}\n", e);

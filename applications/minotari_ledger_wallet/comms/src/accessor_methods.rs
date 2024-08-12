@@ -22,8 +22,13 @@
 
 use std::sync::Mutex;
 
+use borsh::BorshSerialize;
 use log::debug;
-use minotari_ledger_wallet_common::common_types::{AppSW, Instruction};
+use minotari_ledger_wallet_common::{
+    common_types::{AppSW, Instruction},
+    hex_to_bytes_serialized,
+    PUSH_PUBKEY_IDENTIFIER,
+};
 use once_cell::sync::Lazy;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -32,7 +37,7 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::dhke::DiffieHellmanSharedSecret;
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{script, CheckSigSchnorrSignature};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -568,6 +573,21 @@ pub fn ledger_get_one_sided_metadata_signature(
         account, message.to_hex()
     );
     verify_ledger_application()?;
+
+    // Ensure that the serialized script produce expected results
+    let script = script!(PushPubKey(Box::new(receiver_public_spend_key.clone())));
+    let mut serialized_script = Vec::new();
+    script
+        .serialize(&mut serialized_script)
+        .map_err(|e| LedgerDeviceError::Processing(e.to_string()))?;
+    let ledger_serialized_script =
+        hex_to_bytes_serialized(PUSH_PUBKEY_IDENTIFIER, &receiver_public_spend_key.to_hex())?;
+    if serialized_script != ledger_serialized_script.clone() {
+        return Err(LedgerDeviceError::Processing(format!(
+            "PushPubKey script serialization mismatch: expected {:?}, got {:?}",
+            serialized_script, ledger_serialized_script
+        )));
+    }
 
     let mut data = Vec::new();
     data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
