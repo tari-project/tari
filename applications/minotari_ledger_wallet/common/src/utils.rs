@@ -7,6 +7,8 @@ use alloc::{
     vec::Vec,
 };
 
+use tari_utilities::hex::from_hex;
+
 pub const PUSH_PUBKEY_IDENTIFIER: &str = "217e";
 
 /// Convert a u16 to a string
@@ -49,14 +51,7 @@ pub fn hex_to_bytes_serialized(identifier: &str, data: &str) -> Result<Vec<u8>, 
     }
 
     let hex = identifier.to_owned() + data;
-    let hex = hex.as_str();
-
-    let mut serialized = Vec::new();
-    for i in 0..hex.len() / 2 {
-        let byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_e| "Invalid hex string".to_string())?;
-        serialized.push(byte);
-    }
-    Ok(serialized)
+    from_hex(hex.as_str()).map_err(|e| e.to_string())
 }
 
 /// The Tari dual address size
