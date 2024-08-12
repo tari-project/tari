@@ -35,12 +35,18 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_script_signature,
     ScriptSignatureKey,
 };
-use rand::rngs::OsRng;
-#[cfg(feature = "ledger")]
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
+    key_branches::{
+        TransactionKeyManagerBranch,
+        KERNEL_NONCE,
+        METADATA_EPHEMERAL_NONCE,
+        NONCE,
+        ONE_SIDED_SENDER_OFFSET,
+        RANDOM_KEY,
+        SENDER_OFFSET,
+    },
     tari_address::TariAddress,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
@@ -172,14 +178,24 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_next_key(&self, branch: &str) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         let index = {
-            let mut km = self
-                .key_managers
-                .get(branch)
-                .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
-                .write()
-                .await;
-            self.db.increment_key_index(branch)?;
-            km.increment_key_index(1)
+            match branch {
+                METADATA_EPHEMERAL_NONCE |
+                NONCE |
+                KERNEL_NONCE |
+                SENDER_OFFSET |
+                ONE_SIDED_SENDER_OFFSET |
+                RANDOM_KEY => OsRng.next_u64(),
+                _ => {
+                    let mut km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
+                        .write()
+                        .await;
+                    self.db.increment_key_index(branch)?;
+                    km.increment_key_index(1)
+                },
+            }
         };
         let key_id = KeyId::Managed {
             branch: branch.to_string(),
