@@ -25,7 +25,10 @@ use std::str::FromStr;
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
@@ -225,7 +228,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
         script: &TariScript,
-        receiver_public_spend_key: &PublicKey,
+        receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
     async fn sign_script_message(

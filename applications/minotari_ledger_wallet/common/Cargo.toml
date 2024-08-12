@@ -6,3 +6,4 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
+bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }

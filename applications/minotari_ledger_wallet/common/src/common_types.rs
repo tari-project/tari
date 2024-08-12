@@ -21,6 +21,7 @@ pub enum AppSW {
     KeyDeriveFromUniform = 0xB00A,
     RandomNonceFail = 0xB00B,
     BadBranchKey = 0xB00C,
+    MetadataSignatureFail = 0xB00D,
     WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
 }
@@ -42,6 +43,7 @@ impl TryFrom<u16> for AppSW {
             0xB00A => Ok(AppSW::KeyDeriveFromUniform),
             0xB00B => Ok(AppSW::RandomNonceFail),
             0xB00C => Ok(AppSW::BadBranchKey),
+            0xB00D => Ok(AppSW::MetadataSignatureFail),
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6e04 => Ok(AppSW::UserCancelled),
             _ => Err(String::from("Invalid value for AppSW (") + utils::u16_to_string(value).as_str() + ")"),
@@ -148,6 +150,7 @@ mod test {
             (0xB00A, AppSW::KeyDeriveFromUniform),
             (0xB00B, AppSW::RandomNonceFail),
             (0xB00C, AppSW::BadBranchKey),
+            (0xB00D, AppSW::MetadataSignatureFail),
             (0x6e03, AppSW::WrongApduLength),
             (0x6e04, AppSW::UserCancelled),
         ];
@@ -188,6 +191,9 @@ mod test {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::BadBranchKey => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::MetadataSignatureFail => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::WrongApduLength => {

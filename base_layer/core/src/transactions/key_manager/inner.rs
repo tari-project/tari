@@ -41,6 +41,7 @@ use rand::RngCore;
 use strum::IntoEnumIterator;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
@@ -1382,7 +1383,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
         script: &TariScript,
-        receiver_public_spend_key: &PublicKey,
+        receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError> {
         #[cfg(feature = "ledger")]
         {
@@ -1441,7 +1442,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         value.into(),
                         sender_offset_key_index,
                         &commitment_mask,
-                        receiver_public_spend_key,
+                        receiver_address,
                         metadata_signature_message_common,
                     )
                     .map_err(TransactionError::LedgerDeviceError)?;

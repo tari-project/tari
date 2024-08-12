@@ -14,9 +14,16 @@ use ledger_device_sdk::{
         gadgets::{Field, MultiFieldReview, SingleMessage},
     },
 };
-use minotari_ledger_wallet_common::{hex_to_bytes_serialized, PUSH_PUBKEY_IDENTIFIER};
+use minotari_ledger_wallet_common::{
+    get_public_spend_key_from_tari_dual_address,
+    hex_to_bytes_serialized,
+    tari_dual_address_display,
+    PUSH_PUBKEY_IDENTIFIER,
+    TARI_DUAL_ADDRESS_SIZE,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hashing::DomainSeparatedHasher,
     keys::PublicKey,
     ristretto::{
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -24,15 +31,15 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
-    tari_utilities::hex::Hex,
+    tari_utilities::{hex::Hex, ByteArray},
 };
-use tari_hashing::TransactionHashDomain;
+use tari_hashing::{KeyManagerTransactionsHashDomain, TransactionHashDomain};
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
+    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, get_key_from_uniform_bytes},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -65,11 +72,19 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let commitment_mask: Zeroizing<RistrettoSecretKey> =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
 
-    let receiver_public_spend_key: Zeroizing<RistrettoPublicKey> =
-        get_key_from_canonical_bytes::<RistrettoPublicKey>(&data[72..104])?.into();
+    let mut receiver_address_bytes = [0u8; TARI_DUAL_ADDRESS_SIZE]; // 67 bytes
+    receiver_address_bytes.clone_from_slice(&data[72..139]);
+
+    let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
+        Ok(address) => address,
+        Err(e) => {
+            SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
+            return Err(AppSW::MetadataSignatureFail);
+        },
+    };
 
     let mut metadata_signature_message_common = [0u8; 32];
-    metadata_signature_message_common.clone_from_slice(&data[104..136]);
+    metadata_signature_message_common.clone_from_slice(&data[139..171]);
 
     let fields = [
         Field {
@@ -78,7 +93,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
         Field {
             name: "Receiver",
-            value: &format!("{}", receiver_public_spend_key.to_hex()),
+            value: &format!("{}", receiver_address),
         },
     ];
     let review = MultiFieldReview::new(
@@ -110,7 +125,16 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
-    let script_message = message_from_script(network, &receiver_public_spend_key)?;
+    let receiver_public_spend_key: Zeroizing<RistrettoPublicKey> =
+        match get_public_spend_key_from_tari_dual_address(&receiver_address_bytes) {
+            Ok(bytes) => get_key_from_canonical_bytes::<RistrettoPublicKey>(&bytes)?.into(),
+            Err(e) => {
+                SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
+                return Err(AppSW::MetadataSignatureFail);
+            },
+        };
+
+    let script_message = message_from_script(network, &commitment_mask, &receiver_public_spend_key)?;
     let metadata_signature_message =
         metadata_signature_message_from_script_and_common(network, &script_message, &metadata_signature_message_common);
 
@@ -137,7 +161,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         Ok(sig) => sig,
         Err(e) => {
             SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
-            return Err(AppSW::ScriptSignatureFail);
+            return Err(AppSW::MetadataSignatureFail);
         },
     };
 
@@ -179,13 +203,21 @@ fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8;
 
 fn message_from_script(
     network: u64,
+    commitment_mask: &Zeroizing<RistrettoSecretKey>,
     receiver_public_spend_key: &Zeroizing<RistrettoPublicKey>,
 ) -> Result<[u8; 32], AppSW> {
-    let serialized_script = match hex_to_bytes_serialized(PUSH_PUBKEY_IDENTIFIER, &receiver_public_spend_key.to_hex()) {
+    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+    let hashed_bytes = hasher.chain(commitment_mask.as_bytes()).finalize();
+    let hashed_commitment_mask = get_key_from_uniform_bytes(hashed_bytes.as_ref())?;
+    let hashed_commitment_mask_public_key =
+        Zeroizing::new(RistrettoPublicKey::from_secret_key(&hashed_commitment_mask));
+    let stealth_key = Zeroizing::new(receiver_public_spend_key.deref() + hashed_commitment_mask_public_key.deref());
+
+    let serialized_script = match hex_to_bytes_serialized(PUSH_PUBKEY_IDENTIFIER, &stealth_key.deref().to_hex()) {
         Ok(script) => script,
         Err(e) => {
             SingleMessage::new(&format!("Script error: {:?}", e.to_string())).show_and_wait();
-            return Err(AppSW::ScriptSignatureFail);
+            return Err(AppSW::MetadataSignatureFail);
         },
     };
 

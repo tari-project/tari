@@ -39,6 +39,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_crypto::{
@@ -295,8 +296,11 @@ fn main() {
     let sender_offset_key_index = OsRng.next_u64();
     let mut metadata_signature_message_common = [0u8; 32];
     OsRng.fill_bytes(&mut metadata_signature_message_common);
-    let receiver_public_spend_key = PublicKey::from_secret_key(&get_random_nonce());
     let commitment_mask = get_random_nonce();
+    let receiver_address = TariAddress::from_base58(
+        "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt",
+    )
+    .unwrap();
 
     match ledger_get_one_sided_metadata_signature(
         account,
@@ -305,7 +309,7 @@ fn main() {
         12345,
         sender_offset_key_index,
         &commitment_mask,
-        &receiver_public_spend_key,
+        &receiver_address,
         &metadata_signature_message_common,
     ) {
         Ok(signature) => println!(

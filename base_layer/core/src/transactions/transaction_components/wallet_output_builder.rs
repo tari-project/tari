@@ -21,7 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::types::{ComAndPubSignature, PublicKey};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{ComAndPubSignature, PublicKey},
+};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
@@ -204,7 +207,7 @@ impl WalletOutputBuilder {
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
-        receiver_public_spend_key: &PublicKey,
+        receiver_address: &TariAddress,
     ) -> Result<Self, TransactionError> {
         let script = self
             .script
@@ -227,7 +230,7 @@ impl WalletOutputBuilder {
                 &metadata_message_common,
                 self.features.range_proof_type,
                 script,
-                receiver_public_spend_key,
+                receiver_address,
             )
             .await?;
         self.metadata_signature = Some(metadata_signature);

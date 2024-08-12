@@ -58,3 +58,75 @@ pub fn hex_to_bytes_serialized(identifier: &str, data: &str) -> Result<Vec<u8>, 
     }
     Ok(serialized)
 }
+
+/// The Tari dual address size
+pub const TARI_DUAL_ADDRESS_SIZE: usize = 67;
+
+/// Convert a serialized Tari dual address to a base58 string
+pub fn tari_dual_address_display(address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE]) -> Result<String, String> {
+    validate_checksum(address_bytes.as_ref())?;
+    let mut base58 = "".to_string();
+    base58.push_str(&bs58::encode(&address_bytes[0..1]).into_string());
+    base58.push_str(&bs58::encode(&address_bytes[1..2].to_vec()).into_string());
+    base58.push_str(&bs58::encode(&address_bytes[2..]).into_string());
+    Ok(base58)
+}
+
+/// Get the public spend key bytes from a serialized Tari dual address
+pub fn get_public_spend_key_from_tari_dual_address(
+    address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE],
+) -> Result<[u8; 32], String> {
+    validate_checksum(address_bytes.as_ref())?;
+    let mut public_spend_key = [0u8; 32];
+    public_spend_key.copy_from_slice(&address_bytes[34..66]);
+    Ok(public_spend_key)
+}
+
+// Determine whether a byte slice ends with a valid checksum
+// If it is valid, returns the underlying data slice (without the checksum)
+fn validate_checksum(data: &[u8]) -> Result<&[u8], String> {
+    // Empty data is not allowed, nor data only consisting of a checksum
+    if data.len() < 2 {
+        return Err("ChecksumError::InputDataTooShort".to_string());
+    }
+
+    // It's sufficient to check the entire slice against a zero checksum
+    match compute_checksum(data) {
+        0u8 => Ok(&data[..data.len() - 1]),
+        _ => Err("ChecksumError::InvalidChecksum".to_string()),
+    }
+}
+
+// Compute the DammSum checksum for a byte slice
+fn compute_checksum(data: &[u8]) -> u8 {
+    // Perform the Damm algorithm
+    let mask = mask();
+    let mut result = 0u8;
+
+    for digit in data {
+        result ^= *digit; // add
+        let overflow = (result & (1 << 7)) != 0;
+        result <<= 1; // double
+        if overflow {
+            // reduce
+            result ^= mask;
+        }
+    }
+
+    result
+}
+
+// Set up the mask, fixed for a dictionary size of `2^8 == 256`
+// This can fail on invalid coefficients, which will cause a panic
+// To ensure this doesn't happen in production, it is directly tested
+fn mask() -> u8 {
+    const COEFFICIENTS: [u8; 3] = [4, 3, 1];
+    let mut mask = 1u8;
+
+    for bit in COEFFICIENTS {
+        let shift = 1u8.checked_shl(u32::from(bit)).unwrap();
+        mask = mask.checked_add(shift).unwrap();
+    }
+
+    mask
+}

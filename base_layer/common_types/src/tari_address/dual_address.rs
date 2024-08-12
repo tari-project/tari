@@ -188,12 +188,11 @@ impl DualAddress {
     /// Convert Tari Address to Base58 string
     pub fn to_base58(&self) -> String {
         let bytes = self.to_bytes();
-        let mut network = bs58::encode(&bytes[0..1]).into_string();
-        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
-        let rest = bs58::encode(&bytes[2..]).into_string();
-        network.push_str(&features);
-        network.push_str(&rest);
-        network
+        let mut base58 = "".to_string();
+        base58.push_str(&bs58::encode(&bytes[0..1]).into_string());
+        base58.push_str(&bs58::encode(&bytes[1..2].to_vec()).into_string());
+        base58.push_str(&bs58::encode(&bytes[2..]).into_string());
+        base58
     }
 
     /// Convert Tari dual Address to hex

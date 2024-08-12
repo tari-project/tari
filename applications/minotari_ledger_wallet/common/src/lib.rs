@@ -10,4 +10,10 @@ extern crate alloc;
 
 pub mod common_types;
 mod utils;
-pub use utils::{hex_to_bytes_serialized, PUSH_PUBKEY_IDENTIFIER};
+pub use utils::{
+    get_public_spend_key_from_tari_dual_address,
+    hex_to_bytes_serialized,
+    tari_dual_address_display,
+    PUSH_PUBKEY_IDENTIFIER,
+    TARI_DUAL_ADDRESS_SIZE,
+};
