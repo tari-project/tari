@@ -108,6 +108,7 @@ pub enum AppSW {
     KeyDeriveFromUniform = AppSWMapping::KeyDeriveFromUniform as u16,
     RandomNonceFail = AppSWMapping::RandomNonceFail as u16,
     BadBranchKey = AppSWMapping::BadBranchKey as u16,
+    MetadataSignatureFail = AppSWMapping::MetadataSignatureFail as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
 }

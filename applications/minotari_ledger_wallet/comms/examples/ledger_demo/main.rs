@@ -20,6 +20,7 @@ use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ledger_get_app_name,
         ledger_get_dh_shared_secret,
+        ledger_get_one_sided_metadata_signature,
         ledger_get_public_key,
         ledger_get_public_spend_key,
         ledger_get_raw_schnorr_signature,
@@ -38,6 +39,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_crypto::{
@@ -282,6 +284,41 @@ fn main() {
             "signature:      ({},{})",
             signature.get_signature().to_hex(),
             signature.get_public_nonce().to_hex()
+        ),
+        Err(e) => {
+            println!("\nError: {}\n", e);
+            return;
+        },
+    }
+
+    // GetOneSidedMetadataSignature
+    println!("\ntest: GetOneSidedMetadataSignature");
+    let sender_offset_key_index = OsRng.next_u64();
+    let mut metadata_signature_message_common = [0u8; 32];
+    OsRng.fill_bytes(&mut metadata_signature_message_common);
+    let commitment_mask = get_random_nonce();
+    let receiver_address = TariAddress::from_base58(
+        "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt",
+    )
+    .unwrap();
+
+    match ledger_get_one_sided_metadata_signature(
+        account,
+        network,
+        version,
+        12345,
+        sender_offset_key_index,
+        &commitment_mask,
+        &receiver_address,
+        &metadata_signature_message_common,
+    ) {
+        Ok(signature) => println!(
+            "signature:      ({},{},{},{},{})",
+            signature.ephemeral_commitment().to_hex(),
+            signature.ephemeral_pubkey().to_hex(),
+            signature.u_a().to_hex(),
+            signature.u_x().to_hex(),
+            signature.u_y().to_hex()
         ),
         Err(e) => {
             println!("\nError: {}\n", e);
