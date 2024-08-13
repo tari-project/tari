@@ -350,6 +350,7 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_claim_public_key: UniPublicKey,
     #[clap(long, parse(try_from_str = parse_hex), required = false)]
     pub sidechain_deployment_key: Vec<Vec<u8>>,
+    pub validator_maturity: Option<u64>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
 }

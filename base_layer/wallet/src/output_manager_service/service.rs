@@ -2280,7 +2280,11 @@ where
             .key_manager
             .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount.as_u64(), PaymentId::Empty)
             .await?;
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = if output_features.validator_node_registration().is_none() {
+            MicroMinotari::zero()
+        } else {
+            amount
+        };
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
             &script,

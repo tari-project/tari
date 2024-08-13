@@ -624,6 +624,7 @@ mod validator_node_merkle_root {
             public_key.clone(),
             None,
             None,
+            10000,
         );
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
@@ -681,6 +682,7 @@ mod validator_node_merkle_root {
             public_key.clone(),
             Some(sidechain_public.clone()),
             Some(sidechain_signature),
+            10000,
         );
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(

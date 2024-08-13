@@ -117,9 +117,9 @@ impl AggregateBodyInternalConsistencyValidator {
             check_encrypted_data_byte_size(output, constants.max_extra_encrypted_data_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
-            check_validator_node_registration_utxo(constants, output)?;
             check_template_registration_utxo(output)?;
             check_confidential_output_utxo(output)?;
+            check_validator_node_registration_utxo(constants, output, height)?;
         }
 
         check_weight(body, height, constants)?;
@@ -452,6 +452,7 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
 fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
+    height: u64,
 ) -> Result<(), ValidationError> {
     if let Some(reg) = utxo.features.validator_node_registration() {
         if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
@@ -460,9 +461,9 @@ fn check_validator_node_registration_utxo(
                 actual: utxo.minimum_value_promise,
             });
         }
-        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height(height) {
             return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                min: consensus_constants.validator_node_registration_min_lock_height(),
+                min: consensus_constants.validator_node_registration_min_lock_height(height),
                 actual: utxo.features.maturity,
             });
         }

@@ -31,7 +31,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput},
+        transaction_components::{TransactionError, TransactionInput, TransactionOutput},
     },
     validation::{
         helpers::{
@@ -65,14 +65,25 @@ impl AggregateBodyChainLinkedValidator {
     ) -> Result<AggregateBody, ValidationError> {
         let constants = self.consensus_manager.consensus_constants(height);
 
-        self.validate_consensus(body, db)?;
+        self.validate_consensus(body, db, constants, height)?;
         let body = self.validate_input_and_maturity(body, db, constants, height)?;
 
         Ok(body)
     }
 
-    fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+    fn validate_consensus<B: BlockchainBackend>(
+        &self,
+        body: &AggregateBody,
+        db: &B,
+        constants: &ConsensusConstants,
+        height: u64,
+    ) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
+
+        for output in body.outputs() {
+            check_validator_node_registration_utxo(constants, output, height)?;
+        }
+
         Ok(())
     }
 
@@ -91,7 +102,7 @@ impl AggregateBodyChainLinkedValidator {
 
         validate_input_maturity(&body, height)?;
         check_inputs_are_utxos(db, &body)?;
-        check_outputs(db, constants, &body)?;
+        check_outputs(db, constants, &body, height)?;
         verify_no_duplicated_inputs_outputs(&body)?;
         check_total_burned(&body)?;
         verify_timelocks(&body, height)?;
@@ -177,6 +188,32 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
     Ok(())
 }
 
+fn check_validator_node_registration_utxo(
+    consensus_constants: &ConsensusConstants,
+    utxo: &TransactionOutput,
+    height: u64,
+) -> Result<(), ValidationError> {
+    if let Some(reg) = utxo.features.validator_node_registration() {
+        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            });
+        }
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height(height) {
+            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+                min: consensus_constants.validator_node_registration_min_lock_height(height),
+                actual: utxo.features.maturity,
+            });
+        }
+
+        if !reg.is_valid_signature_for(&[]) {
+            return Err(ValidationError::InvalidValidatorNodeSignature);
+        }
+    }
+    Ok(())
+}
+
 /// This function checks that all inputs in the blocks are valid UTXO's to be spent
 fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
     let mut not_found_inputs = Vec::new();
@@ -225,6 +262,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     body: &AggregateBody,
+    height: u64,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
@@ -232,6 +270,7 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
+        check_validator_node_registration_utxo(constants, output, height)?;
     }
     Ok(())
 }
