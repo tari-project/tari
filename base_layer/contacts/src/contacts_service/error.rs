@@ -22,6 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_types::MaxSizeBytesError;
 use tari_comms::connectivity::ConnectivityError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_p2p::services::liveness::error::LivenessError;
@@ -53,6 +54,10 @@ pub enum ContactsServiceError {
     MalformedMessageError(#[from] prost::DecodeError),
     #[error("Message source does not match authenticated origin")]
     MessageSourceDoesNotMatchOrigin,
+    #[error("Byte size conversion error: `{0}`")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
+    #[error("Message is too large: `{0}`")]
+    MessageSizeExceeded(String),
 }
 
 #[derive(Debug, Error)]
@@ -79,4 +84,6 @@ pub enum ContactsServiceStorageError {
     BlockingTaskSpawnError(String),
     #[error("We got an error")]
     UnknownError,
+    #[error("Byte size conversion error: `{0}`")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
 }

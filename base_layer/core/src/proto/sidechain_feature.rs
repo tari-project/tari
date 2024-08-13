@@ -24,11 +24,13 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::{
+    types::{PublicKey, Signature},
+    MaxSizeString,
+};
 use tari_utilities::ByteArray;
 
 use crate::{
-    consensus::MaxSizeString,
     proto,
     transactions::transaction_components::{
         BuildInfo,

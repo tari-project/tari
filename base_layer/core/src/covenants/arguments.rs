@@ -27,13 +27,15 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::{
+    types::{Commitment, FixedHash, PublicKey},
+    MaxSizeBytes,
+};
 use tari_script::TariScript;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use super::decoder::CovenantDecodeError;
 use crate::{
-    consensus::MaxSizeBytes,
     covenants::{
         byte_codes,
         covenant::Covenant,

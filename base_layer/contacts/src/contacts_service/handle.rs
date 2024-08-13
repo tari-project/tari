@@ -37,7 +37,7 @@ use tower::Service;
 use crate::contacts_service::{
     error::ContactsServiceError,
     service::{ContactMessageType, ContactOnlineStatus},
-    types::{Confirmation, Contact, Message, MessageDispatch},
+    types::{Confirmation, Contact, Message, MessageDispatch, MessageId},
 };
 
 pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
@@ -138,7 +138,7 @@ pub enum ContactsServiceRequest {
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
     GetMessages(TariAddress, i64, i64),
-    GetMessage(Vec<u8>),
+    GetMessage(MessageId),
     SendReadConfirmation(TariAddress, Confirmation),
     GetConversationalists,
 }
@@ -279,10 +279,10 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn get_message(&mut self, message_id: &[u8]) -> Result<Message, ContactsServiceError> {
+    pub async fn get_message(&mut self, message_id: &MessageId) -> Result<Message, ContactsServiceError> {
         match self
             .request_response_service
-            .call(ContactsServiceRequest::GetMessage(message_id.to_vec()))
+            .call(ContactsServiceRequest::GetMessage(message_id.clone()))
             .await??
         {
             ContactsServiceResponse::Message(message) => Ok(message),
@@ -307,7 +307,7 @@ impl ContactsServiceHandle {
     pub async fn send_read_confirmation(
         &mut self,
         address: TariAddress,
-        message_id: Vec<u8>,
+        message_id: MessageId,
     ) -> Result<(), ContactsServiceError> {
         match self
             .request_response_service

@@ -41,7 +41,10 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
 };
-use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
+use tari_contacts::contacts_service::{
+    service::ContactOnlineStatus,
+    types::{Message, MessageId},
+};
 
 use crate::{chat_client::test_config, get_port};
 
@@ -148,7 +151,7 @@ impl ChatClient for ChatFFI {
         Ok(result)
     }
 
-    fn add_metadata(&self, message: Message, key: String, data: String) -> Message {
+    fn add_metadata(&self, message: Message, key: String, data: String) -> Result<Message, ClientError> {
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
         let error_out = Box::into_raw(Box::new(0));
 
@@ -167,7 +170,7 @@ impl ChatClient for ChatFFI {
                 byte_data as *const c_char,
                 error_out,
             );
-            *Box::from_raw(message_ptr as *mut Message)
+            Ok(*Box::from_raw(message_ptr as *mut Message))
         }
     }
 
@@ -183,7 +186,7 @@ impl ChatClient for ChatFFI {
         Ok(ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status"))
     }
 
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Result<Message, ClientError> {
         let receiver_address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
         let sender_address_ptr = Box::into_raw(Box::new(self.address.clone())) as *mut c_void;
 
@@ -195,7 +198,7 @@ impl ChatClient for ChatFFI {
         unsafe {
             let message_ptr = create_chat_message(receiver_address_ptr, sender_address_ptr, message_c_char, error_out)
                 as *mut Message;
-            *Box::from_raw(message_ptr)
+            Ok(*Box::from_raw(message_ptr))
         }
     }
 
@@ -216,7 +219,7 @@ impl ChatClient for ChatFFI {
         Ok(messages)
     }
 
-    async fn get_message(&self, message_id: &[u8]) -> Result<Message, ClientError> {
+    async fn get_message(&self, message_id: &MessageId) -> Result<Message, ClientError> {
         let client = self.ptr.lock().unwrap();
 
         let error_out = Box::into_raw(Box::new(0));

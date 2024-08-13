@@ -47,6 +47,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::dual_address::DualAddress,
     types::{Commitment, PrivateKey},
+    MaxSizeBytes,
 };
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::TransactionSecureNonceKdfDomain;
@@ -60,7 +61,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::{consensus::MaxSizeBytes, transactions::tari_amount::MicroMinotari};
+use crate::transactions::tari_amount::MicroMinotari;
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
 const SIZE_VALUE: usize = size_of::<u64>();

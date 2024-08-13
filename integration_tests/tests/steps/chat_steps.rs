@@ -26,9 +26,10 @@ use cucumber::{then, when};
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     service::ContactOnlineStatus,
-    types::{Direction, Message, MessageMetadata},
+    types::{ChatBody, Direction, Message, MessageId, MessageMetadata},
 };
 use tari_integration_tests::{chat_client::spawn_chat_client, TariWorld};
+use tari_utilities::ByteArray;
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
@@ -70,7 +71,7 @@ async fn send_message_to(
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
 
-    let message = sender.create_message(&receiver.address(), message);
+    let message = sender.create_message(&receiver.address(), message).unwrap();
 
     sender.send_message(message).await?;
     Ok(())
@@ -100,17 +101,19 @@ async fn i_reply_to_message(
 
         let inbound_chat_message = messages
             .iter()
-            .find(|m| m.body == inbound_msg.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(inbound_msg.clone()).unwrap())
             .expect("no message with that content found")
             .clone();
 
-        let message = sender.create_message(&address, outbound_msg);
+        let message = sender.create_message(&address, outbound_msg).unwrap();
 
-        let message = sender.add_metadata(
-            message,
-            "reply".to_string(),
-            String::from_utf8(inbound_chat_message.message_id).expect("bytes to uuid"),
-        );
+        let message = sender
+            .add_metadata(
+                message,
+                "reply".to_string(),
+                String::from_utf8(inbound_chat_message.message_id.to_vec()).expect("bytes to uuid"),
+            )
+            .unwrap();
 
         sender.send_message(message).await?;
         return Ok(());
@@ -208,7 +211,7 @@ async fn have_replied_message(
 
         let inbound_chat_message = messages
             .iter()
-            .find(|m| m.body == inbound_reply.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(inbound_reply.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -221,11 +224,12 @@ async fn have_replied_message(
         let metadata: &MessageMetadata = &inbound_chat_message.metadata[0];
 
         // Metadata data is a reply type
-        assert_eq!(metadata.key, "reply".as_bytes(), "Metadata type is wrong");
+        assert_eq!(metadata.key.as_bytes(), "reply".as_bytes(), "Metadata type is wrong");
 
         // Metadata data contains id to original message
         assert_eq!(
-            metadata.data, outbound_chat_message.message_id,
+            metadata.data.as_bytes(),
+            outbound_chat_message.message_id.to_vec(),
             "Message id does not match"
         );
 
@@ -259,7 +263,7 @@ async fn matching_delivery_timestamps(
 
         let client_1_message = client_1_messages
             .iter()
-            .find(|m| m.body == msg.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -274,7 +278,7 @@ async fn matching_delivery_timestamps(
 
         let client_2_message = client_2_messages
             .iter()
-            .find(|m| m.body == msg.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -318,7 +322,7 @@ async fn matching_read_timestamps(
 
         let client_1_message = client_1_messages
             .iter()
-            .find(|m| m.body == msg.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -333,7 +337,7 @@ async fn matching_read_timestamps(
 
         let client_2_message = client_2_messages
             .iter()
-            .find(|m| m.body == msg.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -374,7 +378,7 @@ async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: Stri
 
         let message = messages
             .iter()
-            .find(|m| m.body == msg.clone().into_bytes())
+            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -419,8 +423,8 @@ async fn send_message_with_id_to(
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
 
-    let mut message = sender.create_message(&receiver.address(), message);
-    message.message_id = id.into_bytes();
+    let mut message = sender.create_message(&receiver.address(), message).unwrap();
+    message.message_id = MessageId::try_from(id).unwrap();
 
     sender.send_message(message).await?;
     Ok(())
@@ -431,7 +435,7 @@ async fn find_message_with_id(world: &mut TariWorld, sender: String, message_id:
     let sender = world.chat_clients.get(&sender).unwrap();
 
     sender
-        .get_message(message_id.as_bytes())
+        .get_message(&MessageId::try_from(message_id.clone()).unwrap())
         .await
         .unwrap_or_else(|_| panic!("Message not found with id {:?}", message_id));
 

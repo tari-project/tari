@@ -162,7 +162,7 @@ pub unsafe extern "C" fn destroy_confirmation(ptr: *mut Confirmation) {
 #[cfg(test)]
 mod test {
     use tari_contacts::contacts_service::types::{Confirmation, MessageBuilder};
-    use tari_utilities::epoch_time::EpochTime;
+    use tari_utilities::{epoch_time::EpochTime, ByteArray};
 
     use crate::{
         byte_vector::{chat_byte_vector_get_at, chat_byte_vector_get_length},
@@ -190,7 +190,7 @@ mod test {
                 read_id.push(chat_byte_vector_get_at(id_byte_vec, i, error_out));
             }
 
-            assert_eq!(message_id, read_id)
+            assert_eq!(message_id.to_vec(), read_id)
         }
 
         unsafe {
