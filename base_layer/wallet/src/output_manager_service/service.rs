@@ -1687,6 +1687,13 @@ where
             .build()
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        stp.change_recipient_sender_offset_private_key(
+            self.resources
+                .key_manager
+                .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+                .await?
+                .key_id,
+        )?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
