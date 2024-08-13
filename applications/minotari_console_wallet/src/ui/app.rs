@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use minotari_wallet::{util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
+use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
+use tari_common::exit_codes::ExitError;
 use tari_comms::peer_manager::Peer;
 use tokio::runtime::Handle;
 use tui::{
@@ -57,6 +58,7 @@ use crate::{
 pub const LOG_TARGET: &str = "wallet::ui::app";
 
 pub struct App<B: Backend> {
+    #[allow(dead_code)]
     pub title: String,
     pub should_quit: bool,
     // Cached state this will need to be cleaned up into a threadsafe container
@@ -69,15 +71,27 @@ pub struct App<B: Backend> {
 }
 
 impl<B: Backend> App<B> {
-    pub fn new(
+    pub async fn new(
         title: String,
         wallet: WalletSqlite,
         wallet_config: WalletConfig,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
         notifier: Notifier,
-    ) -> Self {
-        let wallet_id = WalletIdentity::new(wallet.comms.node_identity(), wallet.network.as_network());
+    ) -> Result<Self, ExitError> {
+        let wallet_address_interactive = wallet
+            .get_wallet_interactive_address()
+            .await
+            .map_err(WalletError::KeyManagerServiceError)?;
+        let wallet_address_one_sided = wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(WalletError::KeyManagerServiceError)?;
+        let wallet_id = WalletIdentity::new(
+            wallet.comms.node_identity(),
+            wallet_address_interactive,
+            wallet_address_one_sided,
+        );
         let app_state = AppState::new(
             &wallet_id,
             wallet,
@@ -101,7 +115,7 @@ impl<B: Backend> App<B> {
         let base_node_status = BaseNode::new();
         let menu = Menu::new();
 
-        Self {
+        Ok(Self {
             title,
             should_quit: false,
             app_state,
@@ -109,7 +123,7 @@ impl<B: Backend> App<B> {
             base_node_status,
             menu,
             notifier,
-        }
+        })
     }
 
     pub fn on_control_key(&mut self, c: char) {

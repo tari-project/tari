@@ -204,13 +204,7 @@ fn default_client_config() -> Arc<ClientConfig> {
 
 #[cfg(test)]
 mod mock {
-    use std::sync::Arc;
-
-    use tari_shutdown::Shutdown;
-    use trust_dns_client::proto::error::ProtoError;
-
     use super::*;
-    use crate::dns::mock::{DefaultOnSend, MockClientHandle};
 
     impl Client<MockClientHandle<DefaultOnSend, ProtoError>> {
         pub async fn connect_mock(messages: Vec<Result<DnsResponse, ProtoError>>) -> Result<Self, ProtoError> {

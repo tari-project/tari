@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use chacha20poly1305::XChaCha20Poly1305;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
@@ -61,7 +58,7 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + C
 {
     /// Creates a new sql backend from provided wallet db connection
     /// * `cipher` is used to encrypt the sensitive fields in the database, a cipher is derived
-    /// from a provided password, which we enforce for class instantiation
+    /// * from a provided password, which we enforce for class instantiation
     fn new(database_connection: TKeyManagerDbConnection, cipher: XChaCha20Poly1305) -> Self {
         Self {
             database_connection: Arc::new(database_connection),
@@ -246,7 +243,7 @@ where
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
+                "sqlite profile - get_imported_key: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -259,14 +256,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
-    use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use tempfile::tempdir;
 
     use super::*;
-    use crate::key_manager_service::storage::sqlite_db::{KeyManagerState, KeyManagerStateSql, NewKeyManagerStateSql};
 
     #[test]
     fn test_key_manager_crud() {

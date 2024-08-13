@@ -100,7 +100,7 @@ pub unsafe extern "C" fn chat_byte_vector_destroy(bytes: *mut ChatByteVector) {
 ///
 /// # Safety
 /// None
-// converting between here is fine as its used to clamp the the array to length
+// converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn chat_byte_vector_get_at(

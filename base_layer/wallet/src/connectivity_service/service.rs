@@ -27,6 +27,7 @@ use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcClientLease, RpcClientPool},
+    Minimized,
     PeerConnection,
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
@@ -43,6 +44,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::connectivity";
+const CONNECTIVITY_WAIT: u64 = 5;
 
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -224,7 +226,7 @@ impl WalletConnectivityService {
 
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
         if let Ok(Some(mut connection)) = self.connectivity.get_connection(node_id.clone()).await {
-            match connection.disconnect().await {
+            match connection.disconnect(Minimized::No).await {
                 Ok(_) => debug!(target: LOG_TARGET, "Disconnected base node peer {}", node_id),
                 Err(e) => error!(target: LOG_TARGET, "Failed to disconnect base node: {}", e),
             }
@@ -270,7 +272,7 @@ impl WalletConnectivityService {
                         self.config.base_node_monitor_max_refresh_interval.as_secs()
                     );
                     self.set_online_status(OnlineStatus::Offline);
-                    time::sleep(self.config.base_node_monitor_max_refresh_interval).await;
+                    time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     continue;
                 },
                 Err(e) => {
@@ -278,7 +280,7 @@ impl WalletConnectivityService {
                     if self.current_base_node().as_ref() == Some(&node_id) {
                         self.disconnect_base_node(node_id).await;
                         self.set_online_status(OnlineStatus::Offline);
-                        time::sleep(self.config.base_node_monitor_max_refresh_interval).await;
+                        time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     }
                     continue;
                 },

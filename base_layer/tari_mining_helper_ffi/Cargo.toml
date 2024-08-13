@@ -30,3 +30,6 @@ tari_common = { workspace = true, features = ["build"] }
 
 [lib]
 crate-type = ["cdylib"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tari_target_network_mainnet)', 'cfg(tari_target_network_nextnet)', 'cfg(tari_target_network_testnet)'] }

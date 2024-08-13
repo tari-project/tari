@@ -37,7 +37,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{Transaction, TransactionOutput},
+    transaction_components::{encrypted_data::PaymentId, Transaction, TransactionOutput},
 };
 
 use crate::transaction_service::{
@@ -83,6 +83,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a transaction exists in any of the collections
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError>;
+    /// Update a previously completed transaction with new data
+    fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError>;
     /// Complete outbound transaction, this operation must delete the `OutboundTransaction` with the provided
     /// `TxId` and insert the provided `CompletedTransaction` into `CompletedTransactions`.
     fn complete_outbound_transaction(
@@ -439,6 +445,14 @@ where T: TransactionBackend + 'static
         Ok(*t)
     }
 
+    pub fn update_completed_transaction(
+        &self,
+        tx_id: TxId,
+        transaction: CompletedTransaction,
+    ) -> Result<(), TransactionStorageError> {
+        self.db.update_completed_transaction(tx_id, transaction)
+    }
+
     pub fn get_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let t = self.db.fetch_imported_transactions()?;
         Ok(t)
@@ -681,7 +695,12 @@ where T: TransactionBackend + 'static
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
         scanned_output: TransactionOutput,
+        payment_id: PaymentId,
     ) -> Result<(), TransactionStorageError> {
+        let payment_id = match payment_id {
+            PaymentId::Empty => None,
+            v => Some(v),
+        };
         let transaction = CompletedTransaction::new(
             tx_id,
             source_address,
@@ -701,6 +720,7 @@ where T: TransactionBackend + 'static
             TransactionDirection::Inbound,
             current_height,
             mined_timestamp,
+            payment_id,
         )?;
 
         self.db

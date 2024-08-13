@@ -150,7 +150,8 @@ jobs:
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
         run: |
-          brew install openssl cmake coreutils automake autoconf protobuf
+          # openssl and cmake already installed
+          brew install coreutils automake autoconf protobuf
           rustup target add ${{ matrix.builds.target }}
 
       - name: Setup Rust toolchain
@@ -171,7 +172,8 @@ jobs:
         if: ${{ matrix.builds.cross }}
         shell: bash
         run: |
-          cargo install cross
+          #cargo install cross
+          cargo install cross --git https://github.com/cross-rs/cross
           echo "CARGO=cross" >> $GITHUB_ENV
 
       - name: Install rust target/toolchain for native/local cross-compile builds
@@ -247,9 +249,8 @@ jobs:
       - name: Download iOS libffiss for ${{ matrix.libffis }}
         uses: actions/download-artifact@v4
         with:
-          # wildcard downloads not supported yet ( minotari_*_ffi-ios-* )
-          # name: ${{ matrix.libffis }}-ios
           path: libffiss
+          pattern: lib${{ matrix.libffis }}-ios-*
 
       - name: Verify checksums
         shell: bash
@@ -361,6 +362,9 @@ jobs:
 
     runs-on: ubuntu-latest
     needs: [matrix-prep, builds, ios_assemble]
+
+    permissions:
+      contents: write
 
     steps:
       - name: Download all ffi libraries

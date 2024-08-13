@@ -85,9 +85,7 @@
 
 // #![allow(clippy::op_ref)]
 
-use blake2::Blake2b;
 use derivative::Derivative;
-use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
@@ -101,7 +99,6 @@ pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
 use tari_common_types::types::Commitment;
-use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
 
 use crate::transactions::transaction_components::KernelFeatures;
@@ -198,13 +195,3 @@ impl TransactionMetadata {
 pub struct RecoveryData {
     pub encryption_key: PrivateKey,
 }
-
-// hash domain
-hash_domain!(
-    CalculateTxIdTransactionProtocolHashDomain,
-    "com.tari.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
-    1
-);
-
-pub type CalculateTxIdTransactionProtocolHasherBlake256 =
-    DomainSeparatedHasher<Blake2b<U32>, CalculateTxIdTransactionProtocolHashDomain>;

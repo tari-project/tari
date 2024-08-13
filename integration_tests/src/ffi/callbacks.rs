@@ -23,6 +23,7 @@
 use std::sync::{Arc, Mutex, Once};
 
 use libc::c_void;
+use tari_common_types::tari_address::TariAddress;
 
 use super::{Balance, CompletedTransaction, ContactsLivenessData, PendingInboundTransaction, Wallet};
 use crate::ffi::TransactionSendStatus;
@@ -236,11 +237,12 @@ impl Callbacks {
 
     pub fn on_contacts_liveness_data_updated(&mut self, ptr: *mut c_void) {
         let contact_liveness_data = ContactsLivenessData::from_ptr(ptr);
+        let address = TariAddress::from_bytes(&contact_liveness_data.get_public_key().address().get_vec()).unwrap();
         println!(
             "{} callbackContactsLivenessUpdated: received {} from contact {} with latency {} at {} and is {}.",
             chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
             contact_liveness_data.get_message_type(),
-            contact_liveness_data.get_public_key().address().get_as_hex(),
+            address.to_base58(),
             contact_liveness_data.get_latency(),
             contact_liveness_data.get_last_seen(),
             contact_liveness_data.get_online_status()

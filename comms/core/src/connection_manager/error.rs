@@ -74,7 +74,7 @@ pub enum ConnectionManagerError {
     IdentityProtocolError(#[from] IdentityProtocolError),
     #[error("The dial was cancelled")]
     DialCancelled,
-    #[error("Invalid multiaddr: {0}")]
+    #[error("Invalid multiaddr")]
     InvalidMultiaddr(String),
     #[error("Failed to send wire format byte")]
     WireFormatSendFailed,
@@ -82,6 +82,8 @@ pub enum ConnectionManagerError {
     ListenerOneshotCancelled,
     #[error("Peer validation error: {0}")]
     PeerValidationError(#[from] PeerValidatorError),
+    #[error("No contactable addresses for peer {0} left")]
+    NoContactableAddressesForPeer(String),
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

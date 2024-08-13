@@ -257,6 +257,15 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
+                let last_seen_hash = self.mempool.get_last_seen_hash().await?;
+                if last_seen_hash != FixedHash::default() && best_block_header.hash() != &last_seen_hash {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'.",
+                        last_seen_hash, best_block_header.hash()
+                    );
+                    return Err(CommsInterfaceError::InternalError("Mempool out of sync".to_string()));
+                }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
@@ -600,15 +609,16 @@ where B: BlockchainBackend + 'static
     ) -> Result<Block, CommsInterfaceError> {
         let NewBlock {
             header,
-            coinbase_kernel,
-            coinbase_output,
+            coinbase_kernels,
+            coinbase_outputs,
             kernel_excess_sigs: excess_sigs,
         } = new_block;
         // If the block is empty, we dont have to ask for the block, as we already have the full block available
         // to us.
         if excess_sigs.is_empty() {
             let block = BlockBuilder::new(header.version)
-                .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+                .add_outputs(coinbase_outputs)
+                .add_kernels(coinbase_kernels)
                 .with_header(header)
                 .build();
             return Ok(block);
@@ -645,7 +655,8 @@ where B: BlockchainBackend + 'static
         metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
 
         let mut builder = BlockBuilder::new(header.version)
-            .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+            .add_outputs(coinbase_outputs)
+            .add_kernels(coinbase_kernels)
             .with_transactions(known_transactions);
 
         if missing_excess_sigs.is_empty() {
@@ -992,6 +1003,10 @@ where B: BlockchainBackend + 'static
         );
         debug!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
         Ok(target)
+    }
+
+    pub async fn get_last_seen_hash(&self) -> Result<FixedHash, CommsInterfaceError> {
+        self.mempool.get_last_seen_hash().await.map_err(|e| e.into())
     }
 }
 

@@ -308,7 +308,7 @@ impl Display for DiscoveryParams {
                 let _ = write!(peers, "{p}, ");
                 peers
             }),
-            self.num_peers_to_request
+            self.num_peers_to_request,
         )
     }
 }

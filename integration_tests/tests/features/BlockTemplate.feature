@@ -11,7 +11,7 @@ Scenario: Verify UTXO and kernel MMR size in header
     Then meddling with block template data from node SEED_A is not allowed
 
     @critical
-    Scenario: Verify gprc cna create block with more than 1 coinbase
+    Scenario: Verify gprc can create block with more than 1 coinbase
         Given I have a seed node SEED_A
         When I have 1 base nodes connected to all seed nodes
         Then generate a block with 2 coinbases from node SEED_A

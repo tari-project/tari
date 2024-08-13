@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2024 The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,56 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Read};
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::ByteArrayError;
+use thiserror::Error;
 
-pub struct LimitedBytesReader<R> {
-    byte_limit: usize,
-    num_read: usize,
-    inner: R,
+/// Ledger device errors.
+#[derive(Debug, Error, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum LedgerDeviceError {
+    /// HID API error
+    #[error("HID API error `{0}`")]
+    HidApi(String),
+    /// Native HID transport error
+    #[error("Native HID transport error `{0}`")]
+    NativeTransport(String),
+    /// Ledger application not started
+    #[error("Ledger application not started")]
+    ApplicationNotStarted,
+    /// Ledger application instruction error
+    #[error("Ledger application instruction error `{0}`")]
+    Instruction(String),
+    /// Ledger application processing error
+    #[error("Processing error `{0}`")]
+    Processing(String),
+    /// Conversion error to or from ledger
+    #[error("Conversion failed: {0}")]
+    ByteArrayError(String),
+    /// Not yet supported
+    #[error("Ledger is not fully supported")]
+    NotSupported,
 }
 
-impl<R: Read> Read for LimitedBytesReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let read = self.inner.read(buf)?;
-        self.num_read += read;
-        if self.num_read > self.byte_limit {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Read more bytes than the maximum ({})", self.byte_limit),
-            ));
-        }
-        Ok(read)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::io::Read;
-
-    use super::*;
-
-    impl<R: Read> LimitedBytesReader<R> {
-        pub fn new(byte_limit: usize, reader: R) -> Self {
-            Self {
-                byte_limit,
-                num_read: 0,
-                inner: reader,
-            }
-        }
-    }
-
-    #[test]
-    fn read_test() {
-        // read should work fine in the case of a buffer whose length is within byte_limit
-        let inner: &[u8] = &[0u8, 1u8, 2u8, 3u8, 4u8];
-        let mut reader = LimitedBytesReader::new(3, inner);
-        let mut buf = [0u8; 3];
-        let output = reader.read(&mut buf).unwrap();
-        assert_eq!(output, buf.len());
-
-        // in case of buffer with length strictly bigger than reader byte_limit, the code should throw an error
-        let mut new_buf = [0u8; 4];
-        let output = reader.read(&mut new_buf);
-        assert!(output.is_err());
+impl From<ByteArrayError> for LedgerDeviceError {
+    fn from(e: ByteArrayError) -> Self {
+        LedgerDeviceError::ByteArrayError(e.to_string())
     }
 }

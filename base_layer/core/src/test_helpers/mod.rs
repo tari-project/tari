@@ -48,7 +48,7 @@ use crate::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{RangeProofType, Transaction, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, RangeProofType, Transaction, WalletOutput},
     },
 };
 
@@ -73,9 +73,15 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 }
 
 pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
-    let wallet_private_key = PrivateKey::random(&mut OsRng);
-    let script_key_id = key_manager.import_key(wallet_private_key.clone()).await.unwrap();
-    let wallet_payment_address = TariAddress::new(PublicKey::from_secret_key(&wallet_private_key), Network::LocalNet);
+    let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
+    let wallet_private_view_key = PrivateKey::random(&mut OsRng);
+    let _key = key_manager.import_key(wallet_private_view_key.clone()).await.unwrap();
+    let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
+    let wallet_payment_address = TariAddress::new_dual_address_with_default_features(
+        PublicKey::from_secret_key(&wallet_private_view_key),
+        PublicKey::from_secret_key(&wallet_private_spend_key),
+        Network::LocalNet,
+    );
     (script_key_id, wallet_payment_address)
 }
 
@@ -115,6 +121,7 @@ pub async fn create_block(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
+        PaymentId::Empty,
     )
     .await
     .unwrap();

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use core::default::Default;
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -50,10 +49,16 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{
+            create_memory_db_key_manager,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TransactionKeyManagerLabel,
+        },
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
+            encrypted_data::PaymentId,
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -67,14 +72,14 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
@@ -85,7 +90,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let amount = MicroMinotari::from(10_000);
     builder
@@ -109,7 +114,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         script!(Nop),
         inputs!(change.script_key_pk),
         change.script_key_id.clone(),
-        change.spend_key_id.clone(),
+        change.commitment_mask_key_id.clone(),
         Covenant::default(),
     );
 
@@ -126,7 +131,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -175,22 +181,30 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found outbound tx");
     }
     let sender = stp.clone().build_single_round_message(&key_manager).await.unwrap();
-    let (spending_key_id, _) = key_manager
+    let commitment_mask_key = key_manager
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await
         .unwrap();
-    let (script_key_id, public_script_key) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-        .await
-        .unwrap();
+    let script_key_id = KeyId::Derived {
+        branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
+        label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
+        index: commitment_mask_key.key_id.managed_index().unwrap(),
+    };
+    let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
+
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64())
+        .encrypt_data_for_recovery(
+            &commitment_mask_key.key_id,
+            None,
+            sender.amount.as_u64(),
+            PaymentId::Empty,
+        )
         .await
         .unwrap();
     let mut output = WalletOutput::new(
         TransactionOutputVersion::get_current_version(),
         sender.amount,
-        spending_key_id.clone(),
+        commitment_mask_key.key_id.clone(),
         sender.features.clone(),
         sender.script.clone(),
         inputs!(public_script_key),
@@ -201,6 +215,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
+        PaymentId::Empty,
         &key_manager,
     )
     .await
@@ -208,7 +223,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let output_message = TransactionOutput::metadata_signature_message(&output);
     output.metadata_signature = key_manager
         .get_receiver_partial_metadata_signature(
-            &spending_key_id,
+            &commitment_mask_key.key_id,
             &sender.amount.into(),
             &sender.sender_offset_public_key,
             &sender.ephemeral_public_nonce,
@@ -230,7 +245,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut inbound_txs = Vec::new();
 
     for i in 0..messages.len() {
-        let address = TariAddress::new(
+        let address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -299,11 +315,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     for i in 0..messages.len() {
-        let source_address = TariAddress::new(
+        let source_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let dest_address = TariAddress::new(
+        let dest_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -331,6 +349,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: Some(PaymentId::Empty),
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -417,7 +436,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled completed tx");
     }
-    let address = TariAddress::new(
+    let address = TariAddress::new_dual_address_with_default_features(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -468,7 +488,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&999u64.into()).is_some());
-    let address = TariAddress::new(
+    let address = TariAddress::new_dual_address_with_default_features(
+        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -579,6 +600,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
@@ -608,6 +630,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 
@@ -637,6 +660,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        None,
     )
     .unwrap();
 

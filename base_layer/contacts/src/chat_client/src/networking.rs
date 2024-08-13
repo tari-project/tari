@@ -53,6 +53,7 @@ pub async fn start(
     node_identity: Arc<NodeIdentity>,
     config: ApplicationConfig,
     shutdown_signal: ShutdownSignal,
+    user_agent: String,
 ) -> Result<(ContactsServiceHandle, CommsNode), NetworkingError> {
     create_chat_storage(&config.chat_client.db_file)?;
     let backend = connect_to_db(config.chat_client.db_file)?;
@@ -69,6 +70,7 @@ pub async fn start(
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(P2pInitializer::new(
             p2p_config.clone(),
+            user_agent,
             config.peer_seeds.clone(),
             config.chat_client.network,
             node_identity,

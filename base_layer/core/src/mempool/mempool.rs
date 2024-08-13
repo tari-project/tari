@@ -23,7 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use log::debug;
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, PrivateKey, Signature};
 use tokio::task;
 
 use crate::{
@@ -212,5 +212,9 @@ impl Mempool {
             callback(&mut lock)
         })
         .await?
+    }
+
+    pub async fn get_last_seen_hash(&self) -> Result<FixedHash, MempoolError> {
+        self.with_read_access(|storage| Ok(storage.last_seen_hash)).await
     }
 }

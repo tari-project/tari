@@ -53,6 +53,13 @@ impl<'a> Initializing<'a> {
             }
         }
 
+        // Initial discovery and refresh sync peers delay period, when a configured connection needs preference,
+        // usually needed for the wallet to connect to its own base node first.
+        if let Some(delay) = self.context.config.network_discovery.initial_peer_sync_delay {
+            tokio::time::sleep(delay).await;
+            debug!(target: LOG_TARGET, "Discovery starting after delayed for {:.0?}", delay);
+        }
+
         debug!(target: LOG_TARGET, "Node is online. Starting network discovery");
         StateEvent::Initialized
     }

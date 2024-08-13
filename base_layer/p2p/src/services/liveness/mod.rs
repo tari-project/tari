@@ -63,7 +63,7 @@ use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_comms_dht::Dht;
 use tari_service_framework::{
     async_trait,
@@ -136,6 +136,7 @@ impl ServiceInitializer for LivenessInitializer {
             let dht = handles.expect_handle::<Dht>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let outbound_messages = dht.outbound_requester();
+            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let service = LivenessService::new(
                 config,
@@ -146,6 +147,7 @@ impl ServiceInitializer for LivenessInitializer {
                 outbound_messages,
                 publisher,
                 handles.get_shutdown_signal(),
+                peer_manager,
             );
             service.run().await;
             debug!(target: LOG_TARGET, "Liveness service has shut down");

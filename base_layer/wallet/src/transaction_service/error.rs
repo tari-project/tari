@@ -197,6 +197,8 @@ pub enum TransactionServiceError {
     InvalidBurnTransaction(String),
     #[error("Invalid data for field {field}")]
     InvalidDataError { field: String },
+    #[error("Transaction has invalid address: `{0}`")]
+    InvalidAddress(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

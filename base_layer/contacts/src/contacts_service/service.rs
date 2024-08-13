@@ -224,9 +224,8 @@ where T: ContactsBackend + 'static
                         error!(target: LOG_TARGET, "Error handling request: {:?}", e);
                         e
                     });
-                    let _result = reply_tx.send(response).map_err(|e| {
+                    let _result = reply_tx.send(response).inspect_err(|_| {
                         error!(target: LOG_TARGET, "Failed to send reply");
-                        e
                     });
                 },
 
@@ -256,8 +255,8 @@ where T: ContactsBackend + 'static
         request: ContactsServiceRequest,
     ) -> Result<ContactsServiceResponse, ContactsServiceError> {
         match request {
-            ContactsServiceRequest::GetContact(pk) => {
-                let result = self.db.get_contact(pk.clone());
+            ContactsServiceRequest::GetContact(address) => {
+                let result = self.db.get_contact(address.clone());
                 if let Ok(ref contact) = result {
                     self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
                 };
@@ -299,6 +298,7 @@ where T: ContactsBackend + 'static
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
+                message.sent_at = Utc::now().naive_utc().timestamp() as u64;
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
 
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
@@ -348,6 +348,10 @@ where T: ContactsBackend + 'static
             ContactsServiceRequest::GetConversationalists => {
                 let result = self.db.get_conversationlists();
                 Ok(result.map(ContactsServiceResponse::Conversationalists)?)
+            },
+            ContactsServiceRequest::GetMessage(message_id) => {
+                let result = self.db.get_message(message_id);
+                Ok(result.map(ContactsServiceResponse::Message)?)
             },
         }
     }
@@ -563,7 +567,7 @@ where T: ContactsBackend + 'static
     fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
         use ConnectivityEvent::{PeerBanned, PeerDisconnected};
         match event {
-            PeerDisconnected(node_id) | PeerBanned(node_id) => {
+            PeerDisconnected(node_id, _) | PeerBanned(node_id) => {
                 if let Some(pos) = self.liveness_data.iter().position(|p| *p.node_id() == node_id) {
                     debug!(
                         target: LOG_TARGET,
@@ -581,8 +585,10 @@ where T: ContactsBackend + 'static
         message: Message,
         source_public_key: CommsPublicKey,
     ) -> Result<(), ContactsServiceError> {
+        if source_public_key != *message.sender_address.comms_public_key() {
+            return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
+        }
         let our_message = Message {
-            address: TariAddress::from_public_key(&source_public_key, message.address.network()),
             stored_at: EpochTime::now().as_u64(),
             ..message
         };
@@ -613,7 +619,7 @@ where T: ContactsBackend + 'static
         &mut self,
         message: &Message,
     ) -> Result<(), ContactsServiceError> {
-        let address = &message.address;
+        let address = &message.sender_address;
         let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
             message_id: message.message_id.clone(),
             timestamp: message.stored_at,
@@ -660,7 +666,7 @@ where T: ContactsBackend + 'static
             Ok(contact) => contact,
             Err(_) => Contact::from(&address),
         };
-        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
+        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_spend_key().clone()));
 
         match self.get_online_status(&contact).await {
             Ok(ContactOnlineStatus::Online) => {
@@ -669,7 +675,7 @@ where T: ContactsBackend + 'static
 
                 comms_outbound
                     .send_direct_encrypted(
-                        address.public_key().clone(),
+                        address.public_spend_key().clone(),
                         message,
                         encryption,
                         "contact service messaging".to_string(),
@@ -681,7 +687,7 @@ where T: ContactsBackend + 'static
                 info!(target: LOG_TARGET, "Chat message being sent via closest broadcast");
                 let mut comms_outbound = self.dht.outbound_requester();
                 comms_outbound
-                    .closest_broadcast(address.public_key().clone(), encryption, vec![], message)
+                    .closest_broadcast(address.public_spend_key().clone(), encryption, vec![], message)
                     .await?;
             },
         };

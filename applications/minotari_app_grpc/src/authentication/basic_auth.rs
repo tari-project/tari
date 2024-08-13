@@ -227,13 +227,9 @@ mod tests {
     }
 
     mod validate {
-        use std::{
-            cmp::{max, min},
-            thread::sleep,
-        };
+        use std::{cmp::max, thread::sleep};
 
-        use rand::RngCore;
-        use tari_utilities::{hex::Hex, ByteArray};
+        use tari_utilities::hex::Hex;
 
         use super::*;
         use crate::authentication::salted_password::create_salted_hashed_password;

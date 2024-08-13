@@ -23,8 +23,8 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
         TransactionWrapper::Completed(completed) => TransactionEvent {
             event,
             tx_id: completed.tx_id.to_string(),
-            source_address: completed.source_address.to_bytes().to_vec(),
-            dest_address: completed.destination_address.to_bytes().to_vec(),
+            source_address: completed.source_address.to_vec(),
+            dest_address: completed.destination_address.to_vec(),
             status: completed.status.to_string(),
             direction: completed.direction.to_string(),
             amount: completed.amount.as_u64(),
@@ -34,7 +34,7 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             event,
             tx_id: outbound.tx_id.to_string(),
             source_address: vec![],
-            dest_address: outbound.destination_address.to_bytes().to_vec(),
+            dest_address: outbound.destination_address.to_vec(),
             status: outbound.status.to_string(),
             direction: "outbound".to_string(),
             amount: outbound.amount.as_u64(),
@@ -43,7 +43,7 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
         TransactionWrapper::Inbound(inbound) => TransactionEvent {
             event,
             tx_id: inbound.tx_id.to_string(),
-            source_address: inbound.source_address.to_bytes().to_vec(),
+            source_address: inbound.source_address.to_vec(),
             dest_address: vec![],
             status: inbound.status.to_string(),
             direction: "inbound".to_string(),

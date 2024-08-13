@@ -23,13 +23,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write, marker::PhantomData};
+use core::marker::PhantomData;
 
-use borsh::BorshSerialize;
+use borsh::{io, io::Write, BorshSerialize};
 use digest::Digest;
 use tari_crypto::hashing::DomainSeparation;
 
-/// Domain separated borsh-encoding hasher.
+/// A domain-separated hasher that uses Borsh internally to ensure hashing is canonical.
+///
+/// This assumes that any input type supports `BorshSerialize` canonically; that is, two different values of the same
+/// type must serialize distinctly.
 pub struct DomainSeparatedBorshHasher<M, D> {
     writer: WriteHashWrapper<D>,
     _m: PhantomData<M>,
@@ -50,6 +53,7 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
         self.writer.0.finalize()
     }
 
+    /// Update the hasher using the Borsh encoding of the input, which is assumed to be canonical.
     pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
         BorshSerialize::serialize(data, &mut self.writer)
             .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
@@ -62,7 +66,9 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
 }
 
 /// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait.
-/// Do not use the DomainSeparatedHasher with this.
+///
+/// It's important not to use `DomainSeparatedHasher` with this, since that can inconsistently handle length prepending
+/// and render hashing inconsistent. It's fine to use it with `DomainSeparatedBorshHasher`.
 #[derive(Clone)]
 struct WriteHashWrapper<D>(D);
 
@@ -79,6 +85,9 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
+    use alloc::vec::Vec;
+
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::hash_domain;

@@ -282,7 +282,7 @@ pub trait Mnemonic<T> {
 mod test {
     use std::str::FromStr;
 
-    use rand::{self, rngs::OsRng};
+    use rand::rngs::OsRng;
     use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::byte_array::ByteArray};
 
     use super::*;

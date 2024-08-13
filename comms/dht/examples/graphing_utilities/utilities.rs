@@ -43,7 +43,7 @@ static GRAPH_FRAME_NUM: Lazy<Mutex<HashMap<String, usize>>> = Lazy::new(|| Mutex
 fn get_next_frame_num(name: &str) -> usize {
     let mut map = GRAPH_FRAME_NUM.lock().unwrap();
     let current: usize;
-    match (*map).get_mut(&name.to_string()) {
+    match (*map).get_mut(name) {
         None => {
             current = 0;
             (*map).insert(name.to_string(), 1);

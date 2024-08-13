@@ -21,16 +21,24 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::collections::HashMap;
 
+use argon2::password_hash::rand_core::OsRng;
+use blake2::Blake2b;
+use digest::consts::U64;
 use futures::lock::Mutex;
 use log::*;
-use tari_crypto::keys::PublicKey;
-use tari_utilities::hex::Hex;
+use tari_crypto::{
+    hash_domain,
+    hashing::DomainSeparatedHasher,
+    keys::{PublicKey, SecretKey},
+};
+use tari_utilities::ByteArray;
 
 use crate::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     key_manager_service::{
         error::KeyManagerServiceError,
+        interface::KeyAndId,
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
         AddResult,
         KeyDigest,
@@ -40,6 +48,8 @@ use crate::{
 
 const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
+
+hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
 
 pub struct KeyManagerInner<TBackend, PK: PublicKey> {
     key_managers: HashMap<String, Mutex<KeyManager<PK, KeyDigest>>>,
@@ -88,7 +98,7 @@ where
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: &str) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
+    pub async fn get_next_key(&self, branch: &str) -> Result<KeyAndId<PK>, KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(branch)
@@ -98,13 +108,24 @@ where
         self.db.increment_key_index(branch)?;
         let index = km.increment_key_index(1);
         let key = km.derive_public_key(index)?.key;
-        Ok((
-            KeyId::Managed {
+
+        Ok(KeyAndId {
+            key_id: KeyId::Managed {
                 branch: branch.to_string(),
                 index,
             },
-            key,
-        ))
+            pub_key: key,
+        })
+    }
+
+    pub async fn get_random_key(&self) -> Result<KeyAndId<PK>, KeyManagerServiceError> {
+        let random_private_key = PK::K::random(&mut OsRng);
+        let key_id = self.import_key(random_private_key).await?;
+        let public_key = self.get_public_key_at_key_id(&key_id).await?;
+        Ok(KeyAndId {
+            key_id,
+            pub_key: public_key,
+        })
     }
 
     pub async fn get_static_key(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
@@ -127,6 +148,29 @@ where
                     .lock()
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
+            },
+            KeyId::Derived { branch, index, .. } => {
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .lock()
+                    .await;
+                let branch_key = km.get_private_key(*index)?;
+
+                let public_key = {
+                    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
+                        "Key manager derived key",
+                    );
+                    let hasher = hasher.chain(branch_key.as_bytes()).finalize();
+                    let private_key = PK::K::from_uniform_bytes(hasher.as_ref()).map_err(|_| {
+                        KeyManagerServiceError::UnknownError(
+                            "Invalid private key for Key manager derived key".to_string(),
+                        )
+                    })?;
+                    PK::from_secret_key(&private_key)
+                };
+                Ok(public_key)
             },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PK::default()),
@@ -178,9 +222,7 @@ where
 
     pub async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {
         let public_key = PK::from_secret_key(&private_key);
-        let hex_key = public_key.to_hex();
         self.db.insert_imported_key(public_key.clone(), private_key)?;
-        trace!(target: LOG_TARGET, "Imported key {}", hex_key);
         let key_id = KeyId::Imported { key: public_key };
         Ok(key_id)
     }

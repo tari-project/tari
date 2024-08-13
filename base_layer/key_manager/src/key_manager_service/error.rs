@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_sqlite::error::{SqliteStorageError, StorageError};
 use tari_crypto::errors::RangeProofError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
@@ -49,6 +49,18 @@ pub enum KeyManagerServiceError {
     TariKeyManagerError(#[from] KMError),
     #[error("Schnorr signature error: `{0}`")]
     SchnorrSignatureError(String),
+    #[error("Unknown error: `{0}`")]
+    UnknownError(String),
+    #[error("Ledger error: `{0}`")]
+    LedgerError(String),
+    #[error("The Ledger private key cannot be accessed or read")]
+    LedgerPrivateKeyInaccessible,
+    #[error("The Ledger view key cannot be accessed or read")]
+    LedgerViewKeyInaccessible,
+    #[error("Tari Key Manager storage error: `{0}`")]
+    StorageError(#[from] StorageError),
+    #[error("The imported private key cannot be accessed or read")]
+    ImportedPrivateKeyInaccessible,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

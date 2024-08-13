@@ -16,7 +16,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // pending updates to Dalek/Digest
-use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, io, ops::Deref};
+use std::{cmp::Ordering, collections::HashSet, fmt, io, ops::Deref};
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};

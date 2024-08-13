@@ -34,7 +34,7 @@ use argon2::password_hash::{
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::NaiveDateTime;
-use diesel::{prelude::*, result::Error, SqliteConnection};
+use diesel::{prelude::*, result::Error};
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use itertools::Itertools;
 use log::*;

@@ -47,12 +47,12 @@ use minotari_wallet::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
-    util::{wallet_identity::WalletIdentity, watch::Watch},
+    util::watch::Watch,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
 use tari_comms::{
@@ -78,7 +78,7 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::schema_to_transaction,
         transaction_components::OutputFeatures,
@@ -146,7 +146,7 @@ pub async fn setup() -> (
 
     let (oms_event_publisher, _) = broadcast::channel(200);
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
-    let core_key_manager_service_handle = create_memory_db_key_manager();
+    let core_key_manager_service_handle = create_memory_db_key_manager().unwrap();
 
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
     let outbound_mock_state = mock_outbound_service.get_state();
@@ -158,7 +158,22 @@ pub async fn setup() -> (
     let shutdown = Shutdown::new();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
-    let wallet_identity = WalletIdentity::new(client_node_identity, network);
+    let view_key = core_key_manager_service_handle.get_view_key().await.unwrap();
+    let comms_key = core_key_manager_service_handle.get_comms_key().await.unwrap();
+    let spend_key = core_key_manager_service_handle.get_spend_key().await.unwrap();
+    let interactive_features = if spend_key == comms_key {
+        TariAddressFeatures::create_interactive_and_one_sided()
+    } else {
+        TariAddressFeatures::create_one_sided_only()
+    };
+    let one_sided_tari_address = TariAddress::new_dual_address(
+        view_key.pub_key.clone(),
+        comms_key.pub_key,
+        network,
+        TariAddressFeatures::create_one_sided_only(),
+    );
+    let interactive_tari_address =
+        TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -166,7 +181,9 @@ pub async fn setup() -> (
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
-        wallet_identity,
+        one_sided_tari_address,
+        interactive_tari_address,
+        node_identity: client_node_identity.clone(),
         consensus_manager,
         factories: CryptoFactories::default(),
         config: TransactionServiceConfig {
@@ -196,7 +213,7 @@ pub async fn add_transaction_to_database(
     status: Option<TransactionStatus>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
-    let key_manager_handle = create_memory_db_key_manager();
+    let key_manager_handle = create_memory_db_key_manager().unwrap();
     let uo0 = make_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
     let (txs1, _uou1) = schema_to_transaction(
         &[txn_schema!(from: vec![uo0.clone()], to: vec![amount])],
@@ -215,6 +232,7 @@ pub async fn add_transaction_to_database(
         "Test".to_string(),
         Utc::now().naive_local(),
         TransactionDirection::Outbound,
+        None,
         None,
         None,
     )

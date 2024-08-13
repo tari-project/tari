@@ -183,9 +183,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
     /// 1. Messages MUST have a message origin set and be encrypted (Join messages are the exception)
     /// 1. Unencrypted Join messages - this increases the knowledge the network has of peers (Low priority)
     /// 1. Encrypted Discovery messages - so that nodes are aware of other nodes that are looking for them (High
-    /// priority) 1. Encrypted messages addressed to the neighbourhood - some node in the neighbourhood may be
-    /// interested in this message (High priority) 1. Encrypted messages addressed to a particular public key or
-    /// node id that this node knows about
+    ///    priority) 1. Encrypted messages addressed to the neighbourhood - some node in the neighbourhood may be
+    ///    interested in this message (High priority) 1. Encrypted messages addressed to a particular public key or node
+    ///    id that this node knows about
     async fn handle(mut self, mut message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         if !self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) {
             trace!(

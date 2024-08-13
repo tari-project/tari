@@ -28,3 +28,11 @@ hash_domain!(
 // Hash domain for all transaction-related hashes, including the script signature challenge, transaction hash and kernel
 // signature challenge
 hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
+
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
+
+hash_domain!(
+    KeyManagerTransactionsHashDomain,
+    "com.tari.base_layer.core.transactions.key_manager",
+    1
+);

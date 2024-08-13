@@ -4,4 +4,4 @@
 #
 export PATH="$HOME/.cargo/bin:$PATH"
 rustup target add aarch64-unknown-linux-gnu
-rustup toolchain install stable-aarch64-unknown-linux-gnu
+rustup toolchain install stable-aarch64-unknown-linux-gnu --force-non-host

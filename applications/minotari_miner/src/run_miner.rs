@@ -1,32 +1,40 @@
-// Copyright 2021. The Tari Project
+//  Copyright 2024. The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
 //
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
 //
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, str::FromStr, thread, time::Instant};
+use std::{convert::TryFrom, str::FromStr, sync::Arc, thread, time::Instant};
 
 use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{base_node_client::BaseNodeClient, TransactionOutput as GrpcTransactionOutput},
+    tari_rpc::{
+        base_node_client::BaseNodeClient,
+        sha_p2_pool_client::ShaP2PoolClient,
+        Block,
+        GetNewBlockRequest,
+        SubmitBlockRequest,
+        SubmitBlockResponse,
+        TransactionOutput as GrpcTransactionOutput,
+    },
     tls::protocol_string,
 };
 use minotari_app_utilities::parse_miner_input::{
@@ -34,6 +42,7 @@ use minotari_app_utilities::parse_miner_input::{
     verify_base_node_grpc_mining_responses,
     wallet_payment_address,
     BaseNodeGrpcClient,
+    ShaP2PoolGrpcClient,
 };
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
@@ -48,11 +57,12 @@ use tari_core::{
         generate_coinbase,
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
+        transaction_components::encrypted_data::PaymentId,
     },
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
-use tokio::time::sleep;
+use tokio::{sync::Mutex, time::sleep};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
@@ -74,7 +84,12 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     config.set_base_path(cli.common.get_base_path());
 
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().map_err(|err| {
+        ExitError::new(
+            ExitCode::KeyManagerServiceError,
+            "'wallet_payment_address' ".to_owned() + &err.to_string(),
+        )
+    })?;
     let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)
         .map_err(|err| {
             ExitError::new(
@@ -125,10 +140,13 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         Ok(())
     } else {
-        let mut node_conn = connect(&config)
+        let node_clients = connect(&config)
             .await
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e.to_string()))?;
-        if let Err(e) = verify_base_node_responses(&mut node_conn, &config).await {
+        let mut base_node_client = node_clients.base_node_client;
+        let mut p2pool_node_client = node_clients.p2pool_node_client;
+
+        if let Err(e) = verify_base_node_responses(&mut base_node_client, &config).await {
             if let MinerError::BaseNodeNotResponding(_) = e {
                 error!(target: LOG_TARGET, "{}", e.to_string());
                 println!();
@@ -146,7 +164,8 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         loop {
             debug!(target: LOG_TARGET, "Starting new mining cycle");
             match mining_cycle(
-                &mut node_conn,
+                &mut base_node_client,
+                p2pool_node_client.clone(),
                 &config,
                 &cli,
                 &key_manager,
@@ -163,7 +182,8 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                         sleep(config.wait_timeout()).await;
                         match connect(&config).await {
                             Ok(nc) => {
-                                node_conn = nc;
+                                base_node_client = nc.base_node_client;
+                                p2pool_node_client = nc.p2pool_node_client;
                                 break;
                             },
                             Err(err) => {
@@ -206,8 +226,14 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     }
 }
 
-async fn connect(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
-    let node_conn = match connect_base_node(config).await {
+pub struct NodeClientResult {
+    base_node_client: BaseNodeGrpcClient,
+    p2pool_node_client: Option<ShaP2PoolGrpcClient>,
+}
+
+async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
+    // always connect to base node first
+    let base_node_client = match connect_base_node(config).await {
         Ok(client) => client,
         Err(e) => {
             error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
@@ -217,6 +243,59 @@ async fn connect(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError>
             return Err(e);
         },
     };
+
+    // init client to sha p2pool grpc if enabled
+    let mut p2pool_node_client = None;
+    if config.sha_p2pool_enabled {
+        p2pool_node_client = match connect_sha_p2pool(config).await {
+            Ok(client) => Some(client),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
+                let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
+                           `--enable-grpc` or enable it in the config.";
+                println!("{}", msg);
+                return Err(e);
+            },
+        };
+    }
+
+    Ok(NodeClientResult {
+        base_node_client,
+        p2pool_node_client,
+    })
+}
+
+async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient, MinerError> {
+    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
+    let base_node_addr = format!(
+        "{}{}",
+        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
+        socketaddr,
+    );
+
+    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", base_node_addr);
+    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+
+    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
+        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
+            .await
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+        endpoint = endpoint
+            .tls_config(tls)
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
+    }
+
+    let channel = endpoint
+        .connect()
+        .await
+        .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
+    let node_conn = ShaP2PoolClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
+    );
 
     Ok(node_conn)
 }
@@ -266,17 +345,48 @@ async fn verify_base_node_responses(
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
-async fn mining_cycle(
-    node_conn: &mut BaseNodeGrpcClient,
+struct GetNewBlockResponse {
+    block: Block,
+    target_difficulty: u64,
+}
+
+/// Gets a new block from base node or p2pool node if its enabled in config
+async fn get_new_block(
+    base_node_client: &mut BaseNodeGrpcClient,
+    sha_p2pool_client: Arc<Mutex<Option<ShaP2PoolGrpcClient>>>,
     config: &MinerConfig,
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     consensus_manager: &ConsensusManager,
-) -> Result<bool, MinerError> {
+) -> Result<GetNewBlockResponse, MinerError> {
+    if config.sha_p2pool_enabled {
+        if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
+            return get_new_block_p2pool_node(client).await;
+        }
+    }
+
+    get_new_block_base_node(
+        base_node_client,
+        config,
+        cli,
+        key_manager,
+        wallet_payment_address,
+        consensus_manager,
+    )
+    .await
+}
+
+async fn get_new_block_base_node(
+    base_node_client: &mut BaseNodeGrpcClient,
+    config: &MinerConfig,
+    cli: &Cli,
+    key_manager: &MemoryDbKeyManager,
+    wallet_payment_address: &TariAddress,
+    consensus_manager: &ConsensusManager,
+) -> Result<GetNewBlockResponse, MinerError> {
     debug!(target: LOG_TARGET, "Getting new block template");
-    let template_response = node_conn
+    let template_response = base_node_client
         .get_new_block_template(config.pow_algo_request())
         .await?
         .into_inner();
@@ -295,7 +405,7 @@ async fn mining_cycle(
             target: LOG_TARGET,
             "Checking if base node is synced, because mine_on_tip_only is true"
         );
-        validate_tip(node_conn, height, cli.mine_until_height).await?;
+        validate_tip(base_node_client, height, cli.mine_until_height).await?;
     }
 
     debug!(target: LOG_TARGET, "Getting coinbase");
@@ -309,9 +419,10 @@ async fn mining_cycle(
         config.coinbase_extra.as_bytes(),
         key_manager,
         wallet_payment_address,
-        config.stealth_payment,
+        true,
         consensus_manager.consensus_constants(height),
         config.range_proof_type,
+        PaymentId::Empty,
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
@@ -328,12 +439,86 @@ async fn mining_cycle(
     let target_difficulty = miner_data.target_difficulty;
 
     debug!(target: LOG_TARGET, "Asking base node to assemble the MMR roots");
-    let block_result = node_conn.get_new_block(block_template).await?.into_inner();
-    let block = block_result.block.ok_or_else(|| err_empty("block"))?;
+    let block_result = base_node_client.get_new_block(block_template).await?.into_inner();
+    Ok(GetNewBlockResponse {
+        block: block_result.block.ok_or_else(|| err_empty("block"))?,
+        target_difficulty,
+    })
+}
+
+async fn get_new_block_p2pool_node(
+    sha_p2pool_client: &mut ShaP2PoolGrpcClient,
+) -> Result<GetNewBlockResponse, MinerError> {
+    let block_result = sha_p2pool_client
+        .get_new_block(GetNewBlockRequest::default())
+        .await?
+        .into_inner();
+    let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;
+    let block = new_block_result.block.ok_or_else(|| err_empty("block response"))?;
+    Ok(GetNewBlockResponse {
+        block,
+        target_difficulty: block_result.target_difficulty,
+    })
+}
+
+async fn submit_block(
+    config: &MinerConfig,
+    base_node_client: &mut BaseNodeGrpcClient,
+    sha_p2pool_client: Option<&mut ShaP2PoolGrpcClient>,
+    block: Block,
+    wallet_payment_address: &TariAddress,
+) -> Result<SubmitBlockResponse, MinerError> {
+    if config.sha_p2pool_enabled {
+        if let Some(client) = sha_p2pool_client {
+            return Ok(client
+                .submit_block(SubmitBlockRequest {
+                    block: Some(block),
+                    wallet_payment_address: wallet_payment_address.to_hex(),
+                })
+                .await
+                .map_err(MinerError::GrpcStatus)?
+                .into_inner());
+        }
+    }
+
+    Ok(base_node_client
+        .submit_block(block)
+        .await
+        .map_err(MinerError::GrpcStatus)?
+        .into_inner())
+}
+
+#[allow(clippy::too_many_lines)]
+async fn mining_cycle(
+    base_node_client: &mut BaseNodeGrpcClient,
+    sha_p2pool_client: Option<ShaP2PoolGrpcClient>,
+    config: &MinerConfig,
+    cli: &Cli,
+    key_manager: &MemoryDbKeyManager,
+    wallet_payment_address: &TariAddress,
+    consensus_manager: &ConsensusManager,
+) -> Result<bool, MinerError> {
+    let sha_p2pool_client = Arc::new(Mutex::new(sha_p2pool_client));
+    let block_result = get_new_block(
+        base_node_client,
+        sha_p2pool_client.clone(),
+        config,
+        cli,
+        key_manager,
+        wallet_payment_address,
+        consensus_manager,
+    )
+    .await?;
+    let block = block_result.block;
     let header = block.clone().header.ok_or_else(|| err_empty("block.header"))?;
 
     debug!(target: LOG_TARGET, "Initializing miner");
-    let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads, false);
+    let mut reports = Miner::init_mining(
+        header.clone(),
+        block_result.target_difficulty,
+        config.num_mining_threads,
+        false,
+    );
     let mut reporting_timeout = Instant::now();
     let mut block_submitted = false;
     while let Some(report) = reports.next().await {
@@ -369,7 +554,14 @@ async fn mining_cycle(
                 let mut mined_block = block.clone();
                 mined_block.header = Some(header);
                 // 5. Sending block to the node
-                node_conn.submit_block(mined_block).await?;
+                submit_block(
+                    config,
+                    base_node_client,
+                    sha_p2pool_client.lock().await.as_mut(),
+                    mined_block,
+                    wallet_payment_address,
+                )
+                .await?;
                 block_submitted = true;
                 break;
             } else {
@@ -379,7 +571,7 @@ async fn mining_cycle(
             display_report(&report, config.num_mining_threads).await;
         }
         if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_interval() {
-            validate_tip(node_conn, report.height, cli.mine_until_height).await?;
+            validate_tip(base_node_client, report.height, cli.mine_until_height).await?;
             reporting_timeout = Instant::now();
         }
     }

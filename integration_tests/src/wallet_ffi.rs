@@ -31,6 +31,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use libc::c_void;
+use tari_common_types::tari_address::TariAddress;
 
 use super::ffi::{
     Balance,
@@ -86,7 +87,8 @@ impl WalletFFI {
     pub fn identify(&self) -> String {
         let tari_address = self.get_address();
         let key = tari_address.address();
-        key.get_as_hex()
+        let address = TariAddress::from_bytes(&key.get_vec()).unwrap();
+        address.to_base58()
     }
 
     pub fn get_emoji_id(&self) -> String {

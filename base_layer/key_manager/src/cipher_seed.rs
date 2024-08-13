@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, mem::size_of, str::FromStr};
+use std::{mem::size_of, str::FromStr};
 
-use argon2;
 use blake2::Blake2b;
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
@@ -35,26 +34,29 @@ use digest::consts::U32;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
+use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_utilities::{hidden::Hidden, safe_array::SafeArray, SafePassword};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
     error::KeyManagerError,
-    mac_domain_hasher,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
     CipherSeedEncryptionKey,
     CipherSeedMacKey,
+    KeyManagerDomain,
     SeedWords,
-    LABEL_ARGON_ENCODING,
-    LABEL_CHACHA20_ENCODING,
-    LABEL_MAC_GENERATION,
+    HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE,
+    HASHER_LABEL_CIPHER_SEED_MAC,
+    HASHER_LABEL_CIPHER_SEED_PBKDF_SALT,
 };
 
 // The version should be incremented for any breaking change to the format
+// NOTE: Only the most recent version is supported!
 // History:
 // 0: initial version
 // 1: fixed incorrect key derivation and birthday genesis
-const CIPHER_SEED_VERSION: u8 = 1u8;
+// 2: updated hasher domain labels and MAC input ordering
+const CIPHER_SEED_VERSION: u8 = 2u8;
 
 pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1640995200; // seconds to 2022-01-01 00:00:00 UTC
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED"; // the default passphrase if none is supplied
@@ -116,13 +118,12 @@ pub const CIPHER_SEED_CHECKSUM_BYTES: usize = 4;
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize)]
-#[zeroize(drop)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
     entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
-    salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]>,
+    salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES],
 }
 
 // This is a separate type to make the linter happy
@@ -137,10 +138,10 @@ impl CipherSeed {
         let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
         let days = SystemTime::now()
             .duration_since(birthday_genesis_date)
-            .unwrap()
+            .unwrap_or_default() // default to the epoch on error
             .as_secs() /
             SECONDS_PER_DAY;
-        let birthday = u16::try_from(days).unwrap_or(0u16);
+        let birthday = u16::try_from(days).unwrap_or(0u16); // default to the epoch on error
         CipherSeed::new_with_birthday(birthday)
     }
 
@@ -150,7 +151,7 @@ impl CipherSeed {
         const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
         let millis = js_sys::Date::now() as u64;
         let days = millis / MILLISECONDS_PER_DAY;
-        let birthday = u16::try_from(days).unwrap_or(0u16);
+        let birthday = u16::try_from(days).unwrap_or(0u16); // default to the epoch on error
         CipherSeed::new_with_birthday(birthday)
     }
 
@@ -158,7 +159,7 @@ impl CipherSeed {
     fn new_with_birthday(birthday: u16) -> Self {
         let mut entropy = Box::new([0u8; CIPHER_SEED_ENTROPY_BYTES]);
         OsRng.fill_bytes(entropy.as_mut());
-        let mut salt = Box::new([0u8; CIPHER_SEED_MAIN_SALT_BYTES]);
+        let mut salt = [0u8; CIPHER_SEED_MAIN_SALT_BYTES];
         OsRng.fill_bytes(salt.as_mut());
 
         Self {
@@ -180,9 +181,9 @@ impl CipherSeed {
 
         // Generate the MAC
         let mac = Self::generate_mac(
+            CIPHER_SEED_VERSION,
             &self.birthday.to_le_bytes(),
             self.entropy.as_ref(),
-            CIPHER_SEED_VERSION,
             self.salt.as_ref(),
             &mac_key,
         )?;
@@ -256,9 +257,8 @@ impl CipherSeed {
             SafePassword::from_str(DEFAULT_CIPHER_SEED_PASSPHRASE)
                 .expect("Failed to parse default cipher seed passphrase to SafePassword")
         });
-        let salt: Box<[u8; CIPHER_SEED_MAIN_SALT_BYTES]> = encrypted_seed
+        let salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES] = encrypted_seed
             .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES)
-            .into_boxed_slice()
             .try_into()
             .map_err(|_| KeyManagerError::InvalidData)?;
         let (encryption_key, mac_key) = Self::derive_keys(&passphrase, salt.as_ref())?;
@@ -280,7 +280,7 @@ impl CipherSeed {
         let birthday = u16::from_le_bytes(birthday_bytes);
 
         // Generate the MAC
-        let expected_mac = Self::generate_mac(&birthday_bytes, entropy.reveal(), version, salt.as_ref(), &mac_key)?;
+        let expected_mac = Self::generate_mac(version, &birthday_bytes, entropy.reveal(), salt.as_ref(), &mac_key)?;
 
         // Verify the MAC in constant time to avoid leaking data
         if mac.ct_eq(&expected_mac).into() {
@@ -302,9 +302,11 @@ impl CipherSeed {
         salt: &[u8],
     ) -> Result<(), KeyManagerError> {
         // The ChaCha20 nonce is derived from the main salt
-        let encryption_nonce = mac_domain_hasher::<Blake2b<U32>>(LABEL_CHACHA20_ENCODING)
-            .chain(salt)
-            .finalize();
+        let encryption_nonce = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(
+            HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE,
+        )
+        .chain(salt)
+        .finalize();
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
         // Encrypt/decrypt the data
@@ -312,7 +314,9 @@ impl CipherSeed {
             Key::from_slice(encryption_key.reveal()),
             Nonce::from_slice(encryption_nonce),
         );
-        cipher.apply_keystream(data);
+        cipher
+            .try_apply_keystream(data)
+            .map_err(|_| KeyManagerError::CryptographicError("Unable to apply stream cipher".to_string()))?;
 
         Ok(())
     }
@@ -329,9 +333,9 @@ impl CipherSeed {
 
     /// Generate a MAC using Blake2b
     fn generate_mac(
+        version: u8,
         birthday: &[u8],
         entropy: &[u8],
-        cipher_seed_version: u8,
         salt: &[u8],
         mac_key: &CipherSeedMacKey,
     ) -> Result<Vec<u8>, KeyManagerError> {
@@ -346,23 +350,27 @@ impl CipherSeed {
             return Err(KeyManagerError::InvalidData);
         }
 
-        Ok(mac_domain_hasher::<Blake2b<U32>>(LABEL_MAC_GENERATION)
-            .chain(birthday)
-            .chain(entropy)
-            .chain([cipher_seed_version])
-            .chain(salt)
-            .chain(mac_key.reveal())
-            .finalize()
-            .as_ref()[..CIPHER_SEED_MAC_BYTES]
-            .to_vec())
+        Ok(
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(HASHER_LABEL_CIPHER_SEED_MAC)
+                .chain([version])
+                .chain(birthday)
+                .chain(entropy)
+                .chain(salt)
+                .chain(mac_key.reveal())
+                .finalize()
+                .as_ref()[..CIPHER_SEED_MAC_BYTES]
+                .to_vec(),
+        )
     }
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
     fn derive_keys(passphrase: &SafePassword, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
-        let argon2_salt = mac_domain_hasher::<Blake2b<U32>>(LABEL_ARGON_ENCODING)
-            .chain(salt)
-            .finalize();
+        let argon2_salt = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(
+            HASHER_LABEL_CIPHER_SEED_PBKDF_SALT,
+        )
+        .chain(salt)
+        .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
 
         // Run Argon2 with enough output to accommodate both keys, so we only run it once

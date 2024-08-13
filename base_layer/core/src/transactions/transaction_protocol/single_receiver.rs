@@ -38,6 +38,7 @@ use crate::{
 /// * Checks the input for validity
 /// * Constructs his output, range proof and partial signature
 /// * Constructs the reply
+///
 /// If any step fails, an error is returned.
 pub struct SingleReceiverTransactionProtocol {}
 
@@ -51,7 +52,7 @@ impl SingleReceiverTransactionProtocol {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info, consensus_constants)?;
         let transaction_output = output.to_transaction_output(key_manager).await?;
 
-        let (nonce_id, public_nonce) = key_manager
+        let public_nonce = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let tx_meta = if output.is_burned() {
@@ -62,7 +63,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.metadata.clone()
         };
         let public_excess = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &nonce_id)
+            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &public_nonce.key_id)
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -75,8 +76,8 @@ impl SingleReceiverTransactionProtocol {
         let signature = key_manager
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
-                &nonce_id,
-                &(&sender_info.public_nonce + &public_nonce),
+                &public_nonce.key_id,
+                &(&sender_info.public_nonce + &public_nonce.pub_key),
                 &(&sender_info.public_excess + &public_excess),
                 &sender_info.kernel_version,
                 &kernel_message,
@@ -85,7 +86,7 @@ impl SingleReceiverTransactionProtocol {
             )
             .await?;
         let offset = key_manager
-            .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)
+            .get_txo_private_kernel_offset(&output.spending_key_id, &public_nonce.key_id)
             .await?;
 
         let data = RecipientSignedMessage {
@@ -153,6 +154,7 @@ mod test {
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
+                encrypted_data::PaymentId,
                 EncryptedData,
                 OutputFeatures,
                 TransactionKernel,
@@ -172,13 +174,13 @@ mod test {
 
     #[tokio::test]
     async fn zero_amount_fails() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
         let consensus_constants = create_consensus_constants(0);
         let info = SingleRoundSenderData::default();
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            test_params.spend_key_id,
+            test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script!(Nop),
             ExecutionStack::default(),
@@ -189,6 +191,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -204,7 +207,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_version_fails() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
         let consensus_constants = create_consensus_constants(0);
 
@@ -218,7 +221,7 @@ mod test {
 
         let bob_output = WalletOutput::new_current_version(
             MicroMinotari(5000),
-            test_params.spend_key_id,
+            test_params.commitment_mask_key_id,
             OutputFeatures::default(),
             script!(Nop),
             ExecutionStack::default(),
@@ -229,6 +232,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -250,7 +254,7 @@ mod test {
             tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
                 tari_common_sqlite::connection::DbConnection,
             >,
-        > = create_memory_db_key_manager();
+        > = create_memory_db_key_manager().unwrap();
         let consensus_constants = create_consensus_constants(0);
         let m = TransactionMetadata::new(MicroMinotari(100), 0);
         let test_params = TestParams::new(&key_manager).await;
@@ -265,7 +269,7 @@ mod test {
             .await
             .unwrap();
         let pub_xs = key_manager
-            .get_public_key_at_key_id(&test_params.spend_key_id)
+            .get_public_key_at_key_id(&test_params.commitment_mask_key_id)
             .await
             .unwrap();
         let pub_rs = key_manager
@@ -294,7 +298,7 @@ mod test {
             .unwrap();
         let mut bob_output = WalletOutput::new_current_version(
             MicroMinotari(1500),
-            test_params2.spend_key_id.clone(),
+            test_params2.commitment_mask_key_id.clone(),
             OutputFeatures::default(),
             script.clone(),
             ExecutionStack::default(),
@@ -305,6 +309,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
+            PaymentId::Empty,
             &key_manager,
         )
         .await
@@ -330,7 +335,7 @@ mod test {
         // Check the signature
 
         let pubkey = key_manager
-            .get_public_key_at_key_id(&test_params2.spend_key_id)
+            .get_public_key_at_key_id(&test_params2.commitment_mask_key_id)
             .await
             .unwrap();
         let offset = prot.offset.clone();

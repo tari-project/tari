@@ -198,7 +198,7 @@ event_channel_size = 3500
 # CIDR for addresses allowed to enter into liveness check mode on the listener.
 #listener_liveness_allowlist_cidrs = []
 # Enables periodic socket-level liveness checks. Default: Disabled
-# listener_liveness_check_interval = 15
+# listener_self_liveness_check_interval = 15
 
 # User agent string for this node
 #user_agent = ""
@@ -206,6 +206,8 @@ event_channel_size = 3500
 # The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
 # sessions.
 #rpc_max_simultaneous_sessions = 100
+# The maximum comms RPC sessions allowed per peer (default value = 10).
+#rpc_max_sessions_per_peer = 10
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
@@ -240,7 +242,7 @@ event_channel_size = 3500
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
 # better privacy
 #tor.proxy_bypass_for_outbound_tcp = false
-# If set, instructs tor to forward traffic the the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
+# If set, instructs tor to forward traffic the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
 #tor.forward_address =
 
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
@@ -260,9 +262,11 @@ database_url = "data/wallet/dht.db"
 # The size of the buffer (channel) which holds pending outbound message requests. Default: 20
 #outbound_buffer_size = 20
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
-#num_neighbouring_nodes = 8
+num_neighbouring_nodes = 5
 # Number of random peers to include. Default: 4
-#num_random_nodes=  4
+num_random_nodes = 1
+# Connections above the configured number of neighbouring and random nodes will be removed (default: false)
+minimize_connections = true
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
 # Send to this many peers when using the propagate strategy. Default: 4
@@ -309,7 +313,7 @@ database_url = "data/wallet/dht.db"
 #join_cooldown_interval = 120 # 10 * 60
 
 # The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
-#connectivity.update_interval = 120 # 2 * 60
+connectivity.update_interval = 300 # 2 * 60
 # The interval to change the random pool peers. Default = 2 hours
 #connectivity.random_pool_refresh_interval = 7_200 # 2 * 60 * 60
 # Length of cooldown when high connection failure rates are encountered. Default: 45s
@@ -317,13 +321,13 @@ database_url = "data/wallet/dht.db"
 # The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
 # making sybil attacks costly. This setting does not guarantee this ratio is maintained.
 # Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
-#connectivity.minimum_desired_tcpv4_node_ratio = 0.1
+connectivity.minimum_desired_tcpv4_node_ratio = 0.0
 
 # True to enable network discovery, false to disable it. Default: true
 #network_discovery.enabled = true
 # A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
 # more "aggressive" strategy is employed. Default: 50
-#network_discovery.min_desired_peers = 50
+network_discovery.min_desired_peers = 16
 # The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
 #network_discovery.idle_period = 1_800 # 30 * 60
 #  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
@@ -334,6 +338,10 @@ database_url = "data/wallet/dht.db"
 # The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
 # Default: 5
 #network_discovery.max_sync_peers = 5
+# The maximum number of peers we allow per round of sync. (Default: 500)
+#network_discovery.max_peers_to_sync_per_round = 500
+# Initial refresh sync peers delay period, when a configured connection needs preference. (Default: Disabled)
+network_discovery.initial_peer_sync_delay = 25
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60

@@ -35,7 +35,7 @@ use crate::transactions::{
 };
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
-/// excess_sig. The excess_sig is included to ensure the the priority key unique so it can be used with a BTreeMap.
+/// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
 /// Normally, duplicate keys will be overwritten in a BTreeMap.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct FeePriority(Vec<u8>);
@@ -144,7 +144,7 @@ mod tests {
 
     #[tokio::test]
     async fn fee_increases_priority() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;
@@ -158,7 +158,7 @@ mod tests {
 
     #[tokio::test]
     async fn age_increases_priority() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;

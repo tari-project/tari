@@ -25,7 +25,7 @@
 use std::{sync::Arc, time::Duration};
 
 use log::*;
-use snow::{self, params::NoiseParams};
+use snow::params::NoiseParams;
 use tari_utilities::ByteArray;
 use tokio::io::{AsyncRead, AsyncWrite};
 
