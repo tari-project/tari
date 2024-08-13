@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, ops::Shl, str::FromStr};
+use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U64;
@@ -108,7 +108,7 @@ pub struct TransactionKeyManagerInner<TBackend> {
     db: KeyManagerDatabase<TBackend, PublicKey>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
-    wallet_type: WalletType,
+    wallet_type: Arc<WalletType>,
 }
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
@@ -122,7 +122,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-        wallet_type: WalletType,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
@@ -194,7 +194,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         {
             debug!(target: LOG_TARGET, "get_random_key: wallet type {}", self.wallet_type);
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -248,7 +248,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
         match key_id {
             KeyId::Managed { branch, index } => {
-                if let WalletType::Ledger(ledger) = &self.wallet_type {
+                if let WalletType::Ledger(ledger) = &*self.wallet_type {
                     match TransactionKeyManagerBranch::from_key(branch) {
                         TransactionKeyManagerBranch::OneSidedSenderOffset |
                         TransactionKeyManagerBranch::RandomKey |
@@ -352,7 +352,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(pvt_key)
             },
             KeyId::Managed { branch, index } => {
-                match &self.wallet_type {
+                match &*self.wallet_type {
                     WalletType::DerivedKeys => {},
                     WalletType::Ledger(wallet) => {
                         if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
@@ -400,7 +400,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 let commitment_mask = Box::pin(self.get_private_key(&key)).await?;
 
-                match &self.wallet_type {
+                match &*self.wallet_type {
                     WalletType::Ledger(_) => {
                         Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()))
                     },
@@ -449,7 +449,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    pub fn get_wallet_type(&self) -> WalletType {
+    pub fn get_wallet_type(&self) -> Arc<WalletType> {
         self.wallet_type.clone()
     }
 
@@ -468,7 +468,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             index: 0,
         };
 
-        let key = match &self.wallet_type {
+        let key = match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 let private_key = self.get_private_key(&key_id).await?;
                 PublicKey::from_secret_key(&private_key)
@@ -515,7 +515,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
@@ -535,7 +535,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let branch = TransactionKeyManagerBranch::Spend.get_branch_key();
         let index = 0;
 
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: branch.clone(),
@@ -716,7 +716,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        if let WalletType::Ledger(ledger) = &self.wallet_type {
+        if let WalletType::Ledger(ledger) = &*self.wallet_type {
             if let KeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
@@ -763,7 +763,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => match secret_key_id {
                 KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
@@ -862,7 +862,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let commitment = self.get_commitment(commitment_mask_key_id, value).await?;
         let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
 
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -1054,7 +1054,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             );
         }
 
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 let mut total_script_private_key = PrivateKey::default();
                 for script_key_id in script_key_ids {
@@ -1221,7 +1221,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -1276,7 +1276,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -1395,7 +1395,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
                     script,

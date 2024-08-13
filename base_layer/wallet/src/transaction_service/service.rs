@@ -40,6 +40,7 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey, Signature},
+    wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -243,6 +244,7 @@ where
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, TransactionServiceError> {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
@@ -276,6 +278,7 @@ where
             config: config.clone(),
             shutdown_signal,
             consensus_manager: consensus_manager.clone(),
+            wallet_type,
         };
         let power_mode = PowerMode::default();
         let timeout = match power_mode {
@@ -3354,6 +3357,13 @@ where
                 sending_method
             )));
         }
+        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
+            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+        {
+            return Err(TransactionServiceError::NotSupported(
+                "Interactive transactions are not supported on Ledger wallets".to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -3374,6 +3384,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,
+    pub wallet_type: Arc<WalletType>,
 }
 
 #[derive(Default, Clone, Copy)]

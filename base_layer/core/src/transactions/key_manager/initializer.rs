@@ -28,6 +28,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use tari_common_types::{types::PublicKey, wallet_types::WalletType};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
@@ -44,7 +46,7 @@ where T: KeyManagerBackend<PublicKey>
     backend: Option<T>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
-    wallet_type: WalletType,
+    wallet_type: Arc<WalletType>,
 }
 
 impl<T> TransactionKeyManagerInitializer<T>
@@ -55,7 +57,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
         backend: T,
         master_seed: CipherSeed,
         crypto_factories: CryptoFactories,
-        wallet_type: WalletType,
+        wallet_type: Arc<WalletType>,
     ) -> Self {
         Self {
             backend: Some(backend),
