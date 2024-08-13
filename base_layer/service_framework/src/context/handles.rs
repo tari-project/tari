@@ -208,8 +208,6 @@ impl ServiceHandles {
 
 #[cfg(test)]
 mod test {
-    use tari_shutdown::Shutdown;
-
     use super::*;
 
     #[test]

@@ -46,7 +46,6 @@ use tari_core::{
 };
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
-use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
@@ -112,8 +111,11 @@ impl Default for TariWorld {
     fn default() -> Self {
         println!("\nWorld initialized - remove this line when called!\n");
         let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let default_payment_address =
-            TariAddress::new(PublicKey::from_secret_key(&wallet_private_key), Network::LocalNet);
+        let default_payment_address = TariAddress::new_dual_address_with_default_features(
+            PublicKey::from_secret_key(&wallet_private_key),
+            PublicKey::from_secret_key(&wallet_private_key),
+            Network::LocalNet,
+        );
         Self {
             current_scenario_name: None,
             current_feature_name: None,
@@ -136,7 +138,7 @@ impl Default for TariWorld {
             errors: Default::default(),
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
-            key_manager: create_memory_db_key_manager(),
+            key_manager: create_memory_db_key_manager().unwrap(),
             wallet_private_key,
             default_payment_address,
             consensus_manager: ConsensusManager::builder(Network::LocalNet).build().unwrap(),
@@ -199,24 +201,25 @@ impl TariWorld {
         if let Some(address) = self.wallet_addresses.get(name.as_ref()) {
             return Ok(address.clone());
         }
-        match self.get_wallet_client(name).await {
+        let address_bytes = match self.get_wallet_client(name).await {
             Ok(wallet) => {
                 let mut wallet = wallet;
 
-                Ok(wallet
+                wallet
                     .get_address(minotari_wallet_grpc_client::grpc::Empty {})
                     .await
                     .unwrap()
                     .into_inner()
                     .address
-                    .to_hex())
             },
             Err(_) => {
                 let ffi_wallet = self.get_ffi_wallet(name).unwrap();
 
-                Ok(ffi_wallet.get_address().address().get_as_hex())
+                ffi_wallet.get_address().address().get_vec()
             },
-        }
+        };
+        let tari_address = TariAddress::from_bytes(&address_bytes)?;
+        Ok(tari_address.to_base58())
     }
 
     #[allow(dead_code)]

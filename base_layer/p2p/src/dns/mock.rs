@@ -87,6 +87,7 @@ pub fn message(query: Query, answers: Vec<Record>, name_servers: Vec<Record>, ad
 }
 
 pub trait OnSend: Clone + Send + Sync + 'static {
+    #[allow(dead_code)]
     fn on_send<E>(
         &mut self,
         response: Result<DnsResponse, E>,

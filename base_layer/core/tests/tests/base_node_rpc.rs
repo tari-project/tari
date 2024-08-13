@@ -85,7 +85,7 @@ async fn setup() -> (
     let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_coinbase_lockheight(1)
         .build();
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;

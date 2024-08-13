@@ -315,7 +315,7 @@ where
                 tokio::select! {
                     Some((address, tx_id, tx)) = receiver.recv() => {
                         incoming_finalized_transaction = Some(tx);
-                        if inbound_tx.source_address != address {
+                        if inbound_tx.source_address.public_spend_key() != address.public_spend_key()  {
                             warn!(
                                 target: LOG_TARGET,
                                 "Finalized Transaction did not come from the expected Public Key"
@@ -435,7 +435,7 @@ where
             let completed_transaction = CompletedTransaction::new(
                 self.id,
                 self.source_address.clone(),
-                self.resources.wallet_identity.address.clone(),
+                self.resources.interactive_tari_address.clone(),
                 inbound_tx.amount,
                 finalized_transaction
                     .body
@@ -446,6 +446,7 @@ where
                 inbound_tx.message.clone(),
                 inbound_tx.timestamp,
                 TransactionDirection::Inbound,
+                None,
                 None,
                 None,
             )

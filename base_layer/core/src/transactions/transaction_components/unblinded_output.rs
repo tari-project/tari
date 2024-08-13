@@ -29,16 +29,22 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 
-use super::TransactionOutputVersion;
+use super::{RangeProofType, TransactionOutputVersion};
 use crate::{
     covenants::Covenant,
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
-        transaction_components::{EncryptedData, OutputFeatures, TransactionError, WalletOutput},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            EncryptedData,
+            OutputFeatures,
+            TransactionError,
+            WalletOutput,
+        },
     },
 };
 
@@ -60,6 +66,7 @@ pub struct UnblindedOutput {
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroMinotari,
+    pub range_proof: Option<RangeProof>,
 }
 
 impl UnblindedOutput {
@@ -80,7 +87,13 @@ impl UnblindedOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        range_proof: Option<RangeProof>,
     ) -> Self {
+        let range_proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
+            range_proof
+        } else {
+            None
+        };
         Self {
             version,
             value,
@@ -95,9 +108,11 @@ impl UnblindedOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_current_version(
         value: MicroMinotari,
         spending_key: PrivateKey,
@@ -111,6 +126,7 @@ impl UnblindedOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        range_proof: Option<RangeProof>,
     ) -> Self {
         Self::new(
             TransactionOutputVersion::get_current_version(),
@@ -126,16 +142,18 @@ impl UnblindedOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
         )
     }
 
     pub async fn to_wallet_output<KM: TransactionKeyManagerInterface>(
         self,
         key_manager: &KM,
+        payment_id: PaymentId,
     ) -> Result<WalletOutput, TransactionError> {
         let spending_key_id = key_manager.import_key(self.spending_key).await?;
         let script_key_id = key_manager.import_key(self.script_private_key).await?;
-        let wallet_output = WalletOutput::new(
+        let wallet_output = WalletOutput::new_with_rangeproof(
             self.version,
             self.value,
             spending_key_id,
@@ -149,9 +167,9 @@ impl UnblindedOutput {
             self.covenant,
             self.encrypted_data,
             self.minimum_value_promise,
-            key_manager,
-        )
-        .await?;
+            self.range_proof,
+            payment_id,
+        );
         Ok(wallet_output)
     }
 
@@ -161,6 +179,11 @@ impl UnblindedOutput {
     ) -> Result<Self, TransactionError> {
         let spending_key = key_manager.get_private_key(&output.spending_key_id).await?;
         let script_private_key = key_manager.get_private_key(&output.script_key_id).await?;
+        let range_proof = if output.features.range_proof_type == RangeProofType::BulletProofPlus {
+            output.range_proof
+        } else {
+            None
+        };
         let unblinded_output = UnblindedOutput {
             version: output.version,
             value: output.value,
@@ -175,6 +198,7 @@ impl UnblindedOutput {
             script_lock_height: output.script_lock_height,
             encrypted_data: output.encrypted_data,
             minimum_value_promise: output.minimum_value_promise,
+            range_proof,
         };
         Ok(unblinded_output)
     }

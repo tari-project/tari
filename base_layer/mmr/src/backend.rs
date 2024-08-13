@@ -41,7 +41,7 @@ pub trait ArrayLike {
     /// Return the item at the given index
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error>;
 
-    /// Remove all stored items from the the backend.
+    /// Remove all stored items from the backend.
     fn clear(&mut self) -> Result<(), Self::Error>;
 
     /// Finds the index of the specified stored item, it will return None if the object could not be found.

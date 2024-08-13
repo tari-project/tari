@@ -190,7 +190,7 @@ pub async fn create_new_blockchain(
     ConsensusManager,
     MemoryDbKeyManager,
 ) {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = consensus_constants(network).build();
     let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -219,7 +219,7 @@ pub async fn create_new_blockchain_with_constants(
     ConsensusManager,
     MemoryDbKeyManager,
 ) {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (block0, output) = create_genesis_block(&constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(constants)
@@ -248,7 +248,7 @@ pub async fn create_new_blockchain_lmdb(
     ConsensusManager,
     MemoryDbKeyManager,
 ) {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = consensus_constants(network).build();
     let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)

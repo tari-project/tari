@@ -22,7 +22,7 @@
 
 use std::num::TryFromIntError;
 
-use diesel::{self, r2d2};
+use diesel::r2d2;
 use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::task;

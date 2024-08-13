@@ -32,7 +32,7 @@ use tari_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
-use tari_common_types::{grpc_authentication::GrpcAuthentication, wallet_types::WalletType};
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
@@ -42,8 +42,6 @@ use crate::{
     output_manager_service::config::OutputManagerServiceConfig,
     transaction_service::config::TransactionServiceConfig,
 };
-
-pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
 fn deserialize_safe_password_option<'de, D>(deserializer: D) -> Result<Option<SafePassword>, D::Error>
 where D: serde::Deserializer<'de> {
@@ -118,8 +116,6 @@ pub struct WalletConfig {
     pub use_libtor: bool,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: Option<PathBuf>,
-    /// The type of wallet software, or specific type of hardware
-    pub wallet_type: Option<WalletType>,
     /// The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
     /// For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
     /// responsiveness of the wallet with slightly delayed balance updates
@@ -131,7 +127,7 @@ impl Default for WalletConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/wallet"),
-            listener_liveness_check_interval: None,
+            listener_self_liveness_check_interval: None,
             ..Default::default()
         };
         Self {
@@ -163,7 +159,6 @@ impl Default for WalletConfig {
             num_required_confirmations: 3,
             use_libtor: true,
             identity_file: None,
-            wallet_type: None,
             balance_enquiry_cooldown_period: Duration::from_secs(5),
         }
     }

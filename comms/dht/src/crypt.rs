@@ -283,7 +283,6 @@ pub fn create_message_domain_separated_hash_parts(
 mod test {
     use prost::Message;
     use rand::rngs::OsRng;
-    use tari_comms::message::MessageExt;
     use tari_crypto::keys::PublicKey;
 
     use super::*;

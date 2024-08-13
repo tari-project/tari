@@ -147,8 +147,6 @@ pub unsafe extern "C" fn destroy_contacts_liveness_data(ptr: *mut ContactsLivene
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use chrono::NaiveDateTime;
     use tari_contacts::contacts_service::service::{ContactMessageType, ContactOnlineStatus};
     use tari_utilities::epoch_time::EpochTime;
@@ -158,8 +156,10 @@ mod test {
 
     #[test]
     fn test_reading_address() {
-        let address =
-            TariAddress::from_hex("0c017c5cd01385f34ac065e3b05948326dc55d2494f120c6f459a07389011b4ec1").unwrap();
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
         let liveness = ContactsLivenessData::new(
             address.clone(),
             Default::default(),
@@ -174,7 +174,7 @@ mod test {
         unsafe {
             let address_ptr = read_liveness_data_address(liveness_ptr, error_out);
 
-            assert_eq!(address.to_bytes(), (*address_ptr).to_bytes());
+            assert_eq!(address.to_vec(), (*address_ptr).to_vec());
 
             destroy_contacts_liveness_data(liveness_ptr);
             destroy_tari_address(address_ptr);

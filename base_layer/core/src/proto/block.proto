@@ -73,9 +73,9 @@ message NewBlock {
     // The block header.
     BlockHeader header = 1;
     // Coinbase kernel of the block.
-    tari.types.TransactionKernel coinbase_kernel = 2;
+    repeated tari.types.TransactionKernel coinbase_kernels = 2;
     // Coinbase output of the block.
-    tari.types.TransactionOutput coinbase_output = 3;
+    repeated tari.types.TransactionOutput coinbase_outputs = 3;
     // The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
     repeated bytes kernel_excess_sigs = 4;
 }

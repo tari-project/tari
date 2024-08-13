@@ -196,31 +196,58 @@ impl MerkleProof {
     }
 
     /// Calculates the merkle root hash from the provide Monero hash
-    pub fn calculate_root(&self, hash: &Hash) -> Hash {
-        self.calculate_root_with_pos(hash).0
+    pub fn calculate_root_with_pos(&self, hash: &Hash, aux_chain_count: u8) -> (Hash, u32) {
+        let root = self.calculate_root(hash);
+        let pos = self.get_position_from_path(u32::from(aux_chain_count));
+        (root, pos)
     }
 
-    pub fn calculate_root_with_pos(&self, hash: &Hash) -> (Hash, u32) {
+    pub fn calculate_root(&self, hash: &Hash) -> Hash {
         if self.branch.is_empty() {
-            return (*hash, 0);
+            return *hash;
         }
 
         let mut root = *hash;
         let depth = self.branch.len();
-        let mut pos = 0;
-        let mut multiplier = 1;
         for d in 0..depth {
             if (self.path_bitmap >> (depth - d - 1)) & 1 > 0 {
                 root = cn_fast_hash2(&self.branch[d], &root);
             } else {
                 root = cn_fast_hash2(&root, &self.branch[d]);
-                pos += multiplier;
             }
-            // this cant overflow as the max depth is 32, and 2^32 == u32::MAX
-            multiplier *= 2;
         }
 
-        (root, pos)
+        root
+    }
+
+    pub fn get_position_from_path(&self, aux_chain_count: u32) -> u32 {
+        if aux_chain_count <= 1 {
+            return 0;
+        }
+
+        let mut depth = 0;
+        let mut k = 1;
+
+        while k < aux_chain_count {
+            depth += 1;
+            k <<= 1;
+        }
+
+        k -= aux_chain_count;
+
+        let mut pos = 0;
+        let mut path = self.path_bitmap;
+
+        for _i in 1..depth {
+            pos = (pos << 1) | (path & 1);
+            path >>= 1;
+        }
+
+        if pos < k {
+            return pos;
+        }
+
+        (((pos - k) << 1) | (path & 1)) + k
     }
 }
 

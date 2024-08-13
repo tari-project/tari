@@ -35,6 +35,7 @@ use minotari_wallet::{
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::FixedHashSizeError;
 use tari_core::transactions::{tari_amount::MicroMinotariError, transaction_components::TransactionError};
+use tari_crypto::signatures::SchnorrSignatureError;
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
@@ -87,6 +88,8 @@ pub enum CommandError {
     ByteArrayError(String),
     #[error("gRPC TLS cert error {0}")]
     GrpcTlsError(#[from] GrpcTlsError),
+    #[error("Invalid signature: `{0}`")]
+    FailedSignature(#[from] SchnorrSignatureError),
 }
 
 impl From<HexError> for CommandError {

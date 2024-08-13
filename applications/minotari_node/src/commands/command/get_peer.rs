@@ -81,14 +81,14 @@ impl CommandContext {
         };
 
         for peer in peers {
-            let eid = EmojiId::from_public_key(&peer.public_key).to_emoji_string();
+            let eid = EmojiId::from(&peer.public_key).to_string();
             println!("Emoji ID: {}", eid);
             println!("Public Key: {}", peer.public_key);
             println!("NodeId: {}", peer.node_id);
             println!("Addresses:");
             peer.addresses.addresses().iter().for_each(|a| {
                 println!(
-                    "- {} Score: {}  - Source: {} Latency: {:?} - Last Seen: {} - Last Failure:{}",
+                    "- {} Score: {:?}  - Source: {} Latency: {:?} - Last Seen: {} - Last Failure:{}",
                     a.address(),
                     a.quality_score(),
                     a.source(),

@@ -36,10 +36,6 @@ use thiserror::Error;
 
 use super::command::Command;
 
-#[derive(Debug, Error)]
-#[error("invalid format '{0}'")]
-pub struct FormatParseError(String);
-
 #[derive(Debug, Display, EnumString)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Format {

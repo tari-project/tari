@@ -25,10 +25,28 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
+use tari_common_types::WALLET_COMMS_AND_SPEND_KEY_BRANCH;
 use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::key_manager_service::error::KeyManagerServiceError;
+
+#[repr(u8)]
+#[derive(Clone, Copy, EnumIter)]
+pub enum KeyManagerBranch {
+    Comms,
+}
+
+impl KeyManagerBranch {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(self) -> String {
+        match self {
+            KeyManagerBranch::Comms => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
+        }
+    }
+}
 
 /// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created,
 /// otherwise `NewEntry` is returned.
@@ -38,10 +56,21 @@ pub enum AddResult {
     AlreadyExists,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct KeyAndId<PK> {
+    pub pub_key: PK,
+    pub key_id: KeyId<PK>,
+}
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId<PK> {
     Managed {
         branch: String,
+        index: u64,
+    },
+    Derived {
+        branch: String,
+        label: String,
         index: u64,
     },
     Imported {
@@ -57,6 +86,7 @@ where PK: Clone
     pub fn managed_index(&self) -> Option<u64> {
         match self {
             KeyId::Managed { index, .. } => Some(*index),
+            KeyId::Derived { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -65,6 +95,7 @@ where PK: Clone
     pub fn managed_branch(&self) -> Option<String> {
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
+            KeyId::Derived { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -73,6 +104,7 @@ where PK: Clone
     pub fn imported(&self) -> Option<PK> {
         match self {
             KeyId::Managed { .. } => None,
+            KeyId::Derived { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
             KeyId::Zero => None,
         }
@@ -80,6 +112,7 @@ where PK: Clone
 }
 
 pub const MANAGED_KEY_BRANCH: &str = "managed";
+pub const DERIVED_KEY_BRANCH: &str = "derived";
 pub const IMPORTED_KEY_BRANCH: &str = "imported";
 pub const ZERO_KEY_BRANCH: &str = "zero";
 
@@ -90,6 +123,11 @@ where PK: ByteArray
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
+            KeyId::Derived {
+                branch: b,
+                label: l,
+                index: i,
+            } => write!(f, "{}.{}.{}.{}", DERIVED_KEY_BRANCH, b, l, i),
             KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
@@ -126,6 +164,19 @@ where PK: ByteArray
                     Ok(KeyId::Imported { key })
                 },
                 ZERO_KEY_BRANCH => Ok(KeyId::Zero),
+                DERIVED_KEY_BRANCH => {
+                    if parts.len() != 4 {
+                        return Err("Wrong format".to_string());
+                    }
+                    let index = parts[3]
+                        .parse()
+                        .map_err(|_| "Index for default, invalid u64".to_string())?;
+                    Ok(KeyId::Derived {
+                        branch: parts[1].into(),
+                        label: parts[2].into(),
+                        index,
+                    })
+                },
                 _ => Err("Wrong format".to_string()),
             },
         }
@@ -147,7 +198,10 @@ where
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError>;
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyAndId<PK>, KeyManagerServiceError>;
+
+    /// Gets a randomly generated key, which the key manager will manage
+    async fn get_random_key(&self) -> Result<KeyAndId<PK>, KeyManagerServiceError>;
 
     /// Gets the fixed key id from the branch. This will use the branch key with index 0
     async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;

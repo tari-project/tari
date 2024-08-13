@@ -20,20 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::str::FromStr;
+
 use blake2::Blake2b;
 use digest::consts::U64;
 use strum_macros::EnumIter;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::{
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+    WALLET_COMMS_AND_SPEND_KEY_BRANCH,
+};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hashing::DomainSeparatedHash,
     ristretto::{RistrettoComSig, RistrettoSchnorr},
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
+use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
+use tari_script::CheckSigSchnorrSignature;
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
+        encrypted_data::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,
@@ -53,17 +60,20 @@ pub enum TxoStage {
     Output,
 }
 
+#[repr(u8)]
 #[derive(Clone, Copy, EnumIter)]
+// These byte reps must stay in sync with the ledger representations at:
+// applications/minotari_ledger_wallet/wallet/src/main.rs
 pub enum TransactionKeyManagerBranch {
-    DataEncryption,
-    Coinbase,
-    CoinbaseScript,
-    CommitmentMask,
-    Nonce,
-    KernelNonce,
-    ScriptKey,
-    SenderOffset,
-    CodeTemplateAuthor,
+    DataEncryption = 0x00,
+    MetadataEphemeralNonce = 0x01,
+    CommitmentMask = 0x02,
+    Nonce = 0x03,
+    KernelNonce = 0x04,
+    SenderOffset = 0x05,
+    SenderOffsetLedger = 0x06,
+    Spend = 0x07,
+    CodeTemplateAuthor = 0x08,
 }
 
 impl TransactionKeyManagerBranch {
@@ -72,14 +82,58 @@ impl TransactionKeyManagerBranch {
     pub fn get_branch_key(self) -> String {
         match self {
             TransactionKeyManagerBranch::DataEncryption => "data encryption".to_string(),
-            TransactionKeyManagerBranch::Coinbase => "coinbase".to_string(),
-            TransactionKeyManagerBranch::CoinbaseScript => "coinbase script".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
+            TransactionKeyManagerBranch::MetadataEphemeralNonce => "metadata ephemeral nonce".to_string(),
             TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
-            TransactionKeyManagerBranch::ScriptKey => "script key".to_string(),
             TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
+            TransactionKeyManagerBranch::SenderOffsetLedger => "sender offset ledger".to_string(),
+            TransactionKeyManagerBranch::Spend => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
             TransactionKeyManagerBranch::CodeTemplateAuthor => "code_template_author".to_string(),
+        }
+    }
+
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "data encryption" => TransactionKeyManagerBranch::DataEncryption,
+            "commitment mask" => TransactionKeyManagerBranch::CommitmentMask,
+            "metadata ephemeral nonce" => TransactionKeyManagerBranch::MetadataEphemeralNonce,
+            "kernel nonce" => TransactionKeyManagerBranch::KernelNonce,
+            "sender offset" => TransactionKeyManagerBranch::SenderOffset,
+            "sender offset ledger" => TransactionKeyManagerBranch::SenderOffsetLedger,
+            "nonce" => TransactionKeyManagerBranch::Nonce,
+            WALLET_COMMS_AND_SPEND_KEY_BRANCH => TransactionKeyManagerBranch::Spend,
+            _ => TransactionKeyManagerBranch::Nonce,
+        }
+    }
+
+    pub fn as_byte(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Clone, Copy, EnumIter)]
+pub enum TransactionKeyManagerLabel {
+    ScriptKey,
+}
+
+impl TransactionKeyManagerLabel {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(self) -> String {
+        match self {
+            TransactionKeyManagerLabel::ScriptKey => "script key".to_string(),
+        }
+    }
+}
+
+impl FromStr for TransactionKeyManagerLabel {
+    type Err = String;
+
+    fn from_str(id: &str) -> Result<Self, Self::Err> {
+        match id {
+            "script key" => Ok(TransactionKeyManagerLabel::ScriptKey),
+            _ => Err("Unknown label".to_string()),
         }
     }
 }
@@ -89,26 +143,30 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError>;
 
     async fn verify_mask(
         &self,
         commitment: &Commitment,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError>;
 
-    async fn get_recovery_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError>;
+    async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn get_next_spend_and_script_key_ids(
-        &self,
-    ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError>;
+    async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
 
-    async fn find_script_key_id_from_spend_key_id(
+    async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError>;
+
+    async fn get_next_commitment_mask_and_script_key(
         &self,
-        spend_key_id: &TariKeyId,
+    ) -> Result<(KeyAndId<PublicKey>, KeyAndId<PublicKey>), KeyManagerServiceError>;
+
+    async fn find_script_key_id_from_commitment_mask_key_id(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
         public_script_key: Option<&PublicKey>,
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError>;
 
@@ -134,7 +192,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn construct_range_proof(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError>;
@@ -142,15 +200,25 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
     async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn get_partial_script_signature(
+        &self,
+        commitment_mask_id: &TariKeyId,
+        value: &PrivateKey,
+        txi_version: &TransactionInputVersion,
+        ephemeral_pubkey: &PublicKey,
+        script_public_key: &PublicKey,
+        script_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError>;
+
     async fn get_partial_txo_kernel_signature(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
         total_nonce: &PublicKey,
         total_excess: &PublicKey,
@@ -162,28 +230,29 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_txo_kernel_signature_excess_with_offset(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         nonce: &TariKeyId,
     ) -> Result<PublicKey, TransactionError>;
 
     async fn get_txo_private_kernel_offset(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError>;
 
     async fn encrypt_data_for_recovery(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
+        payment_id: PaymentId,
     ) -> Result<EncryptedData, TransactionError>;
 
     async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari), TransactionError>;
+    ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
 
     async fn get_script_offset(
         &self,
@@ -209,9 +278,22 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    async fn sign_script_message(
+        &self,
+        private_key_id: &TariKeyId,
+        challenge: &[u8],
+    ) -> Result<CheckSigSchnorrSignature, TransactionError>;
+
+    async fn sign_with_nonce_and_message(
+        &self,
+        private_key_id: &TariKeyId,
+        nonce: &TariKeyId,
+        challenge: &[u8; 64],
+    ) -> Result<Signature, TransactionError>;
+
     async fn get_receiver_partial_metadata_signature(
         &self,
-        spend_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &PublicKey,
         ephemeral_pubkey: &PublicKey,
@@ -220,6 +302,9 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError>;
 
+    // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
+    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    // signers, this can be left as none
     async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
@@ -254,5 +339,49 @@ pub trait SecretTransactionKeyManagerInterface: TransactionKeyManagerInterface {
         let sig = RistrettoSchnorr::sign_raw_uniform(&secret, nonce_secret, msg)
             .map_err(|e| KeyManagerServiceError::SchnorrSignatureError(e.to_string()))?;
         Ok(sig)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use core::iter;
+    use std::str::FromStr;
+
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+
+    use crate::transactions::key_manager::TariKeyId;
+
+    fn random_string(len: usize) -> String {
+        iter::repeat(())
+            .map(|_| OsRng.sample(Alphanumeric) as char)
+            .take(len)
+            .collect()
+    }
+
+    #[test]
+    fn key_id_converts_correctly() {
+        let managed_key_id: TariKeyId = TariKeyId::Managed {
+            branch: random_string(8),
+            index: {
+                let mut rng = rand::thread_rng();
+                let random_value: u64 = rng.gen();
+                random_value
+            },
+        };
+        let imported_key_id: TariKeyId = TariKeyId::Imported {
+            key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        };
+        let zero_key_id: TariKeyId = TariKeyId::Zero;
+
+        let managed_key_id_str = managed_key_id.to_string();
+        let imported_key_id_str = imported_key_id.to_string();
+        let zero_key_id_str = zero_key_id.to_string();
+
+        assert_eq!(managed_key_id, TariKeyId::from_str(&managed_key_id_str).unwrap());
+        println!("imported_key_id_str: {}", imported_key_id_str);
+        assert_eq!(imported_key_id, TariKeyId::from_str(&imported_key_id_str).unwrap());
+        assert_eq!(zero_key_id, TariKeyId::from_str(&zero_key_id_str).unwrap());
     }
 }

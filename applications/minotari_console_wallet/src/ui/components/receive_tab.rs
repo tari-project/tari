@@ -29,7 +29,7 @@ impl ReceiveTab {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(6), Constraint::Length(23)].as_ref())
+            .constraints([Constraint::Length(8), Constraint::Length(23)].as_ref())
             .margin(1)
             .split(area);
 
@@ -46,6 +46,8 @@ impl ReceiveTab {
                     Constraint::Length(1),
                     Constraint::Length(1),
                     Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
                 ]
                 .as_ref(),
             )
@@ -57,54 +59,76 @@ impl ReceiveTab {
             .title(Span::styled("Connection Details", Style::default().fg(Color::White)));
         f.render_widget(block, chunks[0]);
 
-        const ITEM_01: &str = "Tari Address:     ";
-        const ITEM_02: &str = "Node ID:        ";
-        const ITEM_03: &str = "Network Address: ";
-        const ITEM_04: &str = "Emoji ID:       ";
+        const ITEM_01: &str = "Tari Address interactive:   ";
+        const ITEM_02: &str = "Tari Address one-sided:     ";
+        const ITEM_03: &str = "Node ID:                    ";
+        const ITEM_04: &str = "Network Address:            ";
+        const ITEM_05: &str = "Interactive emoji address:  ";
+        const ITEM_06: &str = "One-sided emoji address:    ";
 
         // Tari address
-        let tari_address_text = Spans::from(vec![
+        let tari_address_interactive_text = Spans::from(vec![
             Span::styled(ITEM_01, Style::default().fg(Color::Magenta)),
             Span::styled(
-                app_state.get_identity().tari_address.clone(),
+                app_state.get_identity().tari_address_interactive.to_base58(),
                 Style::default().fg(Color::White),
             ),
         ]);
-        let paragraph = Paragraph::new(tari_address_text).block(Block::default());
+        let paragraph = Paragraph::new(tari_address_interactive_text).block(Block::default());
         f.render_widget(paragraph, details_chunks[0]);
+
+        let tari_address_one_sided_text = Spans::from(vec![
+            Span::styled(ITEM_02, Style::default().fg(Color::Magenta)),
+            Span::styled(
+                app_state.get_identity().tari_address_one_sided.to_base58(),
+                Style::default().fg(Color::White),
+            ),
+        ]);
+        let paragraph = Paragraph::new(tari_address_one_sided_text).block(Block::default());
+        f.render_widget(paragraph, details_chunks[1]);
 
         // NodeId
         let node_id_text = Spans::from(vec![
-            Span::styled(ITEM_02, Style::default().fg(Color::Magenta)),
+            Span::styled(ITEM_03, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().node_id.clone(),
                 Style::default().fg(Color::White),
             ),
         ]);
         let paragraph = Paragraph::new(node_id_text).block(Block::default());
-        f.render_widget(paragraph, details_chunks[1]);
+        f.render_widget(paragraph, details_chunks[2]);
 
         // Public Address
         let public_address_text = Spans::from(vec![
-            Span::styled(ITEM_03, Style::default().fg(Color::Magenta)),
+            Span::styled(ITEM_04, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().network_address.clone(),
                 Style::default().fg(Color::White),
             ),
         ]);
         let paragraph = Paragraph::new(public_address_text).block(Block::default());
-        f.render_widget(paragraph, details_chunks[2]);
+        f.render_widget(paragraph, details_chunks[3]);
 
         // Emoji ID
         let emoji_id_text = Spans::from(vec![
-            Span::styled(ITEM_04, Style::default().fg(Color::Magenta)),
+            Span::styled(ITEM_05, Style::default().fg(Color::Magenta)),
             Span::styled(
-                app_state.get_identity().emoji_id.clone(),
+                app_state.get_identity().tari_address_interactive.to_emoji_string(),
                 Style::default().fg(Color::White),
             ),
         ]);
         let paragraph = Paragraph::new(emoji_id_text).block(Block::default());
-        f.render_widget(paragraph, details_chunks[3]);
+        f.render_widget(paragraph, details_chunks[4]);
+
+        let emoji_id_text = Spans::from(vec![
+            Span::styled(ITEM_06, Style::default().fg(Color::Magenta)),
+            Span::styled(
+                app_state.get_identity().tari_address_one_sided.to_emoji_string(),
+                Style::default().fg(Color::White),
+            ),
+        ]);
+        let paragraph = Paragraph::new(emoji_id_text).block(Block::default());
+        f.render_widget(paragraph, details_chunks[5]);
     }
 }
 

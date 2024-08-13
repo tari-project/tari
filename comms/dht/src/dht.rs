@@ -452,7 +452,7 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
 
 #[cfg(test)]
 mod test {
-    use std::{sync::Arc, time::Duration};
+    use std::time::Duration;
 
     use tari_comms::{
         message::{MessageExt, MessageTag},
@@ -462,15 +462,13 @@ mod test {
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
-    use tokio::{sync::mpsc, task, time};
-    use tower::{layer::Layer, Service};
+    use tokio::{task, time};
 
     use super::*;
     use crate::{
         crypt,
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
-        proto::envelope::DhtMessageType,
         test_utils::{
             build_peer_manager,
             make_client_identity,

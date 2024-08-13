@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2024. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,11 +19,26 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
 
-use tari_common_types::types::PublicKey;
+package tari.rpc;
 
-use crate::error::WalletError;
+import "base_node.proto";
+import "block.proto";
 
-pub(crate) trait PersistentKeyManager {
-    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
+service ShaP2Pool {
+  rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
+  rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
+}
+
+message GetNewBlockRequest {}
+
+message GetNewBlockResponse {
+  tari.rpc.GetNewBlockResult block = 1;
+  uint64 target_difficulty = 2;
+}
+
+message SubmitBlockRequest {
+  tari.rpc.Block block = 1;
+  string wallet_payment_address = 2;
 }

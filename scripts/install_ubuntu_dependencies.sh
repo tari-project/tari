@@ -14,6 +14,8 @@ apt-get install --no-install-recommends --assume-yes \
   git \
   cmake \
   dh-autoreconf \
+  clang \
+  g++ \
   libc++-dev \
   libc++abi-dev \
   libprotobuf-dev \
@@ -21,4 +23,5 @@ apt-get install --no-install-recommends --assume-yes \
   libncurses5-dev \
   libncursesw5-dev \
   libudev-dev \
+  libhidapi-dev \
   zip

@@ -95,12 +95,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::{
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc,
-        },
-        task::Poll,
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
     };
 
     use futures::future::{self, poll_fn};

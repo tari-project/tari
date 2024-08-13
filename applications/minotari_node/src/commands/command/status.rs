@@ -26,7 +26,8 @@ use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
-use tari_comms::connection_manager::LivenessStatus;
+use minotari_app_utilities::consts;
+use tari_comms::connection_manager::SelfLivenessStatus;
 use tokio::time;
 
 use super::{CommandContext, HandleCommand};
@@ -58,7 +59,7 @@ impl CommandContext {
         }
 
         let mut status_line = StatusLine::new();
-        status_line.add_field("", format!("v{}", env!("CARGO_PKG_VERSION")));
+        status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
         status_line.add_field("", self.config.network());
         status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
 
@@ -126,14 +127,14 @@ impl CommandContext {
         );
 
         match self.comms.liveness_status() {
-            LivenessStatus::Disabled => {},
-            LivenessStatus::Checking => {
+            SelfLivenessStatus::Disabled => {},
+            SelfLivenessStatus::Checking => {
                 status_line.add("⏳️️");
             },
-            LivenessStatus::Unreachable => {
+            SelfLivenessStatus::Unreachable => {
                 status_line.add("️🔌");
             },
-            LivenessStatus::Live(latency) => {
+            SelfLivenessStatus::Live(latency) => {
                 status_line.add(format!("⚡️ {:.2?}", latency));
             },
         }

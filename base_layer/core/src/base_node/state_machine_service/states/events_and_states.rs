@@ -206,10 +206,10 @@ impl StateInfo {
                     .unwrap_or_else(|| "".to_string())
             ),
             HeaderSync(None) => "Starting header sync".to_string(),
-            HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string()),
+            HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string_headers()),
             HorizonSync(info) => info.to_progress_string(),
 
-            BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string()),
+            BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string_blocks()),
             Listening(_) => "Listening".to_string(),
             SyncFailed(details) => format!("Sync failed: {}", details),
         }
@@ -299,7 +299,15 @@ impl BlockSyncInfo {
         }
     }
 
-    pub fn sync_progress_string(&self) -> String {
+    pub fn sync_progress_string_headers(&self) -> String {
+        self.sync_progress("hdrs")
+    }
+
+    pub fn sync_progress_string_blocks(&self) -> String {
+        self.sync_progress("blks")
+    }
+
+    fn sync_progress(&self, item: &str) -> String {
         format!(
             "({}) {}/{} ({:.0}%){}{}",
             self.sync_peer.node_id().short_str(),
@@ -308,7 +316,7 @@ impl BlockSyncInfo {
             (self.local_height as f64 / self.tip_height as f64 * 100.0).floor(),
             self.sync_peer
                 .items_per_second()
-                .map(|bps| format!(" {:.2?} blks/s", bps))
+                .map(|bps| format!(" {:.2?} {}/s", bps, item))
                 .unwrap_or_default(),
             self.sync_peer
                 .calc_avg_latency()
@@ -320,6 +328,6 @@ impl BlockSyncInfo {
 
 impl Display for BlockSyncInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        writeln!(f, "Syncing {}", self.sync_progress_string())
+        writeln!(f, "Syncing {}", self.sync_progress_string_blocks())
     }
 }

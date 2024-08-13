@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{self, rngs::OsRng};
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, Signature};
+use rand::rngs::OsRng;
+use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
@@ -42,10 +42,14 @@ use crate::{
             create_memory_db_key_manager_with_range_proof_size,
             TransactionKeyManagerInterface,
         },
-        tari_amount::{uT, MicroMinotari, T},
+        tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            transaction_output::batch_verify_range_proofs,
+            OutputFeatures,
+        },
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -55,7 +59,7 @@ use crate::{
 
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
@@ -79,7 +83,7 @@ fn test_smt_hashes() {
 
 #[tokio::test]
 async fn key_manager_input() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
@@ -97,14 +101,14 @@ async fn key_manager_input() {
         .expect("Should be able to create transaction output");
 
     assert_eq!(*input.features().unwrap(), OutputFeatures::default());
-    let (_, value) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
+    let (_, value, _) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
     assert_eq!(value, i.value);
 }
 
 #[tokio::test]
 async fn range_proof_verification() {
     let factories = CryptoFactories::new(32);
-    let key_manager = create_memory_db_key_manager_with_range_proof_size(32);
+    let key_manager = create_memory_db_key_manager_with_range_proof_size(32).unwrap();
     // Directly test the tx_output verification
     let test_params_1 = TestParams::new(&key_manager).await;
     let test_params_2 = TestParams::new(&key_manager).await;
@@ -123,22 +127,25 @@ async fn range_proof_verification() {
     let tx_output1 = wallet_output1.to_transaction_output(&key_manager).await.unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
     let input_data = inputs!(test_params_2.script_key_pk.clone());
-    let wallet_output2 = WalletOutputBuilder::new((2u64.pow(32) + 1u64).into(), test_params_2.spend_key_id.clone())
-        .with_features(OutputFeatures::default())
-        .with_script(script![Nop])
-        .encrypt_data_for_recovery(&key_manager, None)
-        .await
-        .unwrap()
-        .with_input_data(input_data)
-        .with_covenant(Covenant::default())
-        .with_version(TransactionOutputVersion::get_current_version())
-        .with_sender_offset_public_key(test_params_2.sender_offset_key_pk.clone())
-        .with_script_key(test_params_2.script_key_id.clone())
-        .sign_as_sender_and_receiver(&key_manager, &test_params_2.sender_offset_key_id)
-        .await
-        .unwrap()
-        .try_build(&key_manager)
-        .await;
+    let wallet_output2 = WalletOutputBuilder::new(
+        (2u64.pow(32) + 1u64).into(),
+        test_params_2.commitment_mask_key_id.clone(),
+    )
+    .with_features(OutputFeatures::default())
+    .with_script(script![Nop])
+    .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
+    .await
+    .unwrap()
+    .with_input_data(input_data)
+    .with_covenant(Covenant::default())
+    .with_version(TransactionOutputVersion::get_current_version())
+    .with_sender_offset_public_key(test_params_2.sender_offset_key_pk.clone())
+    .with_script_key(test_params_2.script_key_id.clone())
+    .sign_as_sender_and_receiver(&key_manager, &test_params_2.sender_offset_key_id)
+    .await
+    .unwrap()
+    .try_build(&key_manager)
+    .await;
 
     match wallet_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
@@ -164,7 +171,7 @@ async fn range_proof_verification() {
 #[tokio::test]
 async fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let wallet_output1 = TestParams::new(&key_manager)
         .await
         .create_output(
@@ -255,7 +262,7 @@ async fn range_proof_verification_batch() {
 
 #[tokio::test]
 async fn sender_signature_verification() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
     let wallet_output = test_params
         .create_output(Default::default(), &key_manager)
@@ -416,7 +423,7 @@ fn check_timelocks() {
 #[tokio::test]
 async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager)
         .await
         .expect("Failed to create tx");
@@ -429,7 +436,7 @@ async fn test_validate_internal_consistency() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn check_cut_through() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (tx, _, outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
             .await
@@ -486,7 +493,7 @@ async fn check_cut_through() {
 
 #[tokio::test]
 async fn check_duplicate_inputs_outputs() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (tx, _, _outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
             .await
@@ -509,7 +516,7 @@ async fn check_duplicate_inputs_outputs() {
 
 #[tokio::test]
 async fn inputs_not_malleable() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
         1,
@@ -544,7 +551,7 @@ async fn inputs_not_malleable() {
 
 #[tokio::test]
 async fn test_output_recover_openings() {
-    let key_manager = create_memory_db_key_manager();
+    let key_manager = create_memory_db_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
     let v = MicroMinotari::from(42);
 
@@ -560,23 +567,21 @@ async fn test_output_recover_openings() {
         .unwrap();
     let output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
 
-    let (mask, value) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
+    let (mask, value, _) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
     assert_eq!(value, wallet_output.value);
-    assert_eq!(mask, test_params.spend_key_id);
+    assert_eq!(mask, test_params.commitment_mask_key_id);
 }
 
 mod validate_internal_consistency {
 
-    use blake2::Blake2b;
-    use digest::{consts::U32, Digest};
-    use tari_common_types::types::FixedHash;
+    use digest::Digest;
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
     use crate::{
         covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
         transactions::{
-            key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+            key_manager::MemoryDbKeyManager,
             test_helpers::{create_transaction_with, create_wallet_outputs},
         },
     };
@@ -619,7 +624,7 @@ mod validate_internal_consistency {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
         let features = OutputFeatures { ..Default::default() };
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         test_case(
             &UtxoTestParams {
                 features: features.clone(),

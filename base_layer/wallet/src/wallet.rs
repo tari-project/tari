@@ -29,9 +29,9 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -54,9 +54,9 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
+        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
-        transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
+        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -64,7 +64,7 @@ use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest},
+    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerBranch, KeyManagerServiceError},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -77,14 +77,14 @@ use tari_p2p::{
     PeerSeedsConfig,
     TransportType,
 };
-use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
+use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
-    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
+    config::WalletConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -136,6 +136,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub db: WalletDatabase<T>,
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
+    wallet_type: WalletType,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -165,8 +166,10 @@ where
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
-        wallet_type: WalletType,
+        wallet_type: Option<WalletType>,
+        user_agent: String,
     ) -> Result<Self, WalletError> {
+        let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_database)?;
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
@@ -184,10 +187,10 @@ where
             config.transaction_service_config,
             config.buffer_size,
         );
-        let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
+                user_agent,
                 peer_seeds,
                 config.network,
                 node_identity.clone(),
@@ -198,19 +201,19 @@ where
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
-                wallet_identity.clone(),
             ))
             .add_initializer(TransactionKeyManagerInitializer::new(
                 key_manager_backend,
                 master_seed,
                 factories.clone(),
-                wallet_type,
+                wallet_type.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
-                wallet_identity.clone(),
+                node_identity.clone(),
+                config.network,
                 consensus_manager,
                 factories.clone(),
                 wallet_database.clone(),
@@ -235,10 +238,10 @@ where
                 wallet_database.clone(),
             ))
             .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
-            .add_initializer(UtxoScannerServiceInitializer::new(
+            .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 factories.clone(),
-                wallet_identity.clone(),
+                config.network,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -315,13 +318,18 @@ where
         } else {
             None
         };
+        let spend_key = key_manager_handle.get_spend_key().await?;
 
-        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, wallet_identity.clone())
-            .await
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "{:?}", e);
-                e
-            })?;
+        persist_one_sided_payment_script_for_node_identity(
+            &mut output_manager_handle,
+            &spend_key.pub_key,
+            spend_key.key_id,
+        )
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "{:?}", e);
+            e
+        })?;
 
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
@@ -352,8 +360,7 @@ where
             db: wallet_database,
             output_db: output_manager_database,
             factories,
-            #[cfg(feature = "test_harness")]
-            transaction_backend: transaction_backend_handle,
+            wallet_type,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
@@ -473,6 +480,42 @@ where
         }
     }
 
+    pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
+        let view_key = self.key_manager_service.get_view_key().await?;
+        let comms_key = self.key_manager_service.get_comms_key().await?;
+        let features = match self.wallet_type {
+            WalletType::DerivedKeys => TariAddressFeatures::default(),
+            WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
+        };
+        Ok(TariAddress::new_dual_address(
+            view_key.pub_key,
+            comms_key.pub_key,
+            self.network.as_network(),
+            features,
+        ))
+    }
+
+    pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
+        let view_key = self.key_manager_service.get_view_key().await?;
+        let spend_key = self.key_manager_service.get_spend_key().await?;
+        Ok(TariAddress::new_dual_address(
+            view_key.pub_key,
+            spend_key.pub_key,
+            self.network.as_network(),
+            TariAddressFeatures::create_one_sided_only(),
+        ))
+    }
+
+    pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
+        let address_interactive = self.get_wallet_interactive_address().await?;
+        let address_one_sided = self.get_wallet_one_sided_address().await?;
+        Ok(WalletIdentity::new(
+            self.comms.node_identity(),
+            address_interactive,
+            address_one_sided,
+        ))
+    }
+
     pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
         self.updater_service.as_ref().cloned()
     }
@@ -496,8 +539,8 @@ where
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
+        range_proof: Option<RangeProof>,
     ) -> Result<TxId, WalletError> {
-        // lets import the private keys
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
@@ -511,6 +554,7 @@ where
             covenant,
             encrypted_data,
             minimum_value_promise,
+            range_proof,
         );
         self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
             .await
@@ -525,34 +569,34 @@ where
         source_address: TariAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
+        let value = unblinded_output.value;
+        let wallet_output = unblinded_output
+            .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
+            .await?;
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
-                unblinded_output.value,
+                value,
                 source_address,
                 message,
                 ImportStatus::Imported,
                 None,
                 None,
                 None,
-                unblinded_output
-                    .clone()
-                    .to_wallet_output(&self.key_manager_service)
-                    .await?
-                    .to_transaction_output(&self.key_manager_service)
-                    .await?,
+                wallet_output.to_transaction_output(&self.key_manager_service).await?,
+                PaymentId::Empty,
             )
             .await?;
-        let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service).await?;
         // As non-rewindable
         self.output_manager_service
             .add_unvalidated_output(tx_id, wallet_output.clone(), None)
             .await?;
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}, value: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
+            "UTXO (Commitment: {}, value: {}, txID: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
             wallet_output.commitment(&self.key_manager_service).await?.to_hex(),
             wallet_output.value,
+            tx_id,
         );
 
         Ok(tx_id)
@@ -771,22 +815,22 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
 
     match (db_wallet_type, wallet_type) {
         (None, None) => {
-            panic!("Something is very wrong, no wallet type was found in the DB, or provided (on first run)")
+            // this is most likely an older wallet pre ledger support, lets put it in software
+            let wallet_type = WalletType::default();
+            db.set_wallet_type(wallet_type.clone())?;
+            Ok(wallet_type)
         },
         (None, Some(t)) => {
-            db.set_wallet_type(t)?;
-            Ok(t)
+            db.set_wallet_type(t.clone())?;
+            Ok(t.clone())
         },
         (Some(t), _) => Ok(t),
     }
 }
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
-    let comms_key_manager = KeyManager::<PublicKey, KeyDigest>::from(
-        master_seed.clone(),
-        KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
-        0,
-    );
+    let comms_key_manager =
+        KeyManager::<PublicKey, KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
     Ok(comms_key_manager.derive_key(0)?.key)
 }
 
@@ -795,15 +839,16 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    wallet_identity: WalletIdentity,
+    spend_key: &PublicKey,
+    spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {
-    let script = one_sided_payment_script(wallet_identity.node_identity.public_key());
+    let script = push_pubkey_script(spend_key);
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
             .as_hash::<Blake2b<U32>>()
             .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
             .to_vec(),
-        script_key_id: wallet_identity.wallet_node_key_id.clone(),
+        script_key_id: spend_key_id,
         script,
         input: ExecutionStack::default(),
         script_lock_height: 0,

@@ -119,11 +119,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
-
     use bytes::Bytes;
     use tari_test_utils::collect_recv;
-    use tokio::{sync::mpsc, time};
+    use tokio::sync::mpsc;
 
     use super::*;
     use crate::{message::OutboundMessage, pipeline::SinkService, utils};

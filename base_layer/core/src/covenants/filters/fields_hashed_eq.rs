@@ -62,7 +62,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
-        let key_manager = create_memory_db_key_manager();
+        let key_manager = create_memory_db_key_manager().unwrap();
         let features = OutputFeatures {
             maturity: 42,
             sidechain_feature: Some(make_sample_sidechain_feature()),

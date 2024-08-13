@@ -265,7 +265,6 @@ async fn build_node_context(
         factories: factories.clone(),
         randomx_factory,
         interrupt_signal: interrupt_signal.clone(),
-        smt,
     }
     .bootstrap()
     .await?;

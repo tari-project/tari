@@ -107,6 +107,7 @@ mod state_machine {
             num_neighbouring_nodes: 4,
             network_discovery: NetworkDiscoveryConfig {
                 min_desired_peers: NUM_PEERS,
+                initial_peer_sync_delay: None,
                 ..Default::default()
             },
             ..DhtConfig::default_local_test()
@@ -230,6 +231,7 @@ mod discovery_ready {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
             idle_after_num_rounds: 0,
+            initial_peer_sync_delay: None,
             ..Default::default()
         };
         let (_, _, _, mut ready, context) = setup(config);
@@ -250,6 +252,7 @@ mod discovery_ready {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
             idle_after_num_rounds: 0,
+            initial_peer_sync_delay: None,
             ..Default::default()
         };
         let (_, _, _, mut ready, context) = setup(config);

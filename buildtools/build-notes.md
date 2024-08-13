@@ -6,40 +6,76 @@ Build options:
  - Virtualised
  - Emulated
 
-# Building Linux x86_64 & ARM64
+# Building for Linux x86_64 & ARM64
 
 Using Vagrant and VirtualBox has a baseline for building needs, including tools, libs and testing
 
 Linux ARM64 can be built using Vagrant and VirtualBox or Docker and cross
 
-# Prep Ubuntu for development
+# Using Docker as a temporary guest for targeting Linux build options
+```bash
+docker run -it --rm \
+  ubuntu:18.04 bash
+```
+
+# Testing on OSX (x86_64/arm64) with docker targeting Linux build
+Setup a temp folder and tari folder, provide ssh access, with network ports exposed
+```bash
+docker run -it --rm \
+  -v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock \
+  -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock \
+  -v ${PWD}/../temp/root:/root \
+  -v ${PWD}/../tari:/work \
+  -w /work \
+  -p 0.0.0.0:1230-1240:1230-1240 \
+  -u root \
+  --platform linux/arm64 \
+  ubuntu:18.04 bash
+```
+
+# Prep Ubuntu v18.04 for development
 # From - https://github.com/tari-project/tari/blob/development/scripts/install_ubuntu_dependencies.sh
 ```bash
 sudo apt-get update
-sudo apt-get install \
+sudo apt-get install --no-install-recommends --assume-yes \
+  apt-transport-https \
+  ca-certificates \
+  curl \
+  gpg \
+  bash \
+  less \
   openssl \
   libssl-dev \
   pkg-config \
   libsqlite3-dev \
-  clang-10 \
+  libsqlite3-0 \
+  libreadline-dev \
   git \
   cmake \
   dh-autoreconf \
+  clang \
+  g++ \
   libc++-dev \
   libc++abi-dev \
   libprotobuf-dev \
   protobuf-compiler \
   libncurses5-dev \
   libncursesw5-dev \
+  libudev-dev \
+  libhidapi-dev \
   zip
 ```
 
-# Prep Ubuntu for cross-compile aarch64/arm64 on x86_64
+# Prep Ubuntu for a different CPU architecture than native CPU
+an example from arm64 build to x86_64
 ```bash
-sudo apt-get install \
-  pkg-config-aarch64-linux-gnu \
-  gcc-aarch64-linux-gnu \
-  g++-aarch64-linux-gnu
+export CROSS_DEB_ARCH=amd64
+bash ./scripts/cross_compile_ubuntu_18-pre-build.sh x86_64-unknown-linux-gnu
+```
+an example from x86_64 build to arm64
+```bash
+export CROSS_DEB_ARCH=arm64
+bash ./scripts/cross_compile_ubuntu_18-pre-build.sh aarch64-unknown-linux-gnu
 ```
 
 # Install rust
@@ -52,13 +88,14 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ```
 
 ```bash
+export PATH="$HOME/.cargo/bin:$PATH"
 source "$HOME/.cargo/env"
 ```
 
 # Prep rust for cross-compile aarch64/arm64 on x86_64
 ```bash
 rustup target add aarch64-unknown-linux-gnu
-rustup toolchain install stable-aarch64-unknown-linux-gnu
+rustup toolchain install stable-aarch64-unknown-linux-gnu --force-non-host
 ```
 
 # Check was tools chains rust has in place
@@ -125,16 +162,20 @@ cargo build --locked \
   --target aarch64-unknown-linux-gnu
 ```
 
-# Using a single command line build using Docker
+# Using a single command line build using cross-rs
 ```bash
 cross build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu
 ```
+or
+# Building Raspberry Pi Linux compatible binaries on your faster x86_64 or aarch64 computer
 ```bash
 cross build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu \
-  --bin minotari_node --bin minotari_console_wallet \
-  --bin minotari_merge_mining_proxy --bin minotari_miner
+  --bin minotari_node \
+  --bin minotari_console_wallet \
+  --bin minotari_merge_mining_proxy \
+  --bin minotari_miner
 ```

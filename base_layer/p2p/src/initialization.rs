@@ -445,6 +445,7 @@ pub async fn add_seed_peers(
 
 pub struct P2pInitializer {
     config: P2pConfig,
+    user_agent: String,
     seed_config: PeerSeedsConfig,
     network: Network,
     node_identity: Arc<NodeIdentity>,
@@ -454,6 +455,7 @@ pub struct P2pInitializer {
 impl P2pInitializer {
     pub fn new(
         config: P2pConfig,
+        user_agent: String,
         seed_config: PeerSeedsConfig,
         network: Network,
         node_identity: Arc<NodeIdentity>,
@@ -461,6 +463,7 @@ impl P2pInitializer {
     ) -> Self {
         Self {
             config,
+            user_agent,
             seed_config,
             network,
             node_identity,
@@ -557,9 +560,14 @@ impl ServiceInitializer for P2pInitializer {
                 major_version: MAJOR_NETWORK_VERSION,
                 minor_version: MINOR_NETWORK_VERSION,
                 network_byte: self.network.as_byte(),
-                user_agent: config.user_agent.clone(),
+                user_agent: self.user_agent.clone(),
             })
-            .set_liveness_check(config.listener_liveness_check_interval);
+            .with_minimize_connections(if self.config.dht.minimize_connections {
+                Some(self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes)
+            } else {
+                None
+            })
+            .set_self_liveness_check(config.listener_self_liveness_check_interval);
 
         if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
             // The default is false, so ensure that both settings are true in this case

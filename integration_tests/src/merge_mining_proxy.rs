@@ -22,14 +22,12 @@
 
 use std::{convert::TryInto, thread};
 
-use minotari_app_grpc::tari_rpc::GetIdentityRequest;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_merge_mining_proxy::{merge_miner, Cli};
-use minotari_wallet_grpc_client::WalletGrpcClient;
+use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 use serde_json::{json, Value};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
-use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-use tari_utilities::ByteArray;
+use tari_common_types::tari_address::TariAddress;
 use tempfile::tempdir;
 use tokio::runtime;
 use tonic::transport::Channel;
@@ -45,7 +43,6 @@ pub struct MergeMiningProxyProcess {
     pub port: u64,
     pub origin_submission: bool,
     id: u64,
-    pub stealth: bool,
 }
 
 pub async fn register_merge_mining_proxy_process(
@@ -54,7 +51,6 @@ pub async fn register_merge_mining_proxy_process(
     base_node_name: String,
     wallet_name: String,
     origin_submission: bool,
-    stealth: bool,
 ) {
     let merge_mining_proxy = MergeMiningProxyProcess {
         name: merge_mining_proxy_name.clone(),
@@ -63,7 +59,6 @@ pub async fn register_merge_mining_proxy_process(
         port: get_port(18000..18499).unwrap(),
         origin_submission,
         id: 0,
-        stealth,
     };
 
     merge_mining_proxy.start(world).await;
@@ -88,17 +83,13 @@ impl MergeMiningProxyProcess {
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
             .expect("wallet grpc client");
-        let wallet_public_key = PublicKey::from_vec(
-            &wallet_client
-                .identify(GetIdentityRequest {})
-                .await
-                .unwrap()
-                .into_inner()
-                .public_key,
-        )
-        .unwrap();
-        let wallet_payment_address = TariAddress::new(wallet_public_key, Network::LocalNet);
-        let stealth = self.stealth;
+        let wallet_public_key = &wallet_client
+            .get_address(grpc::Empty {})
+            .await
+            .unwrap()
+            .into_inner()
+            .address;
+        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
         thread::spawn(move || {
             let cli = Cli {
                 common: CommonCliArgs {
@@ -137,9 +128,8 @@ impl MergeMiningProxyProcess {
                         ),
                         (
                             "merge_mining_proxy.wallet_payment_address".to_string(),
-                            wallet_payment_address.to_hex(),
+                            wallet_payment_address.to_base58(),
                         ),
-                        ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
                         (
                             "merge_mining_proxy.use_dynamic_fail_data".to_string(),
                             "false".to_string(),

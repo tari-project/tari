@@ -23,7 +23,7 @@
 use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
-use tari_common_types::types::HashOutput;
+use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
 use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -39,7 +39,6 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
-    util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
@@ -194,7 +193,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
-    pub wallet_identity: WalletIdentity,
+    pub one_sided_tari_address: TariAddress,
     pub factories: CryptoFactories,
     pub recovery_message: String,
     pub one_sided_payment_message: String,

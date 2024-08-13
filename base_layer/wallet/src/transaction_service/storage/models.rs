@@ -34,7 +34,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::Transaction,
+    transaction_components::{encrypted_data::PaymentId, Transaction},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -147,6 +147,7 @@ pub struct CompletedTransaction {
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
     pub mined_timestamp: Option<NaiveDateTime>,
+    pub payment_id: Option<PaymentId>,
 }
 
 impl CompletedTransaction {
@@ -163,6 +164,7 @@ impl CompletedTransaction {
         direction: TransactionDirection,
         mined_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
+        payment_id: Option<PaymentId>,
     ) -> Result<Self, TransactionStorageError> {
         if status == TransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
@@ -191,6 +193,7 @@ impl CompletedTransaction {
             mined_height,
             mined_in_block: None,
             mined_timestamp,
+            payment_id,
         })
     }
 }
@@ -270,6 +273,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: None,
         }
     }
 }
@@ -299,6 +303,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
+            payment_id: None,
         }
     }
 }

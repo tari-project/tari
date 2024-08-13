@@ -642,7 +642,7 @@ pub enum OpcodeVersion {
 
 #[cfg(test)]
 mod test {
-    use crate::{op_codes::*, Opcode, ScriptError};
+    use crate::op_codes::*;
 
     #[test]
     fn empty_script() {

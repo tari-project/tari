@@ -117,9 +117,8 @@ impl OutputManagerServiceMock {
 
                 let _result = reply_tx
                     .send(Ok(OutputManagerResponse::RewoundOutputs(outputs)))
-                    .map_err(|e| {
+                    .inspect_err(|_| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        e
                     });
             },
             OutputManagerRequest::ScanOutputs(requested_outputs) => {
@@ -141,9 +140,8 @@ impl OutputManagerServiceMock {
                     .collect();
                 let _result = reply_tx
                     .send(Ok(OutputManagerResponse::ScanOutputs(outputs)))
-                    .map_err(|e| {
+                    .inspect_err(|_| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        e
                     });
             },
             OutputManagerRequest::ValidateUtxos => {},

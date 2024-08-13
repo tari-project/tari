@@ -148,7 +148,6 @@ impl Default for BaseNodeConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/base_node"),
-            user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
             ..Default::default()
         };
         Self {

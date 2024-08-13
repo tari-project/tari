@@ -98,7 +98,7 @@ pub struct InclusionProof<H> {
 /// ```
 pub struct ExclusionProof<H> {
     siblings: Vec<NodeHash>,
-    // The terminal node of the tree proof, or `None` if the the node is `Empty`.
+    // The terminal node of the tree proof, or `None` if the node is `Empty`.
     leaf: Option<LeafNode<H>>,
     phantom: std::marker::PhantomData<H>,
 }
@@ -227,7 +227,6 @@ impl<H: Digest<OutputSize = U32>> MerkleProofDigest<H> for ExclusionProof<H> {
 #[cfg(test)]
 mod test {
     use blake2::Blake2b;
-    use digest::consts::U32;
 
     use super::*;
 

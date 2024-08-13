@@ -22,7 +22,7 @@ use borsh::BorshSerialize;
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 use derivative::Derivative;
-use diesel::{prelude::*, SqliteConnection};
+use diesel::prelude::*;
 use tari_common_types::transaction::TxId;
 use tari_utilities::ByteArray;
 
@@ -80,7 +80,7 @@ impl NewOutputSql {
         let output = Self {
             commitment: output.commitment.to_vec(),
             spending_key: output.wallet_output.spending_key_id.to_string(),
-            rangeproof: output.wallet_output.rangeproof.map(|proof| proof.to_vec()),
+            rangeproof: output.wallet_output.range_proof.map(|proof| proof.to_vec()),
             value: output.wallet_output.value.as_u64() as i64,
             output_type: i32::from(output.wallet_output.features.output_type.as_byte()),
             maturity: output.wallet_output.features.maturity as i64,

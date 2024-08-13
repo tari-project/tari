@@ -753,18 +753,22 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
         new_template: Some(block_template),
         coinbases: vec![
             NewBlockCoinbase {
-                address: TariAddress::from_hex("30a815df7b8d7f653ce3252f08a21d570b1ac44958cb4d7af0e0ef124f89b11943")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+                )
+                .unwrap()
+                .to_base58(),
                 value: amount - 1000,
                 stealth_payment: false,
                 revealed_value_proof: true,
                 coinbase_extra: Vec::new(),
             },
             NewBlockCoinbase {
-                address: TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4HS8b64MDbvdaG5fiNgtsHhnoeCPaniS5M7iFuvEMDoyh9uikhWmYbnRtjdgHHVPjAXr7oSW61VSH5QvHU8jps1JXW",
+                )
+                .unwrap()
+                .to_base58(),
                 value: 1000,
                 stealth_payment: false,
                 revealed_value_proof: true,
@@ -809,18 +813,22 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
         max_weight: 0,
         coinbases: vec![
             NewBlockCoinbase {
-                address: TariAddress::from_hex("30a815df7b8d7f653ce3252f08a21d570b1ac44958cb4d7af0e0ef124f89b11943")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+                )
+                .unwrap()
+                .to_base58(),
                 value: 1,
                 stealth_payment: false,
                 revealed_value_proof: true,
                 coinbase_extra: Vec::new(),
             },
             NewBlockCoinbase {
-                address: TariAddress::from_hex("3e596f98f6904f0fc1c8685e2274bd8b2c445d5dac284a9398d09a0e9a760436d0")
-                    .unwrap()
-                    .to_hex(),
+                address: TariAddress::from_base58(
+                    "f4HS8b64MDbvdaG5fiNgtsHhnoeCPaniS5M7iFuvEMDoyh9uikhWmYbnRtjdgHHVPjAXr7oSW61VSH5QvHU8jps1JXW",
+                )
+                .unwrap()
+                .to_base58(),
                 value: 2,
                 stealth_payment: false,
                 revealed_value_proof: true,
@@ -851,18 +859,19 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
     }
     assert_eq!(coinbase_kernel_count, 1);
     assert_eq!(coinbase_utxo_count, 2);
-    let mut num_6154266700 = 0;
-    let mut num_12308533398 = 0;
+    let mut num_6154266699 = 0;
+    let mut num_12308533399 = 0;
     for output in body.outputs() {
-        if output.minimum_value_promise.as_u64() == 6154266700 {
-            num_6154266700 += 1;
+        if output.minimum_value_promise.as_u64() == 6154266699 {
+            num_6154266699 += 1;
         }
-        if output.minimum_value_promise.as_u64() == 12308533398 {
-            num_12308533398 += 1;
+        if output.minimum_value_promise.as_u64() == 12308533399 {
+            num_12308533399 += 1;
         }
     }
-    assert_eq!(num_6154266700, 1);
-    assert_eq!(num_12308533398, 1);
+
+    assert_eq!(num_6154266699, 1);
+    assert_eq!(num_12308533399, 1);
 
     match client.submit_block(new_block).await {
         Ok(_) => (),

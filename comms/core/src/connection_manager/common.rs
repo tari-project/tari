@@ -190,6 +190,7 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
     peer_identity: &ValidatedPeerIdentityExchange,
+    latency: Duration,
 ) -> Peer {
     let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
 
@@ -206,8 +207,9 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                     peer_identity_claim: peer_identity.claim.clone(),
                 });
 
+            // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
             peer.addresses
-                .mark_all_addresses_as_last_seen_now(&peer_identity.claim.addresses);
+                .mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.claim.addresses, latency);
 
             peer.features = peer_identity.claim.features;
             peer.supported_protocols = peer_identity.metadata.supported_protocols.clone();
@@ -221,15 +223,18 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                 "Peer '{}' does not exist in peer list. Adding.",
                 peer_node_id.short_str()
             );
+            let mut addresses = MultiaddressesWithStats::from_addresses_with_source(
+                peer_identity.claim.addresses.clone(),
+                &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_identity.claim.clone(),
+                },
+            );
+            // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
+            addresses.mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.claim.addresses, latency);
             Peer::new(
                 authenticated_public_key,
                 peer_node_id,
-                MultiaddressesWithStats::from_addresses_with_source(
-                    peer_identity.claim.addresses.clone(),
-                    &PeerAddressSource::FromPeerConnection {
-                        peer_identity_claim: peer_identity.claim.clone(),
-                    },
-                ),
+                addresses,
                 PeerFlags::empty(),
                 peer_identity.peer_features(),
                 peer_identity.supported_protocols().to_vec(),

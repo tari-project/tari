@@ -78,6 +78,7 @@ use tari_shutdown::Shutdown;
 use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
+#[allow(dead_code)]
 pub struct NodeInterfaces {
     pub node_identity: Arc<NodeIdentity>,
     pub outbound_nci: OutboundNodeCommsInterface,
@@ -357,6 +358,7 @@ async fn setup_base_node_services(
     let handles = StackBuilder::new(shutdown.to_signal())
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
+        .add_initializer(RegisterHandle::new(comms.peer_manager()))
         .add_initializer(LivenessInitializer::new(
             liveness_service_config,
             Arc::clone(&subscription_factory),

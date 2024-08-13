@@ -191,7 +191,7 @@ mod get_closer_peers {
 }
 
 mod get_peers {
-    use std::{borrow::BorrowMut, time::Duration};
+    use std::borrow::BorrowMut;
 
     use tari_comms::test_utils::node_identity::build_many_node_identities;
 

@@ -879,7 +879,6 @@ impl DiscoveryDialTask {
 mod test {
     use std::{convert::TryFrom, time::Duration};
 
-    use chrono::{DateTime, Utc};
     use tari_comms::test_utils::mocks::{
         create_connectivity_mock,
         create_peer_connection_mock_pair,
@@ -890,7 +889,6 @@ mod test {
 
     use super::*;
     use crate::{
-        broadcast_strategy::BroadcastClosestRequest,
         envelope::NodeDestination,
         test_utils::{
             build_peer_manager,

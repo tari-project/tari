@@ -7,6 +7,7 @@ use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -156,7 +157,7 @@ impl TransactionsTab {
             .highlight_style(styles::highlight())
             .heading_style(styles::header_row())
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination address"), Some(69), column0_items)
+            .add_column(Some("Source/Destination address"), Some(95), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
@@ -264,7 +265,7 @@ impl TransactionsTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Address"), Some(69), column0_items)
+            .add_column(Some("Source/Destination Address"), Some(95), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
@@ -288,7 +289,7 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 14];
+        let constraints = [Constraint::Length(1); 15];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
@@ -305,6 +306,7 @@ impl TransactionsTab {
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
         let maturity = Span::styled("Maturity:", Style::default().fg(Color::Magenta));
+        let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
         let paragraph = Paragraph::new(tx_id).wrap(trim);
@@ -335,11 +337,13 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[12]);
         let paragraph = Paragraph::new(maturity).wrap(trim);
         f.render_widget(paragraph, label_layout[13]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[14]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 14];
+            let constraints = [Constraint::Length(1); 15];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
 
@@ -429,6 +433,20 @@ impl TransactionsTab {
             };
             let maturity = Span::styled(maturity, Style::default().fg(Color::White));
 
+            let payment_id = match tx.payment_id.clone() {
+                Some(v) => {
+                    if let PaymentId::Open(bytes) = v {
+                        String::from_utf8(bytes)
+                            .unwrap_or_else(|_| "Invalid".to_string())
+                            .to_string()
+                    } else {
+                        format!("#{}", v)
+                    }
+                },
+                None => "None".to_string(),
+            };
+            let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
+
             let paragraph = Paragraph::new(tx_id).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_address).wrap(trim);
@@ -457,6 +475,8 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[12]);
             let paragraph = Paragraph::new(maturity).wrap(trim);
             f.render_widget(paragraph, content_layout[13]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[14]);
         }
     }
 }
@@ -469,7 +489,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(16),
+                    Constraint::Length(17),
                 ]
                 .as_ref(),
             )

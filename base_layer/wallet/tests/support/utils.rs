@@ -28,6 +28,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
+            encrypted_data::PaymentId,
             OutputFeatures,
             RangeProofType,
             TransactionOutput,
@@ -56,10 +57,9 @@ pub async fn make_fake_input_from_copy(
     wallet_output: &mut WalletOutput,
     key_manager: &MemoryDbKeyManager,
 ) -> WalletOutput {
-    let (spend_key_id, _spend_key_pk, script_key_id, _script_key_pk) =
-        key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-    wallet_output.spending_key_id = spend_key_id;
-    wallet_output.script_key_id = script_key_id;
+    let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
+    wallet_output.spending_key_id = commitment_mask_key.key_id;
+    wallet_output.script_key_id = script_key.key_id;
     wallet_output.clone()
 }
 
@@ -74,13 +74,18 @@ pub async fn create_wallet_output_from_sender_data(
         .await
         .unwrap();
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&test_params.spend_key_id, None, sender_data.amount.as_u64())
+        .encrypt_data_for_recovery(
+            &test_params.commitment_mask_key_id,
+            None,
+            sender_data.amount.as_u64(),
+            PaymentId::Empty,
+        )
         .await
         .unwrap();
     let mut utxo = WalletOutput::new(
         TransactionOutputVersion::get_current_version(),
         sender_data.amount,
-        test_params.spend_key_id.clone(),
+        test_params.commitment_mask_key_id.clone(),
         sender_data.features.clone(),
         sender_data.script.clone(),
         inputs!(public_script_key),
@@ -91,6 +96,7 @@ pub async fn create_wallet_output_from_sender_data(
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
+        PaymentId::Empty,
         key_manager,
     )
     .await
@@ -98,7 +104,7 @@ pub async fn create_wallet_output_from_sender_data(
     let output_message = TransactionOutput::metadata_signature_message(&utxo);
     utxo.metadata_signature = key_manager
         .get_receiver_partial_metadata_signature(
-            &test_params.spend_key_id,
+            &test_params.commitment_mask_key_id,
             &sender_data.amount.into(),
             &sender_data.sender_offset_public_key,
             &sender_data.ephemeral_public_nonce,

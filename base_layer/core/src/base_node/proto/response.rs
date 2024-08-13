@@ -22,7 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    iter::{FromIterator, Iterator},
+    iter::FromIterator,
     sync::Arc,
 };
 

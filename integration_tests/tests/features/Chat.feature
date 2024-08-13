@@ -78,3 +78,10 @@ Feature: Chat messaging
     When CHAT_A will have 1 message with CHAT_C
     When CHAT_A will have 1 message with CHAT_D
     Then CHAT_A will have 3 conversationalists
+
+  Scenario: A single message is fetched
+    Given I have a seed node SEED_A
+    When I have a chat client CHAT_A connected to seed node SEED_A
+    When I have a chat client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message with id 'abcd1234' 'Hey there' to CHAT_B
+    Then CHAT_A can find a message locally by id 'abcd1234'
