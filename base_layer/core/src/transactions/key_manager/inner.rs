@@ -1518,7 +1518,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             metadata_signature_message,
         );
 
-        let sender_partial_metadata_signature_self = self.sign_with_nonce_and_challenge(sender_offset_key_id, &ephemeral_private_nonce_id, &challenge)
+        let sender_partial_metadata_signature_self = self
+            .sign_with_nonce_and_challenge(sender_offset_key_id, &ephemeral_private_nonce_id, &challenge)
             .await?;
 
         let metadata_signature = ComAndPubSignature::new(
@@ -1528,7 +1529,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             Default::default(),
             sender_partial_metadata_signature_self.get_signature().clone(),
         );
-
 
         Ok(metadata_signature)
     }
