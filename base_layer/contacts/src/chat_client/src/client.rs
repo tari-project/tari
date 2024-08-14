@@ -194,7 +194,8 @@ impl ChatClient for Client {
         if let Some(mut contacts_service) = self.contacts.clone() {
             let contact = contacts_service.get_contact(address.clone()).await?;
 
-            return Ok(contacts_service.get_contact_online_status(contact).await?);
+            let status = contacts_service.get_contact_online_status(contact).await?;
+            return Ok(status);
         }
 
         Ok(ContactOnlineStatus::Offline)

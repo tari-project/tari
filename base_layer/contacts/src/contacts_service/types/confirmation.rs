@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use tari_common_types::MaxSizeBytes;
 use tari_utilities::ByteArray;
@@ -50,5 +50,15 @@ impl From<Confirmation> for proto::Confirmation {
             message_id: confirmation.message_id.to_vec(),
             timestamp: confirmation.timestamp,
         }
+    }
+}
+
+impl Display for Confirmation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Confirmation: message_id: {}, timestamp: {}",
+            self.message_id, self.timestamp
+        )
     }
 }

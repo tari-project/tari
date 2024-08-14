@@ -65,11 +65,13 @@ pub unsafe extern "C" fn get_chat_messages(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     if address.is_null() {
         error = LibChatError::from(InterfaceError::NullError("address".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let mlimit = u64::from(limit);

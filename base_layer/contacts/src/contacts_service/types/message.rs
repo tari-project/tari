@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -159,5 +159,31 @@ impl From<MessageMetadata> for proto::MessageMetadata {
             data: md.data.to_vec(),
             key: md.key.to_vec(),
         }
+    }
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Message {{ message_id: {}, receiver_address: {}, sender_address: {}, direction: {:?}, body: {}, \
+             metadata: {:?}, sent_at: {}, stored_at: {}, delivery_confirmation_at: {:?}, read_confirmation_at: {:?} }}",
+            self.message_id,
+            self.receiver_address,
+            self.sender_address,
+            self.direction,
+            self.body,
+            format!(
+                "{:?}",
+                self.metadata
+                    .iter()
+                    .map(|m| format!("({}, {})", m.key, m.data))
+                    .collect::<Vec<String>>()
+            ),
+            self.sent_at,
+            self.stored_at,
+            self.delivery_confirmation_at,
+            self.read_confirmation_at,
+        )
     }
 }

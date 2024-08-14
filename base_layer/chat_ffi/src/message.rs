@@ -60,10 +60,12 @@ pub unsafe extern "C" fn create_chat_message(
     if receiver.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
     if sender.is_null() {
         error = LibChatError::from(InterfaceError::NullError("sender".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let message_str = match CStr::from_ptr(message).to_str() {
@@ -134,11 +136,13 @@ pub unsafe extern "C" fn get_chat_message(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     if message_id.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message_id".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let id = process_vector(message_id, error_out);
@@ -183,11 +187,13 @@ pub unsafe extern "C" fn send_chat_message(client: *mut ChatClient, message: *mu
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     if message.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     let result = (*client)

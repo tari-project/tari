@@ -26,13 +26,14 @@
 use std::{
     cmp,
     convert::TryFrom,
+    fmt::Display,
     ops::{Deref, DerefMut},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_utilities::{
-    hex::{from_hex, HexError},
+    hex::{from_hex, to_hex, HexError},
     ByteArray,
     ByteArrayError,
 };
@@ -147,6 +148,12 @@ impl<const MAX: usize> ByteArray for MaxSizeBytes<MAX> {
     /// Return the data as a byte array
     fn as_bytes(&self) -> &[u8] {
         self.inner.as_ref()
+    }
+}
+
+impl<const MAX: usize> Display for MaxSizeBytes<MAX> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", to_hex(&self.inner))
     }
 }
 

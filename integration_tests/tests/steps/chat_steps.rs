@@ -101,7 +101,7 @@ async fn i_reply_to_message(
 
         let inbound_chat_message = messages
             .iter()
-            .find(|m| m.body == ChatBody::try_from(inbound_msg.clone()).unwrap())
+            .find(|m| m.body == ChatBody::try_from(inbound_msg.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -177,7 +177,7 @@ async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, co
             return Ok(());
         }
 
-        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND * 5)).await;
     }
 
     panic!(
@@ -263,7 +263,7 @@ async fn matching_delivery_timestamps(
 
         let client_1_message = client_1_messages
             .iter()
-            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
+            .find(|m| m.body == ChatBody::try_from(msg.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -278,7 +278,7 @@ async fn matching_delivery_timestamps(
 
         let client_2_message = client_2_messages
             .iter()
-            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
+            .find(|m| m.body == ChatBody::try_from(msg.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -322,7 +322,7 @@ async fn matching_read_timestamps(
 
         let client_1_message = client_1_messages
             .iter()
-            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
+            .find(|m| m.body == ChatBody::try_from(msg.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -337,7 +337,7 @@ async fn matching_read_timestamps(
 
         let client_2_message = client_2_messages
             .iter()
-            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
+            .find(|m| m.body == ChatBody::try_from(msg.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
@@ -378,7 +378,7 @@ async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: Stri
 
         let message = messages
             .iter()
-            .find(|m| m.body == ChatBody::try_from(msg.clone()).unwrap())
+            .find(|m| m.body == ChatBody::try_from(msg.clone().into_bytes()).unwrap())
             .expect("no message with that content found")
             .clone();
 
