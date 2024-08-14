@@ -1522,10 +1522,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-        let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
-        let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id).await?;
+        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
 
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
             txo_version,
@@ -1536,16 +1534,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             metadata_signature_message,
         );
 
-        let metadata_signature = ComAndPubSignature::sign(
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            &sender_offset_private_key,
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            &ephemeral_private_key,
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
+        let sender_partial_metadata_signature_self = self
+            .sign_with_nonce_and_challenge(sender_offset_key_id, ephemeral_private_nonce_id, &challenge)
+            .await?;
+
+        let metadata_signature = ComAndPubSignature::new(
+            Default::default(),
+            sender_partial_metadata_signature_self.get_public_nonce().clone(),
+            Default::default(),
+            Default::default(),
+            sender_partial_metadata_signature_self.get_signature().clone(),
+        );
+
         Ok(metadata_signature)
     }
 
