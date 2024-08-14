@@ -1506,8 +1506,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_pubkey = self.get_public_key_at_key_id(&ephemeral_private_nonce_id).await?;
-        let sender_offset_public_key = self.get_public_key_at_key_id(&sender_offset_key_id).await?;
+        let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id).await?;
+        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
 
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
             txo_version,
@@ -1519,7 +1519,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         );
 
         let sender_partial_metadata_signature_self = self
-            .sign_with_nonce_and_challenge(sender_offset_key_id, &ephemeral_private_nonce_id, &challenge)
+            .sign_with_nonce_and_challenge(sender_offset_key_id, ephemeral_private_nonce_id, &challenge)
             .await?;
 
         let metadata_signature = ComAndPubSignature::new(
