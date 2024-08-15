@@ -50,6 +50,7 @@ impl FFIBytes {
             length = ffi_import::byte_vector_get_length(self.ptr, &mut error) as usize;
             if error > 0 {
                 println!("byte_vector_get_length error {}", error);
+                panic!("byte_vector_get_length error");
             }
         }
         length
@@ -62,6 +63,7 @@ impl FFIBytes {
             byte = ffi_import::byte_vector_get_at(self.ptr, i, &mut error);
             if error > 0 {
                 println!("byte_vector_get_at error {}", error);
+                panic!("byte_vector_get_at error");
             }
         }
         byte

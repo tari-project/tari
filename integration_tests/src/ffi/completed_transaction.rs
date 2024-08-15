@@ -48,6 +48,7 @@ impl CompletedTransaction {
             tx_id = ffi_import::completed_transaction_get_transaction_id(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_transaction_id error {}", error);
+                panic!("completed_transaction_get_transaction_id error");
             }
         }
         tx_id
@@ -61,6 +62,7 @@ impl CompletedTransaction {
             ptr = ffi_import::completed_transaction_get_destination_tari_address(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_destination_tari_address error {}", error);
+                panic!("completed_transaction_get_destination_tari_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -74,6 +76,7 @@ impl CompletedTransaction {
             ptr = ffi_import::completed_transaction_get_source_tari_address(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_source_tari_address error {}", error);
+                panic!("completed_transaction_get_source_tari_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -86,6 +89,7 @@ impl CompletedTransaction {
             ptr = ffi_import::completed_transaction_get_transaction_kernel(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_transaction_kernel error {}", error);
+                panic!("completed_transaction_get_transaction_kernel error");
             }
         }
         Kernel::from_ptr(ptr)
@@ -99,6 +103,7 @@ impl CompletedTransaction {
             amount = ffi_import::completed_transaction_get_amount(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_amount error {}", error);
+                panic!("completed_transaction_get_amount error");
             }
         }
         amount
@@ -112,6 +117,7 @@ impl CompletedTransaction {
             fee = ffi_import::completed_transaction_get_fee(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_fee error {}", error);
+                panic!("completed_transaction_get_fee error");
             }
         }
         fee
@@ -125,6 +131,7 @@ impl CompletedTransaction {
             timestamp = ffi_import::completed_transaction_get_timestamp(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_timestamp error {}", error);
+                panic!("completed_transaction_get_timestamp error");
             }
         }
         timestamp
@@ -138,6 +145,7 @@ impl CompletedTransaction {
             ptr = ffi_import::completed_transaction_get_message(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_message error {}", error);
+                panic!("completed_transaction_get_message error");
             }
         }
         FFIString::from_ptr(ptr as *mut i8).as_string()
@@ -151,6 +159,7 @@ impl CompletedTransaction {
             status = ffi_import::completed_transaction_get_status(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_status error {}", error);
+                panic!("completed_transaction_get_status error");
             }
         }
         status
@@ -163,6 +172,7 @@ impl CompletedTransaction {
             is_outbound = ffi_import::completed_transaction_is_outbound(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_is_outbound error {}", error);
+                panic!("completed_transaction_is_outbound error");
             }
         }
         is_outbound
@@ -176,6 +186,7 @@ impl CompletedTransaction {
             confirmations_cnt = ffi_import::completed_transaction_get_confirmations(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_confirmations error {}", error);
+                panic!("completed_transaction_get_confirmations error");
             }
         }
         confirmations_cnt
@@ -189,6 +200,7 @@ impl CompletedTransaction {
             reason = ffi_import::completed_transaction_get_cancellation_reason(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_cancellation_reason error {}", error);
+                panic!("completed_transaction_get_cancellation_reason error");
             }
         }
         reason

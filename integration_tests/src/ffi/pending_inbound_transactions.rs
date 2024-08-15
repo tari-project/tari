@@ -48,6 +48,7 @@ impl PendingInboundTransactions {
             length = ffi_import::pending_inbound_transactions_get_length(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transactions_get_length error {}", error);
+                panic!("pending_inbound_transactions_get_length error");
             }
         }
         length
@@ -61,6 +62,7 @@ impl PendingInboundTransactions {
             ptr = ffi_import::pending_inbound_transactions_get_at(self.ptr, position, &mut error);
             if error > 0 {
                 println!("pending_inbound_transactions_get_at error {}", error);
+                panic!("pending_inbound_transactions_get_at error");
             }
         }
         PendingInboundTransaction::from_ptr(ptr)

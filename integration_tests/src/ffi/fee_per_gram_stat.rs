@@ -48,6 +48,7 @@ impl FeePerGramStat {
             order = ffi_import::fee_per_gram_stat_get_order(self.ptr, &mut error);
             if error > 0 {
                 println!("fee_per_gram_stat_get_order error {}", error);
+                panic!("fee_per_gram_stat_get_order error");
             }
         }
         order
@@ -60,6 +61,7 @@ impl FeePerGramStat {
             min = ffi_import::fee_per_gram_stat_get_min_fee_per_gram(self.ptr, &mut error);
             if error > 0 {
                 println!("fee_per_gram_stat_get_min_fee_per_gram error {}", error);
+                panic!("fee_per_gram_stat_get_min_fee_per_gram error");
             }
         }
         min
@@ -72,6 +74,7 @@ impl FeePerGramStat {
             avg = ffi_import::fee_per_gram_stat_get_avg_fee_per_gram(self.ptr, &mut error);
             if error > 0 {
                 println!("fee_per_gram_stat_get_avg_fee_per_gram error {}", error);
+                panic!("fee_per_gram_stat_get_avg_fee_per_gram error");
             }
         }
         avg
@@ -84,6 +87,7 @@ impl FeePerGramStat {
             max = ffi_import::fee_per_gram_stat_get_max_fee_per_gram(self.ptr, &mut error);
             if error > 0 {
                 println!("fee_per_gram_stat_get_max_fee_per_gram error {}", error);
+                panic!("fee_per_gram_stat_get_max_fee_per_gram error");
             }
         }
         max

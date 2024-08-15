@@ -49,6 +49,7 @@ impl PublicKeys {
             length = ffi_import::public_keys_get_length(self.ptr, &mut error);
             if error > 0 {
                 println!("public_keys_get_length error {}", error);
+                panic!("public_keys_get_length error");
             }
         }
         length as usize
@@ -61,6 +62,7 @@ impl PublicKeys {
             ptr = ffi_import::public_keys_get_at(self.ptr, position, &mut error);
             if error > 0 {
                 println!("public_keys_get_length error {}", error);
+                panic!("public_keys_get_length error");
             }
         }
         PublicKey::from_ptr(ptr)

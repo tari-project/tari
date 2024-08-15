@@ -48,6 +48,7 @@ impl PendingInboundTransaction {
             tx_id = ffi_import::pending_inbound_transaction_get_transaction_id(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transaction_get_transaction_id error {}", error);
+                panic!("pending_inbound_transaction_get_transaction_id error");
             }
         }
         tx_id
@@ -61,6 +62,7 @@ impl PendingInboundTransaction {
             ptr = ffi_import::pending_inbound_transaction_get_source_tari_address(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transaction_get_source_tari_address error {}", error);
+                panic!("pending_inbound_transaction_get_source_tari_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -74,6 +76,7 @@ impl PendingInboundTransaction {
             amount = ffi_import::pending_inbound_transaction_get_amount(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transaction_get_amount error {}", error);
+                panic!("pending_inbound_transaction_get_amount error");
             }
         }
         amount
@@ -87,6 +90,7 @@ impl PendingInboundTransaction {
             timestamp = ffi_import::pending_inbound_transaction_get_timestamp(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transaction_get_timestamp error {}", error);
+                panic!("pending_inbound_transaction_get_timestamp error");
             }
         }
         timestamp
@@ -100,6 +104,7 @@ impl PendingInboundTransaction {
             ptr = ffi_import::pending_inbound_transaction_get_message(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transaction_get_message error {}", error);
+                panic!("pending_inbound_transaction_get_message error");
             }
         }
         FFIString::from_ptr(ptr as *mut i8).as_string()
@@ -113,6 +118,7 @@ impl PendingInboundTransaction {
             status = ffi_import::pending_inbound_transaction_get_status(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_inbound_transaction_get_status error {}", error);
+                panic!("pending_inbound_transaction_get_status error");
             }
         }
         status

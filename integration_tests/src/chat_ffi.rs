@@ -172,7 +172,12 @@ impl ChatClientTrait for ChatFFI {
         let error_out = Box::into_raw(Box::new(0));
 
         let result;
-        unsafe { result = add_chat_contact(client.0, address_ptr, error_out) }
+        unsafe {
+            result = add_chat_contact(client.0, address_ptr, error_out);
+            if *error_out != 0 {
+                panic!("Error adding contact");
+            }
+        }
 
         Ok(result)
     }
@@ -183,14 +188,29 @@ impl ChatClientTrait for ChatFFI {
 
         let key_bytes = key.into_bytes();
         let len = i32::try_from(key_bytes.len()).expect("Truncation occurred") as c_uint;
-        let byte_key = unsafe { chat_byte_vector_create(key_bytes.as_ptr(), len, error_out) };
+        let byte_key = unsafe {
+            let byte_key = chat_byte_vector_create(key_bytes.as_ptr(), len, error_out);
+            if *error_out != 0 {
+                panic!("Error creating byte vector");
+            }
+            byte_key
+        };
 
         let data_bytes = data.into_bytes();
         let len = i32::try_from(data_bytes.len()).expect("Truncation occurred") as c_uint;
-        let byte_data = unsafe { chat_byte_vector_create(data_bytes.as_ptr(), len, error_out) };
+        let byte_data = unsafe {
+            let byte_data = chat_byte_vector_create(data_bytes.as_ptr(), len, error_out);
+            if *error_out != 0 {
+                panic!("Error creating byte vector");
+            }
+            byte_data
+        };
 
         unsafe {
             add_chat_message_metadata(message_ptr, byte_key, byte_data, error_out);
+            if *error_out != 0 {
+                panic!("Error adding metadata to message");
+            }
             Ok(*Box::from_raw(message_ptr as *mut Message))
         }
     }
@@ -203,6 +223,9 @@ impl ChatClientTrait for ChatFFI {
 
         unsafe {
             let result = check_online_status(client.0, address_ptr, error_out);
+            if *error_out != 0 {
+                panic!("Error checking online status");
+            }
             Ok(ContactOnlineStatus::from_byte(result).expect("A valid u8 from FFI status"))
         }
     }
@@ -219,6 +242,9 @@ impl ChatClientTrait for ChatFFI {
         unsafe {
             let message_ptr = create_chat_message(receiver_address_ptr, sender_address_ptr, message_c_char, error_out)
                 as *mut Message;
+            if *error_out != 0 {
+                panic!("Error creating message");
+            }
             Ok(*Box::from_raw(message_ptr))
         }
     }
@@ -234,6 +260,9 @@ impl ChatClientTrait for ChatFFI {
             let limit = i32::try_from(limit).expect("Truncation occurred") as c_uint;
             let page = i32::try_from(page).expect("Truncation occurred") as c_uint;
             let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut MessagesVector;
+            if *error_out != 0 {
+                panic!("Error getting messages");
+            }
             messages = (*all_messages).0.clone();
         }
 
@@ -245,10 +274,19 @@ impl ChatClientTrait for ChatFFI {
 
         let error_out = Box::into_raw(Box::new(0));
         let len = i32::try_from(message_id.len()).expect("Truncation occurred") as c_uint;
-        let byte_vector = unsafe { chat_byte_vector_create(message_id.as_ptr(), len, error_out) };
+        let byte_vector = unsafe {
+            let byte_vector = chat_byte_vector_create(message_id.as_ptr(), len, error_out);
+            if *error_out != 0 {
+                panic!("Error creating byte vector");
+            }
+            byte_vector
+        };
 
         unsafe {
             let message = get_chat_message(client.0, byte_vector, error_out) as *mut Message;
+            if *error_out != 0 {
+                panic!("Error getting message");
+            }
             let message = (*message).clone();
             return Ok(message);
         }
@@ -262,6 +300,9 @@ impl ChatClientTrait for ChatFFI {
 
         unsafe {
             send_chat_message(client.0, message_ptr, error_out);
+            if *error_out != 0 {
+                panic!("Error sending message");
+            }
         }
 
         Ok(())
@@ -274,6 +315,9 @@ impl ChatClientTrait for ChatFFI {
 
         unsafe {
             send_read_confirmation_for_message(client.0, message_ptr, error_out);
+            if *error_out != 0 {
+                panic!("Error sending read receipt");
+            }
         }
 
         Ok(())
@@ -286,6 +330,9 @@ impl ChatClientTrait for ChatFFI {
         unsafe {
             let error_out = Box::into_raw(Box::new(0));
             let vector = get_conversationalists(client.0, error_out) as *mut Conversationalists;
+            if *error_out != 0 {
+                panic!("Error getting conversationalists");
+            }
             addresses = (*vector).0.clone();
         }
 
@@ -351,6 +398,9 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
             address_ptr,
             error_out,
         );
+        if *error_out != 0 {
+            panic!("Error creating chat client");
+        }
     }
 
     ChatFFI {
@@ -385,6 +435,9 @@ pub async fn sideload_ffi_chat_client(
             adress_ptr,
             error_out,
         );
+        if *error_out != 0 {
+            panic!("Error sideloading chat client");
+        }
     }
 
     ChatFFI {
