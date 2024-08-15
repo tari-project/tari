@@ -47,7 +47,6 @@ use crate::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbWalletOutput,
             sqlite_db::{ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
-            OutputStatus,
         },
     },
 };
@@ -351,7 +350,6 @@ where
 
             let unmined_and_invalid: Vec<_> = unmined
                 .iter()
-                .filter(|uo| uo.status == OutputStatus::UnspentMinedUnconfirmed)
                 .map(|uo| {
                     info!(
                         target: LOG_TARGET,

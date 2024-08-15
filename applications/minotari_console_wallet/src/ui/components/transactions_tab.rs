@@ -407,9 +407,17 @@ impl TransactionsTab {
             );
 
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
-            let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
+            let confirmations_msg = if (tx.status == TransactionStatus::MinedConfirmed ||
+                tx.status == TransactionStatus::OneSidedConfirmed ||
+                tx.status == TransactionStatus::CoinbaseConfirmed) &&
+                tx.cancelled.is_none()
+            {
                 format!("{} required confirmations met", required_confirmations)
-            } else if tx.status == TransactionStatus::MinedUnconfirmed && tx.cancelled.is_none() {
+            } else if (tx.status == TransactionStatus::MinedUnconfirmed ||
+                tx.status == TransactionStatus::OneSidedUnconfirmed ||
+                tx.status == TransactionStatus::CoinbaseUnconfirmed) &&
+                tx.cancelled.is_none()
+            {
                 if let Some(count) = confirmation_count {
                     format!("{} of {} required confirmations met", count, required_confirmations)
                 } else {
