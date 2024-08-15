@@ -65,6 +65,7 @@ pub use configuration::{
     utils::load_configuration,
 };
 pub mod dir_utils;
+
 pub use logging::initialize_logging;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";

@@ -34,9 +34,11 @@ use rand::{random, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
     types::{PublicKey, Signature},
+    MaxSizeBytes,
+    MaxSizeString,
 };
 use tari_core::{
-    consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
+    consensus::DomainSeparatedConsensusHasher,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},

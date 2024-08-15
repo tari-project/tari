@@ -57,11 +57,13 @@ pub unsafe extern "C" fn send_read_confirmation_for_message(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     if message.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     let result = (*client)
@@ -97,6 +99,7 @@ pub unsafe extern "C" fn read_confirmation_message_id(
     if confirmation.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let c = &(*confirmation);
@@ -107,7 +110,7 @@ pub unsafe extern "C" fn read_confirmation_message_id(
         Err(e) => {
             error = LibChatError::from(InterfaceError::ConversionError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            0
+            return ptr::null_mut();
         },
     };
 
@@ -162,7 +165,7 @@ pub unsafe extern "C" fn destroy_confirmation(ptr: *mut Confirmation) {
 #[cfg(test)]
 mod test {
     use tari_contacts::contacts_service::types::{Confirmation, MessageBuilder};
-    use tari_utilities::epoch_time::EpochTime;
+    use tari_utilities::{epoch_time::EpochTime, ByteArray};
 
     use crate::{
         byte_vector::{chat_byte_vector_get_at, chat_byte_vector_get_length},
@@ -170,7 +173,7 @@ mod test {
     };
 
     #[test]
-    fn test_reading_from_confrimation() {
+    fn test_reading_from_confirmation() {
         let message_id = MessageBuilder::new().build().message_id;
         let timestamp = EpochTime::now().as_u64();
         let confirmation = Confirmation {
@@ -190,7 +193,7 @@ mod test {
                 read_id.push(chat_byte_vector_get_at(id_byte_vec, i, error_out));
             }
 
-            assert_eq!(message_id, read_id)
+            assert_eq!(message_id.to_vec(), read_id)
         }
 
         unsafe {

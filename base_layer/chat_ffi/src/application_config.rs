@@ -73,6 +73,7 @@ pub unsafe extern "C" fn create_chat_config(
     let mut bad_network = |e| {
         error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        ptr::null_mut::<ApplicationConfig>()
     };
 
     let network = if network_str.is_null() {
