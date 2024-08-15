@@ -137,6 +137,13 @@ extern "C" fn callback_connectivity_status(status: u64) {
     callbacks.on_connectivity_status(status);
     // println!("callback_connectivity_status");
 }
+
+extern "C" fn callback_wallet_scanned_height(height: u64) {
+    let callbacks = Callbacks::instance();
+    callbacks.callback_wallet_scanned_height(height);
+    // println!("callback_wallet_scanned_height");
+}
+
 extern "C" fn callback_base_node_state(state: *mut TariBaseNodeState) {
     let callbacks = Callbacks::instance();
     callbacks.on_basenode_state_update(state);
@@ -169,6 +176,7 @@ impl Wallet {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
+
         unsafe {
             ptr = wallet_create(
                 comms_config.get_ptr(),
@@ -197,12 +205,14 @@ impl Wallet {
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
                 callback_connectivity_status,
+                callback_wallet_scanned_height,
                 callback_base_node_state,
                 &mut recovery_in_progress,
                 &mut error,
             );
             if error > 0 {
                 println!("wallet_create error {}", error);
+                panic!("wallet_create error");
             }
         }
         #[allow(clippy::arc_with_non_send_sync)]
@@ -248,6 +258,7 @@ impl Wallet {
             );
             if error > 0 {
                 println!("wallet_set_base_node_peer error {}", error);
+                panic!("wallet_set_base_node_peer error");
             }
         }
         success
@@ -260,6 +271,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_tari_address(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_tari_address error {}", error);
+                panic!("wallet_get_tari_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -281,6 +293,7 @@ impl Wallet {
             success = ffi_import::wallet_upsert_contact(self.ptr, contact.get_ptr(), &mut error);
             if error > 0 {
                 println!("wallet_upsert_contact error {}", error);
+                panic!("wallet_upsert_contact error");
             }
         }
         success
@@ -293,6 +306,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_contacts(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_contacts error {}", error);
+                panic!("wallet_get_contacts error");
             }
         }
         Contacts::from_ptr(ptr)
@@ -305,6 +319,7 @@ impl Wallet {
             success = ffi_import::wallet_remove_contact(self.ptr, contact.get_ptr(), &mut error);
             if error > 0 {
                 println!("wallet_remove_contact error {}", error);
+                panic!("wallet_remove_contact error");
             }
         }
         success
@@ -317,6 +332,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_balance(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_balance error {}", error);
+                panic!("wallet_get_balance error");
             }
         }
         Balance::from_ptr(ptr)
@@ -346,6 +362,7 @@ impl Wallet {
             );
             if error > 0 {
                 println!("wallet_send_transaction error {}", error);
+                panic!("wallet_send_transaction error");
             }
         }
         tx_id
@@ -358,6 +375,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_pending_outbound_transactions(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_pending_outbound_transactions error {}", error);
+                panic!("wallet_get_pending_outbound_transactions error");
             }
         }
         PendingOutboundTransactions::from_ptr(ptr)
@@ -370,6 +388,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_pending_inbound_transactions(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_pending_inbound_transactions error {}", error);
+                panic!("wallet_get_pending_inbound_transactions error");
             }
         }
         PendingInboundTransactions::from_ptr(ptr)
@@ -382,6 +401,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_completed_transactions(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_completed_transactions error {}", error);
+                panic!("wallet_get_completed_transactions error");
             }
         }
         CompletedTransactions::from_ptr(ptr)
@@ -394,6 +414,7 @@ impl Wallet {
             cancelled = ffi_import::wallet_cancel_pending_transaction(self.ptr, transaction_id, &mut error);
             if error > 0 {
                 println!("wallet_cancel_pending_transaction error {}", error);
+                panic!("wallet_cancel_pending_transaction error");
             }
         }
         cancelled
@@ -406,6 +427,7 @@ impl Wallet {
             request_key = ffi_import::wallet_start_txo_validation(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_start_txo_validation error {}", error);
+                panic!("wallet_start_txo_validation error");
             }
         }
         request_key
@@ -418,6 +440,7 @@ impl Wallet {
             request_key = ffi_import::wallet_start_transaction_validation(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_start_transaction_validation error {}", error);
+                panic!("wallet_start_transaction_validation error");
             }
         }
         request_key
@@ -435,6 +458,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_fee_per_gram_stats(self.ptr, count, &mut error);
             if error > 0 {
                 println!("wallet_get_fee_per_gram_stats error {}", error);
+                panic!("wallet_get_fee_per_gram_stats error");
             }
         }
         FeePerGramStats::from_ptr(ptr)
@@ -447,6 +471,7 @@ impl Wallet {
             ptr = ffi_import::contacts_handle(self.ptr, &mut error);
             if error > 0 {
                 println!("contacts_handle error {}", error);
+                panic!("contacts_handle error");
             }
         }
         ptr
