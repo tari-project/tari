@@ -46,6 +46,7 @@ impl TransportConfig {
             ptr = ffi_import::transport_tcp_create(listener_address, &mut error);
             if error > 0 {
                 println!("transport_tcp_create error {}", error);
+                panic!("transport_tcp_create error");
             }
         }
         Self { ptr }
