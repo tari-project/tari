@@ -156,7 +156,7 @@ event_channel_size = 3500
 
 [wallet.base_node]
 # Configuration for the wallet's base node service
-# The refresh interval (default = 3 s)
+# The refresh interval
 #base_node_monitor_max_refresh_interval = 30
 # The RPC client pool size  (default = 5)
 #base_node_rpc_pool_size = 5
