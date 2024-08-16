@@ -77,6 +77,10 @@ impl<const MAX: usize> MaxSizeBytes<MAX> {
             inner: b[..len].to_vec(),
         }
     }
+
+    pub fn max_size(&self) -> usize {
+        MAX
+    }
 }
 
 impl<const MAX: usize> From<MaxSizeBytes<MAX>> for Vec<u8> {

@@ -29,6 +29,7 @@ use hyper::header::InvalidHeaderValue;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
 use minotari_wallet_grpc_client::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
+use tari_common_types::{MaxSizeBytesError, MaxSizeVecError};
 use tari_core::{
     consensus::ConsensusBuilderError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError},
@@ -117,6 +118,10 @@ pub enum MmProxyError {
     UnexpectedMissingData(String),
     #[error("Failed to get block template: {0}")]
     FailedToGetBlockTemplate(String),
+    #[error("Max sized vector error: {0}")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
+    #[error("Max sized vector error: {0}")]
+    MaxSizeVecError(#[from] MaxSizeVecError),
 }
 
 impl From<tonic::Status> for MmProxyError {

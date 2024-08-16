@@ -50,6 +50,8 @@ pub mod mempool;
 pub mod transactions;
 
 mod common;
+#[cfg(feature = "base_node")]
+pub use common::AuxChainHashes;
 pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
 #[cfg(feature = "base_node")]

@@ -23,12 +23,14 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_core::transactions::transaction_components::{
+    CoinBaseExtra,
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
     RangeProofType,
     SideChainFeature,
 };
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -58,7 +60,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            features.coinbase_extra,
+            CoinBaseExtra::try_from(features.coinbase_extra).map_err(|e| e.to_string())?,
             sidechain_feature,
             RangeProofType::from_byte(range_proof_type)
                 .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
@@ -72,7 +74,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             version: features.version as u32,
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
-            coinbase_extra: features.coinbase_extra,
+            coinbase_extra: features.coinbase_extra.to_vec(),
             sidechain_feature: features.sidechain_feature.map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }

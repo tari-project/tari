@@ -145,6 +145,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
+            CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
@@ -2725,7 +2726,15 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
-    let decoded_metadata = (*metadata).0.clone();
+    let decoded_metadata = match CoinBaseExtra::try_from((*metadata).0.clone()) {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a metadata: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("metadata".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
     let output_features = TariOutputFeatures::new(
         decoded_version,
@@ -9930,7 +9939,7 @@ mod test {
             let range_proof_type = RangeProofType::RevealedValue.as_byte();
             let maturity: c_ulonglong = 20;
 
-            let expected_metadata = vec![1; 1024];
+            let expected_metadata = vec![1; 64];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
 
             let output_features = output_features_create_from_bytes(
@@ -9952,7 +9961,7 @@ mod test {
                 RangeProofType::from_byte(range_proof_type).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert_eq!((*output_features).coinbase_extra, expected_metadata);
+            assert_eq!((*output_features).coinbase_extra.to_vec(), expected_metadata);
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -11831,7 +11840,7 @@ mod test {
                 version: OutputFeaturesVersion::V0,
                 output_type: Default::default(),
                 maturity: 0,
-                coinbase_extra: vec![],
+                coinbase_extra: CoinBaseExtra::try_from(vec![]).unwrap(),
                 sidechain_feature: None,
                 range_proof_type: RangeProofType::RevealedValue,
             };

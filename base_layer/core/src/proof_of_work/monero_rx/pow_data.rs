@@ -34,7 +34,10 @@ use monero::{
     cryptonote::hash::Hashable,
     util::ringct::{RctSigBase, RctType},
 };
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::{
+    hex::{to_hex, Hex},
+    ByteArray,
+};
 use tiny_keccak::{Hasher, Keccak};
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
@@ -113,7 +116,7 @@ impl MoneroPowData {
         tari_header: &BlockHeader,
         consensus: &ConsensusManager,
     ) -> Result<MoneroPowData, MergeMineError> {
-        let mut v = tari_header.pow.pow_data.as_slice();
+        let mut v = tari_header.pow.pow_data.as_bytes();
         let pow_data: MoneroPowData =
             BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
         if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size()
@@ -139,7 +142,7 @@ impl MoneroPowData {
         // multiple pow_data that generate the same randomx difficulty could be a problem.
         BorshSerialize::serialize(&pow_data, &mut test_serialized_data)
             .map_err(|e| MergeMineError::SerializeError(format!("{:?}", e)))?;
-        if test_serialized_data != tari_header.pow.pow_data {
+        if test_serialized_data != tari_header.pow.pow_data.to_vec() {
             return Err(MergeMineError::SerializedPowDataDoesNotMatch(
                 "Serialized pow data does not match original pow data".to_string(),
             ));

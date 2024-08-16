@@ -77,9 +77,7 @@ impl TransactionInternalConsistencyValidator {
             return Err(ValidationError::OutputTypeNotPermitted { output_type: Coinbase });
         }
 
-        // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
-        // only coinbases may have the extra field set (the only field that the fn argument affects).
-        tx.body.check_output_features(1)?;
+        tx.body.verify_non_coinbase_has_coinbase_extra_empty()?;
 
         self.aggregate_body_validator.validate(
             &tx.body,

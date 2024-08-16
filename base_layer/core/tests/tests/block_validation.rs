@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     iter,
     sync::{Arc, RwLock},
 };
@@ -58,7 +59,7 @@ use tari_core::{
             TestParams,
             UtxoTestParams,
         },
-        transaction_components::{OutputFeatures, TransactionError},
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -78,7 +79,7 @@ use tari_core::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
-use tari_utilities::{epoch_time::EpochTime, hex::Hex};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use tiny_keccak::{Hasher, Keccak};
 use tokio::time::Instant;
 
@@ -242,13 +243,15 @@ fn add_monero_test_data(tblock: &mut Block, seed_key: &str) {
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
     tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
-    tblock.header.pow.pow_data = serialized;
+    tblock.header.pow.pow_data = PowData::try_from(serialized).unwrap();
 }
 
 fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
     add_monero_test_data(tblock, seed_key);
     // Add some "garbage" bytes to the end of the pow_data
-    tblock.header.pow.pow_data.extend([1u8; 100]);
+    let mut pow_data = tblock.header.pow.pow_data.to_vec();
+    pow_data.extend([1u8; 100]);
+    tblock.header.pow.pow_data = PowData::from_bytes_truncate(pow_data);
 }
 
 #[tokio::test]
@@ -871,32 +874,10 @@ async fn test_block_sync_body_validator() {
     ).await;
 
     // Coinbase extra field is too large
-    let extra = iter::repeat(1u8).take(65).collect();
-    let (template, _) = chain_block_with_new_coinbase(
-        &genesis,
-        vec![tx01.clone(), tx02.clone()],
-        &rules,
-        Some(extra),
-        &key_manager,
-    )
-    .await;
-    let new_block = db.prepare_new_block(template).unwrap();
-    let max_len = rules.consensus_constants(0).coinbase_output_features_extra_max_length();
-    let err = {
-        // `MutexGuard` cannot be held across an `await` point
-        let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err()
-    };
-    assert!(
-        matches!(
-            err,
-            ValidationError::TransactionError(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize{len, max }) if
-            len == 65 && max == max_len
-        ),
-        "{}",
-        err
-    );
+    let extra = iter::repeat(1u8).take(65).collect::<Vec<_>>();
+    if CoinBaseExtra::try_from(extra).is_ok() {
+        panic!("CoinbaseExtra should not be able to be created from a 65 byte vector");
+    }
 
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, None, &key_manager).await;
@@ -1236,10 +1217,11 @@ async fn add_block_with_large_many_output_block() {
 
 use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
+    proof_of_work::PowData,
     transactions::{
         key_manager::create_memory_db_key_manager,
         test_helpers::create_stx_protocol_internal,
-        transaction_components::{Transaction, TransactionKernel},
+        transaction_components::{CoinBaseExtra, Transaction, TransactionKernel},
     },
 };
 
