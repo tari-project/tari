@@ -136,7 +136,6 @@ impl BlockTemplateProtocol<'_> {
                             .into_inner();
                         let new_block_result = block_result.block.ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?;
 
-                        dbg!(&new_block_result);
                         new_block_result
                     }
                     None => {
