@@ -212,9 +212,9 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
     let mut block = get_mainnet_genesis_block_raw();
 
     // Add pre-mine utxos - enable/disable as required
-    let add_pre_mine_utxos = false;
+    let add_pre_mine_utxos = true;
     if add_pre_mine_utxos {
-        // NB: `stagenet_genesis_sanity_check` must pass
+        // NB: `mainnet_genesis_sanity_check` must pass
         let file_contents = include_str!("pre_mine/mainnet_pre_mine.json");
         add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
@@ -223,9 +223,9 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
+            FixedHash::from_hex("7f118dd2269ec9c634fde19cd04d34f5b4e4dea609926999d9a4d73e4f03536a").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
+            FixedHash::from_hex("b07420673fd88130c35f9b3b4239404202240857287f0d01ac5acba4b0d4518f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -244,7 +244,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
 fn get_mainnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("05 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("16 Aug 2024 08:00:00 +0200").expect("parse may not fail");
     let not_before_proof = b"I am the standin mainnet genesis block, \
         \
        I am not the real mainnet block \
@@ -326,9 +326,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("0cf11525252cb4c1a8e9ac55baf12e82f3c9526c5ed5d1274107ad9ca98731ec").unwrap();
+            FixedHash::from_hex("a9ce2a25711e25d98409b590663cf3fc4ac3d08b1192fef8f69e7f696f78d026").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("88f7824bb6ed36010d8dfbad6f744bd5ca78b7e8b6bb93ae3aacf9f1aaa0761a").unwrap();
+            FixedHash::from_hex("97d30b00f8f74da1b1d44ac9dcb93ca0eae367428fef97feec48649cca6f2ab7").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -347,7 +347,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("12 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("16 Aug 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -461,6 +461,7 @@ mod test {
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn esmeralda_genesis_sanity_check() {
+        let _ = Network::set_current(Network::Esmeralda);
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
@@ -470,6 +471,7 @@ mod test {
     #[test]
     #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
+        let _ = Network::set_current(Network::NextNet);
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
@@ -478,8 +480,18 @@ mod test {
 
     #[test]
     #[cfg(tari_target_network_mainnet)]
+    fn mainnet_genesis_sanity_check() {
+        let _ = Network::set_current(Network::MainNet);
+        // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
+        // if consensus values change, e.g. new pre_mine or other
+        let block = get_mainnet_genesis_block();
+        check_block(Network::MainNet, &block, 164, 1);
+    }
+
+    #[test]
+    #[cfg(tari_target_network_mainnet)]
     fn stagenet_genesis_sanity_check() {
-        Network::set_current(Network::StageNet).unwrap();
+        let _ = Network::set_current(Network::StageNet);
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
@@ -487,14 +499,18 @@ mod test {
     }
 
     #[test]
+    #[cfg(tari_target_network_testnet)]
     fn igor_genesis_sanity_check() {
+        let _ = Network::set_current(Network::Igor);
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
         check_block(Network::Igor, &block, 0, 0);
     }
 
     #[test]
+    #[cfg(tari_target_network_testnet)]
     fn localnet_genesis_sanity_check() {
+        let _ = Network::set_current(Network::LocalNet);
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
         check_block(Network::LocalNet, &block, 0, 0);

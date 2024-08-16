@@ -193,6 +193,13 @@ pub struct PreMineItem {
     pub beneficiary: String,
 }
 
+/// Get the total pre-mine value
+pub fn get_pre_mine_value(network: Network) -> Result<MicroMinotari, String> {
+    let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
+    let pre_mine_items = create_pre_mine_output_values(schedule.clone())?;
+    Ok(pre_mine_items.iter().map(|item| item.value).sum::<MicroMinotari>())
+}
+
 /// Create a list of (token value, maturity in blocks) according to the amounts in the unlock schedule, based on the
 /// apportionment and release cadence where 1 day equals 24 * 60 / 2 blocks.
 pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<PreMineItem>, String> {
@@ -426,6 +433,7 @@ mod test {
             create_pre_mine_genesis_block_info,
             create_pre_mine_output_values,
             get_expected_payout_period_blocks,
+            get_pre_mine_value,
             get_signature_threshold,
             get_tokenomics_pre_mine_unlock_schedule,
             verify_script_keys_for_index,
@@ -616,15 +624,30 @@ mod test {
     }
 
     #[test]
+    fn test_create_pre_mine_total_value() {
+        for network in [
+            Network::LocalNet,
+            Network::MainNet,
+            Network::Esmeralda,
+            Network::Igor,
+            Network::NextNet,
+            Network::StageNet,
+        ] {
+            let total_pre_mine_value = get_pre_mine_value(network).unwrap();
+            assert_eq!(
+                total_pre_mine_value,
+                MicroMinotari::from((21_000_000_000 - 14_700_000_000) * 1_000_000)
+            )
+        }
+    }
+
+    #[test]
     fn test_create_pre_mine_output_values() {
         let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::default());
         let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
-        for item in &pre_mine_items {
-            println!("{:?}", item);
-        }
 
         // Verify pre_mine items as per `https://tari.substack.com/p/tari-tokenomics`
-        let total_pre_mine_value = pre_mine_items.iter().map(|item| item.value).sum::<MicroMinotari>();
+        let total_pre_mine_value = get_pre_mine_value(Network::default()).unwrap();
         let total_tokens = schedule.network_rewards.tokens_amount +
             schedule.protocol.tokens_amount +
             schedule.community.tokens_amount +

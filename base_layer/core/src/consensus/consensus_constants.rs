@@ -32,6 +32,7 @@ use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
+    blocks::pre_mine::get_pre_mine_value,
     borsh::SerializedSize,
     consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -522,7 +523,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            pre_mine_value: ((21_000_000_000 - 14_700_000_000) * 1_000_000).into(),
+            pre_mine_value: get_pre_mine_value(Network::Esmeralda).expect("pre-mine total value is valid"),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -683,7 +684,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            pre_mine_value: MicroMinotari::from(0),
+            pre_mine_value: get_pre_mine_value(Network::MainNet).expect("pre-mine total value is valid"),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
