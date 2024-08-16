@@ -25,8 +25,14 @@ use std::{convert::Infallible, str::FromStr};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_app_grpc::tls::protocol_string;
-use minotari_app_utilities::parse_miner_input::{base_node_socket_address, verify_base_node_grpc_mining_responses, wallet_payment_address, BaseNodeGrpcClient, ShaP2PoolGrpcClient};
+use minotari_app_grpc::{tari_rpc::sha_p2_pool_client::ShaP2PoolClient, tls::protocol_string};
+use minotari_app_utilities::parse_miner_input::{
+    base_node_socket_address,
+    verify_base_node_grpc_mining_responses,
+    wallet_payment_address,
+    BaseNodeGrpcClient,
+    ShaP2PoolGrpcClient,
+};
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use tari_common::{configuration::StringList, load_configuration, DefaultConfigLoader};
@@ -34,7 +40,6 @@ use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
-use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -79,7 +84,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         },
     };
 
-    let p2pool_client = if  config.p2pool_enabled {
+    let p2pool_client = if config.p2pool_enabled {
         Some(connect_sha_p2pool(&config).await.map_err(|e| {
             error!(target: LOG_TARGET, "Could not connect to p2pool node: {}", e);
             let msg = "Could not connect to p2pool node. \nIs the p2pool node's gRPC running? Try running it with \
@@ -150,8 +155,6 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
     Ok(())
 }
 
-
-
 async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGrpcClient, MmProxyError> {
     let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
@@ -186,7 +189,6 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
 
     Ok(node_conn)
 }
-
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
     // TODO: Merge this code in the sha miner

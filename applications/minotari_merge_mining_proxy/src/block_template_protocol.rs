@@ -24,6 +24,7 @@
 use std::{cmp, convert::TryFrom, sync::Arc};
 
 use log::*;
+use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
@@ -37,7 +38,6 @@ use tari_core::{
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
-use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate};
 
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
@@ -61,7 +61,7 @@ pub struct BlockTemplateProtocol<'a> {
 impl<'a> BlockTemplateProtocol<'a> {
     pub async fn new(
         base_node_client: &'a mut BaseNodeGrpcClient,
-       p2pool_client: Option<ShaP2PoolGrpcClient>,
+        p2pool_client: Option<ShaP2PoolGrpcClient>,
         config: Arc<MergeMiningProxyConfig>,
         consensus_manager: ConsensusManager,
         wallet_payment_address: TariAddress,
@@ -128,31 +128,35 @@ impl BlockTemplateProtocol<'_> {
             } else {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
-
                         dbg!("I'm using p2pool");
-                        let block_result = client
-                            .get_new_block(GetNewBlockRequest::default())
-                            .await?
-                            .into_inner();
-                        let new_block_result = block_result.block.ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?;
+                        let block_result = client.get_new_block(GetNewBlockRequest::default()).await?.into_inner();
+                        let new_block_result = block_result
+                            .block
+                            .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?;
 
                         dbg!(&new_block_result);
                         new_block_result
-                    }
+                    },
                     None => {
-                        let (new_template, block_template_with_coinbase, height) = self.get_block_template_in_unnecessarily_complicated_manner(block_templates, best_block_hash, &mut loop_count).await?;
+                        let (new_template, block_template_with_coinbase, height) = self
+                            .get_block_template_in_unnecessarily_complicated_manner(
+                                block_templates,
+                                best_block_hash,
+                                &mut loop_count,
+                            )
+                            .await?;
 
                         let block = match self.get_new_block(block_template_with_coinbase).await {
                             Ok(b) => {
                                 debug!(
-                            target: LOG_TARGET,
-                            "Requested new block at height: #{} (try {}), block hash: `{}`",
-                            height, loop_count,
-                            {
-                                let block_header = b.block.as_ref().map(|b| b.header.as_ref()).unwrap_or_default();
-                                block_header.map(|h| h.hash.clone()).unwrap_or_default().to_hex()
-                            },
-                        );
+                                    target: LOG_TARGET,
+                                    "Requested new block at height: #{} (try {}), block hash: `{}`",
+                                    height, loop_count,
+                                    {
+                                        let block_header = b.block.as_ref().map(|b| b.header.as_ref()).unwrap_or_default();
+                                        block_header.map(|h| h.hash.clone()).unwrap_or_default().to_hex()
+                                    },
+                                );
                                 b
                             },
                             Err(err) => {
@@ -161,7 +165,7 @@ impl BlockTemplateProtocol<'_> {
                             },
                         };
                         block
-                    }
+                    },
                 };
 
                 let height = block
@@ -170,12 +174,13 @@ impl BlockTemplateProtocol<'_> {
                     .map(|b| b.header.as_ref().map(|h| h.height).unwrap_or_default())
                     .unwrap_or_default();
 
-                let miner_data = block.miner_data.as_ref().cloned().ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
+                let miner_data = block
+                    .miner_data
+                    .as_ref()
+                    .cloned()
+                    .ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
 
-                (
-                    add_monero_data(block, monero_mining_data.clone(), miner_data)?,
-                    height
-                )
+                (add_monero_data(block, monero_mining_data.clone(), miner_data)?, height)
             };
 
             block_templates
@@ -222,7 +227,12 @@ impl BlockTemplateProtocol<'_> {
     }
 
     // TODO: I don't know why this is so complicated, but I've extracted it into it's own method to hide the ugliness
-    async fn get_block_template_in_unnecessarily_complicated_manner(&mut self, block_templates: &BlockTemplateRepository, best_block_hash: FixedHash, loop_count: &mut u64) -> Result<(NewBlockTemplateData, NewBlockTemplate, u64), MmProxyError> {
+    async fn get_block_template_in_unnecessarily_complicated_manner(
+        &mut self,
+        block_templates: &BlockTemplateRepository,
+        best_block_hash: FixedHash,
+        loop_count: &mut u64,
+    ) -> Result<(NewBlockTemplateData, NewBlockTemplate, u64), MmProxyError> {
         let (new_template, block_template_with_coinbase, height) = match block_templates
             .get_new_template(best_block_hash)
             .await
@@ -244,11 +254,8 @@ impl BlockTemplateProtocol<'_> {
                 debug!(target: LOG_TARGET, "Requested new block template at height: #{} (try {})", height, loop_count);
                 let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
 
-                let template_with_coinbase = merge_mining::add_coinbase(
-                    &coinbase_output,
-                    &coinbase_kernel,
-                    new_template.template.clone(),
-                )?;
+                let template_with_coinbase =
+                    merge_mining::add_coinbase(&coinbase_output, &coinbase_kernel, new_template.template.clone())?;
                 debug!(target: LOG_TARGET, "Added coinbase to new block template (try {})", loop_count);
 
                 block_templates
@@ -274,7 +281,6 @@ impl BlockTemplateProtocol<'_> {
         };
         Ok((new_template, block_template_with_coinbase, height))
     }
-
 
     /// Get new block from base node.
     async fn get_new_block(

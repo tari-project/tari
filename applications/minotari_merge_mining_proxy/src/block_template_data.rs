@@ -104,9 +104,7 @@ impl BlockTemplateRepository {
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
     pub async fn get_final_template<T: AsRef<[u8]>>(&self, merge_mining_hash: T) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
-        b.get(merge_mining_hash.as_ref()).map(|item| {
-            item.data.clone()
-        })
+        b.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.

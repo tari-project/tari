@@ -39,6 +39,7 @@ use bytes::Bytes;
 use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
+use minotari_app_grpc::tari_rpc::SubmitBlockRequest;
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use reqwest::{ResponseBuilderExt, Url};
@@ -51,7 +52,6 @@ use tari_core::{
 use tari_utilities::hex::Hex;
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
-use minotari_app_grpc::tari_rpc::SubmitBlockRequest;
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -163,7 +163,7 @@ struct InnerService {
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: BaseNodeGrpcClient,
-    p2pool_client : Option<ShaP2PoolGrpcClient>,
+    p2pool_client: Option<ShaP2PoolGrpcClient>,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
@@ -326,19 +326,18 @@ impl InnerService {
                 block_data.template.tari_difficulty
             );
             if achieved_target >= block_data.template.tari_difficulty {
-                let resp = match p2pool_client
-                {
-                  Some(mut client) => {
-                      dbg!("Submiting to p2pool");
-                        client.submit_block(SubmitBlockRequest {
-                            block: Some(block_data.template.tari_block),
+                let resp = match p2pool_client {
+                    Some(mut client) => {
+                        dbg!("Submiting to p2pool");
+                        client
+                            .submit_block(SubmitBlockRequest {
+                                block: Some(block_data.template.tari_block),
 
-                            wallet_payment_address: self.wallet_payment_address.to_hex(),
-                        }).await
-                  }  ,
-                    None => {
-                        base_node_client.submit_block(block_data.template.tari_block).await
-                    }
+                                wallet_payment_address: self.wallet_payment_address.to_hex(),
+                            })
+                            .await
+                    },
+                    None => base_node_client.submit_block(block_data.template.tari_block).await,
                 };
 
                 match resp {
