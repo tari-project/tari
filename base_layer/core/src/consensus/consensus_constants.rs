@@ -683,7 +683,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            pre_mine_value: MicroMinotari::from(0),
+            pre_mine_value: ((21_000_000_000 - 14_700_000_000) * 1_000_000).into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
