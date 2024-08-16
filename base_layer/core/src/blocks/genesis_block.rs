@@ -31,13 +31,10 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, ProofOfWork},
+    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
     OutputSmt,
 };
-
-// This can be adjusted as required, but must be limited
-const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -152,7 +149,13 @@ fn get_stagenet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_nextnet_genesis_block() -> ChainBlock {
@@ -205,7 +208,13 @@ fn get_nextnet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
@@ -252,7 +261,13 @@ fn get_mainnet_genesis_block_raw() -> Block {
         I am only a standin \
         \
        Do not take me for the real one. I am only a placeholder for the real one";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_igor_genesis_block() -> ChainBlock {
@@ -306,7 +321,13 @@ fn get_igor_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_esmeralda_genesis_block() -> ChainBlock {
@@ -361,7 +382,13 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_localnet_genesis_block() -> ChainBlock {
@@ -395,15 +422,18 @@ fn get_localnet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
-fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[u8]) -> Block {
+fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &PowData) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
-
-    let mut not_before_proof = not_before_proof.to_vec();
-    not_before_proof.truncate(NOT_BEFORE_PROOF_BYTES_SIZE);
 
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis_timestamp.timestamp() as u64;
@@ -432,7 +462,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3x,
-                pow_data: not_before_proof,
+                pow_data: not_before_proof.clone(),
             },
         },
         body: AggregateBody::new(vec![], vec![], vec![]),

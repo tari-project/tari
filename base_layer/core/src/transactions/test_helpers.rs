@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
@@ -34,7 +34,7 @@ use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
-use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
+use super::transaction_components::{CoinBaseExtra, TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     borsh::SerializedSize,
     consensus::ConsensusManager,
@@ -85,7 +85,7 @@ pub async fn create_test_input<
                 value: amount,
                 features: OutputFeatures {
                     maturity,
-                    coinbase_extra,
+                    coinbase_extra: CoinBaseExtra::try_from(coinbase_extra).unwrap(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -329,7 +329,7 @@ pub fn create_consensus_manager() -> ConsensusManager {
 pub async fn create_coinbase_wallet_output(
     test_params: &TestParams,
     height: u64,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     range_proof_type: RangeProofType,
 ) -> WalletOutput {
     let rules = create_consensus_manager();

@@ -38,4 +38,11 @@ pub mod transaction;
 mod tx_id;
 pub mod types;
 pub mod wallet_types;
-pub use max_size::{MaxSizeBytes, MaxSizeBytesError, MaxSizeString, MaxSizeStringLengthError};
+pub use max_size::{
+    MaxSizeBytes,
+    MaxSizeBytesError,
+    MaxSizeString,
+    MaxSizeStringLengthError,
+    MaxSizeVec,
+    MaxSizeVecError,
+};

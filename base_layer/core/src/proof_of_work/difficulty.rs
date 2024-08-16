@@ -115,17 +115,20 @@ impl Default for Difficulty {
 
 /// This trait is used to add a type to `CheckedAdd`, which greatly simplifies usage in the code.
 /// It is implemented for `Difficulty` and `u64`.
+#[cfg(feature = "base_node")]
 pub trait CheckedAdd<T> {
     fn checked_add(&self, other: T) -> Option<Self>
     where Self: Sized;
 }
 
+#[cfg(feature = "base_node")]
 impl CheckedAdd<Difficulty> for Difficulty {
     fn checked_add(&self, other: Difficulty) -> Option<Self> {
         self.0.checked_add(other.0).map(Difficulty)
     }
 }
 
+#[cfg(feature = "base_node")]
 impl CheckedAdd<u64> for Difficulty {
     fn checked_add(&self, other: u64) -> Option<Self> {
         self.checked_add(Difficulty(other))

@@ -59,6 +59,7 @@ use tari_core::{
         key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_components::{
             encrypted_data::PaymentId,
+            CoinBaseExtra,
             KernelBuilder,
             RangeProofType,
             Transaction,
@@ -852,7 +853,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 0.into(),
                 coinbase.value.into(),
                 height,
-                &coinbase.coinbase_extra,
+                &CoinBaseExtra::try_from(coinbase.coinbase_extra)
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?,
                 &key_manager,
                 &script_key_id,
                 &address,
@@ -1049,7 +1051,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 0.into(),
                 coinbase.value.into(),
                 height,
-                &coinbase.coinbase_extra,
+                &CoinBaseExtra::try_from(coinbase.coinbase_extra)
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?,
                 &key_manager,
                 &script_key_id,
                 &address,

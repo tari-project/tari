@@ -506,9 +506,11 @@ async fn chain_balance_validation_burned() {
 }
 
 mod transaction_validator {
+    use std::convert::TryFrom;
+
     use super::*;
     use crate::{
-        transactions::transaction_components::{OutputType, TransactionError},
+        transactions::transaction_components::{CoinBaseExtra, OutputType, TransactionError},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 
@@ -542,7 +544,7 @@ mod transaction_validator {
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
-        features.coinbase_extra = b"deadbeef".to_vec();
+        features.coinbase_extra = CoinBaseExtra::try_from(b"deadbeef".to_vec()).unwrap();
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,

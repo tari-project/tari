@@ -20,8 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::MaxSizeBytesError;
 use thiserror::Error;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Connection error: {0}")]
@@ -47,11 +49,12 @@ pub enum Error {
     NotConnected,
     #[error("Can't parse int: {0}")]
     Parse(#[from] std::num::ParseIntError),
-
     #[error("General error: {0}")]
     General(String),
     #[error("Missing Data error: {0}")]
     MissingData(String),
+    #[error("Limit exceeded error: {0}")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {

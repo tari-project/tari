@@ -66,6 +66,10 @@ impl Network {
         CURRENT_NETWORK.set(network)
     }
 
+    pub fn is_set() -> bool {
+        CURRENT_NETWORK.get().is_some()
+    }
+
     pub fn as_byte(self) -> u8 {
         self as u8
     }

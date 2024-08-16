@@ -83,7 +83,9 @@ pub type MetadataData = MaxSizeBytes<MAX_DATA_SIZE>;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MessageMetadata {
+    #[serde(with = "tari_utilities::serde::hex")]
     pub key: MetadataKey,
+    #[serde(with = "tari_utilities::serde::hex")]
     pub data: MetadataData,
 }
 

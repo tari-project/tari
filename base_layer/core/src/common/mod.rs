@@ -22,6 +22,8 @@
 
 use blake2::Blake2b;
 use digest::consts::U64;
+#[cfg(feature = "base_node")]
+use tari_common_types::MaxSizeVec;
 use tari_hashing::ConfidentialOutputHashDomain;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
@@ -65,3 +67,7 @@ impl BanReason {
         self.ban_duration
     }
 }
+
+/// AuxChainHashes is a vector of limited size
+#[cfg(feature = "base_node")]
+pub type AuxChainHashes = MaxSizeVec<monero::Hash, 128>;

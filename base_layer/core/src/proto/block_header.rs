@@ -28,9 +28,8 @@ use tari_utilities::{epoch_time::EpochTime, ByteArray};
 use super::core as proto;
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
 };
-
 //---------------------------------- BlockHeader --------------------------------------------//
 
 impl TryFrom<proto::BlockHeader> for BlockHeader {
@@ -97,7 +96,7 @@ impl TryFrom<proto::ProofOfWork> for ProofOfWork {
     fn try_from(pow: proto::ProofOfWork) -> Result<Self, Self::Error> {
         Ok(Self {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            pow_data: pow.pow_data,
+            pow_data: PowData::try_from(pow.pow_data).map_err(|e| e.to_string())?,
         })
     }
 }
@@ -107,7 +106,7 @@ impl From<ProofOfWork> for proto::ProofOfWork {
     fn from(pow: ProofOfWork) -> Self {
         Self {
             pow_algo: pow.pow_algo as u64,
-            pow_data: pow.pow_data,
+            pow_data: pow.pow_data.to_vec(),
         }
     }
 }
