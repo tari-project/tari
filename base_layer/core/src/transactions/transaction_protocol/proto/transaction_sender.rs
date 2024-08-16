@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
-use tari_common_types::types::PublicKey;
+use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
@@ -116,6 +119,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .map_err(|_| "Transaction kernel version overflow")?
             .try_into()
             .map_err(|_| "Invalid transaction kernel version")?;
+        let sender_address = TariAddress::from_str(&data.sender_address).map_err(|err| err.to_string())?;
 
         Ok(Self {
             tx_id: data.tx_id.into(),
@@ -132,6 +136,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             minimum_value_promise: data.minimum_value_promise.into(),
             output_version,
             kernel_version,
+            sender_address,
         })
     }
 }
@@ -159,6 +164,7 @@ impl TryFrom<SingleRoundSenderData> for proto::SingleRoundSenderData {
             minimum_value_promise: sender_data.minimum_value_promise.into(),
             output_version: sender_data.output_version.as_u8().into(),
             kernel_version: sender_data.kernel_version.as_u8().into(),
+            sender_address: sender_data.sender_address.to_base58(),
         })
     }
 }

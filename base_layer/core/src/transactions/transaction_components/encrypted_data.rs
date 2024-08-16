@@ -45,7 +45,7 @@ use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    tari_address::dual_address::DualAddress,
+    tari_address::{TariAddress, TARI_ADDRESS_INTERNAL_DUAL_SIZE, TARI_ADDRESS_INTERNAL_SINGLE_SIZE},
     types::{Commitment, PrivateKey},
     MaxSizeBytes,
 };
@@ -84,8 +84,9 @@ pub enum PaymentId {
     Empty,
     U64(u64),
     U256(U256),
-    Address(DualAddress),
+    Address(TariAddress),
     Open(Vec<u8>),
+    AddressAndData(TariAddress, Vec<u8>),
 }
 
 impl PaymentId {
@@ -94,8 +95,9 @@ impl PaymentId {
             PaymentId::Empty => 0,
             PaymentId::U64(_) => size_of::<u64>(),
             PaymentId::U256(_) => size_of::<U256>(),
-            PaymentId::Address(_) => 67,
+            PaymentId::Address(a) => a.get_size(),
             PaymentId::Open(v) => v.len(),
+            PaymentId::AddressAndData(a, v) => a.get_size() + v.len(),
         }
     }
 
@@ -108,8 +110,13 @@ impl PaymentId {
                 v.to_little_endian(&mut bytes);
                 bytes
             },
-            PaymentId::Address(v) => v.to_bytes().to_vec(),
+            PaymentId::Address(v) => v.to_vec(),
             PaymentId::Open(v) => v.clone(),
+            PaymentId::AddressAndData(v, d) => {
+                let mut bytes = v.to_vec();
+                bytes.extend_from_slice(d);
+                bytes
+            },
         }
     }
 
@@ -125,12 +132,42 @@ impl PaymentId {
                 let v = U256::from_little_endian(bytes);
                 Ok(PaymentId::U256(v))
             },
-            67 => {
+            TARI_ADDRESS_INTERNAL_DUAL_SIZE => {
                 let v =
-                    DualAddress::from_bytes(bytes).map_err(|e| EncryptedDataError::ByteArrayError(e.to_string()))?;
+                    TariAddress::from_bytes(bytes).map_err(|e| EncryptedDataError::ByteArrayError(e.to_string()))?;
                 Ok(PaymentId::Address(v))
             },
-            _ => Ok(PaymentId::Open(bytes.to_vec())),
+            TARI_ADDRESS_INTERNAL_SINGLE_SIZE => {
+                let v =
+                    TariAddress::from_bytes(bytes).map_err(|e| EncryptedDataError::ByteArrayError(e.to_string()))?;
+                Ok(PaymentId::Address(v))
+            },
+            len if len < TARI_ADDRESS_INTERNAL_SINGLE_SIZE => Ok(PaymentId::Open(bytes.to_vec())),
+            len if len < TARI_ADDRESS_INTERNAL_DUAL_SIZE => {
+                if let Ok(address) = TariAddress::from_bytes(&bytes[0..TARI_ADDRESS_INTERNAL_SINGLE_SIZE]) {
+                    Ok(PaymentId::AddressAndData(
+                        address,
+                        bytes[TARI_ADDRESS_INTERNAL_SINGLE_SIZE..].to_vec(),
+                    ))
+                } else {
+                    Ok(PaymentId::Open(bytes.to_vec()))
+                }
+            },
+            _ => {
+                if let Ok(address) = TariAddress::from_bytes(&bytes[0..TARI_ADDRESS_INTERNAL_SINGLE_SIZE]) {
+                    Ok(PaymentId::AddressAndData(
+                        address,
+                        bytes[TARI_ADDRESS_INTERNAL_SINGLE_SIZE..].to_vec(),
+                    ))
+                } else if let Ok(address) = TariAddress::from_bytes(&bytes[0..TARI_ADDRESS_INTERNAL_DUAL_SIZE]) {
+                    Ok(PaymentId::AddressAndData(
+                        address,
+                        bytes[TARI_ADDRESS_INTERNAL_DUAL_SIZE..].to_vec(),
+                    ))
+                } else {
+                    Ok(PaymentId::Open(bytes.to_vec()))
+                }
+            },
         }
     }
 }
@@ -143,6 +180,7 @@ impl Display for PaymentId {
             PaymentId::U256(v) => write!(f, "{}", v),
             PaymentId::Address(v) => write!(f, "{}", v.to_emoji_string()),
             PaymentId::Open(v) => write!(f, "byte vector of len: {}", v.len()),
+            PaymentId::AddressAndData(v, d) => write!(f, "From {} with data: {:?}", v.to_emoji_string(), d),
         }
     }
 }
@@ -357,13 +395,36 @@ mod test {
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
             PaymentId::Address(
-                DualAddress::from_base58(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
             ),
+            PaymentId::Address(TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap()),
             PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
             PaymentId::Open(vec![1; 256]),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+                vec![1; 189],
+            ),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                vec![1; 189],
+            ),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),
@@ -404,13 +465,36 @@ mod test {
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
             PaymentId::Address(
-                DualAddress::from_base58(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
             ),
+            PaymentId::Address(TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap()),
             PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
             PaymentId::Open(vec![1; 256]),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+                vec![1; 189],
+            ),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ),
+            PaymentId::AddressAndData(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                vec![1; 189],
+            ),
         ] {
             for (value, mask) in [
                 (0, PrivateKey::default()),

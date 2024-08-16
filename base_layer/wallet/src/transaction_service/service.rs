@@ -175,7 +175,8 @@ pub struct TransactionService<
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     base_node_response_senders: HashMap<TxId, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
-    finalized_transaction_senders: HashMap<TxId, Sender<(TariAddress, TxId, Transaction)>>,
+    #[allow(clippy::type_complexity)]
+    finalized_transaction_senders: HashMap<TxId, (TariAddress, Sender<(TariAddress, TxId, Transaction)>)>,
     receiver_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
@@ -1533,7 +1534,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
-                PaymentId::Empty,
+                PaymentId::Address(self.resources.interactive_tari_address.clone()),
             )
             .await?
             .with_input_data(ExecutionStack::default())
@@ -1647,6 +1648,11 @@ where
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
+        let payment_id = match payment_id {
+            PaymentId::Open(v) => PaymentId::AddressAndData(self.resources.interactive_tari_address.clone(), v),
+            PaymentId::Empty => PaymentId::Address(self.resources.interactive_tari_address.clone()),
+            _ => payment_id,
+        };
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // For a stealth transaction, the script is not provided because the public key that should be included
@@ -2005,7 +2011,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
-                PaymentId::Empty,
+                PaymentId::Address(self.resources.interactive_tari_address.clone()),
             )
             .await?
             .with_input_data(Default::default())
@@ -2239,6 +2245,7 @@ where
                 e
             )));
         }
+
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .unwrap()
             .try_into()
@@ -2249,7 +2256,6 @@ where
         // First we check if this Reply is for a cancelled Pending Outbound Tx or a Completed Tx
         let cancelled_outbound_tx = self.db.get_cancelled_pending_outbound_transaction(tx_id);
         let completed_tx = self.db.get_completed_transaction_cancelled_or_not(tx_id);
-
         // This closure will check if the timestamps are beyond the cooldown period
         let check_cooldown = |timestamp: Option<NaiveDateTime>| {
             if let Some(t) = timestamp {
@@ -2352,7 +2358,6 @@ where
             None => return Err(TransactionServiceError::TransactionDoesNotExistError),
             Some(s) => s,
         };
-
         sender
             .send((source_pubkey, recipient_reply))
             .await
@@ -2674,19 +2679,24 @@ where
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
+            let source_address = if data.sender_address.comms_public_key() == &source_pubkey {
+                data.sender_address.clone()
+            } else {
+                TariAddress::new_single_address(
+                    source_pubkey,
+                    self.resources.interactive_tari_address.network(),
+                    TariAddressFeatures::INTERACTIVE,
+                )
+            };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
             self.finalized_transaction_senders
-                .insert(data.tx_id, tx_finalized_sender);
+                .insert(data.tx_id, (source_address.clone(), tx_finalized_sender));
             self.receiver_transaction_cancellation_senders
                 .insert(data.tx_id, cancellation_sender);
             // We are recieving an interactive transaction from someone on our network, so we assume its features are
             // interactive and its the same network
-            let source_address = TariAddress::new_single_address(
-                source_pubkey,
-                self.resources.interactive_tari_address.network(),
-                TariAddressFeatures::INTERACTIVE,
-            );
+
             let protocol = TransactionReceiveProtocol::new(
                 data.tx_id,
                 source_address,
@@ -2740,19 +2750,12 @@ where
                 )
             })?;
 
-        // assuming since we talked to the node, that it has an interactive address, we dont know what the view key is
-        // but we know its interactive, so make the view key 0, and the spend key the source public key.
-        let source_address = TariAddress::new_single_address(
-            source_pubkey,
-            self.resources.interactive_tari_address.network(),
-            TariAddressFeatures::INTERACTIVE,
-        );
-        let sender = match self.finalized_transaction_senders.get_mut(&tx_id) {
+        let (source, sender) = match self.finalized_transaction_senders.get_mut(&tx_id) {
             None => {
                 // First check if perhaps we know about this inbound transaction but it was cancelled
                 match self.db.get_cancelled_pending_inbound_transaction(tx_id) {
                     Ok(t) => {
-                        if t.source_address != source_address {
+                        if t.source_address.comms_public_key() != &source_pubkey {
                             debug!(
                                 target: LOG_TARGET,
                                 "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: \
@@ -2772,7 +2775,7 @@ where
                             .output_manager_service
                             .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                             .await?;
-                        self.restart_receive_transaction_protocol(tx_id, source_address.clone(), join_handles);
+                        self.restart_receive_transaction_protocol(tx_id, t.source_address.clone(), join_handles);
                         match self.finalized_transaction_senders.get_mut(&tx_id) {
                             None => return Err(TransactionServiceError::TransactionDoesNotExistError),
                             Some(s) => s,
@@ -2783,9 +2786,11 @@ where
             },
             Some(s) => s,
         };
-
+        if source_pubkey != *source.comms_public_key() {
+            return Err(TransactionServiceError::InvalidSourcePublicKey);
+        }
         sender
-            .send((source_address, tx_id, transaction))
+            .send((source.clone(), tx_id, transaction))
             .await
             .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
@@ -2882,7 +2887,8 @@ where
             );
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-            self.finalized_transaction_senders.insert(tx_id, tx_finalized_sender);
+            self.finalized_transaction_senders
+                .insert(tx_id, (source_address.clone(), tx_finalized_sender));
             self.receiver_transaction_cancellation_senders
                 .insert(tx_id, cancellation_sender);
             let protocol = TransactionReceiveProtocol::new(

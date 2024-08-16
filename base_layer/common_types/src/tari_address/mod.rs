@@ -42,8 +42,8 @@ use crate::{
     types::PublicKey,
 };
 
-const INTERNAL_DUAL_SIZE: usize = 67; // number of bytes used for the internal representation
-const INTERNAL_SINGLE_SIZE: usize = 35; // number of bytes used for the internal representation
+pub const TARI_ADDRESS_INTERNAL_DUAL_SIZE: usize = 67; // number of bytes used for the internal representation
+pub const TARI_ADDRESS_INTERNAL_SINGLE_SIZE: usize = 35; // number of bytes used for the internal representation
 const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the internal representation
 const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 91; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
@@ -152,13 +152,23 @@ impl TariAddress {
         TariAddress::Single(SingleAddress::new_with_interactive_only(spend_key, network))
     }
 
+    /// Gets the bytes size of the Tari Address
+    pub fn get_size(&self) -> usize {
+        match self {
+            TariAddress::Dual(_) => TARI_ADDRESS_INTERNAL_DUAL_SIZE,
+            TariAddress::Single(_) => TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
+        }
+    }
+
     /// helper function to convert emojis to u8
     fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
-        if !(emoji.chars().count() == INTERNAL_SINGLE_SIZE || emoji.chars().count() == INTERNAL_DUAL_SIZE) {
+        if !(emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
+            emoji.chars().count() == TARI_ADDRESS_INTERNAL_DUAL_SIZE)
+        {
             return Err(TariAddressError::InvalidSize);
         }
-        if emoji.chars().count() == INTERNAL_SINGLE_SIZE {
+        if emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             SingleAddress::emoji_to_bytes(emoji)
         } else {
             DualAddress::emoji_to_bytes(emoji)
@@ -229,10 +239,10 @@ impl TariAddress {
     /// Construct Tari Address from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<TariAddress, TariAddressError>
     where Self: Sized {
-        if !(bytes.len() == INTERNAL_SINGLE_SIZE || bytes.len() == INTERNAL_DUAL_SIZE) {
+        if !(bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE || bytes.len() == TARI_ADDRESS_INTERNAL_DUAL_SIZE) {
             return Err(TariAddressError::InvalidSize);
         }
-        if bytes.len() == INTERNAL_SINGLE_SIZE {
+        if bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             Ok(TariAddress::Single(SingleAddress::from_bytes(bytes)?))
         } else {
             Ok(TariAddress::Dual(DualAddress::from_bytes(bytes)?))
@@ -345,7 +355,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_SINGLE_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_SINGLE_SIZE);
 
         // Generate an emoji ID from the emoji string and ensure we recover it
         let emoji_id_from_emoji_string = TariAddress::from_emoji_string(&emoji_string).unwrap();
@@ -370,7 +380,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_SINGLE_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_SINGLE_SIZE);
 
         // Generate an emoji ID from the emoji string and ensure we recover it
         let emoji_id_from_emoji_string = TariAddress::from_emoji_string(&emoji_string).unwrap();
@@ -395,7 +405,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_SINGLE_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_SINGLE_SIZE);
 
         // Generate an emoji ID from the emoji string and ensure we recover it
         let emoji_id_from_emoji_string = TariAddress::from_emoji_string(&emoji_string).unwrap();
@@ -424,7 +434,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_DUAL_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
 
         let features = emoji_id_from_public_key.features();
         assert_eq!(features, TariAddressFeatures::create_interactive_and_one_sided());
@@ -453,7 +463,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_DUAL_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
 
         let features = emoji_id_from_public_key.features();
         assert_eq!(features, TariAddressFeatures::create_interactive_only());
@@ -482,7 +492,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_DUAL_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
 
         let features = emoji_id_from_public_key.features();
         assert_eq!(features, TariAddressFeatures::create_one_sided_only());

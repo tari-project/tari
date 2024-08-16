@@ -54,7 +54,6 @@ use crate::{
         utc::utc_duration_since,
     },
 };
-
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
 
 #[derive(Debug, PartialEq)]
@@ -315,7 +314,7 @@ where
                 tokio::select! {
                     Some((address, tx_id, tx)) = receiver.recv() => {
                         incoming_finalized_transaction = Some(tx);
-                        if inbound_tx.source_address.public_spend_key() != address.public_spend_key()  {
+                        if inbound_tx.source_address.comms_public_key() != address.public_spend_key()  {
                             warn!(
                                 target: LOG_TARGET,
                                 "Finalized Transaction did not come from the expected Public Key"
