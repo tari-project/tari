@@ -129,7 +129,6 @@ impl BlockTemplateProtocol<'_> {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
 
-                        dbg!("I'm using p2pool");
                         let block_result = client
                             .get_new_block(GetNewBlockRequest::default())
                             .await?
