@@ -165,7 +165,7 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::TariScript;
@@ -211,6 +211,7 @@ mod test {
             minimum_value_promise: MicroMinotari::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
+            sender_address: TariAddress::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let params = UtxoTestParams {

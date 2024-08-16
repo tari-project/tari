@@ -42,8 +42,10 @@ use minotari_wallet::{
     transaction_service::handle::TransactionServiceHandle,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
 };
@@ -164,6 +166,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
+        Network::LocalNet,
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
     )
@@ -227,6 +230,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
+        Network::LocalNet,
         connectivity,
         key_manager.clone(),
     )
@@ -275,6 +279,7 @@ async fn generate_sender_transaction_message(
         change.script_key_id,
         change.commitment_mask_key_id,
         Covenant::default(),
+        TariAddress::default(),
     );
 
     let mut stp = builder.build().await.unwrap();

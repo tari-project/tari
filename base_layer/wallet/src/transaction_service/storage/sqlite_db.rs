@@ -2318,6 +2318,7 @@ mod test {
                 change.script_key_id,
                 change.commitment_mask_key_id,
                 Default::default(),
+                TariAddress::default(),
             );
         let mut stp = builder.build().await.unwrap();
 

@@ -67,7 +67,7 @@ pub async fn send_transaction_reply(
         TransactionRoutingMechanism::StoreAndForwardOnly => {
             send_transaction_reply_store_and_forward(
                 inbound_transaction.tx_id,
-                inbound_transaction.source_address.public_spend_key().clone(),
+                inbound_transaction.source_address.comms_public_key().clone(),
                 proto_message.clone(),
                 &mut outbound_message_service,
             )

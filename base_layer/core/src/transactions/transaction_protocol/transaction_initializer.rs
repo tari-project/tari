@@ -26,6 +26,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
@@ -66,6 +67,7 @@ pub(super) struct ChangeDetails {
     change_input_data: ExecutionStack,
     change_script_key_id: TariKeyId,
     change_covenant: Covenant,
+    own_address: TariAddress,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -102,6 +104,7 @@ pub struct SenderTransactionInitializer<KM> {
     burn_commitment: Option<Commitment>,
     fee: Fee,
     key_manager: KM,
+    sender_address: TariAddress,
 }
 
 pub struct BuildError<KM> {
@@ -132,6 +135,7 @@ where KM: TransactionKeyManagerInterface
             kernel_features: KernelFeatures::empty(),
             burn_commitment: None,
             tx_id: None,
+            sender_address: TariAddress::default(),
             key_manager,
         }
     }
@@ -140,6 +144,12 @@ where KM: TransactionKeyManagerInterface
     /// absolute fee is calculated from the fee-per-gram value.
     pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
+        self
+    }
+
+    /// Set the sender's address
+    pub fn with_sender_address(&mut self, sender_address: TariAddress) -> &mut Self {
+        self.sender_address = sender_address;
         self
     }
 
@@ -223,6 +233,7 @@ where KM: TransactionKeyManagerInterface
         change_script_key_id: TariKeyId,
         change_commitment_mask_key_id: TariKeyId,
         change_covenant: Covenant,
+        own_address: TariAddress,
     ) -> &mut Self {
         let details = ChangeDetails {
             change_commitment_mask_key_id,
@@ -230,6 +241,7 @@ where KM: TransactionKeyManagerInterface
             change_input_data,
             change_script_key_id,
             change_covenant,
+            own_address,
         };
         self.change = Some(details);
         self
@@ -383,10 +395,18 @@ where KM: TransactionKeyManagerInterface
                             .ok_or("Change covenant was not provided")?
                             .change_covenant
                             .clone();
+                        let address = self
+                            .change
+                            .as_ref()
+                            .ok_or("address was not provided")?
+                            .own_address
+                            .clone();
+
+                        let payment_id = PaymentId::Address(address);
 
                         let encrypted_data = self
                             .key_manager
-                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), PaymentId::Empty)
+                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), payment_id.clone())
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -430,7 +450,7 @@ where KM: TransactionKeyManagerInterface
                             covenant,
                             encrypted_data,
                             minimum_value_promise,
-                            PaymentId::Empty,
+                            payment_id,
                             &self.key_manager,
                         )
                         .await
@@ -574,6 +594,7 @@ where KM: TransactionKeyManagerInterface
             inputs: self.inputs,
             outputs: self.sender_custom_outputs,
             text_message: self.recipient_text_message.unwrap_or_default(),
+            sender_address: self.sender_address.clone(),
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));
@@ -588,6 +609,7 @@ where KM: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::tari_address::TariAddress;
     use tari_script::{inputs, script};
 
     use crate::{
@@ -664,6 +686,7 @@ mod test {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         );
         let result = builder.build().await.unwrap();
         // Peek inside and check the results
@@ -849,6 +872,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
             .with_recipient_data(
@@ -898,6 +922,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
             .with_recipient_data(
@@ -964,6 +989,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
