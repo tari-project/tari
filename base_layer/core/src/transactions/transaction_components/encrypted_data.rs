@@ -101,6 +101,14 @@ impl PaymentId {
         }
     }
 
+    pub fn get_data(&self) -> Vec<u8> {
+        match &self {
+            PaymentId::Empty | PaymentId::U64(_) | PaymentId::U256(_) | PaymentId::Address(_) => Vec::new(),
+            PaymentId::Open(v) => v.clone(),
+            PaymentId::AddressAndData(_v, d) => d.clone(),
+        }
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             PaymentId::Empty => Vec::new(),
