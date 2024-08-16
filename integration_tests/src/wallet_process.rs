@@ -212,7 +212,7 @@ pub fn get_default_cli() -> Cli {
             base_path: Default::default(),
             config: Default::default(),
             log_config: None,
-            log_level: None,
+            log_path: None,
             network: None,
             config_property_overrides: vec![],
         },
@@ -230,6 +230,8 @@ pub fn get_default_cli() -> Cli {
         grpc_address: None,
         command2: None,
         profile_with_tokio_console: false,
+        view_private_key: None,
+        spend_key: None,
     }
 }
 

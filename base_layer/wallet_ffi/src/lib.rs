@@ -340,7 +340,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
             payment_id: CString::new(
-                String::from_utf8(x.payment_id.as_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
+                String::from_utf8(x.payment_id.to_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
             )
             .expect("failed to obtain string from a payment id")
             .into_raw(),
@@ -9225,7 +9225,7 @@ mod test {
     use once_cell::sync::Lazy;
     use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
-    use tari_contacts::contacts_service::types::{Direction, Message, MessageMetadata};
+    use tari_contacts::contacts_service::types::{ChatBody, Direction, Message, MessageId, MessageMetadata};
     use tari_core::{
         covenant,
         transactions::{
@@ -12276,7 +12276,7 @@ mod test {
                 if alice_msg_count < 5 {
                     let alice_message_result =
                         alice_wallet_runtime.block_on(alice_wallet_contacts_service.send_message(Message {
-                            body: vec![i],
+                            body: ChatBody::try_from(vec![i]).unwrap(),
                             metadata: vec![MessageMetadata::default()],
                             receiver_address: alice_wallet_address.clone(),
                             sender_address: bob_wallet_address.clone(),
@@ -12285,7 +12285,7 @@ mod test {
                             sent_at: u64::from(i),
                             delivery_confirmation_at: None,
                             read_confirmation_at: None,
-                            message_id: vec![i],
+                            message_id: MessageId::try_from(vec![i]).unwrap(),
                         }));
                     if alice_message_result.is_ok() {
                         alice_msg_count += 1;
@@ -12294,7 +12294,7 @@ mod test {
                 if bob_msg_count < 5 {
                     let bob_message_result =
                         bob_wallet_runtime.block_on(bob_wallet_contacts_service.send_message(Message {
-                            body: vec![i],
+                            body: ChatBody::try_from(vec![i]).unwrap(),
                             metadata: vec![MessageMetadata::default()],
                             sender_address: alice_wallet_address.clone(),
                             receiver_address: bob_wallet_address.clone(),
@@ -12303,7 +12303,7 @@ mod test {
                             sent_at: u64::from(i),
                             delivery_confirmation_at: None,
                             read_confirmation_at: None,
-                            message_id: vec![i],
+                            message_id: MessageId::try_from(vec![i]).unwrap(),
                         }));
                     if bob_message_result.is_ok() {
                         bob_msg_count += 1;

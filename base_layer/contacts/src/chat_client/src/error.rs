@@ -25,6 +25,7 @@ use std::io;
 use diesel::ConnectionError;
 use minotari_app_utilities::identity_management::IdentityError;
 use tari_common_sqlite::error::StorageError as SqliteStorageError;
+use tari_common_types::MaxSizeBytesError;
 use tari_comms::peer_manager::PeerManagerError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_p2p::initialization::CommsInitializationError;
@@ -38,6 +39,8 @@ pub enum Error {
     NetworkingError(#[from] NetworkingError),
     #[error("The client had a problem communication with the contacts service: {0}")]
     ContactsServiceError(#[from] ContactsServiceError),
+    #[error("Byte size conversion error: `{0}`")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -39,14 +39,6 @@ use tari_core::transactions::{
 };
 use tari_script::{CheckSigSchnorrSignature, ExecutionStack, TariScript};
 
-// Step 1 outputs for leader with `PreMineCreateScriptInputs`
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct PreMineCreateStep1ForLeader {
-    pub index: u64,
-    script_public_key: PublicKey,
-    verification_signature: CheckSigSchnorrSignature,
-}
-
 // Step 1 outputs for all with `PreMineSpendSessionInfo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep1SessionInfo {

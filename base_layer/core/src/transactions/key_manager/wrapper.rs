@@ -25,6 +25,7 @@ use std::sync::Arc;
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_common_types::{
+    tari_address::TariAddress,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
@@ -40,7 +41,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{CheckSigSchnorrSignature, TariScript};
 use tokio::sync::RwLock;
 
 use crate::transactions::{
@@ -85,7 +86,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-        wallet_type: WalletType,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
             transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerInner::new(
@@ -98,7 +99,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     /// Get the wallet type
-    pub async fn get_wallet_type(&self) -> WalletType {
+    pub async fn get_wallet_type(&self) -> Arc<WalletType> {
         self.transaction_key_manager_inner.read().await.get_wallet_type()
     }
 }
@@ -209,6 +210,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_view_key().await
+    }
+
+    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_private_view_key()
+            .await
     }
 
     async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
@@ -460,8 +469,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
-        metadata_signature_message: &[u8; 32],
+        metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
+        script: &TariScript,
+        receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -471,8 +482,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 value,
                 sender_offset_key_id,
                 txo_version,
-                metadata_signature_message,
+                metadata_signature_message_common,
                 range_proof_type,
+                script,
+                receiver_address,
             )
             .await
     }

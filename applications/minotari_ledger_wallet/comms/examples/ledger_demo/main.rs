@@ -3,25 +3,6 @@
 
 //! # Multi-party Ledger - command line example
 
-use dialoguer::{theme::ColorfulTheme, Select};
-use minotari_ledger_wallet_comms::{
-    accessor_methods::{
-        ledger_get_app_name,
-        ledger_get_dh_shared_secret,
-        ledger_get_public_key,
-        ledger_get_public_spend_key,
-        ledger_get_raw_schnorr_signature,
-        ledger_get_script_offset,
-        ledger_get_script_schnorr_signature,
-        ledger_get_script_signature,
-        ledger_get_version,
-        ledger_get_view_key,
-        verify_ledger_application,
-    },
-    error::LedgerDeviceError,
-    ledger_wallet::get_transport,
-};
-use rand::rngs::OsRng;
 /// This example demonstrates how to use the Ledger Nano S/X for the Tari wallet. In order to run the example, you
 /// need to have the `MinoTari Wallet` application installed on your Ledger device. For that, please follow the
 /// instructions in the [README](../../wallet/README.md) file.
@@ -34,10 +15,31 @@ use rand::rngs::OsRng;
 /// Example use:
 /// `cargo run --release --example ledger_demo`
 /// -----------------------------------------------------------------------------------------------
-use rand::RngCore;
+use dialoguer::{theme::ColorfulTheme, Select};
+use minotari_ledger_wallet_comms::{
+    accessor_methods::{
+        ledger_get_app_name,
+        ledger_get_dh_shared_secret,
+        ledger_get_one_sided_metadata_signature,
+        ledger_get_public_key,
+        ledger_get_public_spend_key,
+        ledger_get_raw_schnorr_signature,
+        ledger_get_script_offset,
+        ledger_get_script_schnorr_signature,
+        ledger_get_script_signature,
+        ledger_get_version,
+        ledger_get_view_key,
+        verify_ledger_application,
+        ScriptSignatureKey,
+    },
+    error::LedgerDeviceError,
+    ledger_wallet::get_transport,
+};
+use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_crypto::{
@@ -148,51 +150,66 @@ fn main() {
     println!("\ntest: GetScriptSignature");
     let network = Network::LocalNet;
     let version = 0u8;
-    let branch_key = get_random_nonce();
     let value = PrivateKey::from(123456);
     let spend_private_key = get_random_nonce();
     let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&get_random_nonce()));
     let mut script_message = [0u8; 32];
     script_message.copy_from_slice(&get_random_nonce().to_vec());
 
-    match ledger_get_script_signature(
-        account,
-        network,
-        version,
-        &branch_key,
-        &value,
-        &spend_private_key,
-        &commitment,
-        script_message,
-    ) {
-        Ok(signature) => println!(
-            "script_sig:     ({},{},{},{},{})",
-            signature.ephemeral_commitment().to_hex(),
-            signature.ephemeral_pubkey().to_hex(),
-            signature.u_x().to_hex(),
-            signature.u_a().to_hex(),
-            signature.u_y().to_hex()
-        ),
-        Err(e) => {
-            println!("\nError: {}\n", e);
-            return;
+    for branch_key in [
+        ScriptSignatureKey::Derived {
+            branch_key: get_random_nonce(),
         },
+        ScriptSignatureKey::Managed {
+            branch: TransactionKeyManagerBranch::Spend,
+            index: OsRng.next_u64(),
+        },
+    ] {
+        match ledger_get_script_signature(
+            account,
+            network,
+            version,
+            &branch_key,
+            &value,
+            &spend_private_key,
+            &commitment,
+            script_message,
+        ) {
+            Ok(signature) => println!(
+                "script_sig:     ({},{},{},{},{})",
+                signature.ephemeral_commitment().to_hex(),
+                signature.ephemeral_pubkey().to_hex(),
+                signature.u_x().to_hex(),
+                signature.u_a().to_hex(),
+                signature.u_y().to_hex()
+            ),
+            Err(e) => {
+                println!("\nError: {}\n", e);
+                return;
+            },
+        }
     }
 
     // GetScriptOffset
     println!("\ntest: GetScriptOffset");
-    let total_script_private_key = PrivateKey::default();
-    let mut derived_key_commitments = Vec::new();
+    let partial_script_offset = PrivateKey::default();
+    let mut derived_script_keys = Vec::new();
+    let mut script_key_indexes = Vec::new();
+    let mut derived_sender_offsets = Vec::new();
     let mut sender_offset_indexes = Vec::new();
     for _i in 0..5 {
-        derived_key_commitments.push(get_random_nonce());
-        sender_offset_indexes.push(OsRng.next_u64());
+        derived_script_keys.push(get_random_nonce());
+        script_key_indexes.push((TransactionKeyManagerBranch::Spend, OsRng.next_u64()));
+        derived_sender_offsets.push(get_random_nonce());
+        sender_offset_indexes.push((TransactionKeyManagerBranch::OneSidedSenderOffset, OsRng.next_u64()));
     }
 
     match ledger_get_script_offset(
         account,
-        &total_script_private_key,
-        &derived_key_commitments,
+        &partial_script_offset,
+        &derived_script_keys,
+        &script_key_indexes,
+        &derived_sender_offsets,
         &sender_offset_indexes,
     ) {
         Ok(script_offset) => println!("script_offset:  {}", script_offset.to_hex()),
@@ -267,6 +284,41 @@ fn main() {
             "signature:      ({},{})",
             signature.get_signature().to_hex(),
             signature.get_public_nonce().to_hex()
+        ),
+        Err(e) => {
+            println!("\nError: {}\n", e);
+            return;
+        },
+    }
+
+    // GetOneSidedMetadataSignature
+    println!("\ntest: GetOneSidedMetadataSignature");
+    let sender_offset_key_index = OsRng.next_u64();
+    let mut metadata_signature_message_common = [0u8; 32];
+    OsRng.fill_bytes(&mut metadata_signature_message_common);
+    let commitment_mask = get_random_nonce();
+    let receiver_address = TariAddress::from_base58(
+        "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt",
+    )
+    .unwrap();
+
+    match ledger_get_one_sided_metadata_signature(
+        account,
+        network,
+        version,
+        12345,
+        sender_offset_key_index,
+        &commitment_mask,
+        &receiver_address,
+        &metadata_signature_message_common,
+    ) {
+        Ok(signature) => println!(
+            "signature:      ({},{},{},{},{})",
+            signature.ephemeral_commitment().to_hex(),
+            signature.ephemeral_pubkey().to_hex(),
+            signature.u_a().to_hex(),
+            signature.u_x().to_hex(),
+            signature.u_y().to_hex()
         ),
         Err(e) => {
             println!("\nError: {}\n", e);

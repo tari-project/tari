@@ -1687,6 +1687,13 @@ where
             .build()
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        stp.change_recipient_sender_offset_private_key(
+            self.resources
+                .key_manager
+                .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+                .await?
+                .key_id,
+        )?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
@@ -1758,9 +1765,10 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(
+            .sign_as_sender_and_receiver_verified(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self,
+                &recipient_address,
             )
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?

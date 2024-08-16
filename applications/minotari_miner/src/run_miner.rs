@@ -114,18 +114,24 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", config.mining_worker_name);
         }
-        let mut mc = Controller::new(config.num_mining_threads).unwrap_or_else(|e| {
+        let mut mc = Controller::new(config.num_mining_threads).map_err(|e| {
             debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {}", e);
-            panic!("Error loading mining controller: {}", e);
-        });
+            ExitError::new(
+                ExitCode::UnknownError,
+                format!("Error loading mining controller: {}", e),
+            )
+        })?;
         let cc = crate::stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone())
-            .unwrap_or_else(|e| {
+            .map_err(|e| {
                 debug!(
                     target: LOG_TARGET_FILE,
                     "Error loading stratum client controller: {:?}", e
                 );
-                panic!("Error loading stratum client controller: {:?}", e);
-            });
+                ExitError::new(
+                    ExitCode::UnknownError,
+                    format!("Error loading mining controller: {}", e),
+                )
+            })?;
         mc.set_client_tx(cc.tx.clone());
 
         let _join_handle = thread::Builder::new()

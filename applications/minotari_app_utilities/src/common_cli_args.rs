@@ -22,7 +22,6 @@
 use std::{error::Error, path::PathBuf};
 
 use clap::Args;
-use log::Level;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Args, Debug)]
@@ -43,8 +42,9 @@ pub struct CommonCliArgs {
     #[clap(short, long, alias = "log_config")]
     pub log_config: Option<PathBuf>,
 
-    #[clap()]
-    pub log_level: Option<Level>,
+    /// The path to where logs should be stored
+    #[clap(long, alias = "log_path")]
+    pub log_path: Option<PathBuf>,
 
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]

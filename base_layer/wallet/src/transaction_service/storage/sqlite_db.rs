@@ -1965,7 +1965,7 @@ impl CompletedTransactionSql {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let payment_id = match c.payment_id {
-            Some(id) => Some(id.as_bytes()),
+            Some(id) => Some(id.to_bytes()),
             None => Some(Vec::new()),
         };
         let output = Self {

@@ -27,14 +27,12 @@ use std::{
     fs::File,
     io,
     io::{LineWriter, Write},
-    iter::once,
-    ops::Deref,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
 use chrono::{DateTime, Utc};
-use digest::{crypto_common::rand_core::OsRng, Digest};
+use digest::Digest;
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
@@ -72,7 +70,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
-    blocks::pre_mine::{create_pre_mine_genesis_block_file, get_pre_mine_items, PreMineItem},
+    blocks::pre_mine::get_pre_mine_items,
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
@@ -80,7 +78,6 @@ use tari_core::{
         transaction_components::{
             encrypted_data::PaymentId,
             OutputFeatures,
-            RangeProofType,
             Transaction,
             TransactionInput,
             TransactionInputVersion,
@@ -89,16 +86,12 @@ use tari_core::{
             UnblindedOutput,
             WalletOutput,
         },
-        CryptoFactories,
     },
 };
-use tari_crypto::{
-    keys::SecretKey,
-    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
-};
+use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
-use tari_script::{script, CheckSigSchnorrSignature, Opcode};
-use tari_utilities::{encoding::Base58, hex::Hex, ByteArray};
+use tari_script::{script, CheckSigSchnorrSignature};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -108,19 +101,16 @@ use super::error::CommandError;
 use crate::{
     automation::{
         utils::{
+            create_pre_mine_output_dir,
             get_file_name,
-            json_from_file_single_object,
             move_session_file_to_session_dir,
             out_dir,
             read_and_verify,
-            read_genesis_file,
             read_session_info,
             read_verify_session_info,
             write_json_object_to_file_as_line,
             write_to_json_file,
-            Context,
         },
-        PreMineCreateStep1ForLeader,
         PreMineSpendStep1SessionInfo,
         PreMineSpendStep2OutputsForLeader,
         PreMineSpendStep2OutputsForSelf,
@@ -135,8 +125,6 @@ use crate::{
 pub const LOG_TARGET: &str = "wallet::automation::commands";
 // Pre-mine file names
 pub(crate) const FILE_EXTENSION: &str = "json";
-pub(crate) const CREATE_STEP_1_LEADER: &str = "step_1_for_leader_from_";
-pub(crate) const CREATE_STEP_2_LEADER: &str = "step_2_for_parties";
 pub(crate) const SPEND_SESSION_INFO: &str = "step_1_session_info";
 pub(crate) const SPEND_STEP_2_LEADER: &str = "step_2_for_leader_from_";
 pub(crate) const SPEND_STEP_2_SELF: &str = "step_2_for_self";
@@ -776,437 +764,67 @@ pub async fn command_runner(
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
-            PreMineCreateScriptInputs(args) => {
-                match key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to create pre-mine info!\n");
-                        break;
-                    },
-                }
+            PreMineSpendGetOutputStatus => {
+                let pre_mine_outputs = get_all_embedded_pre_mine_outputs()?;
+                let output_hashes: Vec<HashOutput> = pre_mine_outputs.iter().map(|v| v.hash()).collect();
+                let unspent_outputs = transaction_service.fetch_unspent_outputs(output_hashes).await?;
 
-                if args.alias.is_empty() || args.alias.contains(" ") {
-                    eprintln!("\nError: Alias cannot contain spaces!\n");
-                    break;
-                }
-                if args.alias.chars().any(|c| !c.is_alphanumeric() && c != '_') {
-                    eprintln!("\nError: Alias contains invalid characters! Only alphanumeric and '_' are allowed.\n");
-                    break;
-                }
-
-                // Get the pre-mine items according to the unlock schedule specification
-                let pre_mine_items = match get_pre_mine_items().await {
+                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()).await {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        break;
+                        return Ok(());
                     },
                 };
 
-                let (session_id, out_dir) = match create_pre_mine_output_dir() {
+                let (session_id, out_dir) = match create_pre_mine_output_dir(Some("pre_mine_status")) {
                     Ok(values) => values,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        break;
+                        return Ok(());
                     },
                 };
-                let out_file = out_dir.join(get_file_name(CREATE_STEP_1_LEADER, Some(args.alias.clone())));
-
-                let mut outputs_for_leader = Vec::with_capacity(pre_mine_items.len());
-                let mut error = false;
-                for index in 0..pre_mine_items.len() as u64 {
-                    let key_id = KeyId::Managed {
-                        branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                        index,
-                    };
-                    let script_public_key = match key_manager_service.get_public_key_at_key_id(&key_id).await {
-                        Ok(key) => key,
-                        Err(e) => {
-                            eprintln!("\nError: Could not retrieve script key for output {}: {}\n", index, e);
-                            error = true;
-                            break;
-                        },
-                    };
-                    let verification_signature = match key_manager_service
-                        .sign_script_message(&key_id, PrivateKey::from(index).as_bytes())
-                        .await
-                    {
-                        Ok(value) => value,
-                        Err(e) => {
-                            eprintln!("\nError: Could not sign script message for output {}: {}\n", index, e);
-                            error = true;
-                            break;
-                        },
-                    };
-                    outputs_for_leader.push(PreMineCreateStep1ForLeader {
-                        index,
-                        script_public_key,
-                        verification_signature,
-                    });
-                }
-                if error {
-                    break;
-                }
-                write_to_json_file(&out_file, true, outputs_for_leader)?;
-
-                println!();
-                println!("Concluded step 1 'pre-mine-create-script-inputs'");
-                println!("Your session ID is:                 '{}'", session_id);
-                println!("Your session's output directory is: '{}'", out_dir.display());
-                println!("Session info saved to:              '{}'", out_file.display());
-                println!(
-                    "Send '{}' to leader for step 2",
-                    get_file_name(CREATE_STEP_1_LEADER, None)
-                );
-                println!();
-            },
-            PreMineCreateGenesisFile(args) => {
-                // Read inputs from party members
-                let mut threshold_inputs = Vec::with_capacity(args.party_file_names.len());
-                for file in &args.party_file_names {
-                    threshold_inputs.push(json_from_file_single_object::<_, Vec<PreMineCreateStep1ForLeader>>(
-                        &file, None,
-                    )?);
-                }
-                let backup_inputs = json_from_file_single_object::<_, Vec<PreMineCreateStep1ForLeader>>(
-                    &args.fail_safe_file_name,
-                    None,
-                )?;
-
-                // Get the pre-mine items according to the unlock schedule specification
-                let pre_mine_items = match get_pre_mine_items().await {
-                    Ok(items) => items,
-                    Err(e) => {
-                        eprintln!("\nError: {}\n", e);
-                        break;
-                    },
-                };
-
-                // Perform party members input verification
-                if let Err(e) = verify_script_pre_mine_inputs(
-                    &threshold_inputs,
-                    &backup_inputs,
-                    &args.party_file_names,
-                    &args.fail_safe_file_name,
-                    &pre_mine_items,
-                ) {
-                    eprintln!("\nError: {}\n", e);
-                    break;
-                }
-
-                // Extract the threshold and backup spend keys
-                let (threshold_spend_keys, backup_spend_keys, _all_spend_keys) =
-                    match extract_threshold_and_backup_spend_keys(&threshold_inputs, &backup_inputs) {
-                        Ok(keys) => keys,
-                        Err(e) => {
-                            eprintln!("\nError: {}\n", e);
-                            break;
-                        },
-                    };
-
-                // Create the pre-mine genesis block outputs and kernel
-                let (outputs, kernel) = match create_pre_mine_genesis_block_file(
-                    &pre_mine_items,
-                    &threshold_spend_keys,
-                    &backup_spend_keys,
-                )
-                .await
+                let csv_file_name = "pre_mine_items_with_status.csv";
+                let csv_out_file = out_dir.join(csv_file_name);
+                let mut file_stream =
+                    File::create(&csv_out_file).expect("Could not create 'pre_mine_items_with_status.csv'");
+                if let Err(e) =
+                    file_stream.write_all("index,value,maturity,fail_safe_height,beneficiary,spent_status\n".as_bytes())
                 {
-                    Ok(values) => values,
-                    Err(e) => {
-                        eprintln!("\nError: {}\n", e);
-                        break;
-                    },
-                };
-
-                // Create the genesis file
-                let (session_id, out_dir) = match create_pre_mine_output_dir() {
-                    Ok(values) => values,
-                    Err(e) => {
-                        eprintln!("\nError: {}\n", e);
-                        break;
-                    },
-                };
-                let file_name = match Network::get_current_or_user_setting_or_default() {
-                    Network::MainNet => "mainnet_pre_mine.json",
-                    Network::StageNet => "stagenet_pre_mine.json",
-                    Network::NextNet => "nextnet_pre_mine.json",
-                    Network::LocalNet => "esmeralda_pre_mine.json",
-                    Network::Igor => "igor_pre_mine.json",
-                    Network::Esmeralda => "esmeralda_pre_mine.json",
-                };
-                let out_file = out_dir.join(file_name);
-                let mut file_stream = File::create(&out_file).expect("Could not create 'utxos.json'");
-
-                let mut error = false;
-                for output in outputs {
-                    let utxo_s = match serde_json::to_string(&output) {
-                        Ok(val) => val,
-                        Err(e) => {
-                            eprintln!("\nError: Could not serialize UTXO ({})\n", e);
-                            error = true;
-                            break;
-                        },
-                    };
-                    if let Err(e) = file_stream.write_all(format!("{}\n", utxo_s).as_bytes()) {
-                        eprintln!("\nError: Could not serialize UTXO ({})\n", e);
-                        error = true;
-                        break;
-                    }
-                }
-                if error {
-                    break;
-                }
-                let kernel = match serde_json::to_string(&kernel) {
-                    Ok(val) => val,
-                    Err(e) => {
-                        eprintln!("\nError: Could not serialize kernel ({})\n", e);
-                        break;
-                    },
-                };
-                if let Err(e) = file_stream.write_all(format!("{}\n", kernel).as_bytes()) {
-                    eprintln!("\nError: Could not write the genesis file ({})\n", e);
-                    break;
+                    eprintln!("\nError: Could not write pre-mine header ({})\n", e);
+                    return Ok(());
                 }
 
-                println!();
-                println!("Concluded step 2 'pre-mine-create-genesis-file'");
-                println!("Your session ID is:                 '{}'", session_id);
-                println!("Your session's output directory is: '{}'", out_dir.display());
-                println!("Outputs written to:                 '{}'", out_file.display());
-                println!(
-                    "Send '{}' to parties for step 3",
-                    get_file_name(CREATE_STEP_2_LEADER, None)
-                );
-                println!();
-            },
-            PreMineCreateVerifyGenesisFile(args) => {
-                match key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to create pre-mine info!\n");
-                        break;
-                    },
-                }
-
-                // Read inputs from party members
-                let mut threshold_inputs = Vec::with_capacity(args.party_file_names.len());
-                let out_dir = out_dir(&args.session_id, Context::Create)?;
-                let party_files: Vec<PathBuf> = args.party_file_names.iter().map(|v| out_dir.join(v)).collect();
-                let mut error = false;
-                for file in &party_files {
-                    let party_info =
-                        match json_from_file_single_object::<_, Vec<PreMineCreateStep1ForLeader>>(file, None) {
-                            Ok(info) => info,
-                            Err(e) => {
-                                eprintln!("\nError: {}\n", e);
-                                error = true;
-                                break;
-                            },
-                        };
-                    threshold_inputs.push(party_info);
-                }
-                if error {
-                    break;
-                }
-                let fail_safe_file = out_dir.join(args.fail_safe_file_name);
-                let backup_inputs =
-                    json_from_file_single_object::<_, Vec<PreMineCreateStep1ForLeader>>(&fail_safe_file, None)?;
-
-                // Read the pe-mine genesis file
-                let pre_mine_file = out_dir.join(args.pre_mine_file_name);
-                let (outputs, kernel) = match read_genesis_file(&pre_mine_file) {
-                    Ok(items) => items,
-                    Err(e) => {
-                        eprintln!("\nError: {}\n", e);
-                        break;
-                    },
-                };
-
-                // Verify the kernel signature
-                if let Err(e) = kernel.verify_signature() {
-                    eprintln!("\nError: Kernel signature verification failed: {}\n", e);
-                    break;
-                }
-
-                // Get the pre-mine items according to the unlock schedule specification
-                let pre_mine_items = match get_pre_mine_items().await {
-                    Ok(items) => items,
-                    Err(e) => {
-                        eprintln!("\nError: {}\n", e);
-                        break;
-                    },
-                };
-
-                // Perform party members input verification
-                if let Err(e) = verify_script_pre_mine_inputs(
-                    &threshold_inputs,
-                    &backup_inputs,
-                    &party_files,
-                    &fail_safe_file,
-                    &pre_mine_items,
-                ) {
-                    eprintln!("\nError: {}\n", e);
-                    break;
-                }
-                if outputs.len() != pre_mine_items.len() {
-                    eprintln!(
-                        "\nError: Mismatched number of outputs ({}) and pre-mine items ({})\n",
-                        outputs.len(),
-                        pre_mine_items.len()
-                    );
-                    break;
-                }
-
-                // Verify all outputs
-                let (threshold_spend_keys, backup_spend_keys, _all_party_keys) =
-                    match extract_threshold_and_backup_spend_keys(&threshold_inputs, &backup_inputs) {
-                        Ok(keys) => keys,
-                        Err(e) => {
-                            eprintln!("\nError: {}\n", e);
-                            break;
-                        },
-                    };
-
-                let range_proof_service = CryptoFactories::default().range_proof;
-                let mut error = false;
-                for (index, (((output, threshold_keys), backup_key), pre_mine_item)) in outputs
-                    .iter()
-                    .zip(threshold_spend_keys)
-                    .zip(backup_spend_keys)
-                    .zip(pre_mine_items)
-                    .enumerate()
-                {
-                    if pre_mine_item.value != output.minimum_value_promise {
-                        eprintln!(
-                            "\nError: Mismatched value for output {} ({} != {})\n",
-                            index, pre_mine_item.value, output.minimum_value_promise
-                        );
-                        error = true;
-                        break;
-                    }
-                    if pre_mine_item.maturity != output.features.maturity {
-                        eprintln!(
-                            "\nError: Mismatched maturity for output {} ({} != {})\n",
-                            index, pre_mine_item.maturity, output.features.maturity
-                        );
-                        error = true;
-                        break;
-                    }
-                    if output.features.range_proof_type != RangeProofType::RevealedValue {
-                        eprintln!("\nError: Output {} does not have a RevealedValue range proof\n", index);
-                        error = true;
-                        break;
-                    }
-                    if let Err(e) = output.verify_metadata_signature() {
-                        eprintln!(
-                            "\nError: Output {} metadata signature verification failed: {}\n",
-                            index, e
-                        );
-                        error = true;
-                        break;
-                    }
-                    if let Err(e) = output.verify_range_proof(&range_proof_service) {
-                        eprintln!("\nError: Output {} range proof verification failed: {}\n", index, e);
-                        error = true;
-                        break;
-                    }
-                    // Retrieve the list of threshold keys and backup key from the script
-                    let script_threshold_keys =
-                        if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) =
-                            output.script.as_slice().get(3)
-                        {
-                            keys.clone()
-                        } else {
-                            eprintln!(
-                                "\nError: Output {} script does not contain a CheckMultiSigVerifyAggregatePubKey\n",
-                                index
-                            );
-                            error = true;
-                            break;
-                        };
-                    let script_backup_key = if let Some(Opcode::PushPubKey(key)) = output.script.as_slice().get(5) {
-                        key.deref().clone()
-                    } else {
-                        eprintln!("\nError: Output {} script does not contain a PushPubKey\n", index);
-                        error = true;
-                        break;
-                    };
-                    // Verify that the script keys correspond to the threshold and backup keys from the party members
-                    let mut all_script_keys = script_threshold_keys
+                for (index, item) in pre_mine_items.iter().enumerate() {
+                    let unspent = unspent_outputs
                         .iter()
-                        .chain(once(&script_backup_key))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    let mut all_party_keys = threshold_keys
-                        .iter()
-                        .chain(once(&backup_key))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    all_script_keys.sort();
-                    all_party_keys.sort();
-                    if all_script_keys.len() != all_party_keys.len() {
-                        eprintln!(
-                            "\nError: Output {} script key count mismatch ({} != {})\n",
+                        .any(|u| u.commitment() == &pre_mine_outputs[index].commitment);
+                    if let Err(e) = file_stream.write_all(
+                        format!(
+                            "{},{},{},{},{},{}\n",
                             index,
-                            all_script_keys.len(),
-                            all_party_keys.len()
-                        );
-                        error = true;
-                        break;
+                            item.value,
+                            item.maturity,
+                            item.maturity + item.fail_safe_height,
+                            item.beneficiary,
+                            if unspent { "unspent" } else { "spent" },
+                        )
+                        .as_bytes(),
+                    ) {
+                        eprintln!("\nError: Could not write pre-mine item ({})\n", e);
+                        return Ok(());
                     }
-                    all_script_keys.dedup();
-                    if all_party_keys.len() != all_script_keys.len() {
-                        eprintln!("\nError: Output {} script keys not unique\n", index,);
-                        error = true;
-                        break;
-                    }
-                    for (index, (script_key, party_key)) in all_script_keys.iter().zip(all_party_keys).enumerate() {
-                        if script_key != &party_key {
-                            eprintln!(
-                                "\nError: Output {} script key mismatch ({} != {})\n",
-                                index, script_key, party_key
-                            );
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    // Verify that script key owned by this wallet can be retrieved via the key id
-                    let key_id = KeyId::Managed {
-                        branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                        index: index as u64,
-                    };
-                    let expected_script_key = match key_manager_service.get_public_key_at_key_id(&key_id).await {
-                        Ok(key) => key,
-                        Err(e) => {
-                            eprintln!("\nError: Could not retrieve script key for output {}: {}\n", index, e);
-                            error = true;
-                            break;
-                        },
-                    };
-                    if !all_script_keys.iter().any(|k| k == &expected_script_key) {
-                        eprintln!(
-                            "\nError: Output {} script key mismatch ({} not found in script)\n",
-                            index, expected_script_key
-                        );
-                        error = true;
-                        break;
-                    }
-                }
-                if error {
-                    break;
                 }
 
                 println!();
-                println!("Concluded step 3 'pre-mine-create-verify-genesis-file'");
-                println!("Pre-mine file '{}' successfully verified", pre_mine_file.display());
+                println!("Concluded step 0 'pre-mine-spend-get-output-status'");
+                println!("Your session ID is:                    '{}'", session_id);
+                println!("Your session's output directory is:    '{}'", out_dir.display());
+                println!("Pre-mine output spent status saved to: '{}'", csv_file_name);
                 println!();
             },
             PreMineSpendSessionInfo(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1243,8 +861,13 @@ pub async fn command_runner(
                     }
                 }
 
-                let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
-                session_id.truncate(16);
+                let (session_id, out_dir) = match create_pre_mine_output_dir(None) {
+                    Ok(values) => values,
+                    Err(e) => {
+                        eprintln!("\nError: {}\n", e);
+                        return Ok(());
+                    },
+                };
                 let session_info = PreMineSpendStep1SessionInfo {
                     session_id: session_id.clone(),
                     commitment_to_spend: commitment.to_hex(),
@@ -1253,11 +876,11 @@ pub async fn command_runner(
                     fee_per_gram: args.fee_per_gram,
                     output_index: args.output_index,
                 };
-                let out_dir = out_dir(&session_info.session_id, Context::Spend)?;
+
                 let out_file = out_dir.join(get_file_name(SPEND_SESSION_INFO, None));
                 write_to_json_file(&out_file, true, session_info)?;
                 println!();
-                println!("Concluded step 1 'pre-mine-generate-session-info'");
+                println!("Concluded step 1 'pre-mine-spend-session-info'");
                 println!("Your session ID is:                 '{}'", session_id);
                 println!("Your session's output directory is: '{}'", out_dir.display());
                 println!("Session info saved to:              '{}'", out_file.display());
@@ -1268,7 +891,7 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendBackupUtxo(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1297,6 +920,7 @@ pub async fn command_runner(
                 {
                     Ok(tx_id) => {
                         println!();
+                        println!("Concluded 'pre-mine-spend-backup-utxo'");
                         println!("Spend utxo: {} with tx_id: {}", commitment.to_hex(), tx_id);
                         println!();
                     },
@@ -1307,7 +931,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendPartyDetails(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1392,7 +1016,7 @@ pub async fn command_runner(
                     .sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())
                     .await?;
 
-                let out_dir = out_dir(&session_info.session_id, Context::Spend)?;
+                let out_dir = out_dir(&session_info.session_id)?;
                 let step_2_outputs_for_leader = PreMineSpendStep2OutputsForLeader {
                     script_input_signature,
                     public_script_nonce_key: script_nonce_key.pub_key,
@@ -1418,7 +1042,7 @@ pub async fn command_runner(
                 write_json_object_to_file_as_line(&out_file_self, false, step_2_outputs_for_self)?;
 
                 println!();
-                println!("Concluded step 2 'pre-mine-create-party-details'");
+                println!("Concluded step 2 'pre-mine-spend-party-details'");
                 println!("Your session's output directory is '{}'", out_dir.display());
                 move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
                 println!(
@@ -1428,7 +1052,7 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendEncumberAggregateUtxo(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1481,7 +1105,7 @@ pub async fn command_runner(
                         total_metadata_ephemeral_public_key,
                         total_script_nonce,
                     )) => {
-                        let out_dir = out_dir(&args.session_id, Context::Spend)?;
+                        let out_dir = out_dir(&args.session_id)?;
                         let step_3_outputs_for_self = PreMineSpendStep3OutputsForSelf { tx_id };
                         let out_file = out_dir.join(get_file_name(SPEND_STEP_3_SELF, None));
                         write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
@@ -1511,7 +1135,7 @@ pub async fn command_runner(
                         write_json_object_to_file_as_line(&out_file, false, step_3_outputs_for_parties)?;
 
                         println!();
-                        println!("Concluded step 3 'pre-mine-encumber-aggregate-utxo'");
+                        println!("Concluded step 3 'pre-mine-spend-encumber-aggregate-utxo'");
                         println!(
                             "Send '{}' to parties for step 4",
                             get_file_name(SPEND_STEP_3_PARTIES, None)
@@ -1522,7 +1146,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendInputOutputSigs(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1619,13 +1243,13 @@ pub async fn command_runner(
                         script_offset,
                     };
 
-                    let out_dir = out_dir(&args.session_id, Context::Spend)?;
+                    let out_dir = out_dir(&args.session_id)?;
                     let out_file = out_dir.join(get_file_name(SPEND_STEP_4_LEADER, Some(party_info.alias.clone())));
                     write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
                     write_json_object_to_file_as_line(&out_file, false, step_4_outputs_for_leader)?;
 
                     println!();
-                    println!("Concluded step 4 'pre-mine-create-input-output-sigs'");
+                    println!("Concluded step 4 'pre-mine-spend-input-output-sigs'");
                     println!(
                         "Send '{}' to leader for step 5",
                         get_file_name(SPEND_STEP_4_LEADER, Some(party_info.alias))
@@ -1634,7 +1258,7 @@ pub async fn command_runner(
                 }
             },
             PreMineSpendAggregateTransaction(args) => {
-                match key_manager_service.get_wallet_type().await {
+                match *key_manager_service.get_wallet_type().await {
                     WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
@@ -1678,7 +1302,7 @@ pub async fn command_runner(
                 {
                     Ok(_v) => {
                         println!();
-                        println!("Concluded step 5 'pre-mine-spend-aggregate-utxo'");
+                        println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                         println!();
                     },
                     Err(e) => println!("\nError: Error completing transaction! {}\n", e),
@@ -2163,6 +1787,35 @@ pub async fn command_runner(
                     Err(e) => eprintln!("GetBalance error! {}", e),
                 }
             },
+            ExportViewKeyAndSpendKey(args) => {
+                let view_key = wallet.key_manager_service.get_view_key().await?;
+                let spend_key = wallet.key_manager_service.get_spend_key().await?;
+                let view_key_hex = view_key.pub_key.to_hex();
+                let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
+                let spend_key_hex = spend_key.pub_key.to_hex();
+                let output_file = args.output_file;
+                #[derive(Serialize)]
+                struct ViewKeyFile {
+                    view_key: String,
+                    public_view_key: String,
+                    spend_key: String,
+                }
+                let view_key_file = ViewKeyFile {
+                    view_key: private_view_key_hex.clone(),
+                    public_view_key: view_key_hex.clone(),
+                    spend_key: spend_key_hex.clone(),
+                };
+                let view_key_file_json =
+                    serde_json::to_string(&view_key_file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                if let Some(file) = output_file {
+                    let file = File::create(file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                    let mut file = LineWriter::new(file);
+                    writeln!(file, "{}", view_key_file_json).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                } else {
+                    println!("View key: {}", private_view_key_hex);
+                    println!("Spend key: {}", spend_key_hex);
+                }
+            },
         }
     }
 
@@ -2204,125 +1857,27 @@ pub async fn command_runner(
     Ok(())
 }
 
-fn verify_script_pre_mine_inputs(
-    threshold_inputs: &[Vec<PreMineCreateStep1ForLeader>],
-    backup_inputs: &[PreMineCreateStep1ForLeader],
-    party_file_names: &[PathBuf],
-    fail_safe_file_name: &Path,
-    pre_mine_items: &[PreMineItem],
-) -> Result<(), String> {
-    for (k, party_info) in threshold_inputs.iter().enumerate() {
-        verify_party_script_inputs(&party_file_names[k], party_info, pre_mine_items)?;
-    }
-    verify_party_script_inputs(fail_safe_file_name, backup_inputs, pre_mine_items)?;
-
-    // Ensure no keys for the same index are duplicated
-    let (_threshold_spend_keys, _backup_spend_keys, mut all_spend_keys) =
-        extract_threshold_and_backup_spend_keys(threshold_inputs, backup_inputs)?;
-    for (i, keys) in all_spend_keys.iter_mut().enumerate() {
-        let keys_len = keys.len();
-        keys.sort();
-        keys.dedup();
-        if keys.len() != keys_len {
-            return Err(format!("Duplicate script keys for index '{}'!", i));
-        }
-    }
-    // Ensure no keys for any index are duplicated
-    let mut all_spend_keys_flattened = all_spend_keys.into_iter().flatten().collect::<Vec<_>>();
-    all_spend_keys_flattened.sort();
-    let all_spend_keys_len = all_spend_keys_flattened.len();
-    all_spend_keys_flattened.dedup();
-    if all_spend_keys_flattened.len() != all_spend_keys_len {
-        return Err("Duplicate script keys across parties!".to_string());
-    }
-
-    Ok(())
-}
-
-fn verify_party_script_inputs(
-    party_file_name: &Path,
-    party_info: &[PreMineCreateStep1ForLeader],
-    pre_mine_items: &[PreMineItem],
-) -> Result<(), String> {
-    if party_info.len() != pre_mine_items.len() {
-        return Err(format!(
-            "Number of items in '{}' does not match the pre-mine items!",
-            party_file_name.display()
-        ));
-    }
-    // Ensure each key is unique
-    let mut script_keys = party_info
-        .iter()
-        .map(|v| v.script_public_key.clone())
-        .collect::<Vec<_>>();
-    script_keys.sort();
-    script_keys.dedup();
-    if script_keys.len() != pre_mine_items.len() {
-        return Err(format!("Duplicate script keys in '{}'!", party_file_name.display()));
-    }
-    // Verify knowledge of the script private key
-    for (index, item) in party_info.iter().enumerate() {
-        if !item
-            .verification_signature
-            .verify(&item.script_public_key, PrivateKey::from(item.index).as_bytes())
-        {
-            return Err(format!(
-                "Verification signature at index {} in '{}' is not valid!",
-                index,
-                party_file_name.display()
-            ));
-        }
-        if item.index != index as u64 {
-            return Err(format!(
-                "Index {} in '{}' does not align!",
-                index,
-                party_file_name.display()
-            ));
-        }
-    }
-    Ok(())
-}
-
-type PublicKeyVec = Vec<PublicKey>;
-
-fn extract_threshold_and_backup_spend_keys(
-    threshold_inputs: &[Vec<PreMineCreateStep1ForLeader>],
-    backup_inputs: &[PreMineCreateStep1ForLeader],
-) -> Result<(Vec<PublicKeyVec>, PublicKeyVec, Vec<PublicKeyVec>), String> {
-    for item in threshold_inputs {
-        if item.is_empty() || item.len() != backup_inputs.len() {
-            return Err("Threshold/backup inputs empty or have different lengths!".to_string());
-        }
-    }
-    let mut threshold_spend_keys = Vec::with_capacity(threshold_inputs[0].len());
-    let mut backup_spend_keys = Vec::with_capacity(threshold_inputs[0].len());
-    let mut all_spend_keys = Vec::with_capacity(threshold_inputs[0].len());
-    for i in 0..threshold_inputs[0].len() {
-        let mut keys_for_round = Vec::with_capacity(threshold_inputs.len());
-        for party_info in threshold_inputs {
-            keys_for_round.push(party_info[i].script_public_key.clone());
-        }
-        threshold_spend_keys.push(keys_for_round.clone());
-        backup_spend_keys.push(backup_inputs[i].clone().script_public_key);
-        keys_for_round.push(backup_inputs[i].clone().script_public_key);
-        all_spend_keys.push(keys_for_round);
-    }
-    Ok((threshold_spend_keys, backup_spend_keys, all_spend_keys))
-}
-
-fn create_pre_mine_output_dir() -> Result<(String, PathBuf), CommandError> {
-    let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
-    session_id.truncate(16);
-    let out_dir = out_dir(&session_id, Context::Create)?;
-    fs::create_dir_all(out_dir.clone())
-        .map_err(|e| CommandError::JsonFile(format!("{} ({})", e, out_dir.display())))?;
-    Ok((session_id, out_dir))
-}
-
 fn get_embedded_pre_mine_outputs(output_indexes: Vec<usize>) -> Result<Vec<TransactionOutput>, CommandError> {
+    let utxos = get_all_embedded_pre_mine_outputs()?;
+
+    let mut fetched_outputs = Vec::with_capacity(output_indexes.len());
+    for index in output_indexes {
+        if index >= utxos.len() {
+            return Err(CommandError::PreMine(format!(
+                "Error: Invalid 'output_index' {} provided pre-mine outputs only number {}!",
+                index,
+                utxos.len()
+            )));
+        }
+        fetched_outputs.push(utxos[index].clone());
+    }
+    Ok(fetched_outputs)
+}
+
+fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, CommandError> {
     let pre_mine_contents = match Network::get_current_or_user_setting_or_default() {
         Network::MainNet => {
-            unimplemented!("MainNet pre-mine not yet implemented");
+            include_str!("../../../../base_layer/core/src/blocks/pre_mine/mainnet_pre_mine.json")
         },
         Network::StageNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/stagenet_pre_mine.json")
@@ -2354,18 +1909,7 @@ fn get_embedded_pre_mine_outputs(output_indexes: Vec<usize>) -> Result<Vec<Trans
         counter += 1;
     }
 
-    let mut fetched_outputs = Vec::with_capacity(output_indexes.len());
-    for index in output_indexes {
-        if index >= utxos.len() {
-            return Err(CommandError::PreMine(format!(
-                "Error: Invalid 'output_index' {} provided pre-mine outputs only number {}!",
-                index,
-                utxos.len()
-            )));
-        }
-        fetched_outputs.push(utxos[index].clone());
-    }
-    Ok(fetched_outputs)
+    Ok(utxos)
 }
 
 fn write_utxos_to_csv_file(

@@ -88,6 +88,11 @@ pub struct Cli {
     pub command2: Option<CliCommands>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    // For read only wallets
+    #[clap(long)]
+    pub view_private_key: Option<String>,
+    #[clap(long)]
+    pub spend_key: Option<String>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -116,9 +121,7 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    PreMineCreateScriptInputs(PreMineCreateScriptInputsArgs),
-    PreMineCreateGenesisFile(PreMineCreateGenesisFileArgs),
-    PreMineCreateVerifyGenesisFile(PreMineCreateVerifyGenesisFileArgs),
+    PreMineSpendGetOutputStatus,
     PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
     PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
     PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),
@@ -145,6 +148,7 @@ pub enum CliCommands {
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
     Sync(SyncArgs),
+    ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -165,32 +169,6 @@ pub struct BurnMinotariArgs {
     pub amount: MicroMinotari,
     #[clap(short, long, default_value = "Burn funds")]
     pub message: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PreMineCreateScriptInputsArgs {
-    #[clap(long)]
-    pub alias: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PreMineCreateGenesisFileArgs {
-    #[clap(long)]
-    pub party_file_names: Vec<PathBuf>,
-    #[clap(long)]
-    pub fail_safe_file_name: PathBuf,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PreMineCreateVerifyGenesisFileArgs {
-    #[clap(long)]
-    pub session_id: String,
-    #[clap(long)]
-    pub party_file_names: Vec<String>,
-    #[clap(long)]
-    pub fail_safe_file_name: String,
-    #[clap(long)]
-    pub pre_mine_file_name: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -331,6 +309,12 @@ pub struct ExportUtxosArgs {
 #[derive(Debug, Args, Clone)]
 pub struct ExportTxArgs {
     pub tx_id: u64,
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportViewKeyAndSpendKeyArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
 }

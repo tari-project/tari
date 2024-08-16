@@ -33,10 +33,11 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    MaxSizeBytes,
+    MaxSizeString,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
-    consensus::{MaxSizeBytes, MaxSizeString},
     mempool::FeePerGramStat,
     proto,
     transactions::{

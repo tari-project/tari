@@ -29,6 +29,7 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             direction: completed.direction.to_string(),
             amount: completed.amount.as_u64(),
             message: completed.message.to_string(),
+            payment_id: completed.payment_id.map(|id| id.to_bytes()).unwrap_or_default(),
         },
         TransactionWrapper::Outbound(outbound) => TransactionEvent {
             event,
@@ -39,6 +40,7 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             direction: "outbound".to_string(),
             amount: outbound.amount.as_u64(),
             message: outbound.message,
+            payment_id: vec![],
         },
         TransactionWrapper::Inbound(inbound) => TransactionEvent {
             event,
@@ -49,6 +51,7 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             direction: "inbound".to_string(),
             amount: inbound.amount.as_u64(),
             message: inbound.message.clone(),
+            payment_id: vec![],
         },
     }
 }

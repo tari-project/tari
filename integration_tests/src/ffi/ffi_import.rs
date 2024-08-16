@@ -404,6 +404,7 @@ extern "C" {
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
+        callback_wallet_scanned_height: unsafe extern "C" fn(u64),
         callback_base_node_state_updated: unsafe extern "C" fn(*mut TariBaseNodeState),
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,

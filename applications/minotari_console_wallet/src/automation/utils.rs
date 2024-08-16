@@ -27,8 +27,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use digest::crypto_common::rand_core::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
-use tari_core::transactions::transaction_components::{TransactionKernel, TransactionOutput};
+use tari_common_types::types::PrivateKey;
+use tari_crypto::keys::SecretKey;
+use tari_utilities::encoding::Base58;
 
 use crate::automation::{
     commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
@@ -128,25 +131,31 @@ fn append_to_json_file<P: AsRef<Path>, T: Serialize>(file: P, data: T) -> Result
     Ok(())
 }
 
-pub(crate) enum Context {
-    Create,
-    Spend,
+/// Create a unique session-based output directory
+pub(crate) fn create_pre_mine_output_dir(alias: Option<&str>) -> Result<(String, PathBuf), CommandError> {
+    let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
+    session_id.truncate(if alias.is_some() { 8 } else { 16 });
+    if let Some(alias) = alias {
+        session_id.push('_');
+        session_id.push_str(alias);
+    }
+    let out_dir = out_dir(&session_id)?;
+    fs::create_dir_all(out_dir.clone())
+        .map_err(|e| CommandError::JsonFile(format!("{} ({})", e, out_dir.display())))?;
+    Ok((session_id, out_dir))
 }
 
 /// Return the output directory for the session
-pub(crate) fn out_dir(session_id: &str, action: Context) -> Result<PathBuf, CommandError> {
+pub(crate) fn out_dir(session_id: &str) -> Result<PathBuf, CommandError> {
     let base_dir = dirs_next::document_dir().ok_or(CommandError::InvalidArgument(
         "Could not find cache directory".to_string(),
     ))?;
-    match action {
-        Context::Create => Ok(base_dir.join("tari_pre_mine").join("create").join(session_id)),
-        Context::Spend => Ok(base_dir.join("tari_pre_mine").join("spend").join(session_id)),
-    }
+    Ok(base_dir.join("tari_pre_mine").join("spend").join(session_id))
 }
 
 /// Move the session file to the session directory
 pub(crate) fn move_session_file_to_session_dir(session_id: &str, input_file: &PathBuf) -> Result<(), CommandError> {
-    let out_dir = out_dir(session_id, Context::Spend)?;
+    let out_dir = out_dir(session_id)?;
     let session_file = out_dir.join(get_file_name(SPEND_SESSION_INFO, None));
     if input_file != &session_file {
         fs::copy(input_file.clone(), session_file.clone())?;
@@ -162,7 +171,7 @@ pub(crate) fn move_session_file_to_session_dir(session_id: &str, input_file: &Pa
 
 /// Read the session info from the session directory and verify the supplied session ID
 pub(crate) fn read_verify_session_info<T: DeserializeOwned + SessionId>(session_id: &str) -> Result<T, CommandError> {
-    let file_path = out_dir(session_id, Context::Spend)?.join(get_file_name(SPEND_SESSION_INFO, None));
+    let file_path = out_dir(session_id)?.join(get_file_name(SPEND_SESSION_INFO, None));
     let session_info = json_from_file_single_object::<_, T>(&file_path, None)?;
     if session_info.session_id() != session_id {
         return Err(CommandError::InvalidArgument(format!(
@@ -184,7 +193,7 @@ pub(crate) fn read_and_verify<T: DeserializeOwned>(
     file_name: &str,
     session_info: &PreMineSpendStep1SessionInfo,
 ) -> Result<T, CommandError> {
-    let out_dir = out_dir(session_id, Context::Spend)?;
+    let out_dir = out_dir(session_id)?;
     let header = json_from_file_single_object::<_, PreMineSpendStep1SessionInfo>(
         &out_dir.join(file_name),
         Some(PartialRead {
@@ -222,40 +231,4 @@ pub(crate) fn get_file_name(stem: &str, suffix: Option<String>) -> String {
     file_name.push('.');
     file_name.push_str(FILE_EXTENSION);
     file_name
-}
-
-pub(crate) fn read_genesis_file(file_path: &Path) -> Result<(Vec<TransactionOutput>, TransactionKernel), CommandError> {
-    let file = File::open(file_path)
-        .map_err(|e| CommandError::PreMine(format!("Problem opening file '{}' ({})", file_path.display(), e)))?;
-    let reader = BufReader::new(file);
-
-    let mut outputs = Vec::new();
-    let mut kernel: Option<TransactionKernel> = None;
-
-    for line in reader.lines() {
-        let line = line.map_err(|e| {
-            CommandError::PreMine(format!(
-                "Problem reading line in file '{}' ({})",
-                file_path.display(),
-                e
-            ))
-        })?;
-        if let Ok(output) = serde_json::from_str::<TransactionOutput>(&line) {
-            outputs.push(output);
-        } else if let Ok(k) = serde_json::from_str::<TransactionKernel>(&line) {
-            kernel = Some(k);
-        } else {
-            eprintln!("Error: Could not deserialize line: {}", line);
-        }
-    }
-    if outputs.is_empty() {
-        return Err(CommandError::PreMine(format!(
-            "No outputs found in '{}'",
-            file_path.display()
-        )));
-    }
-    let kernel =
-        kernel.ok_or_else(|| CommandError::PreMine(format!("No kernel found in '{}'", file_path.display())))?;
-
-    Ok((outputs, kernel))
 }

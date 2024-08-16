@@ -157,28 +157,30 @@ pub(crate) fn command_mode(
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
+    let (force_exit, force_interactive) = force_exit_for_pre_mine_commands(&command);
     wallet_or_exit(
         handle,
         cli,
         config,
         base_node_config,
         wallet,
-        force_exit_for_pre_mine_commands(&command),
+        force_exit,
+        force_interactive,
     )
 }
 
-fn force_exit_for_pre_mine_commands(command: &CliCommands) -> bool {
-    matches!(
-        command,
-        CliCommands::PreMineCreateScriptInputs(_) |
-            CliCommands::PreMineCreateGenesisFile(_) |
-            CliCommands::PreMineCreateVerifyGenesisFile(_) |
-            CliCommands::PreMineSpendSessionInfo(_) |
-            CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
-            CliCommands::PreMineSpendAggregateTransaction(_) |
-            CliCommands::PreMineSpendPartyDetails(_) |
-            CliCommands::PreMineSpendInputOutputSigs(_) |
-            CliCommands::PreMineSpendBackupUtxo(_)
+fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
+    (
+        matches!(
+            command,
+            CliCommands::PreMineSpendGetOutputStatus |
+                CliCommands::PreMineSpendSessionInfo(_) |
+                CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
+                CliCommands::PreMineSpendPartyDetails(_) |
+                CliCommands::PreMineSpendInputOutputSigs(_) |
+                CliCommands::PreMineSpendBackupUtxo(_)
+        ),
+        matches!(command, CliCommands::PreMineSpendAggregateTransaction(_)),
     )
 }
 
@@ -226,16 +228,17 @@ pub(crate) fn script_mode(
 
     println!("Parsing commands...");
     let commands = parse_command_file(script)?;
-    let mut exit_wallet = false;
+    let mut force_exit = false;
+    let mut force_interactive = false;
     for command in &commands {
-        if force_exit_for_pre_mine_commands(command) {
-            println!("Pre-mine commands may not run in script mode!");
-            exit_wallet = true;
+        (force_exit, force_interactive) = force_exit_for_pre_mine_commands(command);
+        if force_exit || force_interactive {
+            println!("Pre-mine command '{:?}' may not run in script mode!", command);
             break;
         }
     }
 
-    if !exit_wallet {
+    if !force_exit {
         println!("{} commands parsed successfully.", commands.len());
 
         // Do not remove this println!
@@ -252,7 +255,15 @@ pub(crate) fn script_mode(
         info!(target: LOG_TARGET, "Completed wallet script mode");
     }
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet, exit_wallet)
+    wallet_or_exit(
+        handle,
+        cli,
+        config,
+        base_node_config,
+        wallet,
+        force_exit,
+        force_interactive,
+    )
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -263,36 +274,42 @@ fn wallet_or_exit(
     base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     force_exit: bool,
+    force_interactive: bool,
 ) -> Result<(), ExitError> {
-    if cli.command_mode_auto_exit {
-        info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
-        return Ok(());
-    }
-    if force_exit {
-        info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
-        return Ok(());
-    }
-
-    if cli.non_interactive_mode {
-        info!(target: LOG_TARGET, "Starting GRPC server.");
-        grpc_mode(handle, config, wallet)
+    if force_interactive {
+        info!(target: LOG_TARGET, "Starting TUI.");
+        tui_mode(handle.clone(), config, base_node_config, wallet.clone())
     } else {
-        debug!(target: LOG_TARGET, "Prompting for run or exit key.");
-        println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
-        let mut buf = String::new();
-        std::io::stdin()
-            .read_line(&mut buf)
-            .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+        if cli.command_mode_auto_exit {
+            info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
+            return Ok(());
+        }
+        if force_exit {
+            info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
+            return Ok(());
+        }
 
-        match buf.as_str().trim() {
-            "quit" | "q" | "exit" => {
-                info!(target: LOG_TARGET, "Exiting.");
-                Ok(())
-            },
-            _ => {
-                info!(target: LOG_TARGET, "Starting TUI.");
-                tui_mode(handle, config, base_node_config, wallet)
-            },
+        if cli.non_interactive_mode {
+            info!(target: LOG_TARGET, "Starting GRPC server.");
+            grpc_mode(handle, config, wallet)
+        } else {
+            debug!(target: LOG_TARGET, "Prompting for run or exit key.");
+            println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
+            let mut buf = String::new();
+            std::io::stdin()
+                .read_line(&mut buf)
+                .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+
+            match buf.as_str().trim() {
+                "quit" | "q" | "exit" => {
+                    info!(target: LOG_TARGET, "Exiting.");
+                    Ok(())
+                },
+                _ => {
+                    info!(target: LOG_TARGET, "Starting TUI.");
+                    tui_mode(handle, config, base_node_config, wallet)
+                },
+            }
         }
     }
 }
@@ -533,16 +550,7 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            pre-mine-create-script-inputs --alias alice
-
-            pre-mine-create-genesis-file --party-file-names=step_1_for_leader_from_alice.json \
-             --party-file-names=step_1_for_leader_from_bob.json --party-file-names=step_1_for_leader_from_carol.json \
-             --fail-safe-file-name step_1_for_leader_from_dave.json
-
-            pre-mine-create-verify-genesis-file --session-id ee1643655c \
-             --party-file-names=step_1_for_leader_from_alice.json --party-file-names=step_1_for_leader_from_bob.json \
-             --party-file-names=step_1_for_leader_from_carol.json --fail-safe-file-name \
-             step_1_for_leader_from_dave.json --pre-mine-file-name ./step_2_for_parties.json
+            pre-mine-spend-get-output-status
 
             pre-mine-spend-session-info --fee-per-gram 2 --output-index 123 --recipient-address \
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
@@ -579,9 +587,7 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut pre_mine_create_script_inputs = false;
-        let mut pre_mine_create_genesis_file = false;
-        let mut pre_mine_create_verify_genesis_file = false;
+        let mut pre_mine_spend_get_output_status = false;
         let mut pre_mine_spend_session_info = false;
         let mut pre_mine_spend_encumber_aggregate_utxo = false;
         let mut pre_mine_spend_aggregate_transaction = false;
@@ -598,9 +604,7 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::PreMineCreateScriptInputs(_) => pre_mine_create_script_inputs = true,
-                CliCommands::PreMineCreateGenesisFile(_) => pre_mine_create_genesis_file = true,
-                CliCommands::PreMineCreateVerifyGenesisFile(_) => pre_mine_create_verify_genesis_file = true,
+                CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
                 CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
                 CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
                 CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
@@ -635,15 +639,14 @@ mod test {
                 CliCommands::CreateTlsCerts => {},
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
                 CliCommands::Sync(_) => {},
+                CliCommands::ExportViewKeyAndSpendKey(_) => {},
             }
         }
         assert!(
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                pre_mine_create_script_inputs &&
-                pre_mine_create_genesis_file &&
-                pre_mine_create_verify_genesis_file &&
+                pre_mine_spend_get_output_status &&
                 pre_mine_spend_session_info &&
                 pre_mine_spend_encumber_aggregate_utxo &&
                 pre_mine_spend_aggregate_transaction &&

@@ -119,11 +119,8 @@ pub struct MaxSizeStringLengthError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     mod from_str_checked {
-        use super::*;
-
+        use crate::MaxSizeString;
         #[test]
         fn it_returns_none_if_size_exceeded() {
             let s = MaxSizeString::<10>::from_str_checked("12345678901234567890");
@@ -152,8 +149,7 @@ mod tests {
     }
 
     mod from_utf8_bytes_checked {
-        use super::*;
-
+        use crate::MaxSizeString;
         #[test]
         fn it_returns_none_if_size_exceeded() {
             let s = MaxSizeString::<10>::from_utf8_bytes_checked([0u8; 11]);

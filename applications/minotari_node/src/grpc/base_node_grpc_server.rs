@@ -144,9 +144,11 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetNewBlockTemplateWithCoinbases,
             GrpcMethod::GetNewBlock,
             GrpcMethod::GetNewBlockBlob,
+            GrpcMethod::GetNetworkDifficulty,
             GrpcMethod::SubmitBlock,
             GrpcMethod::SubmitBlockBlob,
             GrpcMethod::GetTipInfo,
+            GrpcMethod::Identify,
         ];
 
         let second_layer_methods = [

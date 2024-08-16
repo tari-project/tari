@@ -26,11 +26,12 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::tari_address::TariAddress;
+use tari_utilities::ByteArray;
 
 use crate::{
     contacts_service::{
         error::ContactsServiceStorageError,
-        types::{Direction, Message, MessageMetadata},
+        types::{ChatBody, Direction, Message, MessageId, MessageMetadata},
     },
     schema::messages,
 };
@@ -183,7 +184,7 @@ impl TryFrom<MessagesSql> for Message {
 
         Ok(Self {
             metadata,
-            body: o.body,
+            body: ChatBody::try_from(o.body)?,
             receiver_address,
             sender_address,
             direction: Direction::from_byte(
@@ -194,7 +195,7 @@ impl TryFrom<MessagesSql> for Message {
             stored_at: o.stored_at.timestamp() as u64,
             delivery_confirmation_at: Some(o.stored_at.timestamp() as u64),
             read_confirmation_at: Some(o.stored_at.timestamp() as u64),
-            message_id: o.message_id,
+            message_id: MessageId::try_from(o.message_id)?,
         })
     }
 }
@@ -209,8 +210,8 @@ impl TryFrom<Message> for MessagesSqlInsert {
         Ok(Self {
             receiver_address: o.receiver_address.to_vec(),
             sender_address: o.sender_address.to_vec(),
-            message_id: o.message_id,
-            body: o.body,
+            message_id: o.message_id.to_vec(),
+            body: o.body.to_vec(),
             metadata: metadata.into_bytes().to_vec(),
             stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0)
                 .ok_or(ContactsServiceStorageError::ConversionError)?,

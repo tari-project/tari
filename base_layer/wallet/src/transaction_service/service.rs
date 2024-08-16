@@ -40,6 +40,7 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey, Signature},
+    wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -243,6 +244,7 @@ where
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, TransactionServiceError> {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
@@ -276,6 +278,7 @@ where
             config: config.clone(),
             shutdown_signal,
             consensus_manager: consensus_manager.clone(),
+            wallet_type,
         };
         let power_mode = PowerMode::default();
         let timeout = match power_mode {
@@ -1686,12 +1689,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
@@ -1784,6 +1781,7 @@ where
             .sign_as_sender_and_receiver_verified(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key,
+                &dest_address,
             )
             .await?
             .try_build(&self.resources.transaction_key_manager_service)
@@ -1831,6 +1829,12 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let fee = stp
             .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -1940,11 +1944,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
@@ -2090,6 +2089,12 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let fee = stp
             .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -3352,6 +3357,13 @@ where
                 sending_method
             )));
         }
+        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
+            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+        {
+            return Err(TransactionServiceError::NotSupported(
+                "Interactive transactions are not supported on Ledger wallets".to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -3372,6 +3384,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,
+    pub wallet_type: Arc<WalletType>,
 }
 
 #[derive(Default, Clone, Copy)]

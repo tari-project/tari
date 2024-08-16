@@ -21,6 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Debug, Formatter},
     sync::Arc,
     time::Duration,
@@ -34,7 +35,7 @@ use tari_comms::{peer_manager::PeerFeatures, CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactOnlineStatus,
-    types::{Message, MessageBuilder, MessageMetadata},
+    types::{Message, MessageBuilder, MessageId, MessageMetadata, MetadataData, MetadataKey},
 };
 use tari_shutdown::Shutdown;
 
@@ -45,11 +46,11 @@ const LOG_TARGET: &str = "contacts::chat_client";
 #[async_trait]
 pub trait ChatClient {
     async fn add_contact(&self, address: &TariAddress) -> Result<(), Error>;
-    fn add_metadata(&self, message: Message, metadata_type: String, data: String) -> Message;
+    fn add_metadata(&self, message: Message, metadata_type: String, data: String) -> Result<Message, Error>;
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error>;
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Result<Message, Error>;
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error>;
-    async fn get_message(&self, id: &[u8]) -> Result<Message, Error>;
+    async fn get_message(&self, id: &MessageId) -> Result<Message, Error>;
     async fn send_message(&self, message: Message) -> Result<(), Error>;
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error>;
     async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error>;
@@ -171,29 +172,30 @@ impl ChatClient for Client {
         Ok(())
     }
 
-    fn add_metadata(&self, mut message: Message, key: String, data: String) -> Message {
+    fn add_metadata(&self, mut message: Message, key: String, data: String) -> Result<Message, Error> {
         let metadata = MessageMetadata {
-            key: key.into_bytes(),
-            data: data.into_bytes(),
+            key: MetadataKey::try_from(key)?,
+            data: MetadataData::try_from(data)?,
         };
 
         message.push(metadata);
-        message
+        Ok(message)
     }
 
-    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
-        MessageBuilder::new()
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Result<Message, Error> {
+        Ok(MessageBuilder::new()
             .receiver_address(receiver.clone())
             .sender_address(self.address().clone())
-            .message(message)
-            .build()
+            .message(message)?
+            .build())
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             let contact = contacts_service.get_contact(address.clone()).await?;
 
-            return Ok(contacts_service.get_contact_online_status(contact).await?);
+            let status = contacts_service.get_contact_online_status(contact).await?;
+            return Ok(status);
         }
 
         Ok(ContactOnlineStatus::Offline)
@@ -208,7 +210,7 @@ impl ChatClient for Client {
         Ok(messages)
     }
 
-    async fn get_message(&self, message_id: &[u8]) -> Result<Message, Error> {
+    async fn get_message(&self, message_id: &MessageId) -> Result<Message, Error> {
         match self.contacts.clone() {
             Some(mut contacts_service) => contacts_service.get_message(message_id).await.map_err(|e| e.into()),
             None => Err(Error::InitializationError(
