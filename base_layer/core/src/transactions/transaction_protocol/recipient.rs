@@ -165,7 +165,7 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::PublicKey};
+    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::TariScript;
