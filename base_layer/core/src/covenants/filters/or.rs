@@ -55,10 +55,10 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_outputset_using_union() {
+    async fn it_filters_outputset_using_union() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
         let script = script!(CheckHeight(100));
-        let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))));
+        let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone())))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
@@ -78,5 +78,6 @@ mod test {
 
         assert_eq!(output_set.len(), 3);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7, 8]);
+        Ok(())
     }
 }

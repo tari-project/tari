@@ -51,13 +51,13 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_output_with_specific_hash() {
+    async fn it_filters_output_with_specific_hash() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
         let output = create_outputs(1, Default::default(), &key_manager).await.remove(0);
         let output_hash = output.hash();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(output_hash.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash.into())));
+        let covenant = covenant!(output_hash_eq(@hash(hash.into()))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
@@ -74,5 +74,6 @@ mod test {
 
         assert_eq!(output_set.len(), 1);
         assert_eq!(output_set.get_selected_indexes(), vec![5]);
+        Ok(())
     }
 }

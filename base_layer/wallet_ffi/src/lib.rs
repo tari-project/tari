@@ -9812,7 +9812,7 @@ mod test {
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
             assert_eq!(error, 0);
-            let empty_covenant = covenant!();
+            let empty_covenant = covenant!().unwrap();
             assert_eq!(*covenant, empty_covenant);
 
             covenant_destroy(covenant);
@@ -9821,12 +9821,12 @@ mod test {
     }
 
     #[test]
-    fn test_covenant_create_filled() {
+    fn test_covenant_create_filled() -> Result<(), Box<dyn std::error::Error>> {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let expected_covenant = covenant!(identity());
+            let expected_covenant = covenant!(identity()).unwrap();
             let covenant_bytes = Box::into_raw(Box::new(ByteVector(borsh::to_vec(&expected_covenant).unwrap())));
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
@@ -9836,6 +9836,7 @@ mod test {
             covenant_destroy(covenant);
             byte_vector_destroy(covenant_bytes);
         }
+        Ok(())
     }
 
     #[test]

@@ -33,24 +33,24 @@
 ///
 /// ```rust,ignore
 /// // Before height 42, this may only be spent into an output with flag 8 (NON_FUNGIBLE)
-/// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8))));
+/// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8)))).unwrap();
 /// covenant.execute(...)?;
 /// ```
 #[macro_export]
 macro_rules! covenant {
     ($token:ident($($args:tt)*)) => {{
         let mut covenant = $crate::covenants::Covenant::new();
-        $crate::__covenant_inner!(@ { covenant } $token($($args)*));
-        covenant
+        $crate::__covenant_inner!(@ { covenant } $token($($args)*),);
+        Ok::<_, $crate::covenants::CovenantError>(covenant)
     }};
 
     ($token:ident()) => {{
         let mut covenant = $crate::covenants::Covenant::new();
-        $crate::__covenant_inner!(@ { covenant } $token());
-        covenant
+        $crate::__covenant_inner!(@ { covenant } $token(),);
+        Ok::<_, $crate::covenants::CovenantError>(covenant)
     }};
 
-    () => { $crate::covenants::Covenant::new() };
+    () => { Ok::<_, $crate::covenants::CovenantError>($crate::covenants::Covenant::new()) };
 }
 
 #[macro_export]
@@ -81,16 +81,16 @@ macro_rules! covenant {
 //
 //     This macro pattern is called a tt-muncher (tee hee)
 macro_rules! __covenant_inner {
-    (@ { $covenant:ident }) => {};
+    (@ { $covenant:ident }) => { };
 
     // token()
     (@ { $covenant:ident } $token:ident() $(,)?) => {
-        $covenant.push_token($crate::covenants::CovenantToken::$token());
+       $covenant.push_token($crate::covenants::CovenantToken::$token())?
     };
 
     // @field::name, ...
     (@ { $covenant:ident } @field::$field:ident, $($tail:tt)*) => {
-        $covenant.push_token($crate::covenants::CovenantToken::field($crate::covenants::OutputField::$field()));
+        $covenant.push_token($crate::covenants::CovenantToken::field($crate::covenants::OutputField::$field()))?;
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
@@ -108,14 +108,14 @@ macro_rules! __covenant_inner {
     (@ { $covenant:ident } @fields($(@field::$field:ident),+ $(,)?), $($tail:tt)*) => {
         $covenant.push_token($crate::covenants::CovenantToken::fields(vec![
             $($crate::covenants::OutputField::$field()),+
-        ]));
+        ]))?;
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
     // @covenant_lit(...), ...
     (@ { $covenant:ident } @covenant_lit($($inner:tt)*), $($tail:tt)*) => {
-        let inner = $crate::covenant!($($inner)*);
-        $covenant.push_token($crate::covenants::CovenantToken::covenant(inner));
+        $crate::covenant!($($inner)*)?;
+        $covenant.push_token($crate::covenants::CovenantToken::covenant(inner))?;
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
@@ -127,13 +127,13 @@ macro_rules! __covenant_inner {
     // @output_type(expr1), ...
     (@ { $covenant:ident } @output_type($arg:expr $(,)?), $($tail:tt)*) => {
         use $crate::transactions::transaction_components::OutputType::*;
-        $covenant.push_token($crate::covenants::CovenantToken::output_type($arg));
+        $covenant.push_token($crate::covenants::CovenantToken::output_type($arg))?;
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
     // @arg(expr1, expr2, ...), ...
     (@ { $covenant:ident } @$arg:ident($($args:expr),* $(,)?), $($tail:tt)*) => {
-        $covenant.push_token($crate::covenants::CovenantToken::$arg($($args),*));
+        $covenant.push_token($crate::covenants::CovenantToken::$arg($($args),*))?;
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
@@ -144,23 +144,24 @@ macro_rules! __covenant_inner {
 
     // token(), ...
     (@ { $covenant:ident } $token:ident(), $($tail:tt)*) => {
-        $covenant.push_token($crate::covenants::CovenantToken::$token());
+        $covenant.push_token($crate::covenants::CovenantToken::$token())?;
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
-      // token(filter1, filter2, ...)
+
+    // token(filter1, filter2, ...)
     (@ { $covenant:ident } $token:ident($($args:tt)+)) => {
         $crate::__covenant_inner!(@ { $covenant } $token($($args)+),)
     };
 
     // token(filter1, filter2, ...), ...
     (@ { $covenant:ident } $token:ident($($args:tt)+), $($tail:tt)*) => {
-        $covenant.push_token($crate::covenants::CovenantToken::$token());
+        $covenant.push_token($crate::covenants::CovenantToken::$token())?;
         $crate::__covenant_inner!(@ { $covenant } $($args)+ $($tail)*)
     };
 
     // token(...)
-    (@ { $covenant:ident } $token:ident($($args:tt)+)) => {
-        $covenant.push_token($crate::covenants::CovenantToken::$token());
+    (@ { $covenant:ident } $token:ident($($args:tt)+),) => {
+        $covenant.push_token($crate::covenants::CovenantToken::$token())?;
         $crate::__covenant_inner!(@ { $covenant } $($args)+)
     };
 }
@@ -178,17 +179,18 @@ mod test {
     use crate::covenants::{arguments::CovenantArg, filters::CovenantFilter, token::CovenantToken, Covenant};
 
     #[test]
-    fn simple() {
-        let covenant = covenant!(identity());
+    fn simple() -> Result<(), Box<dyn std::error::Error>> {
+        let covenant = covenant!(identity()).unwrap();
         assert_eq!(covenant.tokens().len(), 1);
         assert!(matches!(
             covenant.tokens()[0],
             CovenantToken::Filter(CovenantFilter::Identity(_))
         ));
+        Ok(())
     }
 
     #[test]
-    fn script() {
+    fn script() -> Result<(), Box<dyn std::error::Error>> {
         let hash = "53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd";
         let hash = {
             let mut buf = [0u8; 32];
@@ -198,11 +200,12 @@ mod test {
         let dest_pk = PublicKey::from_hex("b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849").unwrap();
         let sender_pk = dest_pk.clone();
         let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pk)) Else CheckHeightVerify(100) PushPubKey(Box::new(sender_pk)) EndIf);
-        let covenant = covenant!(field_eq(@field::script, @script(script.clone())));
+        let covenant = covenant!(field_eq(@field::script, @script(script.clone()))).unwrap();
 
         let decoded = Covenant::from_bytes(&mut covenant.to_bytes().as_bytes()).unwrap();
         assert_eq!(covenant, decoded);
         unpack_enum!(CovenantArg::TariScript(decoded_script) = decoded.tokens()[2].as_arg().unwrap());
         assert_eq!(script, *decoded_script);
+        Ok(())
     }
 }

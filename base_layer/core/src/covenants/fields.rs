@@ -443,7 +443,7 @@ mod test {
             }
 
             #[tokio::test]
-            async fn it_returns_false_if_not_eq() {
+            async fn it_returns_false_if_not_eq() -> Result<(), Box<dyn std::error::Error>> {
                 let key_manager = create_memory_db_key_manager().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
@@ -471,7 +471,7 @@ mod test {
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
                 assert!(!OutputField::Covenant
-                    .is_eq(&output, &covenant!(and(identity(), identity())))
+                    .is_eq(&output, &covenant!(and(identity(), identity())).unwrap())
                     .unwrap());
                 assert!(!OutputField::Features
                     .is_eq(&output, &OutputFeatures::default())
@@ -486,6 +486,7 @@ mod test {
                 assert!(!OutputField::MinimumValuePromise
                     .is_eq(&output, &MicroMinotari::default())
                     .unwrap());
+                Ok(())
             }
         }
 

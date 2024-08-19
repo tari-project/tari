@@ -71,9 +71,9 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_all_out_if_height_not_reached() {
+    async fn it_filters_all_out_if_height_not_reached() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let covenant = covenant!(absolute_height(@uint(100)));
+        let covenant = covenant!(absolute_height(@uint(100))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 42, |_| {}, &key_manager).await;
 
@@ -81,12 +81,13 @@ mod test {
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
 
         assert!(output_set.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_all_in_if_height_reached() {
+    async fn it_filters_all_in_if_height_reached() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let covenant = covenant!(absolute_height(@uint(100)));
+        let covenant = covenant!(absolute_height(@uint(100))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;
 
@@ -94,12 +95,13 @@ mod test {
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
 
         assert_eq!(output_set.len(), 10);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_all_in_if_height_exceeded() {
+    async fn it_filters_all_in_if_height_exceeded() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let covenant = covenant!(absolute_height(@uint(42)));
+        let covenant = covenant!(absolute_height(@uint(42))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;
 
@@ -107,5 +109,6 @@ mod test {
         AbsoluteHeightFilter.filter(&mut context, &mut output_set).unwrap();
 
         assert_eq!(output_set.len(), 10);
+        Ok(())
     }
 }

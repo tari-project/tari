@@ -50,6 +50,8 @@ use crate::{
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
 const MAX_BYTES_ARG_SIZE: usize = 4096;
 
+pub(crate) type BytesArg = MaxSizeBytes<MAX_BYTES_ARG_SIZE>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Covenant arguments
 pub enum CovenantArg {
@@ -62,7 +64,7 @@ pub enum CovenantArg {
     Uint(u64),
     OutputField(OutputField),
     OutputFields(OutputFields),
-    Bytes(Vec<u8>),
+    Bytes(BytesArg),
 }
 
 impl CovenantArg {
@@ -119,8 +121,8 @@ impl CovenantArg {
                 Ok(CovenantArg::OutputFields(fields))
             },
             ARG_BYTES => {
-                let buf = MaxSizeBytes::<MAX_BYTES_ARG_SIZE>::deserialize(reader)?;
-                Ok(CovenantArg::Bytes(buf.into()))
+                let buf = BytesArg::deserialize(reader)?;
+                Ok(CovenantArg::Bytes(buf))
             },
 
             _ => Err(CovenantDecodeError::UnknownArgByteCode { code }),
@@ -226,7 +228,7 @@ impl CovenantArg {
 
     require_x_impl!(require_outputfields, OutputFields, "outputfields");
 
-    require_x_impl!(require_bytes, Bytes, "bytes", Vec<u8>);
+    require_x_impl!(require_bytes, Bytes, "bytes", BytesArg);
 
     require_x_impl!(require_uint, Uint, "u64", u64);
 }
@@ -280,6 +282,8 @@ mod test {
     }
 
     mod write_to_and_read_from {
+        use std::convert::TryFrom;
+
         use super::*;
 
         fn test_case(argument: CovenantArg, mut data: &[u8]) {
@@ -294,14 +298,14 @@ mod test {
         }
 
         #[test]
-        fn test() {
+        fn test() -> Result<(), Box<dyn std::error::Error>> {
             test_case(CovenantArg::Uint(2048), &[ARG_UINT, 0, 8, 0, 0, 0, 0, 0, 0][..]);
             test_case(
-                CovenantArg::Covenant(covenant!(identity())),
+                CovenantArg::Covenant(covenant!(identity())?),
                 &[ARG_COVENANT, 0x01, 0x20][..],
             );
             test_case(
-                CovenantArg::Bytes(vec![0x01, 0x02, 0xaa]),
+                CovenantArg::Bytes(BytesArg::try_from(vec![0x01, 0x02, 0xaa])?),
                 &[ARG_BYTES, 0x03, 0x00, 0x00, 0x00, 0x01, 0x02, 0xaa][..],
             );
             test_case(
@@ -325,6 +329,7 @@ mod test {
                 CovenantArg::OutputFields(OutputFields::from(vec![OutputField::Features, OutputField::Commitment])),
                 &[ARG_OUTPUT_FIELDS, 0x02, FIELD_FEATURES, FIELD_COMMITMENT],
             );
+            Ok(())
         }
     }
 }

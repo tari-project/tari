@@ -32,6 +32,7 @@ use crate::{
 
 /// The covenant execution context provides a reference to the transaction input being verified, the tokenized covenant
 /// and other relevant context e.g current block height
+#[derive(Debug)]
 pub struct CovenantContext<'a> {
     input: &'a TransactionInput,
     tokens: CovenantTokenCollection,
