@@ -22,7 +22,9 @@
 
 mod tls;
 pub(super) use tls::TLS_SERVER_ROOTS;
-use trust_dns_client::proto::rr::dnssec::{public_key::Rsa, TrustAnchor};
+//use trust_dns_client::proto::rr::dnssec::{public_key::Rsa, TrustAnchor};
+//use hickory_client::proto::rr::dnssec::{Algorithm, SigSigner, KeyPair};
+use hickory_client::proto::rr::dnssec::{public_key::Rsa, TrustAnchor};
 
 #[inline]
 pub fn default_trust_anchor() -> TrustAnchor {

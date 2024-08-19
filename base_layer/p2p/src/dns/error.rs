@@ -20,7 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use trust_dns_client::{error::ClientError, proto::error::ProtoError};
+//use trust_dns_client::{error::ClientError, proto::error::ProtoError};
+use hickory_client::{error::ClientError, proto::error::ProtoError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DnsClientError {

@@ -26,7 +26,8 @@ use std::{
 };
 
 use anyhow::anyhow;
-use chrono::{DateTime, NaiveDateTime, Utc};
+//use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -166,9 +167,11 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
             .map_err(|e| anyhow!("Invalid public nonce: {}", e))?;
         let signature =
             CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {}", e))?;
-        let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
+//        let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
+//            .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
+//        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
+        let updated_at = DateTime::from_timestamp(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
-        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
 
         Ok(Self::new(version, Signature::new(public_nonce, signature), updated_at))
     }

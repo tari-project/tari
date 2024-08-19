@@ -55,7 +55,8 @@ passthrough = [
   "CFLAGS=-DMDB_USE_ROBUST=0",
 ]
 
-# Currently needs cross-rs from git ```cargo install cross --git https://github.com/cross-rs/cross```
+# Currently needs cross-rs from git
+# ```cargo install cross --git https://github.com/cross-rs/cross```
 [target.aarch64-unknown-linux-gnu]
 image.name = "ubuntu:18.04"
 # targetting is needed for apple silicon
@@ -64,11 +65,32 @@ pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
 
 [target.aarch64-unknown-linux-gnu.env]
 passthrough = [
-  "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc",
-  "PKG_CONFIG_SYSROOT_DIR=/usr/lib/aarch64-linux-gnu/",
   "PKG_CONFIG_ALLOW_CROSS=true",
 ]
 
 [target.x86_64-unknown-linux-gnu]
 image = "ubuntu:18.04"
 pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.x86_64-unknown-linux-gnu.env]
+passthrough = [
+  "PKG_CONFIG_ALLOW_CROSS=true",
+]
+
+[target.riscv64gc-unknown-linux-gnu]
+#image.name = "riscv64/ubuntu:22.04"
+#image.toolchain = ["linux/riscv64=riscv64-unknown-linux-gnu", "linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
+image.name = "ubuntu:22.04"
+image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
+pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.riscv64gc-unknown-linux-gnu.env]
+passthrough = [
+#  "RISCV64GC_UNKNOWN_LINUX_GNU_OPENSSL_NO_VENDOR=true",
+  "RISCV64GC_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/riscv64-linux-gnu/openssl/",
+  "RISCV64GC_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/riscv64-linux-gnu/",
+  "RUSTFLAGS=-L /usr/riscv64-linux-gnu/lib/ -L /usr/lib/riscv64-linux-gnu/",
+  "PKG_CONFIG_SYSROOT_DIR=/usr/lib/riscv64-linux-gnu/pkgconfig",
+  "PKG_CONFIG_PATH=/usr/lib/riscv64-linux-gnu/pkgconfig",
+  "PKG_CONFIG_ALLOW_CROSS=true",
+]

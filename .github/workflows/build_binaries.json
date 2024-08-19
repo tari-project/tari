@@ -13,7 +13,7 @@
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
     "cross": true,
-    "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
+    "flags": "--features libtor --workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
     "build_metric": true
   },
   {
@@ -58,6 +58,7 @@
     "features": "safe",
     "target_bins": "minotari_node, minotari_console_wallet, minotari_merge_mining_proxy, minotari_miner",
     "flags": "--workspace --exclude tari_libtor",
-    "build_enabled": false
+    "build_enabled": true,
+    "best_effort": true
   }
 ]

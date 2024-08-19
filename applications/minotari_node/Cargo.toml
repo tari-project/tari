@@ -32,7 +32,7 @@ bincode = "1.3.1"
 borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
-console-subscriber = "0.1.8"
+console-subscriber = "0.4.0"
 config = { version = "0.14.0" }
 crossterm = { version = "0.25.0", features = ["event-stream"] }
 derive_more = "0.99.17"
@@ -49,7 +49,7 @@ serde = "1.0.136"
 strum = { version = "0.22", features = ["derive"] }
 thiserror = "^1.0.26"
 tokio = { version = "1.36", features = ["signal"] }
-tonic = { version = "0.8.3", features = ["tls", "tls-roots"] }
+tonic = { version = "0.12.1", features = ["tls", "tls-roots"] }
 
 # Metrics
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = ["server"] }

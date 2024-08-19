@@ -48,6 +48,8 @@ pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
     let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0)
         .unwrap_or(NaiveDateTime::MAX);
     DateTime::from_naive_utc_and_offset(dt, Utc)
+//    let dt = DateTime::<Utc>::from_timestamp (i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0)
+//        .unwrap_or(DateTime::MAX_UTC);
 }
 
 /// Message errors that should be verified by every node

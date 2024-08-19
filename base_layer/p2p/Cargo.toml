@@ -28,14 +28,21 @@ pgp = { version = "0.10", optional = true }
 prost = "0.11.9"
 rand = "0.8"
 reqwest = { version = "0.11", optional = true, default-features = false }
-rustls = "0.20.2"
+#rustls = "0.21.12"
+rustls = "0.23.12"
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
 tokio = { version = "1.36", features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = ["time"] }
 tower = "0.4.11"
-trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"] }
+# trust-dns-client = { version = "0.23.2", features = ["dns-over-rustls"] }
+# hickory-dns-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls"] }
+# hickory-client = { version = "0.24.1", features = ["dns-over-rustls"] }
+hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls"] }
+#hickory-resolver = { version = "0.25.0-alpha.2", optional = true, features = [
+#    "dnssec-ring",
+#] }
 webpki = "0.22"
 
 [dev-dependencies]

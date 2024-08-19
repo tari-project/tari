@@ -27,20 +27,21 @@ use rustls::{ClientConfig, RootCertStore};
 use tari_common::DnsNameServer;
 use tari_shutdown::Shutdown;
 use tokio::task;
-use trust_dns_client::{
+//use trust_dns_client::{
+use hickory_client::{
     client::{AsyncClient, AsyncDnssecClient, ClientHandle},
     op::Query,
     proto::{
         error::ProtoError,
         iocompat::AsyncIoTokioAsStd,
-        rr::dnssec::TrustAnchor,
+        rr::dnssec::{SigSigner, TrustAnchor},
         rustls::tls_client_connect,
         xfer::DnsResponse,
         DnsHandle,
         DnsMultiplexer,
     },
-    rr::{dnssec::SigSigner, DNSClass, IntoName, RecordType},
-    serialize::binary::BinEncoder,
+    rr::{DNSClass, IntoName, RecordType},
+    serialize::binary::{BinEncodable, BinEncoder},
 };
 
 use super::DnsClientError;
@@ -190,7 +191,7 @@ where C: DnsHandle<Error = ProtoError>
 
 fn default_client_config() -> Arc<ClientConfig> {
     let mut root_store = RootCertStore::empty();
-    root_store.add_server_trust_anchors(roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+    root_store.add_trust_anchors(roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
         rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(ta.subject, ta.spki, ta.name_constraints)
     }));
 

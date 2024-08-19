@@ -49,7 +49,7 @@ tempfile = "3.3.0"
 thiserror = "^1.0.20"
 time = "0.3.36"
 tokio = { version = "1.36", features = ["macros", "time", "sync", "rt-multi-thread"] }
-tonic = "0.8.3"
+tonic = "0.12.1"
 
 [package.metadata.cargo-machete]
 ignored = ["minotari_wallet_ffi", "minotari_chat_ffi"]
@@ -57,4 +57,3 @@ ignored = ["minotari_wallet_ffi", "minotari_chat_ffi"]
 [[test]]
 name = "cucumber" # this should be the same as the filename of your test target
 harness = false # allows Cucumber to print output instead of libtest
-

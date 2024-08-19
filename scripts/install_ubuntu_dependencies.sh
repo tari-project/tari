@@ -12,6 +12,7 @@ apt-get install --no-install-recommends --assume-yes \
   libsqlite3-0 \
   libreadline-dev \
   git \
+  make \
   cmake \
   dh-autoreconf \
   clang \

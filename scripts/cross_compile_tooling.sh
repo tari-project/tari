@@ -6,6 +6,8 @@
 set -e
 
 printenv
+rustup show
+rustup --verbose update
 
 if [ "${TARGETARCH}" = "arm64" ] ; then
   platform_env=aarch64
@@ -18,6 +20,9 @@ if [ "${TARGETARCH}" = "arm64" ] ; then
   export BINDGEN_EXTRA_CLANG_ARGS="--sysroot /usr/${platform_env}-linux-gnu/include/"
   #export RUSTFLAGS="-C target_cpu=$ARCH"
   #export ROARING_ARCH=$ARCH
+  export PKG_CONFIG_ALLOW_CROSS="true"
+  export PKG_CONFIG_PATH="/usr/lib/${platform_env}-linux-gnu/pkgconfig"
+  #export RUSTFLAGS="-L /usr/${platform_env}-linux-gnu/lib/ -L /usr/lib/${platform_env}-linux-gnu/"
   rustup target add ${platform_env}-unknown-linux-gnu
   rustup toolchain install stable-${platform_env}-unknown-linux-gnu --force-non-host
 
@@ -25,7 +30,12 @@ if [ "${TARGETARCH}" = "arm64" ] ; then
   if [ -f "/etc/debian_version" ] ; then
     dpkg --add-architecture ${TARGETARCH}
     apt-get update || true
-    apt-get install -y pkg-config libssl-dev:${TARGETARCH} gcc-${platform_env}-linux-gnu g++-${platform_env}-linux-gnu
+    apt-get install -y pkg-config \
+      libssl-dev:${TARGETARCH} \
+      libudev-dev:${TARGETARCH} \
+      libhidapi-dev:${TARGETARCH} \
+      gcc-${platform_env}-linux-gnu \
+      g++-${platform_env}-linux-gnu
     export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/${platform_env}-linux-gnu/openssl/
     export PKG_CONFIG_ALLOW_CROSS=1
   fi
@@ -57,3 +67,7 @@ else
   echo "Need to source [ ${0##*/} ] with env TARGETARCH set to either arm64 or amd64"
   exit 1
 fi
+
+rustup show
+
+exit 0

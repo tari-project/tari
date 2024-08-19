@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use blake2::Blake2b;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use digest::consts::U64;
 use prost::Message;
 use rand::rngs::OsRng;
@@ -166,9 +166,12 @@ impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
             .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
         let signature = CommsSecretKey::from_canonical_bytes(&value.signature)
             .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
+//        let updated_at =
+//            NaiveDateTime::from_timestamp_opt(value.updated_at, 0).ok_or(PeerManagerError::InvalidIdentitySignature)?;
+//        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
         let updated_at =
-            NaiveDateTime::from_timestamp_opt(value.updated_at, 0).ok_or(PeerManagerError::InvalidIdentitySignature)?;
-        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
+            DateTime::from_timestamp(value.updated_at, 0).ok_or(PeerManagerError::InvalidIdentitySignature)?;
+//        let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);
 
         Ok(Self {
             version,

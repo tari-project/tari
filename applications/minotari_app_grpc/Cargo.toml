@@ -23,11 +23,11 @@ log = "0.4"
 prost = "0.11.9"
 prost-types = "0.11.9"
 rand = "0.8"
-rcgen = "0.11.3"
+rcgen = "0.12.1"
 subtle = "2.5.0"
 thiserror = "1"
 tokio = { version = "1.36", features = ["fs"] }
-tonic = { version = "0.8.3", features = ["tls"] }
+tonic = { version = "0.12.1", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]

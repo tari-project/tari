@@ -64,6 +64,7 @@ jobs:
           # build only single target image
           # matrix_selection=$( jq -c '.[] | select( ."name" == "windows-x64" )' ${{ env.matrix-json-file }} )
           # matrix_selection=$( jq -c '.[] | select( ."name" | contains("macos") )' ${{ env.matrix-json-file }} )
+          # matrix_selection=$( jq -c '.[] | select( ."name" | contains("linux") )' ${{ env.matrix-json-file }} )
           #
           # build select target images - build_enabled
           matrix_selection=$( jq -c '.[] | select( ."build_enabled" != false )' ${{ env.matrix-json-file }} )
@@ -227,6 +228,7 @@ jobs:
           # Should already be installed
           # choco upgrade strawberryperl -y
           choco upgrade protoc -y
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Set environment variables - Nix
         if: ${{ ! startsWith(runner.os,'Windows') }}
