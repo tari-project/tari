@@ -288,6 +288,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 Ok(public_key)
                             }
                         },
+                        TransactionKeyManagerBranch::Spend => {
+                            Ok(ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
+                                "Key manager set to use ledger, ledger alpha public key missing".to_string(),
+                            ))?)
+                        },
                         TransactionKeyManagerBranch::DataEncryption => {
                             let view_key = ledger
                                 .view_key
