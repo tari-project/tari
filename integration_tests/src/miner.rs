@@ -117,7 +117,7 @@ impl MinerProcess {
                 base_path: data_dir_str,
                 config: config_path.into_os_string().into_string().unwrap(),
                 log_config: None,
-                log_level: None,
+                log_path: None,
                 config_property_overrides: vec![
                     (
                         "miner.base_node_grpc_address".to_string(),

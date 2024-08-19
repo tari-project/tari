@@ -47,7 +47,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{TransactionOutput, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
@@ -638,9 +638,10 @@ where
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
             } else {
-                // Because we do not know the source public key we are making it the default key of zeroes to make it
-                // clear this value is a placeholder.
-                TariAddress::default()
+                match &wo.payment_id {
+                    PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => address.clone(),
+                    _ => TariAddress::default(),
+                }
             };
             match self
                 .import_key_manager_utxo_to_transaction_service(

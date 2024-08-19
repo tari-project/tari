@@ -137,7 +137,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub db: WalletDatabase<T>,
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
-    wallet_type: WalletType,
+    wallet_type: Arc<WalletType>,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -170,7 +170,7 @@ where
         wallet_type: Option<WalletType>,
         user_agent: String,
     ) -> Result<Self, WalletError> {
-        let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_database)?;
+        let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
@@ -218,6 +218,7 @@ where
                 consensus_manager,
                 factories.clone(),
                 wallet_database.clone(),
+                wallet_type.clone(),
             ))
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
@@ -484,7 +485,7 @@ where
     pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
         let view_key = self.key_manager_service.get_view_key().await?;
         let comms_key = self.key_manager_service.get_comms_key().await?;
-        let features = match self.wallet_type {
+        let features = match *self.wallet_type {
             WalletType::DerivedKeys => TariAddressFeatures::default(),
             WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
         };

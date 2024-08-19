@@ -227,11 +227,12 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
-    let wallet_type = WalletType::ProvidedKeys(ProvidedKeysWallet {
+    let wallet_type = Arc::new(WalletType::ProvidedKeys(ProvidedKeysWallet {
         public_spend_key: PublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
-    });
+        private_comms_key: Some(node_identity.secret_key().clone()),
+    }));
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -248,7 +249,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             kms_backend,
             cipher,
             factories.clone(),
-            wallet_type,
+            wallet_type.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {
@@ -265,6 +266,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             consensus_manager,
             factories,
             db.clone(),
+            wallet_type,
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
@@ -394,6 +396,7 @@ async fn setup_transaction_service_no_comms(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
+        Network::LocalNet,
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
     )
@@ -437,6 +440,7 @@ async fn setup_transaction_service_no_comms(
         factories,
         shutdown.to_signal(),
         base_node_service_handle,
+        key_manager.get_wallet_type().await,
     )
     .await
     .unwrap();
@@ -2103,7 +2107,6 @@ async fn manage_multiple_transactions() {
 
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    // TODO: When using a memory type db connection this test fails at `assert_eq!(tx_reply, 3, "Need 3 replies");`
     let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (carol_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
@@ -3333,6 +3336,7 @@ async fn test_transaction_cancellation() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),
@@ -3418,6 +3422,7 @@ async fn test_transaction_cancellation() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),
@@ -4198,6 +4203,7 @@ async fn test_restarting_transaction_protocols() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         );
     let mut bob_stp = builder.build().await.unwrap();
     let msg = bob_stp.build_single_round_message(&key_manager).await.unwrap();
@@ -4619,6 +4625,7 @@ async fn test_resend_on_startup() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),
@@ -5147,6 +5154,7 @@ async fn test_transaction_timeout_cancellation() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),

@@ -28,22 +28,23 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::{
+    types::{PublicKey, Signature},
+    MaxSizeBytes,
+    MaxSizeString,
+};
 
 use super::OutputFeaturesVersion;
-use crate::{
-    consensus::{MaxSizeBytes, MaxSizeString},
-    transactions::transaction_components::{
-        range_proof_type::RangeProofType,
-        side_chain::SideChainFeature,
-        BuildInfo,
-        CodeTemplateRegistration,
-        ConfidentialOutputData,
-        OutputType,
-        TemplateType,
-        ValidatorNodeRegistration,
-        ValidatorNodeSignature,
-    },
+use crate::transactions::transaction_components::{
+    range_proof_type::RangeProofType,
+    side_chain::SideChainFeature,
+    BuildInfo,
+    CodeTemplateRegistration,
+    ConfidentialOutputData,
+    OutputType,
+    TemplateType,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
 };
 
 /// Options for UTXO's

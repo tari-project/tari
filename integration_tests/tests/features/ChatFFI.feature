@@ -38,8 +38,6 @@ Feature: Chat FFI messaging
     Then there will be a ReadConfirmationReceived callback of at least 1
     Then CHAT_A and CHAT_B will have a message 'Hey there' with matching read timestamps
 
-  # Also flaky on CI. Seems liveness has issues on CI
-  @broken
   Scenario: Callback for status change is received
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -48,8 +46,6 @@ Feature: Chat FFI messaging
     When CHAT_A waits for contact CHAT_B to be online
     Then there will be a contact status update callback of at least 1
 
-  #This is flaky, passes on local run time, but fails CI
-  @broken
   Scenario: A message is sent directly between two FFI clients
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A

@@ -27,6 +27,7 @@ use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
@@ -650,6 +651,7 @@ pub async fn create_transaction_with(
             change.script_key_id,
             change.commitment_mask_key_id,
             Covenant::default(),
+            TariAddress::default(),
         );
     for input in inputs {
         stx_builder.with_input(input).await.unwrap();
@@ -720,6 +722,7 @@ pub async fn create_stx_protocol_internal(
             change.script_key_id,
             change.commitment_mask_key_id,
             Covenant::default(),
+            TariAddress::default(),
         );
 
     for tx_input in &schema.from {

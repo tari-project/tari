@@ -23,7 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use tari_common::configuration::Network;
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
+use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -286,6 +286,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             change.script_key_id,
             change.commitment_mask_key_id,
             Covenant::default(),
+            TariAddress::default(),
         );
 
     for tx_input in &txn_schema.from {

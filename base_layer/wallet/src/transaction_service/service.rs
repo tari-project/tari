@@ -40,6 +40,7 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey, Signature},
+    wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -174,7 +175,8 @@ pub struct TransactionService<
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     base_node_response_senders: HashMap<TxId, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
-    finalized_transaction_senders: HashMap<TxId, Sender<(TariAddress, TxId, Transaction)>>,
+    #[allow(clippy::type_complexity)]
+    finalized_transaction_senders: HashMap<TxId, (TariAddress, Sender<(TariAddress, TxId, Transaction)>)>,
     receiver_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
@@ -243,6 +245,7 @@ where
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, TransactionServiceError> {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
@@ -276,6 +279,7 @@ where
             config: config.clone(),
             shutdown_signal,
             consensus_manager: consensus_manager.clone(),
+            wallet_type,
         };
         let power_mode = PowerMode::default();
         let timeout = match power_mode {
@@ -1530,7 +1534,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
-                PaymentId::Empty,
+                PaymentId::Address(self.resources.interactive_tari_address.clone()),
             )
             .await?
             .with_input_data(ExecutionStack::default())
@@ -1644,6 +1648,11 @@ where
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
+        let payment_id = match payment_id {
+            PaymentId::Open(v) => PaymentId::AddressAndData(self.resources.interactive_tari_address.clone(), v),
+            PaymentId::Empty => PaymentId::Address(self.resources.interactive_tari_address.clone()),
+            _ => payment_id,
+        };
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // For a stealth transaction, the script is not provided because the public key that should be included
@@ -1683,12 +1692,6 @@ where
         stp.change_recipient_sender_offset_private_key(key.key_id)?;
         let _single_round_sender_data = stp
             .build_single_round_message(&self.resources.transaction_key_manager_service)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1784,6 +1787,7 @@ where
             .sign_as_sender_and_receiver_verified(
                 &self.resources.transaction_key_manager_service,
                 &sender_offset_private_key,
+                &dest_address,
             )
             .await?
             .try_build(&self.resources.transaction_key_manager_service)
@@ -1831,6 +1835,12 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let fee = stp
             .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -1940,11 +1950,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
@@ -2006,7 +2011,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
-                PaymentId::Empty,
+                PaymentId::Address(self.resources.interactive_tari_address.clone()),
             )
             .await?
             .with_input_data(Default::default())
@@ -2090,6 +2095,12 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let fee = stp
             .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -2234,6 +2245,7 @@ where
                 e
             )));
         }
+
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .unwrap()
             .try_into()
@@ -2244,7 +2256,6 @@ where
         // First we check if this Reply is for a cancelled Pending Outbound Tx or a Completed Tx
         let cancelled_outbound_tx = self.db.get_cancelled_pending_outbound_transaction(tx_id);
         let completed_tx = self.db.get_completed_transaction_cancelled_or_not(tx_id);
-
         // This closure will check if the timestamps are beyond the cooldown period
         let check_cooldown = |timestamp: Option<NaiveDateTime>| {
             if let Some(t) = timestamp {
@@ -2347,7 +2358,6 @@ where
             None => return Err(TransactionServiceError::TransactionDoesNotExistError),
             Some(s) => s,
         };
-
         sender
             .send((source_pubkey, recipient_reply))
             .await
@@ -2669,19 +2679,24 @@ where
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
+            let source_address = if data.sender_address.comms_public_key() == &source_pubkey {
+                data.sender_address.clone()
+            } else {
+                TariAddress::new_single_address(
+                    source_pubkey,
+                    self.resources.interactive_tari_address.network(),
+                    TariAddressFeatures::INTERACTIVE,
+                )
+            };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
             self.finalized_transaction_senders
-                .insert(data.tx_id, tx_finalized_sender);
+                .insert(data.tx_id, (source_address.clone(), tx_finalized_sender));
             self.receiver_transaction_cancellation_senders
                 .insert(data.tx_id, cancellation_sender);
             // We are recieving an interactive transaction from someone on our network, so we assume its features are
             // interactive and its the same network
-            let source_address = TariAddress::new_single_address(
-                source_pubkey,
-                self.resources.interactive_tari_address.network(),
-                TariAddressFeatures::INTERACTIVE,
-            );
+
             let protocol = TransactionReceiveProtocol::new(
                 data.tx_id,
                 source_address,
@@ -2735,19 +2750,12 @@ where
                 )
             })?;
 
-        // assuming since we talked to the node, that it has an interactive address, we dont know what the view key is
-        // but we know its interactive, so make the view key 0, and the spend key the source public key.
-        let source_address = TariAddress::new_single_address(
-            source_pubkey,
-            self.resources.interactive_tari_address.network(),
-            TariAddressFeatures::INTERACTIVE,
-        );
-        let sender = match self.finalized_transaction_senders.get_mut(&tx_id) {
+        let (source, sender) = match self.finalized_transaction_senders.get_mut(&tx_id) {
             None => {
                 // First check if perhaps we know about this inbound transaction but it was cancelled
                 match self.db.get_cancelled_pending_inbound_transaction(tx_id) {
                     Ok(t) => {
-                        if t.source_address != source_address {
+                        if t.source_address.comms_public_key() != &source_pubkey {
                             debug!(
                                 target: LOG_TARGET,
                                 "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: \
@@ -2767,7 +2775,7 @@ where
                             .output_manager_service
                             .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                             .await?;
-                        self.restart_receive_transaction_protocol(tx_id, source_address.clone(), join_handles);
+                        self.restart_receive_transaction_protocol(tx_id, t.source_address.clone(), join_handles);
                         match self.finalized_transaction_senders.get_mut(&tx_id) {
                             None => return Err(TransactionServiceError::TransactionDoesNotExistError),
                             Some(s) => s,
@@ -2778,9 +2786,11 @@ where
             },
             Some(s) => s,
         };
-
+        if source_pubkey != *source.comms_public_key() {
+            return Err(TransactionServiceError::InvalidSourcePublicKey);
+        }
         sender
-            .send((source_address, tx_id, transaction))
+            .send((source.clone(), tx_id, transaction))
             .await
             .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
@@ -2877,7 +2887,8 @@ where
             );
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-            self.finalized_transaction_senders.insert(tx_id, tx_finalized_sender);
+            self.finalized_transaction_senders
+                .insert(tx_id, (source_address.clone(), tx_finalized_sender));
             self.receiver_transaction_cancellation_senders
                 .insert(tx_id, cancellation_sender);
             let protocol = TransactionReceiveProtocol::new(
@@ -3352,6 +3363,13 @@ where
                 sending_method
             )));
         }
+        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
+            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+        {
+            return Err(TransactionServiceError::NotSupported(
+                "Interactive transactions are not supported on Ledger wallets".to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -3372,6 +3390,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub shutdown_signal: ShutdownSignal,
+    pub wallet_type: Arc<WalletType>,
 }
 
 #[derive(Default, Clone, Copy)]

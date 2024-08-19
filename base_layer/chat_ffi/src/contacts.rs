@@ -51,11 +51,13 @@ pub unsafe extern "C" fn add_chat_contact(client: *mut ChatClient, address: *mut
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     if address.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     let result = (*client).runtime.block_on((*client).client.add_contact(&(*address)));
@@ -94,11 +96,13 @@ pub unsafe extern "C" fn check_online_status(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
     }
 
     if receiver.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
     }
 
     let rec = (*receiver).clone();

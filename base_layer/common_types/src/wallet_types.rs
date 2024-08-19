@@ -53,6 +53,7 @@ impl Display for WalletType {
 pub struct ProvidedKeysWallet {
     pub public_spend_key: PublicKey,
     pub private_spend_key: Option<PrivateKey>,
+    pub private_comms_key: Option<PrivateKey>,
     pub view_key: PrivateKey,
 }
 

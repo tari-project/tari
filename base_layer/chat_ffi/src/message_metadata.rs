@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, ptr};
 
 use libc::{c_int, c_uint};
-use tari_contacts::contacts_service::types::{Message, MessageMetadata};
+use tari_contacts::contacts_service::types::{Message, MessageMetadata, MetadataData, MetadataKey};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -62,10 +62,23 @@ pub unsafe extern "C" fn add_chat_message_metadata(
         }
     }
 
-    let metadata = MessageMetadata {
-        key: process_vector(key, error_out),
-        data: process_vector(data, error_out),
+    let key = match MetadataKey::try_from(process_vector(key, error_out)) {
+        Ok(val) => val,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
     };
+    let data = match MetadataData::try_from(process_vector(data, error_out)) {
+        Ok(val) => val,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let metadata = MessageMetadata { key, data };
 
     (*message).push(metadata);
 }
@@ -197,7 +210,7 @@ mod test {
 
         let message = unsafe { Box::from_raw(message_ptr) };
         assert_eq!(message.metadata.len(), 1);
-        assert_eq!(message.metadata[0].data, data_bytes);
+        assert_eq!(message.metadata[0].data.as_bytes(), data_bytes);
 
         unsafe {
             chat_byte_vector_destroy(data);
@@ -211,6 +224,7 @@ mod test {
         let message_ptr = Box::into_raw(Box::new(
             MessageBuilder::new()
                 .message("hello".to_string())
+                .unwrap()
                 .receiver_address(address.clone())
                 .sender_address(address)
                 .build(),

@@ -165,9 +165,9 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::PublicKey};
+    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
-    use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+    use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::TariScript;
 
     use crate::{
@@ -175,15 +175,10 @@ mod test {
         test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
+            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::{
-                OutputFeatures,
-                TransactionKernel,
-                TransactionKernelVersion,
-                TransactionOutputVersion,
-            },
+            transaction_components::{OutputFeatures, TransactionKernelVersion, TransactionOutputVersion},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 TransactionMetadata,
@@ -216,6 +211,7 @@ mod test {
             minimum_value_promise: MicroMinotari::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
+            sender_address: TariAddress::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let params = UtxoTestParams {
@@ -245,46 +241,6 @@ mod test {
             .unwrap();
         assert_eq!(&commitment, &data.output.commitment);
         data.output.verify_range_proof(&factories.range_proof).unwrap();
-
-        let index = key_manager
-            .find_key_index(
-                TransactionKeyManagerBranch::KernelNonce.get_branch_key(),
-                data.partial_signature.get_public_nonce(),
-            )
-            .await
-            .unwrap();
-        let nonce_id = KeyId::Managed {
-            branch: TransactionKeyManagerBranch::KernelNonce.get_branch_key(),
-            index,
-        };
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &TransactionKernelVersion::get_current_version(),
-            m.fee,
-            m.lock_height,
-            &m.kernel_features,
-            &m.burn_commitment,
-        );
-        let p_nonce = key_manager.get_public_key_at_key_id(&nonce_id).await.unwrap();
-        let p_commitment_mask_key = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&receiver_test_params.commitment_mask_key_id, &nonce_id)
-            .await
-            .unwrap();
-        let r_sum = &msg.public_nonce + &p_nonce;
-        let excess = &msg.public_excess + &p_commitment_mask_key;
-        let kernel_signature = key_manager
-            .get_partial_txo_kernel_signature(
-                &receiver_test_params.commitment_mask_key_id,
-                &nonce_id,
-                &r_sum,
-                &excess,
-                &TransactionKernelVersion::get_current_version(),
-                &kernel_message,
-                &m.kernel_features,
-                TxoStage::Output,
-            )
-            .await
-            .unwrap();
-        assert_eq!(data.partial_signature, kernel_signature);
 
         let (mask, value, _) = key_manager.try_output_key_recovery(&data.output, None).await.unwrap();
         assert_eq!(output.spending_key_id, mask);

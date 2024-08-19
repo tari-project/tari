@@ -26,9 +26,10 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
@@ -144,9 +145,26 @@ where
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
+        network: Network,
         connectivity: TWalletConnectivity,
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
+        let view_key = key_manager.get_view_key().await?;
+        let spend_key = key_manager.get_spend_key().await?;
+        let comms_key = key_manager.get_comms_key().await?;
+        let interactive_features = if spend_key == comms_key {
+            TariAddressFeatures::create_interactive_and_one_sided()
+        } else {
+            TariAddressFeatures::create_one_sided_only()
+        };
+        let one_sided_tari_address = TariAddress::new_dual_address(
+            view_key.pub_key.clone(),
+            comms_key.pub_key,
+            network,
+            TariAddressFeatures::create_one_sided_only(),
+        );
+        let interactive_tari_address =
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
         let resources = OutputManagerResources {
             config,
             db,
@@ -156,6 +174,8 @@ where
             key_manager,
             consensus_constants,
             shutdown_signal,
+            one_sided_tari_address,
+            interactive_tari_address,
         };
 
         Ok(Self {
@@ -727,6 +747,7 @@ where
     }
 
     /// Request a receiver transaction be generated from the supplied Sender Message
+    #[allow(clippy::too_many_lines)]
     async fn get_default_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
@@ -735,22 +756,18 @@ where
             Some(data) => data,
             _ => return Err(OutputManagerError::InvalidSenderMessage),
         };
-
         // Confirm covenant is default
         if single_round_sender_data.covenant != Covenant::default() {
             return Err(OutputManagerError::InvalidCovenant);
         }
-
         // Confirm output features is default
         if single_round_sender_data.features != OutputFeatures::default() {
             return Err(OutputManagerError::InvalidOutputFeatures);
         }
-
         // Confirm lock height is 0
         if single_round_sender_data.metadata.lock_height != 0 {
             return Err(OutputManagerError::InvalidLockHeight);
         }
-
         // Confirm kernel features
         if single_round_sender_data.metadata.kernel_features != KernelFeatures::default() {
             return Err(OutputManagerError::InvalidKernelFeatures);
@@ -771,7 +788,7 @@ where
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
-
+        let payment_id = PaymentId::Address(single_round_sender_data.sender_address.clone());
         let encrypted_data = self
             .resources
             .key_manager
@@ -779,7 +796,7 @@ where
                 &spending_key.key_id,
                 None,
                 single_round_sender_data.amount.as_u64(),
-                PaymentId::Empty,
+                payment_id.clone(),
             )
             .await
             .unwrap();
@@ -821,7 +838,7 @@ where
             single_round_sender_data.covenant.clone(),
             encrypted_data,
             minimum_value_promise,
-            PaymentId::Empty,
+            payment_id,
             &self.resources.key_manager,
         )
         .await?;
@@ -992,6 +1009,7 @@ where
                 amount,
             )
             .await?
+            .with_sender_address(self.resources.interactive_tari_address.clone())
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
@@ -1019,6 +1037,7 @@ where
             change_script_key.key_id,
             change_commitment_mask_key.key_id,
             Covenant::default(),
+            self.resources.interactive_tari_address.clone(),
         );
 
         let stp = builder
@@ -1126,6 +1145,7 @@ where
                 change_script_key.key_id,
                 change_commitment_mask_key.key_id,
                 Covenant::default(),
+                self.resources.interactive_tari_address.clone(),
             );
         }
 
@@ -1386,6 +1406,7 @@ where
                 TariKeyId::default(),
                 TariKeyId::default(),
                 Covenant::default(),
+                self.resources.interactive_tari_address.clone(),
             );
         let mut stp = builder
             .build()
@@ -1668,6 +1689,7 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())
             .await?
+            .with_sender_address(self.resources.one_sided_tari_address.clone())
             .with_recipient_data(
                 push_pubkey_script(recipient_address.public_spend_key()),
                 output_features,
@@ -1682,11 +1704,19 @@ where
                 TariKeyId::default(),
                 TariKeyId::default(),
                 Covenant::default(),
+                self.resources.one_sided_tari_address.clone(),
             );
         let mut stp = builder
             .build()
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        stp.change_recipient_sender_offset_private_key(
+            self.resources
+                .key_manager
+                .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+                .await?
+                .key_id,
+        )?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
@@ -1738,6 +1768,11 @@ where
         );
 
         // Create the output with a partially signed metadata signature
+        let payment_id = match payment_id {
+            PaymentId::Open(v) => PaymentId::AddressAndData(self.resources.interactive_tari_address.clone(), v),
+            PaymentId::Empty => PaymentId::Address(self.resources.one_sided_tari_address.clone()),
+            _ => payment_id,
+        };
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1751,16 +1786,17 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
-                payment_id.clone(),
+                payment_id,
             )
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(
+            .sign_as_sender_and_receiver_verified(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self,
+                &recipient_address,
             )
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
@@ -1864,6 +1900,7 @@ where
             change_script_public_key.key_id.clone(),
             change_commitment_mask_key_id.key_id,
             Covenant::default(),
+            self.resources.interactive_tari_address.clone(),
         );
 
         let mut stp = builder
@@ -2498,6 +2535,7 @@ where
                 change_script.key_id,
                 change_mask.key_id,
                 Covenant::default(),
+                self.resources.interactive_tari_address.clone(),
             );
         }
 
@@ -2575,11 +2613,11 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())));
-
+        let payment_id = PaymentId::Address(self.resources.interactive_tari_address.clone());
         let encrypted_data = self
             .resources
             .key_manager
-            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount.as_u64(), PaymentId::Empty)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount.as_u64(), payment_id.clone())
             .await?;
         let minimum_value_promise = MicroMinotari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
@@ -2622,7 +2660,7 @@ where
                 covenant,
                 encrypted_data,
                 minimum_value_promise,
-                PaymentId::Empty,
+                payment_id,
                 &self.resources.key_manager,
             )
             .await?,
@@ -2837,6 +2875,7 @@ where
                     change_script_key.key_id,
                     change_commitment_mask_key.key_id,
                     Covenant::default(),
+                    self.resources.interactive_tari_address.clone(),
                 );
 
                 let mut stp = builder
@@ -2921,6 +2960,7 @@ where
             change_script_key.key_id,
             change_commitment_mask_key.key_id,
             Covenant::default(),
+            self.resources.interactive_tari_address.clone(),
         );
 
         let mut stp = builder

@@ -160,6 +160,7 @@ pub struct PowAlgorithmConstants {
 const PRE_MINE_VALUE: u64 = 0; // 6_030_157_777_181_012;
 const INITIAL_EMISSION: MicroMinotari = MicroMinotari(13_952_877_857);
 const ESMERALDA_INITIAL_EMISSION: MicroMinotari = INITIAL_EMISSION;
+const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 - 14_700_000_000) * 1_000_000);
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -522,7 +523,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            pre_mine_value: 40_000_000_000.into(),
+            pre_mine_value: MAINNET_PRE_MINE_VALUE,
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -674,16 +675,16 @@ impl ConsensusConstants {
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
-            max_block_transaction_weight: 19500,
+            max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 10_000_000.into(),
+            emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
-            max_randomx_seed_height: u64::MAX,
+            max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            pre_mine_value: MicroMinotari::from(0),
+            pre_mine_value: MAINNET_PRE_MINE_VALUE,
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -952,16 +953,16 @@ mod test {
             .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3255553 + coinbase_offset);
-        assert_eq!(reward, 800_000_415 * uT);
-        assert_eq!(supply, 14_969_882_222_638_857 * uT);
+        assert_eq!(reward, 806000000 * uT);
+        assert_eq!(supply, 21269867877433906 * uT);
         let (_, reward, _) = rewards.next().unwrap();
-        assert_eq!(reward, 799_999_715 * uT);
+        assert_eq!(reward, 806000000 * uT);
         // Inflating tail emission
         let mut rewards = schedule.iter().skip(3259845);
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3259846);
-        assert_eq!(reward, 796_998_899.into());
-        assert_eq!(supply, 14_973_309_379_635_607 * uT);
+        assert_eq!(reward, 806000000.into());
+        assert_eq!(supply, 21273327229433906 * uT);
     }
 
     #[test]

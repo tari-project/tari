@@ -212,7 +212,7 @@ pub fn get_default_cli() -> Cli {
             base_path: Default::default(),
             config: Default::default(),
             log_config: None,
-            log_level: None,
+            log_path: None,
             network: None,
             config_property_overrides: vec![],
         },

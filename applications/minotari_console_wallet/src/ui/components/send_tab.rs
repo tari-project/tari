@@ -3,6 +3,7 @@
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
+use tari_common_types::wallet_types::WalletType;
 use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
@@ -41,10 +42,11 @@ pub struct SendTab {
     confirmation_dialog: Option<ConfirmationDialogType>,
     selected_unique_id: Option<Vec<u8>>,
     table_state: TableState,
+    wallet_type: WalletType,
 }
 
 impl SendTab {
-    pub fn new(app_state: &AppState) -> Self {
+    pub fn new(app_state: &AppState, wallet_type: WalletType) -> Self {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
@@ -62,6 +64,7 @@ impl SendTab {
             confirmation_dialog: None,
             selected_unique_id: None,
             table_state: TableState::default(),
+            wallet_type,
         }
     }
 
@@ -89,36 +92,43 @@ impl SendTab {
             )
             .margin(1)
             .split(area);
-        let instructions = Paragraph::new(vec![
-            Spans::from(vec![
-                Span::raw("Press "),
-                Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to edit "),
-                Span::styled("To", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field, "),
-                Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to edit "),
-                Span::styled("Amount/Token, ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to edit "),
-                Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field, "),
-                Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to select a contact, "),
-                Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to edit "),
-                Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
-            ]),
-            Spans::from(vec![
+        let mut instructions = vec![Spans::from(vec![
+            Span::raw("Press "),
+            Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("To", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" field, "),
+            Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Amount/Token, ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" field, "),
+            Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to select a contact, "),
+            Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
+        ])];
+
+        let mut send_instructions = vec![];
+        if let WalletType::DerivedKeys | WalletType::ProvidedKeys(_) = self.wallet_type {
+            send_instructions.append(&mut vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a normal transaction, "),
-                Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a one-sided transaction"),
-            ]),
-        ])
-        .wrap(Wrap { trim: false })
-        .block(Block::default());
+            ]);
+        }
+        send_instructions.append(&mut vec![
+            Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to send a one-sided transaction"),
+        ]);
+        instructions.push(Spans::from(send_instructions));
+
+        let instructions = Paragraph::new(instructions)
+            .wrap(Wrap { trim: false })
+            .block(Block::default());
         f.render_widget(instructions, vert_chunks[0]);
 
         let to_input = Paragraph::new(self.to_field.as_ref())
@@ -574,6 +584,12 @@ impl<B: Backend> Component<B> for SendTab {
             'm' => self.send_input_mode = SendInputMode::Message,
             'p' => self.send_input_mode = SendInputMode::PaymentId,
             's' | 'o' => {
+                if let WalletType::Ledger(_) = self.wallet_type {
+                    // If we're a ledger wallet, then ignore interactive send requests
+                    if c == 's' {
+                        return;
+                    }
+                }
                 if self.to_field.is_empty() {
                     self.error_message =
                         Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());

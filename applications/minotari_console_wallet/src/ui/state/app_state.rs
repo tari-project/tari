@@ -49,6 +49,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::PublicKey,
+    wallet_types::WalletType,
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -243,8 +244,10 @@ impl AppState {
     }
 
     // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, address: &TariAddress) -> String {
-        let address_string = address.to_base58();
+    pub fn get_alias(&self, address_string: String) -> String {
+        if address_string == TariAddress::default().to_base58() {
+            return "Offline payment".to_string();
+        }
 
         match self
             .cached_data
@@ -650,6 +653,11 @@ impl AppState {
     pub async fn get_network(&self) -> Network {
         self.inner.read().await.get_network()
     }
+
+    pub async fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+        let inner = self.inner.write().await;
+        inner.get_wallet_type()
+    }
 }
 pub struct AppStateInner {
     updated: bool,
@@ -671,6 +679,14 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+        self.wallet
+            .db
+            .get_wallet_type()
+            .map_err(UiError::WalletStorageError)
+            .and_then(|opt| opt.ok_or(UiError::WalletTypeError))
     }
 
     pub fn get_network(&self) -> Network {
@@ -1172,6 +1188,8 @@ pub struct CompletedTransactionInfo {
     pub inputs_count: usize,
     pub outputs_count: usize,
     pub payment_id: Option<PaymentId>,
+    pub coinbase: bool,
+    pub burn: bool,
 }
 
 impl CompletedTransactionInfo {
@@ -1179,14 +1197,22 @@ impl CompletedTransactionInfo {
         tx: CompletedTransaction,
         transaction_weighting: &TransactionWeight,
     ) -> Result<Self, TransactionError> {
-        let excess_signature = tx
-            .transaction
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_default();
+        let excess_signature = format!(
+            "{},{}",
+            tx.transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_default(),
+            tx.transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_public_nonce().to_hex())
+                .unwrap_or_default()
+        );
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
+        let coinbase = tx.transaction.body.contains_coinbase();
+        let burn = tx.transaction.body.contains_burn();
 
         Ok(Self {
             tx_id: tx.tx_id,
@@ -1213,6 +1239,8 @@ impl CompletedTransactionInfo {
             inputs_count,
             outputs_count,
             payment_id: tx.payment_id,
+            coinbase,
+            burn,
         })
     }
 }

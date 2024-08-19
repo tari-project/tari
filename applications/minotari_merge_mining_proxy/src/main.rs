@@ -53,10 +53,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let cli = Cli::parse();
-
+    let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("proxy"),
-        &cli.common.get_base_path(),
+        cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
     )?;
     match run_merge_miner::start_merge_miner(cli).await {

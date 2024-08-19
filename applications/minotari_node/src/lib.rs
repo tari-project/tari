@@ -77,7 +77,7 @@ pub async fn run_base_node(
             base_path: data_dir_str,
             config: config_path.into_os_string().into_string().unwrap(),
             log_config: None,
-            log_level: None,
+            log_path: None,
             network: None,
             config_property_overrides: vec![],
         },

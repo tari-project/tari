@@ -44,10 +44,10 @@ impl TryFrom<proto::MessageDispatch> for MessageDispatch {
         Ok(match dispatch.contents {
             Some(proto::message_dispatch::Contents::Message(m)) => MessageDispatch::Message(Message::try_from(m)?),
             Some(proto::message_dispatch::Contents::DeliveryConfirmation(c)) => {
-                MessageDispatch::DeliveryConfirmation(Confirmation::from(c))
+                MessageDispatch::DeliveryConfirmation(Confirmation::try_from(c).map_err(|e| e.to_string())?)
             },
             Some(proto::message_dispatch::Contents::ReadConfirmation(c)) => {
-                MessageDispatch::ReadConfirmation(Confirmation::from(c))
+                MessageDispatch::ReadConfirmation(Confirmation::try_from(c).map_err(|e| e.to_string())?)
             },
             None => return Err("We didn't get any known type of chat message".to_string()),
         })

@@ -24,6 +24,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
@@ -102,6 +103,8 @@ pub(super) struct RawTransactionInfo {
     pub metadata: TransactionMetadata,
     /// A user message sent to the receiver
     pub text_message: String,
+    /// The senders address
+    pub sender_address: TariAddress,
 }
 
 impl RawTransactionInfo {
@@ -148,6 +151,8 @@ pub struct SingleRoundSenderData {
     pub output_version: TransactionOutputVersion,
     /// The version of this transaction kernel
     pub kernel_version: TransactionKernelVersion,
+    /// The senders address
+    pub sender_address: TariAddress,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -448,6 +453,7 @@ impl SenderTransactionProtocol {
                     minimum_value_promise: recipient_minimum_value_promise,
                     output_version,
                     kernel_version,
+                    sender_address: info.sender_address.clone(),
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -870,7 +876,7 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::PrivateKey};
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::PrivateKey};
     use tari_crypto::signatures::CommitmentAndPublicKeySignature;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -1061,6 +1067,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1138,6 +1145,7 @@ mod test {
                 a_change_key.script_key_id,
                 a_change_key.commitment_mask_key_id,
                 Covenant::default(),
+                TariAddress::default(),
             );
         let mut alice = builder.build().await.unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -1210,6 +1218,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn single_recipient_with_change() {
         let rules = create_consensus_rules();
         let key_manager = create_memory_db_key_manager().unwrap();
@@ -1241,6 +1250,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1346,6 +1356,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1451,6 +1462,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1489,6 +1501,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1534,6 +1547,7 @@ mod test {
                 change_params.script_key_id.clone(),
                 change_params.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await

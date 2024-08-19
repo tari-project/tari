@@ -573,7 +573,7 @@ pub async fn start_wallet(
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
     // Verify ledger build if wallet type is Ledger
-    if let WalletType::Ledger(_) = wallet.key_manager_service.get_wallet_type().await {
+    if let WalletType::Ledger(_) = *wallet.key_manager_service.get_wallet_type().await {
         #[cfg(not(feature = "ledger"))]
         {
             return Err(ExitError::new(
@@ -892,6 +892,7 @@ pub fn prompt_wallet_type(
                 view_key,
                 public_spend_key: spend_key,
                 private_spend_key: None,
+                private_comms_key: None,
             }))
         },
         WalletBoot::New | WalletBoot::Recovery => {

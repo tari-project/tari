@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, mem::size_of};
+use std::{iter, mem::size_of, sync::Arc};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
@@ -61,7 +61,7 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
         factory,
-        WalletType::default(),
+        Arc::new(WalletType::default()),
     )
 }
 
@@ -82,7 +82,7 @@ pub fn create_memory_db_key_manager_from_seed(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
         factory,
-        WalletType::default(),
+        Arc::new(WalletType::default()),
     )
 }
 

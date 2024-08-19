@@ -143,7 +143,7 @@ impl SingleReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
     use tari_crypto::{keys::PublicKey as PublicKeyTrait, signatures::CommitmentAndPublicKeySignature};
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{script, ExecutionStack};
@@ -251,6 +251,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn valid_request() {
         let key_manager: crate::transactions::key_manager::TransactionKeyManagerWrapper<
             tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
@@ -293,6 +294,7 @@ mod test {
             minimum_value_promise: MicroMinotari::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
+            sender_address: TariAddress::default(),
         };
         let bob_public_key = key_manager
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)

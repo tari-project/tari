@@ -96,7 +96,7 @@ impl MergeMiningProxyProcess {
                     base_path: data_dir_str,
                     config: config_path.into_os_string().into_string().unwrap(),
                     log_config: None,
-                    log_level: None,
+                    log_path: None,
                     network: Some("localnet".to_string().try_into().unwrap()),
                     config_property_overrides: vec![
                         ("merge_mining_proxy.listener_address".to_string(), proxy_full_address),

@@ -650,7 +650,7 @@ where T: ContactsBackend + 'static
             },
         };
 
-        trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {:?}, delivery: {:?}, read: {:?}", message_id, delivery, read);
+        trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {}, delivery: {:?}, read: {:?}", message_id, delivery, read);
         self.db.confirm_message(message_id, delivery, read)?;
         let _msg = self.message_publisher.send(Arc::new(dispatch));
 

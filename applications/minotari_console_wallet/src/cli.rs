@@ -121,9 +121,7 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    PreMineCreateScriptInputs(PreMineCreateScriptInputsArgs),
-    PreMineCreateGenesisFile(PreMineCreateGenesisFileArgs),
-    PreMineCreateVerifyGenesisFile(PreMineCreateVerifyGenesisFileArgs),
+    PreMineSpendGetOutputStatus,
     PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
     PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
     PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),
@@ -171,32 +169,6 @@ pub struct BurnMinotariArgs {
     pub amount: MicroMinotari,
     #[clap(short, long, default_value = "Burn funds")]
     pub message: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PreMineCreateScriptInputsArgs {
-    #[clap(long)]
-    pub alias: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PreMineCreateGenesisFileArgs {
-    #[clap(long)]
-    pub party_file_names: Vec<PathBuf>,
-    #[clap(long)]
-    pub fail_safe_file_name: PathBuf,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PreMineCreateVerifyGenesisFileArgs {
-    #[clap(long)]
-    pub session_id: String,
-    #[clap(long)]
-    pub party_file_names: Vec<String>,
-    #[clap(long)]
-    pub fail_safe_file_name: String,
-    #[clap(long)]
-    pub pre_mine_file_name: String,
 }
 
 #[derive(Debug, Args, Clone)]

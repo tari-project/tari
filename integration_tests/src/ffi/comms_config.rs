@@ -51,6 +51,10 @@ impl CommsConfig {
                 600,
                 &mut error,
             );
+            if error > 0 {
+                println!("comms config error {}", error);
+                panic!("comms config error");
+            }
         }
         Self { ptr }
     }

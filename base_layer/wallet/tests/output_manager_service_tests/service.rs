@@ -42,8 +42,10 @@ use minotari_wallet::{
     transaction_service::handle::TransactionServiceHandle,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
 };
@@ -164,6 +166,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
+        Network::LocalNet,
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
     )
@@ -227,6 +230,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
+        Network::LocalNet,
         connectivity,
         key_manager.clone(),
     )
@@ -275,6 +279,7 @@ async fn generate_sender_transaction_message(
         change.script_key_id,
         change.commitment_mask_key_id,
         Covenant::default(),
+        TariAddress::default(),
     );
 
     let mut stp = builder.build().await.unwrap();
@@ -1366,6 +1371,7 @@ async fn test_txo_validation() {
         &oms.key_manager_handle,
     )
     .await;
+    let output3_tx_output = output3.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(3u64), output3.clone(), None)
@@ -1386,7 +1392,7 @@ async fn test_txo_validation() {
     block_headers.insert(4, block4_header.clone());
     oms.base_node_wallet_rpc_mock_state.set_blocks(block_headers.clone());
 
-    // These responses will mark outputs 1 and 2 and mined confirmed
+    // These responses will mark outputs 1,2,3 and mined confirmed
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
@@ -1402,6 +1408,13 @@ async fn test_txo_validation() {
             output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
+        UtxoQueryResponse {
+            output: Some(output3_tx_output.clone().try_into().unwrap()),
+            mined_at_height: 1,
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output3_tx_output.hash().to_vec(),
+            mined_timestamp: 0,
+        },
     ];
 
     let utxo_query_responses = UtxoQueryResponses {
@@ -1413,11 +1426,17 @@ async fn test_txo_validation() {
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses.clone());
 
-    // This response sets output1 and output2 as mined, not spent
+    // This response sets output1 and output2, output3 as mined, not spent
     let query_deleted_response = QueryDeletedResponse {
         best_block_hash: block4_header.hash().to_vec(),
         best_block_height: 4,
         data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
             QueryDeletedData {
                 mined_at_height: 1,
                 block_mined_in: block1_header.hash().to_vec(),
@@ -1511,7 +1530,7 @@ async fn test_txo_validation() {
 
     // Output 1:    Spent in Block 5 - Unconfirmed
     // Output 2:    Mined block 1   Confirmed Block 4
-    // Output 3:    Imported so will have Unspent status.
+    // Output 3:    Mined block 1   Confirmed Block 4.
     // Output 4:    Received in Block 5 - Unconfirmed - Change from spending Output 1
     // Output 5:    Received in Block 5 - Unconfirmed
     // Output 6:    Coinbase from Block 5 - Unconfirmed
@@ -1534,6 +1553,13 @@ async fn test_txo_validation() {
             mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
+            mined_timestamp: 0,
+        },
+        UtxoQueryResponse {
+            output: Some(output3_tx_output.clone().try_into().unwrap()),
+            mined_at_height: 1,
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output3_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
@@ -1579,6 +1605,12 @@ async fn test_txo_validation() {
                 block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
                 mined_at_height: 5,
                 block_mined_in: block5_header.hash().to_vec(),
                 height_deleted_at: 0,
@@ -1610,14 +1642,14 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    assert_eq!(utxo_query_calls[0].len(), 3);
+    assert_eq!(utxo_query_calls[0].len(), 2);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].hashes.len(), 4);
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1657,7 +1689,7 @@ async fn test_txo_validation() {
         .unwrap();
 
     // The spent transaction is not checked during this second validation
-    assert_eq!(utxo_query_calls[0].len(), 3);
+    assert_eq!(utxo_query_calls[0].len(), 2);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
@@ -1665,7 +1697,7 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    assert_eq!(query_deleted_calls[0].hashes.len(), 4);
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1678,26 +1710,6 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(1000000));
     assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));
     assert_eq!(MicroMinotari::from(0), balance.time_locked_balance.unwrap());
-
-    // Trigger another validation and only Output3 should be checked
-    oms.output_manager_handle.validate_txos().await.unwrap();
-
-    let utxo_query_calls = oms
-        .base_node_wallet_rpc_mock_state
-        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-    assert_eq!(utxo_query_calls.len(), 1);
-    assert_eq!(utxo_query_calls[0].len(), 1);
-    assert_eq!(
-        utxo_query_calls[0][0],
-        output3
-            .to_transaction_output(&oms.key_manager_handle)
-            .await
-            .unwrap()
-            .hash()
-            .to_vec()
-    );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
     // Output 1:    Spent in Block 5 - Unconfirmed
@@ -1731,6 +1743,13 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
+            output: Some(output3_tx_output.clone().try_into().unwrap()),
+            mined_at_height: 1,
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output3_tx_output.hash().to_vec(),
+            mined_timestamp: 0,
+        },
+        UtxoQueryResponse {
             output: Some(output4_tx_output.clone().try_into().unwrap()),
             mined_at_height: 5,
             mined_in_block: block5_header_reorg.hash().to_vec(),
@@ -1758,6 +1777,12 @@ async fn test_txo_validation() {
                 block_mined_in: block1_header.hash().to_vec(),
                 height_deleted_at: 5,
                 block_deleted_in: block5_header_reorg.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
                 mined_at_height: 1,

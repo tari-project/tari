@@ -42,15 +42,15 @@ pub enum TransactionKeyManagerBranch {
     PreMine = Branch::PreMine as u8,
 }
 
-const DATA_ENCRYPTION: &str = "data encryption";
-const METADATA_EPHEMERAL_NONCE: &str = "metadata ephemeral nonce";
-const COMMITMENT_MASK: &str = "commitment mask";
-const NONCE: &str = "nonce";
-const KERNEL_NONCE: &str = "kernel nonce";
-const SENDER_OFFSET: &str = "sender offset";
-const ONE_SIDED_SENDER_OFFSET: &str = "one sided sender offset";
-const RANDOM_KEY: &str = "random key";
-const PRE_MINE: &str = "pre-mine";
+pub const DATA_ENCRYPTION: &str = "data encryption";
+pub const METADATA_EPHEMERAL_NONCE: &str = "metadata ephemeral nonce";
+pub const COMMITMENT_MASK: &str = "commitment mask";
+pub const NONCE: &str = "nonce";
+pub const KERNEL_NONCE: &str = "kernel nonce";
+pub const SENDER_OFFSET: &str = "sender offset";
+pub const ONE_SIDED_SENDER_OFFSET: &str = "one sided sender offset";
+pub const RANDOM_KEY: &str = "random key";
+pub const PRE_MINE: &str = "pre-mine";
 
 impl TransactionKeyManagerBranch {
     /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or

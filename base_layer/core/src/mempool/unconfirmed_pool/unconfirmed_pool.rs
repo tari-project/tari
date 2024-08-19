@@ -861,6 +861,7 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
+    use tari_common_types::tari_address::TariAddress;
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
@@ -993,6 +994,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             );
 
         let test_params = TestParams::new(&key_manager).await;

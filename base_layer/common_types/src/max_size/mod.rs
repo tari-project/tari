@@ -20,42 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    MaxSizeBytes,
-    MaxSizeString,
-};
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-pub struct CodeTemplateRegistration {
-    pub author_public_key: PublicKey,
-    pub author_signature: Signature,
-    pub template_name: MaxSizeString<32>,
-    pub template_version: u16,
-    pub template_type: TemplateType,
-    pub build_info: BuildInfo,
-    pub binary_sha: MaxSizeBytes<32>,
-    pub binary_url: MaxSizeString<255>,
-}
-
-// -------------------------------- TemplateType -------------------------------- //
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-pub enum TemplateType {
-    /// Indicates that the template is a WASM module
-    Wasm { abi_version: u16 },
-    /// A flow template
-    Flow,
-    /// A manifest template
-    Manifest,
-}
-
-// -------------------------------- BuildInfo -------------------------------- //
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-pub struct BuildInfo {
-    pub repo_url: MaxSizeString<255>,
-    pub commit_hash: MaxSizeBytes<32>,
-}
+mod string;
+pub use string::{MaxSizeString, MaxSizeStringLengthError};
+mod bytes;
+pub use bytes::{MaxSizeBytes, MaxSizeBytesError};

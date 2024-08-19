@@ -20,10 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use tari_common_types::tari_address::TariAddress;
 use uuid::Uuid;
 
-use crate::contacts_service::types::{message::MessageMetadata, Message};
+use crate::contacts_service::{
+    error::ContactsServiceError,
+    types::{
+        message::{MessageMetadata, MAX_MESSAGE_SIZE},
+        ChatBody,
+        Message,
+        MessageId,
+    },
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct MessageBuilder {
@@ -33,12 +43,12 @@ pub struct MessageBuilder {
 impl MessageBuilder {
     pub fn new() -> Self {
         // We're forcing it to a String before bytes so we can have the same representation used in
-        // all places. Otherwise the UUID byte format will differ if displayed somewhere.
+        // all places, otherwise the UUID byte format will differ if displayed somewhere.
         let message_id = Uuid::new_v4().to_string().into_bytes();
 
         Self {
             inner: Message {
-                message_id,
+                message_id: MessageId::from_bytes_truncate(message_id),
                 ..Message::default()
             },
         }
@@ -62,26 +72,33 @@ impl MessageBuilder {
         }
     }
 
-    pub fn message(&self, body: String) -> Self {
-        let body = body.into_bytes();
-        Self {
-            inner: Message {
-                body,
-                ..self.inner.clone()
-            },
-        }
+    pub fn message(&self, body: String) -> Result<Self, ContactsServiceError> {
+        let message = Message {
+            body: ChatBody::try_from(body.into_bytes())?,
+            ..self.inner.clone()
+        };
+        self.finalize(message)
     }
 
-    pub fn metadata(&self, new_metadata: MessageMetadata) -> Self {
+    pub fn metadata(&self, new_metadata: MessageMetadata) -> Result<Self, ContactsServiceError> {
         let mut metadata = self.inner.metadata.clone();
         metadata.push(new_metadata);
+        let message = Message {
+            metadata,
+            ..self.inner.clone()
+        };
+        self.finalize(message)
+    }
 
-        Self {
-            inner: Message {
-                metadata,
-                ..self.inner.clone()
-            },
+    fn finalize(&self, message: Message) -> Result<MessageBuilder, ContactsServiceError> {
+        if message.data_byte_size() > MAX_MESSAGE_SIZE {
+            return Err(ContactsServiceError::MessageSizeExceeded(format!(
+                "current: {}, limit: {}",
+                message.data_byte_size(),
+                MAX_MESSAGE_SIZE
+            )));
         }
+        Ok(Self { inner: message })
     }
 
     pub fn build(&self) -> Message {
@@ -94,5 +111,84 @@ impl From<Message> for MessageBuilder {
         Self {
             inner: Message { ..message },
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{convert::TryFrom, str::from_utf8_mut};
+
+    use uuid::Uuid;
+
+    use crate::contacts_service::types::{
+        message::{MAX_BODY_SIZE, MAX_DATA_SIZE, MAX_KEY_SIZE, MAX_MESSAGE_ID_SIZE},
+        ChatBody,
+        MessageBuilder,
+        MessageId,
+        MessageMetadata,
+        MetadataData,
+        MetadataKey,
+    };
+
+    #[test]
+    fn test_message_id_size() {
+        for _ in 0..10 {
+            let message_id = Uuid::new_v4().to_string().into_bytes();
+            assert!(
+                MessageId::try_from(message_id.clone()).is_ok(),
+                "Invalid size - MAX_MESSAGE_ID_SIZE length: {}, message_id length: {}",
+                MessageId::default().len(),
+                message_id.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_message_size() {
+        assert!(MetadataKey::try_from(vec![0u8; MAX_KEY_SIZE]).is_ok());
+        assert!(MetadataKey::try_from(vec![0u8; MAX_KEY_SIZE + 1]).is_err());
+        assert!(MetadataData::try_from(vec![0u8; MAX_DATA_SIZE]).is_ok());
+        assert!(MetadataData::try_from(vec![0u8; MAX_DATA_SIZE + 1]).is_err());
+
+        assert!(ChatBody::try_from(vec![0u8; MAX_BODY_SIZE]).is_ok());
+        assert!(ChatBody::try_from(vec![0u8; MAX_BODY_SIZE + 1]).is_err());
+
+        assert!(MessageId::try_from(vec![0u8; MAX_MESSAGE_ID_SIZE]).is_ok());
+        assert!(MessageId::try_from(vec![0u8; MAX_MESSAGE_ID_SIZE + 1]).is_err());
+
+        let mut builder = MessageBuilder::new();
+        builder = builder
+            .metadata(MessageMetadata {
+                key: Default::default(),
+                data: Default::default(),
+            })
+            .unwrap();
+        let message = builder.build();
+        assert_eq!(message.metadata.len(), 1);
+        builder = builder
+            .metadata(MessageMetadata {
+                key: MetadataKey::try_from(vec![0u8; MAX_KEY_SIZE]).unwrap(),
+                data: MetadataData::try_from(vec![0u8; MAX_DATA_SIZE]).unwrap(),
+            })
+            .unwrap();
+        let message = builder.build();
+        assert_eq!(message.metadata.len(), 2);
+        assert!(builder
+            .metadata(MessageMetadata {
+                key: MetadataKey::try_from(vec![0u8; MAX_KEY_SIZE]).unwrap(),
+                data: MetadataData::try_from(vec![0u8; MAX_DATA_SIZE]).unwrap()
+            })
+            .is_err());
+        let message = builder.build();
+        assert_eq!(message.metadata.len(), 2);
+
+        let builder = MessageBuilder::new();
+        let mut body = vec![0u8; MAX_BODY_SIZE];
+        let body_str = from_utf8_mut(&mut body).unwrap().to_string();
+        builder.message(body_str.clone()).unwrap();
+        assert!(builder.message(body_str).is_ok());
+        let mut body = vec![0u8; MAX_BODY_SIZE + 1];
+        let body_str = from_utf8_mut(&mut body).unwrap().to_string();
+        assert!(builder.message(body_str).is_err());
     }
 }

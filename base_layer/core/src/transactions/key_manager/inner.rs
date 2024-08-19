@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, ops::Shl, str::FromStr};
+use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U64;
@@ -35,12 +35,19 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_script_signature,
     ScriptSignatureKey,
 };
-use rand::rngs::OsRng;
-#[cfg(feature = "ledger")]
-use rand::RngCore;
+use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
+    key_branches::{
+        TransactionKeyManagerBranch,
+        KERNEL_NONCE,
+        METADATA_EPHEMERAL_NONCE,
+        NONCE,
+        ONE_SIDED_SENDER_OFFSET,
+        RANDOM_KEY,
+        SENDER_OFFSET,
+    },
+    tari_address::TariAddress,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
@@ -69,7 +76,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{CheckSigSchnorrSignature, TariScript};
 use tari_utilities::ByteArray;
 use tokio::sync::RwLock;
 
@@ -107,7 +114,7 @@ pub struct TransactionKeyManagerInner<TBackend> {
     db: KeyManagerDatabase<TBackend, PublicKey>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
-    wallet_type: WalletType,
+    wallet_type: Arc<WalletType>,
 }
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
@@ -121,7 +128,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-        wallet_type: WalletType,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
@@ -171,14 +178,24 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_next_key(&self, branch: &str) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         let index = {
-            let mut km = self
-                .key_managers
-                .get(branch)
-                .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
-                .write()
-                .await;
-            self.db.increment_key_index(branch)?;
-            km.increment_key_index(1)
+            match branch {
+                METADATA_EPHEMERAL_NONCE |
+                NONCE |
+                KERNEL_NONCE |
+                SENDER_OFFSET |
+                ONE_SIDED_SENDER_OFFSET |
+                RANDOM_KEY => OsRng.next_u64(),
+                _ => {
+                    let mut km = self
+                        .key_managers
+                        .get(branch)
+                        .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
+                        .write()
+                        .await;
+                    self.db.increment_key_index(branch)?;
+                    km.increment_key_index(1)
+                },
+            }
         };
         let key_id = KeyId::Managed {
             branch: branch.to_string(),
@@ -193,7 +210,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         {
             debug!(target: LOG_TARGET, "get_random_key: wallet type {}", self.wallet_type);
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -247,7 +264,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
         match key_id {
             KeyId::Managed { branch, index } => {
-                if let WalletType::Ledger(ledger) = &self.wallet_type {
+                if let WalletType::Ledger(ledger) = &*self.wallet_type {
                     match TransactionKeyManagerBranch::from_key(branch) {
                         TransactionKeyManagerBranch::OneSidedSenderOffset |
                         TransactionKeyManagerBranch::RandomKey |
@@ -351,7 +368,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 Ok(pvt_key)
             },
             KeyId::Managed { branch, index } => {
-                match &self.wallet_type {
+                match &*self.wallet_type {
                     WalletType::DerivedKeys => {},
                     WalletType::Ledger(wallet) => {
                         if &TransactionKeyManagerBranch::DataEncryption.get_branch_key() == branch {
@@ -377,10 +394,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                         // If we're trying to access any of the private keys, just say no bueno
                         if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch {
-                            // return wallet.private_spend_key.clone().ok_or(
-                            //     KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
-                            // );
-                            return Ok(PrivateKey::default())
+                            return wallet.private_spend_key.clone().ok_or(
+                                KeyManagerServiceError::ImportedPrivateKeyInaccessible(key_id.to_string()),
+                            );
                         }
                     },
                 }
@@ -400,7 +416,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
                 let commitment_mask = Box::pin(self.get_private_key(&key)).await?;
 
-                match &self.wallet_type {
+                match &*self.wallet_type {
                     WalletType::Ledger(_) => {
                         Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()))
                     },
@@ -449,7 +465,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    pub fn get_wallet_type(&self) -> WalletType {
+    pub fn get_wallet_type(&self) -> Arc<WalletType> {
         self.wallet_type.clone()
     }
 
@@ -468,7 +484,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             index: 0,
         };
 
-        let key = match &self.wallet_type {
+        let key = match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 let private_key = self.get_private_key(&key_id).await?;
                 PublicKey::from_secret_key(&private_key)
@@ -515,7 +531,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     pub async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
@@ -535,13 +551,27 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let branch = TransactionKeyManagerBranch::Spend.get_branch_key();
         let index = 0;
 
-        match self.wallet_type {
-            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+        match &*self.wallet_type {
+            WalletType::DerivedKeys => {
                 self.get_private_key(&TariKeyId::Managed {
                     branch: branch.clone(),
                     index,
                 })
                 .await
+            },
+            WalletType::ProvidedKeys(wallet) => {
+                if let Some(pvt_comms_key) = &wallet.private_comms_key {
+                    Ok(pvt_comms_key.clone())
+                } else {
+                    let km = self
+                        .key_managers
+                        .get(&branch)
+                        .ok_or_else(|| self.unknown_key_branch_error("get_private_comms_key", &branch))?
+                        .read()
+                        .await;
+                    let key = km.get_private_key(index)?;
+                    Ok(key)
+                }
             },
             WalletType::Ledger(_) => {
                 let km = self
@@ -702,7 +732,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        if let WalletType::Ledger(ledger) = &self.wallet_type {
+        if let WalletType::Ledger(ledger) = &*self.wallet_type {
             if let KeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset | TransactionKeyManagerBranch::RandomKey => {
@@ -749,7 +779,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => match secret_key_id {
                 KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
@@ -848,7 +878,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let commitment = self.get_commitment(commitment_mask_key_id, value).await?;
         let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
 
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -1040,7 +1070,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             );
         }
 
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 let mut total_script_private_key = PrivateKey::default();
                 for script_key_id in script_key_ids {
@@ -1207,7 +1237,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -1262,7 +1292,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
                 {
@@ -1366,8 +1396,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
-        metadata_signature_message: &[u8; 32],
+        metadata_signature_message_common: &[u8; 32],
         range_proof_type: RangeProofType,
+        script: &TariScript,
+        receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError> {
         #[cfg(feature = "ledger")]
         {
@@ -1379,15 +1411,19 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 self.wallet_type
             );
         }
-        match &self.wallet_type {
+        match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
+                let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
+                    script,
+                    metadata_signature_message_common,
+                );
                 let value = value.into();
                 self.get_metadata_signature(
                     commitment_mask_key_id,
                     &value,
                     sender_offset_key_id,
                     txo_version,
-                    metadata_signature_message,
+                    &metadata_signature_message,
                     range_proof_type,
                 )
                 .await
@@ -1422,7 +1458,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                         value.into(),
                         sender_offset_key_index,
                         &commitment_mask,
-                        metadata_signature_message,
+                        receiver_address,
+                        metadata_signature_message_common,
                     )
                     .map_err(TransactionError::LedgerDeviceError)?;
 
@@ -1485,10 +1522,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_private_key = self.get_private_key(ephemeral_private_nonce_id).await?;
-        let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
-        let sender_offset_private_key = self.get_private_key(sender_offset_key_id).await?; // Take the index and use it to find the key from ledger
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id).await?;
+        let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
 
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
             txo_version,
@@ -1499,16 +1534,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             metadata_signature_message,
         );
 
-        let metadata_signature = ComAndPubSignature::sign(
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            &sender_offset_private_key,
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            &ephemeral_private_key,
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
+        let sender_partial_metadata_signature_self = self
+            .sign_with_nonce_and_challenge(sender_offset_key_id, ephemeral_private_nonce_id, &challenge)
+            .await?;
+
+        let metadata_signature = ComAndPubSignature::new(
+            Default::default(),
+            sender_partial_metadata_signature_self.get_public_nonce().clone(),
+            Default::default(),
+            Default::default(),
+            sender_partial_metadata_signature_self.get_signature().clone(),
+        );
+
         Ok(metadata_signature)
     }
 

@@ -58,6 +58,8 @@ pub enum UiError {
     SendError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(String),
+    #[error("Couldn't read wallet type")]
+    WalletTypeError,
 }
 
 impl From<HexError> for UiError {
