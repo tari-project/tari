@@ -76,6 +76,10 @@ impl TariAddressFeatures {
     pub fn as_u8(&self) -> u8 {
         self.0
     }
+
+    pub fn combine_features(&self, other: TariAddressFeatures) -> TariAddressFeatures {
+        TariAddressFeatures(self.0 | other.0)
+    }
 }
 
 impl Default for TariAddressFeatures {
@@ -118,6 +122,8 @@ pub enum TariAddressError {
     CannotRecoverFeature,
     #[error("Could not recover TariAddress from string")]
     InvalidAddressString,
+    #[error("Could not create TariAddress: {0}")]
+    CreationError(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,6 +156,41 @@ impl TariAddress {
     /// Creates a new Tari Address from the provided public keys, network and features
     pub fn new_single_address_with_interactive_only(spend_key: PublicKey, network: Network) -> Self {
         TariAddress::Single(SingleAddress::new_with_interactive_only(spend_key, network))
+    }
+
+    pub fn combine_addresses(one: &TariAddress, two: &TariAddress) -> Result<TariAddress, TariAddressError> {
+        if one.comms_public_key() != two.comms_public_key() {
+            return Err(TariAddressError::CreationError("Public keys do not match".to_string()));
+        }
+        if one.network() != two.network() {
+            return Err(TariAddressError::CreationError("Networks do not match".to_string()));
+        }
+        if let TariAddress::Dual(one) = one {
+            if let TariAddress::Dual(two) = two {
+                if one.public_view_key() != two.public_view_key() {
+                    return Err(TariAddressError::CreationError("View keys do not match".to_string()));
+                }
+            }
+        }
+        match (one, two) {
+            (TariAddress::Dual(one), _) => Ok(TariAddress::new_dual_address(
+                one.public_view_key().clone(),
+                one.public_spend_key().clone(),
+                one.network(),
+                one.features().combine_features(two.features()),
+            )),
+            (_, TariAddress::Dual(two)) => Ok(TariAddress::new_dual_address(
+                two.public_view_key().clone(),
+                one.public_spend_key().clone(),
+                one.network(),
+                one.features().combine_features(two.features()),
+            )),
+            (_, _) => Ok(TariAddress::new_single_address(
+                one.public_spend_key().clone(),
+                one.network(),
+                one.features().combine_features(two.features()),
+            )),
+        }
     }
 
     /// Gets the bytes size of the Tari Address

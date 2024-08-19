@@ -437,6 +437,10 @@ impl From<TariAddressError> for LibWalletError {
                 code: 708,
                 message: format!("{:?}", e),
             },
+            TariAddressError::CreationError(_) => Self {
+                code: 708,
+                message: format!("{:?}", e),
+            },
         }
     }
 }
