@@ -88,7 +88,7 @@ tari_features = { path = "../../common/tari_features", version = "1.2.0-pre.0" }
 [features]
 default = ["libtor", "ledger"]
 grpc = []
-ledger = ["minotari_ledger_wallet_comms"]
+ledger = ["minotari_ledger_wallet_comms", "minotari_wallet/ledger"]
 libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]
