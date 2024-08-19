@@ -670,8 +670,8 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_min_maturity: 1,
-            blockchain_version: 1,
+            coinbase_min_maturity: 360,
+            blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
