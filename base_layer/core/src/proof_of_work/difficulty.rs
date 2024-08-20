@@ -113,25 +113,6 @@ impl Default for Difficulty {
     }
 }
 
-/// This trait is used to add a type to `CheckedAdd`, which greatly simplifies usage in the code.
-/// It is implemented for `Difficulty` and `u64`.
-pub trait CheckedAdd<T> {
-    fn checked_add(&self, other: T) -> Option<Self>
-    where Self: Sized;
-}
-
-impl CheckedAdd<Difficulty> for Difficulty {
-    fn checked_add(&self, other: Difficulty) -> Option<Self> {
-        self.0.checked_add(other.0).map(Difficulty)
-    }
-}
-
-impl CheckedAdd<u64> for Difficulty {
-    fn checked_add(&self, other: u64) -> Option<Self> {
-        self.checked_add(Difficulty(other))
-    }
-}
-
 impl From<Difficulty> for u64 {
     fn from(value: Difficulty) -> Self {
         value.0
@@ -165,24 +146,9 @@ mod test {
     use primitive_types::U256;
 
     use crate::proof_of_work::{
-        difficulty::{CheckedAdd, MIN_DIFFICULTY},
+        difficulty::{MIN_DIFFICULTY},
         Difficulty,
     };
-    #[test]
-    fn add_difficulty() {
-        assert_eq!(
-            Difficulty::from_u64(1_000).unwrap().checked_add(8_000).unwrap(),
-            Difficulty::from_u64(9_000).unwrap()
-        );
-        assert_eq!(
-            Difficulty::default().checked_add(42).unwrap(),
-            Difficulty::from_u64(MIN_DIFFICULTY + 42).unwrap()
-        );
-        assert_eq!(
-            Difficulty::from_u64(15).unwrap().checked_add(5).unwrap(),
-            Difficulty::from_u64(20).unwrap()
-        );
-    }
 
     #[test]
     fn test_format() {
@@ -201,14 +167,6 @@ mod test {
         }
         assert_eq!(Difficulty::min().as_u64(), MIN_DIFFICULTY);
         assert_eq!(Difficulty::max().as_u64(), u64::MAX);
-    }
-
-    #[test]
-    fn addition_does_not_overflow() {
-        let d1 = Difficulty::from_u64(100).unwrap();
-        assert!(d1.checked_add(1).is_some());
-        let d2 = Difficulty::max();
-        assert!(d2.checked_add(1).is_none());
     }
 
     #[test]
