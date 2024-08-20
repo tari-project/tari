@@ -7,7 +7,6 @@ use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -442,12 +441,13 @@ impl TransactionsTab {
 
             let payment_id = match tx.payment_id.clone() {
                 Some(v) => {
-                    if let PaymentId::Open(bytes) = v {
+                    let bytes = v.get_data();
+                    if bytes.is_empty() {
+                        format!("#{}", v)
+                    } else {
                         String::from_utf8(bytes)
                             .unwrap_or_else(|_| "Invalid string".to_string())
                             .to_string()
-                    } else {
-                        format!("#{}", v)
                     }
                 },
                 None => "None".to_string(),

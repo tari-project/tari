@@ -112,6 +112,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         change.script_key_id.clone(),
         change.commitment_mask_key_id.clone(),
         Covenant::default(),
+        TariAddress::default(),
     );
 
     let stp = builder.build().await.unwrap();

@@ -396,6 +396,7 @@ async fn setup_transaction_service_no_comms(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
+        Network::LocalNet,
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
     )
@@ -3335,6 +3336,7 @@ async fn test_transaction_cancellation() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),
@@ -3420,6 +3422,7 @@ async fn test_transaction_cancellation() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),
@@ -4200,6 +4203,7 @@ async fn test_restarting_transaction_protocols() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         );
     let mut bob_stp = builder.build().await.unwrap();
     let msg = bob_stp.build_single_round_message(&key_manager).await.unwrap();
@@ -4621,6 +4625,7 @@ async fn test_resend_on_startup() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),
@@ -5149,6 +5154,7 @@ async fn test_transaction_timeout_cancellation() {
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
             script!(Nop),

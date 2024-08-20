@@ -68,11 +68,14 @@ impl<const S: usize> TryFrom<&[u8]> for Bip32Path<S> {
     ///
     /// * `data` - Encoded BIP32 path. First byte is the length of the path, as encoded by ragger.
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        // Assert the data is not empty; we need at least a length byte!
+        if data.is_empty() {
+            return Err(AppSW::WrongApduLength);
+        }
+
+        // We cannot have too many elements in the path, and must have `u32` path elements
         let input_path_len = (data.len() - 1) / 4;
-        // Check data length
-        if data.is_empty() // At least the length byte is required
-            || (input_path_len > S)
-            || (data[0] as usize * 4 != data.len() - 1)
+        if input_path_len > S || data[0] as usize * 4 != data.len() - 1
         {
             return Err(AppSW::WrongApduLength);
         }
@@ -143,7 +146,7 @@ fn cx_error_to_string(e: CxError) -> String {
     err.to_string()
 }
 
-// Get a raw 32 byte key hash from the BIP32 path.
+// Get a raw 64 byte key hash from the BIP32 path.
 // - The wrapper function for the syscall `os_perso_derive_node_bip32`, `bip32_derive`, requires a 96 byte buffer when
 //   called with `CurvesId::Ed25519` as it checks the consistency of the curve choice and key length in order to prevent
 //   the underlying syscall from panicking.
@@ -152,7 +155,7 @@ fn cx_error_to_string(e: CxError) -> String {
 //     chain: 32 bytes
 //   Example:
 //     d8a57c1be0c52e9643485e77aac56d72fa6c4eb831466c2abd2d320c82d3d14929811c598c13d431bad433e037dbd97265492cea42bc2e3aad15440210a20a2d0000000000000000000000000000000000000000000000000000000000000000
-//  - This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 32
+//  - This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 64
 //    uniformly distributed random bytes.
 fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut key_buffer = Zeroizing::new([0u8; 96]);
@@ -179,7 +182,7 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     Ok(raw_key_hashed)
 }
 
-/// Get a raw 32 byte key hash from the BIP32 path. In cas of an error, display an interactive message on the device.
+/// Get a raw 64 byte key hash from the BIP32 path. In cas of an error, display an interactive message on the device.
 pub fn get_raw_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, SyscallError> {
     match get_raw_key_hash(&path) {
         Ok(val) => Ok(val),

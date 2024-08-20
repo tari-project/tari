@@ -1,0 +1,59 @@
+---
+name: Build minotari_ledger_wallet
+
+'on':
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]*"
+    branches:
+      - "build-all-*"
+      - "build-ledger-*"
+  schedule:
+    - cron: "05 00 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build:
+    name: building ${{ matrix.ledger_target }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        ledger_target: [nanox, nanosplus]
+
+    permissions:
+      packages: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU for Docker
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build ledger firwmare
+        shell: bash
+        run: |
+          docker run --rm \
+            -v ".:/app" \
+            -w "/app/applications/minotari_ledger_wallet/wallet" \
+            ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder \
+            cargo ledger build ${{ matrix.ledger_target }}
+
+      - name: List ledger firmware
+        shell: bash
+        run: |
+          ls -la ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/
+
+      - name: Artifact upload for ${{ matrix.ledger_target }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: minotari_ledger_wallet-${{ matrix.ledger_target }}-${{ github.ref_name }}-${{ github.sha }}
+          path: |
+            ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/*.json
+            ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/key_14x14.gif
+            ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/minotari_ledger_wallet.*
