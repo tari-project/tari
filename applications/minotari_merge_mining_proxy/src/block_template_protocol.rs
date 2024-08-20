@@ -129,11 +129,9 @@ impl BlockTemplateProtocol<'_> {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
                         let block_result = client.get_new_block(GetNewBlockRequest::default()).await?.into_inner();
-                        let new_block_result = block_result
+                        block_result
                             .block
-                            .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?;
-
-                        new_block_result
+                            .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?
                     },
                     None => {
                         let (_new_template, block_template_with_coinbase, height) = self
@@ -144,7 +142,7 @@ impl BlockTemplateProtocol<'_> {
                             )
                             .await?;
 
-                        let block = match self.get_new_block(block_template_with_coinbase).await {
+                        match self.get_new_block(block_template_with_coinbase).await {
                             Ok(b) => {
                                 debug!(
                                     target: LOG_TARGET,
@@ -161,8 +159,7 @@ impl BlockTemplateProtocol<'_> {
                                 error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
                                 return Err(err);
                             },
-                        };
-                        block
+                        }
                     },
                 };
 
