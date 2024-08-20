@@ -328,7 +328,7 @@ impl InnerService {
             if achieved_target >= block_data.template.tari_difficulty {
                 let resp = match p2pool_client {
                     Some(mut client) => {
-                        dbg!("Submiting to p2pool");
+                        info!(target: LOG_TARGET, "Submiting to p2pool");
                         client
                             .submit_block(SubmitBlockRequest {
                                 block: Some(block_data.template.tari_block),
