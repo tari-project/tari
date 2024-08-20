@@ -874,10 +874,32 @@ async fn test_block_sync_body_validator() {
     ).await;
 
     // Coinbase extra field is too large
-    let extra = iter::repeat(1u8).take(65).collect::<Vec<_>>();
-    if CoinBaseExtra::try_from(extra).is_ok() {
-        panic!("CoinbaseExtra should not be able to be created from a 65 byte vector");
-    }
+    let extra = CoinBaseExtra::try_from(iter::repeat(1u8).take(65).collect::<Vec<_>>()).unwrap();
+    let (template, _) = chain_block_with_new_coinbase(
+        &genesis,
+        vec![tx01.clone(), tx02.clone()],
+        &rules,
+        Some(extra),
+        &key_manager,
+    )
+    .await;
+    let new_block = db.prepare_new_block(template).unwrap();
+    let max_len = rules.consensus_constants(0).coinbase_output_features_extra_max_length();
+    let err = {
+        // `MutexGuard` cannot be held across an `await` point
+        let txn = db.db_read_access().unwrap();
+        let smt = db.smt();
+        validator.validate_body(&*txn, &new_block, smt).unwrap_err()
+    };
+    assert!(
+        matches!(
+            err,
+            ValidationError::TransactionError(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize{len, max }) if
+            len == 65 && max == max_len
+        ),
+        "{}",
+        err
+    );
 
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, None, &key_manager).await;
@@ -1221,7 +1243,7 @@ use tari_core::{
     transactions::{
         key_manager::create_memory_db_key_manager,
         test_helpers::create_stx_protocol_internal,
-        transaction_components::{CoinBaseExtra, Transaction, TransactionKernel},
+        transaction_components::{CoinBaseExtra, Transaction, TransactionError, TransactionKernel},
     },
 };
 
