@@ -38,7 +38,6 @@ use crate::{
     transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
@@ -110,6 +109,8 @@ pub struct ConsensusConstants {
     permitted_output_types: &'static [OutputType],
     /// The allowlist of range proof types
     permitted_range_proof_types: [(OutputType, &'static [RangeProofType]); 5],
+    /// Coinbase outputs are allowed to have metadata, but it has the following length limit
+    coinbase_output_features_extra_max_length: u32,
     /// Maximum number of token elements permitted in covenants
     max_covenant_length: u32,
     /// Epoch duration in blocks
@@ -238,13 +239,16 @@ impl ConsensusConstants {
 
     fn calculate_1_output_kernel_weight(&self) -> std::io::Result<u64> {
         let output_features = OutputFeatures { ..Default::default() };
+        let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size()? +
-                CoinBaseExtra::default().max_size() +
-                script![Nop].get_serialized_size()?,
+            output_features.get_serialized_size()? + max_extra_size + script![Nop].get_serialized_size()?,
         );
         Ok(self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size))
+    }
+
+    pub fn coinbase_output_features_extra_max_length(&self) -> u32 {
+        self.coinbase_output_features_extra_max_length
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -411,6 +415,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -476,6 +481,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
@@ -532,6 +538,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -588,6 +595,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -638,6 +646,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -690,6 +699,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
+            coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);

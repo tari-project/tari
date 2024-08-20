@@ -25,7 +25,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     transactions::{aggregated_body::AggregateBody, CryptoFactories},
     validation::{
         aggregate_body::AggregateBodyInternalConsistencyValidator,
@@ -80,18 +80,23 @@ fn validate_block_specific_checks(
     consensus_manager: &ConsensusManager,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError> {
+    let constants = consensus_manager.consensus_constants(block.header.height);
     if block.header.height == 0 {
         warn!(target: LOG_TARGET, "Attempt to validate genesis block");
         return Err(ValidationError::ValidatingGenesis);
     }
     check_coinbase_output(block, consensus_manager, factories)?;
-    check_coinbase_output_features(&block.body)?;
+    check_coinbase_output_features(&block.body, constants)?;
 
     Ok(())
 }
 
-fn check_coinbase_output_features(body: &AggregateBody) -> Result<(), ValidationError> {
-    body.verify_non_coinbase_has_coinbase_extra_empty()
+fn check_coinbase_output_features(
+    body: &AggregateBody,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let max_coinbase_metadata_size = consensus_constants.coinbase_output_features_extra_max_length();
+    body.check_output_features(max_coinbase_metadata_size)
         .map_err(ValidationError::from)
 }
 
