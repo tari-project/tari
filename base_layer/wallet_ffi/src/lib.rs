@@ -4107,6 +4107,57 @@ pub unsafe extern "C" fn completed_transaction_get_message(
     result.into_raw()
 }
 
+/// Gets the payment id of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+/// to an empty char array if transaction is null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_payment_id(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *const c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let payment_id = (*transaction).payment_id.clone();
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result.into_raw();
+    }
+    let payment_id_str = match payment_id {
+        None => "".to_string(),
+        Some(v) => {
+            let bytes = v.get_data();
+            if bytes.is_empty() {
+                format!("#{}", v)
+            } else {
+                String::from_utf8(bytes)
+                    .unwrap_or_else(|_| "Invalid string".to_string())
+                    .to_string()
+            }
+        },
+    };
+    match CString::new(payment_id_str) {
+        Ok(v) => result = v,
+        _ => {
+            error = LibWalletError::from(InterfaceError::PointerError("payment id".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
+    result.into_raw()
+}
+
 /// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
 ///
 /// ## Arguments
