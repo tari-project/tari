@@ -222,13 +222,14 @@ fn main() {
     // GetViewKey
     println!("\ntest: GetViewKey");
 
-    match ledger_get_view_key(account) {
-        Ok(view_key) => println!("view_key:       {}", view_key.to_hex()),
+    let view_key_1 = match ledger_get_view_key(account) {
+        Ok(val) => val,
         Err(e) => {
             println!("\nError: {}\n", e);
             return;
         },
-    }
+    };
+    println!("view_key:       {}", view_key_1.to_hex());
 
     // GetDHSharedSecret
     println!("\ntest: GetDHSharedSecret");
@@ -384,7 +385,10 @@ fn main() {
     println!("\ntest: Ledger app restart");
     prompt_with_message("Start the 'MinoTari Wallet' Ledger app and press Enter to continue..");
     match ledger_get_view_key(account) {
-        Ok(view_key) => println!("view_key:       {}", view_key.to_hex()),
+        Ok(view_key_2) => {
+            println!("view_key:       {}", view_key_2.to_hex());
+            assert_eq!(view_key_1, view_key_2, "View key not repeatable")
+        },
         Err(e) => {
             println!("\nError: {}\n", e);
             return;

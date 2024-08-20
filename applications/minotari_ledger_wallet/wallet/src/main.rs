@@ -95,6 +95,7 @@ unsafe impl critical_section::Impl for MyCriticalSection {
 
 // Application status words.
 #[repr(u16)]
+#[derive(Debug)]
 pub enum AppSW {
     Deny = AppSWMapping::Deny as u16,
     WrongP1P2 = AppSWMapping::WrongP1P2 as u16,

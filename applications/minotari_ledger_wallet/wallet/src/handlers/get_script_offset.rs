@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::vec::Vec;
-use core::ops::Deref;
 
 use ledger_device_sdk::io::Comm;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
-use zeroize::Zeroizing;
 
 use crate::{
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
@@ -19,22 +17,22 @@ use crate::{
 const MIN_UNIQUE_KEYS: usize = 2;
 
 pub struct ScriptOffsetCtx {
-    sender_offset_sum: Zeroizing<RistrettoSecretKey>,
-    script_private_key_sum: Zeroizing<RistrettoSecretKey>,
+    sender_offset_sum: RistrettoSecretKey,
+    script_private_key_sum: RistrettoSecretKey,
     account: u64,
     total_offset_indexes: u64,
     total_script_indexes: u64,
     total_derived_offset_keys: u64,
     total_derived_script_keys: u64,
-    unique_keys: Vec<Zeroizing<RistrettoSecretKey>>,
+    unique_keys: Vec<RistrettoSecretKey>,
 }
 
 // Implement constructor for TxInfo with default values
 impl ScriptOffsetCtx {
     pub fn new() -> Self {
         Self {
-            sender_offset_sum: Zeroizing::new(RistrettoSecretKey::default()),
-            script_private_key_sum: Zeroizing::new(RistrettoSecretKey::default()),
+            sender_offset_sum: RistrettoSecretKey::default(),
+            script_private_key_sum: RistrettoSecretKey::default(),
             account: 0,
             total_offset_indexes: 0,
             total_script_indexes: 0,
@@ -46,8 +44,8 @@ impl ScriptOffsetCtx {
 
     // Implement reset for TxInfo
     fn reset(&mut self) {
-        self.sender_offset_sum = Zeroizing::new(RistrettoSecretKey::default());
-        self.script_private_key_sum = Zeroizing::new(RistrettoSecretKey::default());
+        self.sender_offset_sum = RistrettoSecretKey::default();
+        self.script_private_key_sum = RistrettoSecretKey::default();
         self.account = 0;
         self.total_offset_indexes = 0;
         self.total_script_indexes = 0;
@@ -56,7 +54,7 @@ impl ScriptOffsetCtx {
         self.unique_keys = Vec::new();
     }
 
-    fn add_unique_key(&mut self, secret_key: Zeroizing<RistrettoSecretKey>) {
+    fn add_unique_key(&mut self, secret_key: RistrettoSecretKey) {
         if !self.unique_keys.contains(&secret_key) {
             self.unique_keys.push(secret_key);
         }
@@ -111,13 +109,12 @@ fn derive_key_from_alpha(
     account: u64,
     data: &[u8],
     offset_ctx: &mut ScriptOffsetCtx,
-) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
+) -> Result<RistrettoSecretKey, AppSW> {
     if data.len() != 32 {
         return Err(AppSW::WrongApduLength);
     }
     let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
-    let blinding_factor: Zeroizing<RistrettoSecretKey> =
-        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+    let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
     offset_ctx.add_unique_key(alpha.clone());
 
@@ -143,7 +140,7 @@ pub fn handler_get_script_offset(
     // 2. partial_script_offset
     if chunk_number == 1 {
         // Initialize 'script_private_key_sum' with 'partial_script_offset'
-        let partial_script_offset: Zeroizing<RistrettoSecretKey> =
+        let partial_script_offset: RistrettoSecretKey =
             get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
         offset_ctx.script_private_key_sum = partial_script_offset;
 
@@ -159,7 +156,7 @@ pub fn handler_get_script_offset(
         let offset = derive_from_bip32_key(offset_ctx.account, index, branch)?;
 
         offset_ctx.add_unique_key(offset.clone());
-        offset_ctx.sender_offset_sum = Zeroizing::new(offset_ctx.sender_offset_sum.deref() + offset.deref());
+        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + offset;
     }
 
     // 4. Indexed Script key
@@ -169,8 +166,7 @@ pub fn handler_get_script_offset(
         let script_key = derive_from_bip32_key(offset_ctx.account, index, branch)?;
 
         offset_ctx.add_unique_key(script_key.clone());
-        offset_ctx.script_private_key_sum =
-            Zeroizing::new(offset_ctx.script_private_key_sum.deref() + script_key.deref());
+        offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + script_key;
     }
 
     // 5. Derived sender offsets key
@@ -178,7 +174,7 @@ pub fn handler_get_script_offset(
     if (end_script_indexes..end_derived_offset_keys).contains(&(chunk_number as u64)) {
         let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
 
-        offset_ctx.sender_offset_sum = Zeroizing::new(offset_ctx.sender_offset_sum.deref() + k.deref());
+        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + k;
     }
 
     // 6. Derived script key
@@ -186,7 +182,7 @@ pub fn handler_get_script_offset(
     if (end_derived_offset_keys..end_derived_script_keys).contains(&(chunk_number as u64)) {
         let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
 
-        offset_ctx.script_private_key_sum = Zeroizing::new(offset_ctx.script_private_key_sum.deref() + k.deref());
+        offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + k
     }
 
     if more {
@@ -198,8 +194,7 @@ pub fn handler_get_script_offset(
         return Err(AppSW::ScriptOffsetNotUnique);
     }
 
-    let script_offset =
-        Zeroizing::new(offset_ctx.script_private_key_sum.deref() - offset_ctx.sender_offset_sum.deref());
+    let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());

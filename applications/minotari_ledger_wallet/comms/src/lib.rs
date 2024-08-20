@@ -28,7 +28,7 @@ pub mod ledger_wallet;
 mod test {
     use borsh::BorshSerialize;
     use minotari_ledger_wallet_common::{
-        get_public_spend_key_from_tari_dual_address,
+        get_public_spend_key_bytes_from_tari_dual_address,
         hex_to_bytes_serialized,
         tari_dual_address_display,
         PUSH_PUBKEY_IDENTIFIER,
@@ -111,7 +111,7 @@ mod test {
         );
         // Getting the public spend key from the address
         assert_eq!(
-            get_public_spend_key_from_tari_dual_address(&tari_address_bytes)
+            get_public_spend_key_bytes_from_tari_dual_address(&tari_address_bytes)
                 .unwrap()
                 .to_vec(),
             tari_address.public_spend_key().to_vec()

@@ -1,8 +1,6 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use core::ops::Deref;
-
 use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
@@ -36,7 +34,7 @@ pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
     let public_key: RistrettoPublicKey = get_key_from_canonical_bytes(&data[24..56])?;
 
     let shared_secret_key = match derive_from_bip32_key(account, index, key) {
-        Ok(k) => k.deref() * public_key,
+        Ok(k) => k * public_key,
         Err(e) => return Err(e),
     };
 
