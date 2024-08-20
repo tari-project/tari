@@ -71,6 +71,7 @@ prost = "0.11.9"
 default = ["bundled_sqlite"]
 c_integration = []
 bundled_sqlite = ["libsqlite3-sys"]
+ledger = ["tari_core/ledger"]
 
 [package.metadata.cargo-machete]
 ignored = ["libsqlite3-sys"] # this is so we can run cargo machete without getting false positive about macro dependancies
