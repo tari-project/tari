@@ -136,7 +136,7 @@ impl BlockTemplateProtocol<'_> {
                         new_block_result
                     },
                     None => {
-                        let (new_template, block_template_with_coinbase, height) = self
+                        let (_new_template, block_template_with_coinbase, height) = self
                             .get_block_template_in_unnecessarily_complicated_manner(
                                 block_templates,
                                 best_block_hash,

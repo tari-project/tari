@@ -296,7 +296,7 @@ impl InnerService {
                 .try_into()
                 .map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
-            let mut p2pool_client = self.p2pool_client.clone();
+            let p2pool_client = self.p2pool_client.clone();
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
