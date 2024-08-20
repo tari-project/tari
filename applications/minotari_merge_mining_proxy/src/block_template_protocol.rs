@@ -128,13 +128,11 @@ impl BlockTemplateProtocol<'_> {
             } else {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
-                        dbg!("I'm using p2pool");
                         let block_result = client.get_new_block(GetNewBlockRequest::default()).await?.into_inner();
                         let new_block_result = block_result
                             .block
                             .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?;
 
-                        dbg!(&new_block_result);
                         new_block_result
                     },
                     None => {
