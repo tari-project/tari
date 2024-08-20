@@ -44,7 +44,7 @@ impl Contact {
     ) -> Self {
         Self {
             alias,
-            node_id: NodeId::from_key(address.public_spend_key()),
+            node_id: NodeId::from_key(address.comms_public_key()),
             address,
             last_seen,
             latency,
