@@ -282,6 +282,10 @@ impl Wallet {
         let mut error = 0;
         unsafe {
             ptr = ffi_import::comms_list_connected_public_keys(self.ptr, &mut error);
+            if error > 0 {
+                println!("comms_list_connected_public_keys error {}", error);
+                panic!("comms_list_connected_public_keys error");
+            }
         }
         PublicKeys::from_ptr(ptr)
     }
