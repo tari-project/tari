@@ -145,10 +145,7 @@ pub trait DifficultyAdjustment {
 mod test {
     use primitive_types::U256;
 
-    use crate::proof_of_work::{
-        difficulty::{MIN_DIFFICULTY},
-        Difficulty,
-    };
+    use crate::proof_of_work::{difficulty::MIN_DIFFICULTY, Difficulty};
 
     #[test]
     fn test_format() {

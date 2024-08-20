@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
-use tokio::time::sleep;
+
 use blake2::{Blake2b, Digest};
 use digest::consts::U32;
 use tari_common::configuration::Network;
@@ -53,6 +53,7 @@ use tokio::{
     sync::{broadcast, watch},
     task,
     time,
+    time::sleep,
 };
 
 use crate::helpers::{
@@ -233,7 +234,7 @@ async fn test_listening_initial_fallen_behind() {
 
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    //This is here so that we can let the initial states run through the channels
+    // This is here so that we can let the initial states run through the channels
     sleep(Duration::from_secs(1)).await;
     let mut alice_state_machine = BaseNodeStateMachine::new(
         alice_node.blockchain_db.clone().into(),
