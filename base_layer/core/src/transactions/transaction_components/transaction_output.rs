@@ -457,12 +457,6 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: &MicroMinotari,
     ) -> [u8; 32] {
-        let script = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
-            .chain(script);
-        let script: [u8; 32] = match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => script.finalize().into(),
-        };
-
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(version)
             .chain(features)
@@ -501,12 +495,6 @@ impl TransactionOutput {
     }
 
     pub fn metadata_signature_message_from_script_and_common(script: &TariScript, common: &[u8; 32]) -> [u8; 32] {
-        let script: [u8; 32] =
-            DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
-                .chain(script)
-                .finalize()
-                .into();
-
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(&script)
             .chain(common)

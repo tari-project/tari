@@ -1,9 +1,10 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 
 use blake2::Blake2b;
+use borsh::{io, BorshSerialize};
 use digest::{
     consts::{U32, U64},
     Digest,
@@ -17,9 +18,7 @@ use ledger_device_sdk::{
 };
 use minotari_ledger_wallet_common::{
     get_public_spend_key_bytes_from_tari_dual_address,
-    hex_to_bytes_serialized,
     tari_dual_address_display,
-    PUSH_PUBKEY_IDENTIFIER,
     TARI_DUAL_ADDRESS_SIZE,
 };
 use tari_crypto::{
@@ -32,7 +31,7 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::ByteArray,
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, TransactionHashDomain};
 use zeroize::Zeroizing;
@@ -134,9 +133,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             },
         };
 
-    let script_message = message_from_script(network, &commitment_mask, &receiver_public_spend_key)?;
+    let script = tari_script_with_address(&commitment_mask, &receiver_public_spend_key)?;
     let metadata_signature_message =
-        metadata_signature_message_from_script_and_common(network, &script_message, &metadata_signature_message_common);
+        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -193,7 +192,7 @@ fn finalize_metadata_signature_challenge(
     challenge.into()
 }
 
-fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8; 32], common: &[u8; 32]) -> [u8; 32] {
+fn metadata_signature_message_from_script_and_common(network: u64, script: &Script, common: &[u8; 32]) -> [u8; 32] {
     DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
         .chain(script)
         .chain(common)
@@ -201,11 +200,10 @@ fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8;
         .into()
 }
 
-fn message_from_script(
-    network: u64,
+fn tari_script_with_address(
     commitment_mask: &RistrettoSecretKey,
     receiver_public_spend_key: &RistrettoPublicKey,
-) -> Result<[u8; 32], AppSW> {
+) -> Result<Script, AppSW> {
     let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
     DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key")
         .chain(commitment_mask.as_bytes())
@@ -214,20 +212,25 @@ fn message_from_script(
     let hashed_commitment_mask_public_key = RistrettoPublicKey::from_secret_key(&hashed_commitment_mask);
     let stealth_key = receiver_public_spend_key + hashed_commitment_mask_public_key;
 
-    let serialized_script = match hex_to_bytes_serialized(PUSH_PUBKEY_IDENTIFIER, &stealth_key.to_hex()) {
-        Ok(script) => script,
-        Err(e) => {
-            SingleMessage::new(&format!("Script error: {:?}", e.to_string())).show_and_wait();
-            return Err(AppSW::MetadataSignatureFail);
-        },
-    };
+    let mut serialized_script: Vec<u8> = stealth_key.as_bytes().to_vec();
+    serialized_script.insert(0, 0x7e); // OpCode
+    serialized_script.insert(0, 33); // Length
 
-    Ok(
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
-            .chain(&serialized_script)
-            .finalize()
-            .into(),
-    )
+    Ok(Script {
+        inner: serialized_script,
+    })
+}
+
+struct Script {
+    pub inner: Vec<u8>,
+}
+impl BorshSerialize for Script {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        for b in &self.inner {
+            b.serialize(writer)?;
+        }
+        Ok(())
+    }
 }
 
 struct Minotari(pub u64);

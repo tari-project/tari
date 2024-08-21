@@ -150,6 +150,7 @@ pub enum KeyType {
     OneSidedSenderOffset = 0x04,
     Random = 0x06,
     PreMine = 0x07,
+    MetadataEphemeralNonce = 0x08,
 }
 
 impl KeyType {
@@ -167,6 +168,7 @@ impl KeyType {
                 BranchMapping::Spend => Ok(Self::Spend),
                 BranchMapping::RandomKey => Ok(Self::Random),
                 BranchMapping::PreMine => Ok(Self::PreMine),
+                BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
                 _ => Err(AppSW::BadBranchKey),
             }
         } else {

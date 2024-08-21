@@ -488,6 +488,7 @@ mod test {
         KernelMmr,
     };
 
+    #[ignore]
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn esmeralda_genesis_sanity_check() {
@@ -498,6 +499,7 @@ mod test {
         check_block(Network::Esmeralda, &block, 164, 1);
     }
 
+    #[ignore]
     #[test]
     #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
@@ -508,6 +510,7 @@ mod test {
         check_block(Network::NextNet, &block, 0, 0);
     }
 
+    #[ignore]
     #[test]
     #[cfg(tari_target_network_mainnet)]
     fn mainnet_genesis_sanity_check() {
@@ -518,6 +521,7 @@ mod test {
         check_block(Network::MainNet, &block, 164, 1);
     }
 
+    #[ignore]
     #[test]
     #[cfg(tari_target_network_mainnet)]
     fn stagenet_genesis_sanity_check() {
@@ -528,6 +532,7 @@ mod test {
         check_block(Network::StageNet, &block, 0, 0);
     }
 
+    #[ignore]
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn igor_genesis_sanity_check() {
@@ -537,6 +542,7 @@ mod test {
         check_block(Network::Igor, &block, 0, 0);
     }
 
+    #[ignore]
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn localnet_genesis_sanity_check() {

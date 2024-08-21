@@ -105,6 +105,18 @@ impl TransactionKeyManagerBranch {
             None => None,
         }
     }
+
+    pub fn is_ledger_branch(value: &str) -> bool {
+        let branch = TransactionKeyManagerBranch::from_key(value);
+        matches!(
+            branch,
+            TransactionKeyManagerBranch::OneSidedSenderOffset |
+                TransactionKeyManagerBranch::Spend |
+                TransactionKeyManagerBranch::RandomKey |
+                TransactionKeyManagerBranch::PreMine |
+                TransactionKeyManagerBranch::MetadataEphemeralNonce
+        )
+    }
 }
 
 #[cfg(test)]

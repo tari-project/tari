@@ -1318,16 +1318,27 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                                 branch: nonce_branch,
                                 index: nonce_index,
                             } => {
-                                let signature = ledger_get_raw_schnorr_signature(
-                                    ledger.account,
-                                    *private_key_index,
-                                    TransactionKeyManagerBranch::from_key(private_key_branch),
-                                    *nonce_index,
-                                    TransactionKeyManagerBranch::from_key(nonce_branch),
-                                    challenge,
-                                )
-                                .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                                Ok(signature)
+                                if TransactionKeyManagerBranch::is_ledger_branch(private_key_branch) &&
+                                    TransactionKeyManagerBranch::is_ledger_branch(nonce_branch)
+                                {
+                                    let signature = ledger_get_raw_schnorr_signature(
+                                        ledger.account,
+                                        *private_key_index,
+                                        TransactionKeyManagerBranch::from_key(private_key_branch),
+                                        *nonce_index,
+                                        TransactionKeyManagerBranch::from_key(nonce_branch),
+                                        challenge,
+                                    )
+                                    .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+                                    Ok(signature)
+                                } else {
+                                    let private_key = self.get_private_key(private_key_id).await?;
+                                    let private_nonce = self.get_private_key(nonce_key_id).await?;
+                                    let signature =
+                                        Signature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
+
+                                    Ok(signature)
+                                }
                             },
                             _ => Err(self.key_id_not_supported_error(
                                 "sign_with_nonce_and_challenge",

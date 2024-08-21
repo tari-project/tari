@@ -29,9 +29,7 @@ mod test {
     use borsh::BorshSerialize;
     use minotari_ledger_wallet_common::{
         get_public_spend_key_bytes_from_tari_dual_address,
-        hex_to_bytes_serialized,
         tari_dual_address_display,
-        PUSH_PUBKEY_IDENTIFIER,
         TARI_DUAL_ADDRESS_SIZE,
     };
     use rand::rngs::OsRng;
@@ -46,6 +44,7 @@ mod test {
     const NOP_IDENTIFIER: &str = "0173";
     const PUSH_ONE_IDENTIFIER: &str = "017c";
     const CHECK_SIG_VERIFY_IDENTIFIER: &str = "21ad";
+    const PUSH_PUBKEY_IDENTIFIER: &str = "217e";
 
     #[test]
     // This is testing the serialization of the 'PushPubKey' script and the byte representation of the script as needed
@@ -83,13 +82,6 @@ mod test {
             script.serialize(&mut serialized).unwrap();
             let hex_data = hex_identifier.to_owned() + &hex_payload;
             assert_eq!(hex_data, serialized.to_vec().to_hex());
-            assert_eq!(
-                hex_to_bytes_serialized(hex_identifier, &hex_payload).unwrap(),
-                serialized.as_slice(),
-                "Change in script serialization detected: {:?}, expected {}",
-                script,
-                hex_identifier
-            );
         }
     }
 
