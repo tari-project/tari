@@ -28,11 +28,8 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    MaxSizeBytes,
-    MaxSizeString,
-};
+use tari_common_types::types::{PublicKey, Signature};
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
 use super::OutputFeaturesVersion;
 use crate::transactions::transaction_components::{

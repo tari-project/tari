@@ -34,8 +34,6 @@ use rand::{random, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
     types::{PublicKey, Signature},
-    MaxSizeBytes,
-    MaxSizeString,
 };
 use tari_core::{
     consensus::DomainSeparatedConsensusHasher,
@@ -47,6 +45,7 @@ use tari_core::{
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
 use tari_hashing::TransactionHashDomain;
 use tari_key_manager::key_manager::KeyManager;
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
 

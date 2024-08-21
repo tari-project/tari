@@ -29,13 +29,13 @@ use hyper::header::InvalidHeaderValue;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
 use minotari_wallet_grpc_client::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
-use tari_common_types::{MaxSizeBytesError, MaxSizeVecError};
 use tari_core::{
     consensus::ConsensusBuilderError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError},
     transactions::{key_manager::CoreKeyManagerError, CoinbaseBuildError},
 };
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};
 

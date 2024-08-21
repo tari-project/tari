@@ -31,18 +31,9 @@ pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
 pub mod key_branches;
-mod max_size;
 pub mod serializers;
 pub mod tari_address;
 pub mod transaction;
 mod tx_id;
 pub mod types;
 pub mod wallet_types;
-pub use max_size::{
-    MaxSizeBytes,
-    MaxSizeBytesError,
-    MaxSizeString,
-    MaxSizeStringLengthError,
-    MaxSizeVec,
-    MaxSizeVecError,
-};

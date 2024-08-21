@@ -29,11 +29,10 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
 use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey},
-    MaxSizeBytes,
 };
 use tari_script::TariScript;
 use tari_utilities::{hex::Hex, ByteArray};
-
+use tari_max_size::MaxSizeBytes;
 use super::decoder::CovenantDecodeError;
 use crate::{
     covenants::{

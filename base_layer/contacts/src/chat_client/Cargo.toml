@@ -15,6 +15,7 @@ tari_common_types = { path = "../../../common_types" }
 tari_comms = { path = "../../../../comms/core" }
 tari_comms_dht = { path = "../../../../comms/dht" }
 tari_contacts = { path = "../../../contacts" }
+tari_max_size = { path = "../../../../infrastructure/max_size" }
 tari_p2p = { path = "../../../p2p" }
 tari_service_framework= { path = "../../../service_framework" }
 tari_shutdown = { path = "../../../../infrastructure/shutdown" }

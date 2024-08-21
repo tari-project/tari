@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use minotari_app_grpc::authentication::BasicAuthError;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
-use tari_common_types::MaxSizeBytesError;
+use tari_max_size::MaxSizeBytesError;
 use thiserror::Error;
 use tonic::codegen::http::uri::InvalidUri;
 

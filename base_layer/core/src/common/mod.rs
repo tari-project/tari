@@ -23,8 +23,8 @@
 use blake2::Blake2b;
 use digest::consts::U64;
 #[cfg(feature = "base_node")]
-use tari_common_types::MaxSizeVec;
 use tari_hashing::ConfidentialOutputHashDomain;
+use tari_max_size::MaxSizeVec;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 

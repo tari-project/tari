@@ -25,7 +25,7 @@ use std::fmt::{Display, Error, Formatter};
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
-use tari_common_types::MaxSizeBytes;
+use tari_max_size::MaxSizeBytes;
 use tari_utilities::hex::Hex;
 
 use crate::proof_of_work::PowAlgorithm;

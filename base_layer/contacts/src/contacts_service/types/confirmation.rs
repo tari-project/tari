@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, fmt::Display};
 
-use tari_common_types::MaxSizeBytes;
+use tari_max_size::MaxSizeBytes;
 use tari_utilities::ByteArray;
 
 use crate::contacts_service::{error::ContactsServiceError, proto, types::MessageId};

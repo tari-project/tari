@@ -22,10 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    MaxSizeString,
-};
+use tari_common_types::types::{PublicKey, Signature};
 use tari_core::transactions::transaction_components::{
     BuildInfo,
     CodeTemplateRegistration,
@@ -35,6 +32,7 @@ use tari_core::transactions::transaction_components::{
     ValidatorNodeRegistration,
     ValidatorNodeSignature,
 };
+use tari_max_size::MaxSizeString;
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

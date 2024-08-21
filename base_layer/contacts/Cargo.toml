@@ -13,6 +13,7 @@ tari_common_types = { path = "../../base_layer/common_types", version = "1.3.0-p
 tari_comms = { path = "../../comms/core", version = "1.3.0-pre.0" }
 tari_comms_dht = { path = "../../comms/dht", version = "1.3.0-pre.0" }
 tari_crypto = { version = "0.20.3" }
+tari_max_size = { path = "../../infrastructure/max_size" }
 tari_p2p = {  path = "../p2p", features = ["auto-update"], version = "1.3.0-pre.0" }
 tari_service_framework = {  path = "../service_framework", version = "1.3.0-pre.0" }
 tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.3.0-pre.0" }
