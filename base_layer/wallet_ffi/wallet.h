@@ -2194,6 +2194,24 @@ const char *completed_transaction_get_message(TariCompletedTransaction *transact
                                               int *error_out);
 
 /**
+ * Gets the payment id of a TariCompletedTransaction
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+ * to an empty char array if transaction is null
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+ */
+const char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction,
+                                                 int *error_out);
+
+/**
  * This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
  *
  * ## Arguments
