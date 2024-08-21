@@ -1,9 +1,10 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 
 use blake2::Blake2b;
+use borsh::{io, BorshSerialize};
 use digest::{
     consts::{U32, U64},
     Digest,
@@ -17,9 +18,7 @@ use ledger_device_sdk::{
 };
 use minotari_ledger_wallet_common::{
     get_public_spend_key_bytes_from_tari_dual_address,
-    hex_to_bytes_serialized,
     tari_dual_address_display,
-    PUSH_PUBKEY_IDENTIFIER,
     TARI_DUAL_ADDRESS_SIZE,
 };
 use tari_crypto::{
@@ -32,7 +31,7 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::ByteArray,
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, TransactionHashDomain};
 use zeroize::Zeroizing;
@@ -214,20 +213,32 @@ fn message_from_script(
     let hashed_commitment_mask_public_key = RistrettoPublicKey::from_secret_key(&hashed_commitment_mask);
     let stealth_key = receiver_public_spend_key + hashed_commitment_mask_public_key;
 
-    let serialized_script = match hex_to_bytes_serialized(PUSH_PUBKEY_IDENTIFIER, &stealth_key.to_hex()) {
-        Ok(script) => script,
-        Err(e) => {
-            SingleMessage::new(&format!("Script error: {:?}", e.to_string())).show_and_wait();
-            return Err(AppSW::MetadataSignatureFail);
-        },
+    let mut serialized_script: Vec<u8> = stealth_key.as_bytes().to_vec();
+    serialized_script.insert(0, 0x7e); // OpCode
+    serialized_script.insert(0, 33); // Length
+
+    let script = Script {
+        inner: serialized_script,
     };
 
     Ok(
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
-            .chain(&serialized_script)
+            .chain(&script)
             .finalize()
             .into(),
     )
+}
+
+struct Script {
+    pub inner: Vec<u8>,
+}
+impl BorshSerialize for Script {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        for b in &self.inner {
+            b.serialize(writer)?;
+        }
+        Ok(())
+    }
 }
 
 struct Minotari(pub u64);
