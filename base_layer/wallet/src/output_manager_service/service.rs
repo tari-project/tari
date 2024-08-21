@@ -80,10 +80,7 @@ use tari_script::{
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
