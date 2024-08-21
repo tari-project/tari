@@ -135,8 +135,6 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
     TKeyManagerInterface: TransactionKeyManagerInterface,
 {
-    pub const PUSH_PUBKEY_IDENTIFIER: &str = "217e";
-
     pub async fn new(
         config: OutputManagerServiceConfig,
         request_stream: reply_channel::Receiver<
@@ -1838,19 +1836,6 @@ where
         let fee = stp.get_fee_amount()?;
 
         Ok((tx, amount, fee))
-    }
-
-    /// Convert a hex string to serialized bytes made up as an identifier concatenated with data
-    pub fn hex_to_bytes_serialized(identifier: &str, data: &str) -> Result<Vec<u8>, String> {
-        if identifier.len() % 2 != 0 {
-            return Err("Invalid identifier".to_string());
-        }
-        if data.len() % 2 != 0 {
-            return Err("Invalid payload".to_string());
-        }
-
-        let hex = identifier.to_owned() + data;
-        from_hex(hex.as_str()).map_err(|e| e.to_string())
     }
 
     async fn create_pay_to_self_transaction(
