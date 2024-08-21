@@ -3357,7 +3357,6 @@ name = "minotari_ledger_wallet_common"
 version = "1.2.0-pre.0"
 dependencies = [
  "bs58 0.5.1",
- "tari_utilities",
 ]
 
 [[package]]
