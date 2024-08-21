@@ -175,13 +175,14 @@ mod test {
     }
 
     #[test]
-    fn it_decodes_from_well_formed_bytes() {
+    fn it_decodes_from_well_formed_bytes() -> Result<(), Box<dyn std::error::Error>> {
         let hash = FixedHash::from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
         let mut bytes = Vec::new();
         covenant!(fields_hashed_eq(
             @fields(@field::commitment),
             @hash(hash),
         ))
+        .unwrap()
         .write_to(&mut bytes)
         .unwrap();
         let mut buf = bytes.as_slice();
@@ -203,6 +204,8 @@ mod test {
         );
 
         assert!(decoder.next().is_none());
+
+        Ok(())
     }
 
     mod covenant_read_ext {

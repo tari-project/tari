@@ -620,9 +620,9 @@ mod validate_internal_consistency {
     }
 
     #[tokio::test]
-    async fn it_validates_that_the_covenant_is_honoured() {
+    async fn it_validates_that_the_covenant_is_honoured() -> Result<(), Box<dyn std::error::Error>> {
         //---------------------------------- Case1 - PASS --------------------------------------------//
-        let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
+        let covenant = covenant!(fields_preserved(@fields( @field::covenant))).unwrap();
         let features = OutputFeatures { ..Default::default() };
         let key_manager = create_memory_db_key_manager().unwrap();
         test_case(
@@ -655,7 +655,7 @@ mod validate_internal_consistency {
         slice.copy_from_slice(hash.as_ref());
         let hash = FixedHash::from(slice);
 
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash)));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash))).unwrap();
 
         test_case(
             &UtxoTestParams {
@@ -673,7 +673,8 @@ mod validate_internal_consistency {
         .unwrap();
 
         //---------------------------------- Case3 - FAIL --------------------------------------------//
-        let covenant = covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_maturity, @uint(42))));
+        let covenant =
+            covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_maturity, @uint(42)))).unwrap();
 
         let err = test_case(
             &UtxoTestParams {
@@ -723,5 +724,6 @@ mod validate_internal_consistency {
         )
         .await
         .unwrap();
+        Ok(())
     }
 }

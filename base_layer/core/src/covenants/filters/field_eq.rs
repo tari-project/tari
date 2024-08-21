@@ -89,9 +89,9 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_uint() {
+    async fn it_filters_uint() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let covenant = covenant!(field_eq(@field::features_maturity, @uint(42)));
+        let covenant = covenant!(field_eq(@field::features_maturity, @uint(42))).unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -103,16 +103,18 @@ mod test {
 
         assert_eq!(output_set.len(), 1);
         assert_eq!(output_set.get(5).unwrap().features.maturity, 42);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_sender_offset_public_key() {
+    async fn it_filters_sender_offset_public_key() -> Result<(), Box<dyn std::error::Error>> {
         let pk = PublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
         let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(field_eq(
             @field::sender_offset_public_key,
             @public_key(pk.clone())
-        ));
+        ))
+        .unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -124,17 +126,19 @@ mod test {
 
         assert_eq!(output_set.len(), 1);
         assert_eq!(output_set.get(5).unwrap().sender_offset_public_key, pk);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_commitment() {
+    async fn it_filters_commitment() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
         let commitment =
             Commitment::from_hex("7ca31ba517d8b563609ed6707fedde5a2be64ac1d67b254cb5348bc2f680557f").unwrap();
         let covenant = covenant!(field_eq(
             @field::commitment,
             @commitment(commitment.clone())
-        ));
+        ))
+        .unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -147,16 +151,18 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_tari_script() {
+    async fn it_filters_tari_script() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(field_eq(
             @field::script,
             @script(script.clone())
-        ));
+        ))
+        .unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -169,13 +175,14 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_covenant() {
+    async fn it_filters_covenant() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42)))));
-        let covenant = covenant!(field_eq(@field::covenant, @covenant(next_cov.clone())));
+        let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42))))).unwrap();
+        let covenant = covenant!(field_eq(@field::covenant, @covenant(next_cov.clone()))).unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -188,12 +195,13 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_filters_output_type() {
+    async fn it_filters_output_type() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let covenant = covenant!(field_eq(@field::features_output_type, @output_type(Coinbase)));
+        let covenant = covenant!(field_eq(@field::features_output_type, @output_type(Coinbase))).unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -206,12 +214,13 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn it_errors_if_field_has_an_incorrect_type() {
+    async fn it_errors_if_field_has_an_incorrect_type() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let covenant = covenant!(field_eq(@field::features, @uint(42)));
+        let covenant = covenant!(field_eq(@field::features, @uint(42))).unwrap();
         let input = create_input(&key_manager).await;
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
@@ -220,5 +229,6 @@ mod test {
         let mut output_set = OutputSet::new(&outputs);
         let err = FieldEqFilter.filter(&mut context, &mut output_set).unwrap_err();
         unpack_enum!(CovenantError::InvalidArgument { .. } = err);
+        Ok(())
     }
 }

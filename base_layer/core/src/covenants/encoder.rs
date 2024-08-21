@@ -74,18 +74,19 @@ mod tests {
     }
 
     #[test]
-    fn it_encodes_tokens_correctly() {
-        let covenant = covenant!(and(identity(), or(identity())));
+    fn it_encodes_tokens_correctly() -> Result<(), Box<dyn std::error::Error>> {
+        let covenant = covenant!(and(identity(), or(identity()))).unwrap();
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();
         encoder.write_to(&mut buf).unwrap();
         assert_eq!(buf, [FILTER_AND, FILTER_IDENTITY, FILTER_OR, FILTER_IDENTITY]);
+        Ok(())
     }
 
     #[test]
-    fn it_encodes_args_correctly() {
+    fn it_encodes_args_correctly() -> Result<(), Box<dyn std::error::Error>> {
         let dummy = FixedHash::zero();
-        let covenant = covenant!(field_eq(@field::features, @hash(dummy)));
+        let covenant = covenant!(field_eq(@field::features, @hash(dummy))).unwrap();
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();
         encoder.write_to(&mut buf).unwrap();
@@ -96,6 +97,7 @@ mod tests {
             ARG_HASH
         ]);
         assert_eq!(buf[4..], [0u8; 32]);
+        Ok(())
     }
 
     mod covenant_write_ext {

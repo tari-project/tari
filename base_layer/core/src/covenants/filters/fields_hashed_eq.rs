@@ -61,7 +61,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
+    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() -> Result<(), Box<dyn std::error::Error>> {
         let key_manager = create_memory_db_key_manager().unwrap();
         let features = OutputFeatures {
             maturity: 42,
@@ -71,7 +71,7 @@ mod test {
         let mut hasher = Blake2b::<U32>::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(borsh::to_vec(&features).unwrap()).finalize();
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into()))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
@@ -94,5 +94,6 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
+        Ok(())
     }
 }

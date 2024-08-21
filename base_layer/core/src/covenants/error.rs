@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::MaxSizeVecError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum CovenantError {
     #[error("Reached the end of tokens but another token was expected")]
@@ -36,4 +38,6 @@ pub enum CovenantError {
     RemainingTokens,
     #[error("Invalid argument for filter {filter}: {details}")]
     InvalidArgument { filter: &'static str, details: String },
+    #[error("Max sized vector error: {0}")]
+    MaxSizeVecError(#[from] MaxSizeVecError),
 }
