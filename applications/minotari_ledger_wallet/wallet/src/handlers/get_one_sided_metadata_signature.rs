@@ -133,9 +133,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             },
         };
 
-    let script_message = message_from_script(network, &commitment_mask, &receiver_public_spend_key)?;
+    let script = tari_script_with_address(&commitment_mask, &receiver_public_spend_key)?;
     let metadata_signature_message =
-        metadata_signature_message_from_script_and_common(network, &script_message, &metadata_signature_message_common);
+        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -192,7 +192,7 @@ fn finalize_metadata_signature_challenge(
     challenge.into()
 }
 
-fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8; 32], common: &[u8; 32]) -> [u8; 32] {
+fn metadata_signature_message_from_script_and_common(network: u64, script: &Script, common: &[u8; 32]) -> [u8; 32] {
     DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
         .chain(script)
         .chain(common)
@@ -200,11 +200,10 @@ fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8;
         .into()
 }
 
-fn message_from_script(
-    network: u64,
+fn tari_script_with_address(
     commitment_mask: &RistrettoSecretKey,
     receiver_public_spend_key: &RistrettoPublicKey,
-) -> Result<[u8; 32], AppSW> {
+) -> Result<Script, AppSW> {
     let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
     DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key")
         .chain(commitment_mask.as_bytes())
@@ -217,16 +216,9 @@ fn message_from_script(
     serialized_script.insert(0, 0x7e); // OpCode
     serialized_script.insert(0, 33); // Length
 
-    let script = Script {
+    Ok(Script {
         inner: serialized_script,
-    };
-
-    Ok(
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
-            .chain(&script)
-            .finalize()
-            .into(),
-    )
+    })
 }
 
 struct Script {
