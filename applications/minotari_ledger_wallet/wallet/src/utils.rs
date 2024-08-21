@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::format;
+use core::ops::Deref;
 
 use blake2::Blake2b;
 use digest::{consts::U64, Digest};
@@ -144,23 +145,18 @@ fn cx_error_to_string(e: CxError) -> String {
 }
 
 // Get a raw 64 byte key hash from the BIP32 path.
-fn get_raw_bip32_key(path: &[u32], curve: CurvesId) -> Result<Zeroizing<[u8; 64]>, String> {
-    match curve {
-        CurvesId::Secp256k1 | CurvesId::Ed25519 => {},
-        _ => return Err("Unsupported curve".to_string()),
-    }
+// Note: We use `CurvesId::Secp256k1` as the curve for the bip32 key derivation because it provides better entropy when
+//       compared to `CurvesId::Ed25519`. There is also no need for compatibility to `tari_crypto` as the output is only
+//       ever used in a subsequent key derivation function.
+fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut key_buffer = Zeroizing::new([0u8; 64]);
-
-    match bip32_derive(curve, path, key_buffer.as_mut(), Some(&mut [])) {
+    match bip32_derive(CurvesId::Secp256k1, path, key_buffer.as_mut(), Some(&mut [])) {
         Ok(_) => {
-            let binding = &key_buffer.as_ref();
-            if binding == &[0u8; 64] {
+            if key_buffer.deref() == &[0u8; 64] {
                 return Err(cx_error_to_string(CxError::InternalError));
+            } else {
+                Ok(key_buffer)
             }
-            let mut key_bytes = Zeroizing::new([0u8; 64]);
-            // `copy_from_slice` will not panic as the length of the slice is equal to the length of the array
-            key_bytes.as_mut().copy_from_slice(binding);
-            Ok(key_bytes)
         },
         Err(e) => return Err(cx_error_to_string(e)),
     }
@@ -168,8 +164,8 @@ fn get_raw_bip32_key(path: &[u32], curve: CurvesId) -> Result<Zeroizing<[u8; 64]
 
 //  This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 64
 //  uniformly distributed random bytes.
-fn get_raw_key_hash(path: &[u32], curve: CurvesId) -> Result<Zeroizing<[u8; 64]>, String> {
-    let raw_key_64 = get_raw_bip32_key(path, curve)?;
+fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
+    let raw_key_64 = get_raw_bip32_key(path)?;
 
     let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
     DomainSeparatedHasher::<Blake2b<U64>, LedgerHashDomain>::new_with_label("raw_key")
@@ -199,10 +195,7 @@ pub fn derive_from_bip32_key(
     bip32_path.push_str(&key_type);
     let path: [u32; 6] = make_bip32_path(bip32_path.as_bytes());
 
-    // We use `CurvesId::Secp256k1` as the curve for the bip32 key derivation because it provides better entropy when
-    // compared to `CurvesId::Ed25519`. There is also no need for compatibility to `tari_crypto` as the output is only
-    // ever used in a subsequent key derivation function.
-    match get_raw_key_hash(&path, CurvesId::Secp256k1) {
+    match get_raw_key_hash(&path) {
         Ok(val) => get_key_from_uniform_bytes(&val),
         Err(e) => {
             let mut msg = "".to_string();
@@ -269,5 +262,12 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
     if raw_bytes == [0u8; 64] {
         return Err(AppSW::RandomNonceFail);
     }
-    Ok(RistrettoSecretKey::from_uniform_bytes(&raw_bytes).expect("will not fail"))
+    match RistrettoSecretKey::from_uniform_bytes(&raw_bytes) {
+        Ok(val) => Ok(val),
+        Err(e) => {
+            MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
+            SingleMessage::new(&e.to_string()).show_and_wait();
+            Err(AppSW::KeyDeriveFromUniform)
+        },
+    }
 }
