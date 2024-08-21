@@ -5,6 +5,7 @@ use core::ops::Deref;
 
 use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
+use zeroize::Zeroizing;
 
 use crate::{
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
@@ -36,12 +37,12 @@ pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
     let public_key: RistrettoPublicKey = get_key_from_canonical_bytes(&data[24..56])?;
 
     let shared_secret_key = match derive_from_bip32_key(account, index, key) {
-        Ok(k) => k.deref() * public_key,
+        Ok(k) => Zeroizing::new(k * public_key),
         Err(e) => return Err(e),
     };
 
     comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(shared_secret_key.as_bytes());
+    comm.append(shared_secret_key.deref().as_bytes());
     comm.reply_ok();
 
     Ok(())

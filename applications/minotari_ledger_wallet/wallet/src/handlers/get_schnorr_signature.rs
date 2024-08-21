@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::format;
-use core::ops::Deref;
 
 use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
 use tari_crypto::{
@@ -59,14 +58,13 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let mut challenge_bytes = [0u8; 64];
     challenge_bytes.clone_from_slice(&data[40..104]);
 
-    let signature =
-        match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce.deref().clone(), &challenge_bytes) {
-            Ok(sig) => sig,
-            Err(e) => {
-                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
-                return Err(AppSW::RawSchnorrSignatureFail);
-            },
-        };
+    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce.clone(), &challenge_bytes) {
+        Ok(sig) => sig,
+        Err(e) => {
+            SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            return Err(AppSW::RawSchnorrSignatureFail);
+        },
+    };
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&signature.get_public_nonce().to_vec());
@@ -101,7 +99,7 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
     let mut nonce_bytes = [0u8; 32];
     nonce_bytes.clone_from_slice(&data[24..56]);
 
-    let random_nonce = get_random_nonce()?.deref().clone();
+    let random_nonce = get_random_nonce()?.clone();
     let signature =
         match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, &nonce_bytes) {
             Ok(sig) => sig,

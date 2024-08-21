@@ -68,13 +68,13 @@ pub fn tari_dual_address_display(address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE]) -
 }
 
 /// Get the public spend key bytes from a serialized Tari dual address
-pub fn get_public_spend_key_from_tari_dual_address(
+pub fn get_public_spend_key_bytes_from_tari_dual_address(
     address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE],
 ) -> Result<[u8; 32], String> {
     validate_checksum(address_bytes.as_ref())?;
-    let mut public_spend_key = [0u8; 32];
-    public_spend_key.copy_from_slice(&address_bytes[34..66]);
-    Ok(public_spend_key)
+    let mut public_spend_key_bytes = [0u8; 32];
+    public_spend_key_bytes.copy_from_slice(&address_bytes[34..66]);
+    Ok(public_spend_key_bytes)
 }
 
 // Determine whether a byte slice ends with a valid checksum
