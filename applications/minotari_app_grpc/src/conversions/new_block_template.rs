@@ -43,7 +43,7 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
             total_script_offset: Vec::from(block.header.total_script_offset.as_bytes()),
             pow: Some(grpc::ProofOfWork {
                 pow_algo: block.header.pow.pow_algo.as_u64(),
-                pow_data: block.header.pow.pow_data,
+                pow_data: block.header.pow.pow_data.to_vec(),
             }),
         };
         Ok(Self {

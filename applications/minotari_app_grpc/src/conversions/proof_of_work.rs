@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_core::proof_of_work::{PowAlgorithm, ProofOfWork};
+use tari_core::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
 
 use crate::tari_rpc as grpc;
 
@@ -33,7 +33,7 @@ impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
     fn try_from(pow: grpc::ProofOfWork) -> Result<Self, Self::Error> {
         Ok(Self {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            pow_data: pow.pow_data,
+            pow_data: PowData::try_from(pow.pow_data).map_err(|e| e.to_string())?,
         })
     }
 }

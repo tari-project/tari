@@ -47,7 +47,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
             nonce: h.nonce,
             pow: Some(grpc::ProofOfWork {
                 pow_algo: pow_algo.as_u64(),
-                pow_data: h.pow.pow_data,
+                pow_data: h.pow.pow_data.to_vec(),
             }),
             validator_node_mr: h.validator_node_mr.to_vec(),
             validator_node_size: h.validator_node_size,

@@ -44,6 +44,7 @@ use crate::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             encrypted_data::PaymentId,
+            CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -131,7 +132,7 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
     sender_offset_key_id: Option<TariKeyId>,
     script: Option<TariScript>,
     covenant: Covenant,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     range_proof_type: Option<RangeProofType>,
 }
 
@@ -209,7 +210,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     /// Provide some arbitrary additional information that will be stored in the coinbase output's `coinbase_extra`
     /// field.
-    pub fn with_extra(mut self, extra: Vec<u8>) -> Self {
+    pub fn with_extra(mut self, extra: CoinBaseExtra) -> Self {
         self.extra = Some(extra);
         self
     }
@@ -392,7 +393,7 @@ pub async fn generate_coinbase(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
-    extra: &[u8],
+    extra: &CoinBaseExtra,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -425,7 +426,7 @@ pub async fn generate_coinbase_with_wallet_output(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
-    extra: &[u8],
+    extra: &CoinBaseExtra,
     key_manager: &MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
@@ -467,7 +468,7 @@ pub async fn generate_coinbase_with_wallet_output(
         .with_sender_offset_key_id(sender_offset.key_id)
         .with_script_key_id(script_key_id.clone())
         .with_script(script)
-        .with_extra(extra.to_vec())
+        .with_extra(extra.clone())
         .with_range_proof_type(range_proof_type)
         .build_with_reward(consensus_constants, reward, payment_id)
         .await?;

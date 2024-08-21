@@ -48,7 +48,7 @@ use crate::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType, Transaction, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, Transaction, WalletOutput},
     },
 };
 
@@ -114,7 +114,7 @@ pub async fn create_block(
         MicroMinotari::from(0),
         reward,
         header.height,
-        &[],
+        &CoinBaseExtra::default(),
         km,
         script_key_id,
         wallet_payment_address,

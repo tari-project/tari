@@ -47,7 +47,7 @@ pub use monero_rx::randomx_difficulty;
 #[allow(clippy::module_inception)]
 mod proof_of_work;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use proof_of_work::ProofOfWork;
+pub use proof_of_work::{PowData, ProofOfWork};
 
 /// Crates for proof of work proof_of_work_algorithm
 #[cfg(any(feature = "base_node", feature = "transactions"))]

@@ -29,7 +29,7 @@ use chrono::Duration;
 use chrono::{DateTime, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
-use tari_core::proof_of_work::monero_rx::FixedByteArray;
+use tari_core::{proof_of_work::monero_rx::FixedByteArray, AuxChainHashes};
 use tokio::sync::RwLock;
 use tracing::trace;
 
@@ -222,7 +222,7 @@ pub struct BlockTemplateData {
     pub tari_difficulty: u64,
     pub tari_merge_mining_hash: FixedHash,
     #[allow(dead_code)]
-    pub aux_chain_hashes: Vec<monero::Hash>,
+    pub aux_chain_hashes: AuxChainHashes,
     pub new_block_template: grpc::NewBlockTemplate,
 }
 
@@ -237,7 +237,7 @@ pub struct BlockTemplateDataBuilder {
     monero_difficulty: Option<u64>,
     tari_difficulty: Option<u64>,
     tari_merge_mining_hash: Option<FixedHash>,
-    aux_chain_hashes: Vec<monero::Hash>,
+    aux_chain_hashes: AuxChainHashes,
     new_block_template: Option<grpc::NewBlockTemplate>,
 }
 
@@ -276,7 +276,7 @@ impl BlockTemplateDataBuilder {
         self
     }
 
-    pub fn aux_hashes(mut self, aux_chain_hashes: Vec<monero::Hash>) -> Self {
+    pub fn aux_hashes(mut self, aux_chain_hashes: AuxChainHashes) -> Self {
         self.aux_chain_hashes = aux_chain_hashes;
         self
     }
@@ -342,6 +342,7 @@ pub mod test {
     use tari_utilities::ByteArray;
 
     use super::*;
+    use crate::block_template_protocol::AuxChainMr;
 
     fn create_block_template_data() -> FinalBlockTemplateData {
         let header = BlockHeader::new(100);
@@ -362,7 +363,7 @@ pub mod test {
             .monero_difficulty(123456)
             .tari_difficulty(12345)
             .tari_merge_mining_hash(hash)
-            .aux_hashes(vec![monero::Hash::from_slice(hash.as_slice())])
+            .aux_hashes(AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap())
             .new_block_template(new_block_template);
         let block_template_data = btdb.build().unwrap();
         FinalBlockTemplateData {
@@ -370,8 +371,8 @@ pub mod test {
             target_difficulty: Difficulty::from_u64(12345).unwrap(),
             blockhashing_blob: "no blockhashing_blob data".to_string(),
             blocktemplate_blob: "no blocktemplate_blob data".to_string(),
-            aux_chain_hashes: vec![monero::Hash::from_slice(hash.as_slice())],
-            aux_chain_mr: hash.to_vec(),
+            aux_chain_hashes: AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap(),
+            aux_chain_mr: AuxChainMr::try_from(hash.to_vec()).unwrap(),
         }
     }
 

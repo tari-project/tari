@@ -47,6 +47,9 @@ use crate::transactions::transaction_components::{
     ValidatorNodeSignature,
 };
 
+/// Coinbase outputs are allowed to have metadata, but it has the following length limit
+pub type CoinBaseExtra = MaxSizeBytes<256>;
+
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct OutputFeatures {
@@ -61,7 +64,8 @@ pub struct OutputFeatures {
     ///
     /// For coinbase outputs, the maximum length of this field is determined by the consensus constant,
     /// `coinbase_output_features_extra_max_length`.
-    pub coinbase_extra: Vec<u8>,
+    #[serde(with = "tari_utilities::serde::hex")]
+    pub coinbase_extra: CoinBaseExtra,
     /// Features that are specific to a side chain
     pub sidechain_feature: Option<SideChainFeature>,
     /// The type of range proof used in the output
@@ -73,7 +77,7 @@ impl OutputFeatures {
         version: OutputFeaturesVersion,
         output_type: OutputType,
         maturity: u64,
-        coinbase_extra: Vec<u8>,
+        coinbase_extra: CoinBaseExtra,
         sidechain_feature: Option<SideChainFeature>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
@@ -90,7 +94,7 @@ impl OutputFeatures {
     pub fn new_current_version(
         flags: OutputType,
         maturity: u64,
-        coinbase_extra: Vec<u8>,
+        coinbase_extra: CoinBaseExtra,
         sidechain_feature: Option<SideChainFeature>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
@@ -106,7 +110,7 @@ impl OutputFeatures {
 
     pub fn create_coinbase(
         maturity_height: u64,
-        extra: Option<Vec<u8>>,
+        extra: Option<CoinBaseExtra>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
         let coinbase_extra = extra.unwrap_or_default();
@@ -208,7 +212,13 @@ impl OutputFeatures {
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, RangeProofType::default())
+        OutputFeatures::new_current_version(
+            OutputType::default(),
+            0,
+            CoinBaseExtra::default(),
+            None,
+            RangeProofType::default(),
+        )
     }
 }
 

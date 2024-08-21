@@ -43,7 +43,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::create_memory_db_key_manager,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -330,10 +330,22 @@ pub unsafe extern "C" fn inject_coinbase(
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     };
-    let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8)
-        .to_str()
-        .unwrap()
-        .to_owned();
+    let coinbase_extra_bytes = match CString::from_raw(coinbase_extra as *mut i8).to_str() {
+        Ok(v) => v.to_owned().as_bytes().to_vec(),
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let coinbase_extra = match CoinBaseExtra::try_from(coinbase_extra_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
     let mut bytes = (*block_template_bytes).0.as_slice();
     let mut block_template: NewBlockTemplate = match BorshDeserialize::deserialize(&mut bytes) {
         Ok(v) => v,
@@ -381,7 +393,7 @@ pub unsafe extern "C" fn inject_coinbase(
             0.into(),
             coibase_value.into(),
             height,
-            coinbase_extra_string.as_bytes(),
+            &coinbase_extra,
             &key_manager,
             &wallet_address,
             stealth_payment,
@@ -842,7 +854,7 @@ mod tests {
             assert_eq!(block_temp.body.kernels().len(), 1);
             assert_eq!(block_temp.body.outputs().len(), 1);
             assert!(block_temp.body.outputs()[0].features.is_coinbase());
-            assert_eq!(block_temp.body.outputs()[0].features.coinbase_extra, vec![97]);
+            assert_eq!(block_temp.body.outputs()[0].features.coinbase_extra.to_vec(), vec![97]);
             assert_eq!(block_temp.body.outputs()[0].minimum_value_promise, MicroMinotari(100));
         }
     }

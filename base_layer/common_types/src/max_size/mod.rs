@@ -24,3 +24,5 @@ mod string;
 pub use string::{MaxSizeString, MaxSizeStringLengthError};
 mod bytes;
 pub use bytes::{MaxSizeBytes, MaxSizeBytesError};
+mod vec;
+pub use vec::{MaxSizeVec, MaxSizeVecError};
