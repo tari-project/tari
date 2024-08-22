@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.3.0-pre.0](https://github.com/tari-project/tari/compare/v1.2.0-pre.0...v1.3.0-pre.0) (2024-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* add genesis blocks (#6499)
+* don't use the ledger unless both keys are for ledger (#6492)
+
+### Features
+
+* add genesis blocks ([#6499](https://github.com/tari-project/tari/issues/6499)) ([da8ae63](https://github.com/tari-project/tari/commit/da8ae635a45eb33d3c535bab6417f695b73c1668))
+* ffi accessor function for payment id ([#6487](https://github.com/tari-project/tari/issues/6487)) ([4d45286](https://github.com/tari-project/tari/commit/4d452862fb74b8348f9bd6287b3bc64344cd4ef1))
+* limit open-ended vectors ([#6473](https://github.com/tari-project/tari/issues/6473)) ([6e387a8](https://github.com/tari-project/tari/commit/6e387a880524466f9496e6a3c5d021934bf9f217))
+* various safety improvements to ledger wallet code ([#6494](https://github.com/tari-project/tari/issues/6494)) ([34eaaec](https://github.com/tari-project/tari/commit/34eaaec931b1e3c24cbedd75a7b4c7662a5ec82c))
+
+
+### Bug Fixes
+
+* avoid an underflow in Ledger BIP32 path parsing ([#6482](https://github.com/tari-project/tari/issues/6482)) ([fed0bdf](https://github.com/tari-project/tari/commit/fed0bdf82e25f8bcef0d0e944f942e7f3721ca66))
+* backup spend ([#6495](https://github.com/tari-project/tari/issues/6495)) ([13b34d1](https://github.com/tari-project/tari/commit/13b34d1627528c164bd009f029bae68646c431b9))
+* contact service tari address support ([#6478](https://github.com/tari-project/tari/issues/6478)) ([7909a75](https://github.com/tari-project/tari/commit/7909a7514e34208c6c8dd3929cfb693387ac68ac))
+* default ledger wallet ([#6479](https://github.com/tari-project/tari/issues/6479)) ([b50838f](https://github.com/tari-project/tari/commit/b50838f695b4d7115fa6d54f05ebaa908c13bc9c))
+* don't use the ledger unless both keys are for ledger ([#6492](https://github.com/tari-project/tari/issues/6492)) ([cfb0b58](https://github.com/tari-project/tari/commit/cfb0b5873f057124c8efe808278e114d257db84c))
+* fix mainnet consensus constants ([#6480](https://github.com/tari-project/tari/issues/6480)) ([8b8ab93](https://github.com/tari-project/tari/commit/8b8ab93e430d0199df565da8ea3957d18fb24836))
+* ledger 1-sided spend ([#6481](https://github.com/tari-project/tari/issues/6481)) ([1914a51](https://github.com/tari-project/tari/commit/1914a515f7ba9e09638d9f0f7b0f670f840fc3e3))
+
+
 ## [1.2.0-pre.0](https://github.com/tari-project/tari/compare/v1.1.0-pre.2...v1.2.0-pre.0) (2024-08-16)
 
 
