@@ -232,9 +232,9 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("7f118dd2269ec9c634fde19cd04d34f5b4e4dea609926999d9a4d73e4f03536a").unwrap();
+            FixedHash::from_hex("439e53c0eac3bd64f8ab946b5e2d474f6cb15ec6fecd13804e68f0f1a801b30d").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("b07420673fd88130c35f9b3b4239404202240857287f0d01ac5acba4b0d4518f").unwrap();
+            FixedHash::from_hex("1b422532f3be9001ae8f9bc716f61f473d6d7ba20e9df5fe08a09cf3ed4228b5").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -253,7 +253,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
 fn get_mainnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("16 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
     let not_before_proof = b"I am the standin mainnet genesis block, \
         \
        I am not the real mainnet block \
@@ -347,9 +347,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("a9ce2a25711e25d98409b590663cf3fc4ac3d08b1192fef8f69e7f696f78d026").unwrap();
+            FixedHash::from_hex("351cc183f692dcba280ec4e8988538fc51ffdeeff13ed3ea868026c81df5cc17").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("97d30b00f8f74da1b1d44ac9dcb93ca0eae367428fef97feec48649cca6f2ab7").unwrap();
+            FixedHash::from_hex("024b4cde6fdc73edbfde822c1496d7bdf156bc25caaf45eb6642fa62ff846964").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -368,7 +368,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("16 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -488,7 +488,6 @@ mod test {
         KernelMmr,
     };
 
-    #[ignore]
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn esmeralda_genesis_sanity_check() {
@@ -499,7 +498,6 @@ mod test {
         check_block(Network::Esmeralda, &block, 164, 1);
     }
 
-    #[ignore]
     #[test]
     #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
@@ -510,7 +508,6 @@ mod test {
         check_block(Network::NextNet, &block, 0, 0);
     }
 
-    #[ignore]
     #[test]
     #[cfg(tari_target_network_mainnet)]
     fn mainnet_genesis_sanity_check() {
@@ -521,7 +518,6 @@ mod test {
         check_block(Network::MainNet, &block, 164, 1);
     }
 
-    #[ignore]
     #[test]
     #[cfg(tari_target_network_mainnet)]
     fn stagenet_genesis_sanity_check() {
@@ -532,7 +528,6 @@ mod test {
         check_block(Network::StageNet, &block, 0, 0);
     }
 
-    #[ignore]
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn igor_genesis_sanity_check() {
@@ -542,7 +537,6 @@ mod test {
         check_block(Network::Igor, &block, 0, 0);
     }
 
-    #[ignore]
     #[test]
     #[cfg(tari_target_network_testnet)]
     fn localnet_genesis_sanity_check() {
