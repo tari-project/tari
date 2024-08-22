@@ -423,7 +423,6 @@ fn add_monero_data(
         .tari_difficulty(tari_difficulty)
         .tari_merge_mining_hash(merge_mining_hash)
         .aux_hashes(aux_chain_hashes.clone())
-        // .new_block_template(template_data.template)
         .build()?;
 
     // Deserialize the block template blob
