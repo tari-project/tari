@@ -38,6 +38,7 @@ use tari_core::transactions::{
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_p2p::services::liveness::error::LivenessError;
+use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
@@ -195,6 +196,8 @@ pub enum TransactionServiceError {
     InvalidAddress(String),
     #[error("Transaction is not supported: `{0}`")]
     NotSupported(String),
+    #[error("Tari script error: {0}")]
+    ScriptError(#[from] ScriptError),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

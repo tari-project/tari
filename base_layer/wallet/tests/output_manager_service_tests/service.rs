@@ -263,7 +263,7 @@ async fn generate_sender_transaction_message(
         .await
         .unwrap()
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -274,7 +274,7 @@ async fn generate_sender_transaction_message(
 
     let change = TestParams::new(key_manager).await;
     builder.with_change_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         inputs!(change.script_key_pk),
         change.script_key_id,
         change.commitment_mask_key_id,
@@ -400,7 +400,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -436,7 +436,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             String::new(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -530,7 +530,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -612,7 +612,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -640,7 +640,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -735,7 +735,7 @@ async fn test_utxo_selection_with_tx_priority() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -781,7 +781,7 @@ async fn send_not_enough_funds() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -810,7 +810,7 @@ async fn send_no_change() {
     );
     let value1 = 5000;
     let uo_1 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         MicroMinotari::from(value1),
@@ -825,7 +825,7 @@ async fn send_no_change() {
         .unwrap();
     let value2 = 8000;
     let uo_2 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         MicroMinotari::from(value2),
@@ -877,7 +877,7 @@ async fn send_not_enough_for_change() {
     let fee_without_change = Fee::new(*constants.transaction_weight_params()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = MicroMinotari(500);
     let uo_1 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         value1,
@@ -891,7 +891,7 @@ async fn send_not_enough_for_change() {
         .unwrap();
     let value2 = MicroMinotari(800);
     let uo_2 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         value2,
@@ -914,7 +914,7 @@ async fn send_not_enough_for_change() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -955,7 +955,7 @@ async fn cancel_transaction() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1060,7 +1060,7 @@ async fn test_get_balance() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1131,7 +1131,7 @@ async fn sending_transaction_persisted_while_offline() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1164,7 +1164,7 @@ async fn sending_transaction_persisted_while_offline() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1942,7 +1942,7 @@ async fn test_txo_revalidation() {
     let output1_value = 1_000_000;
     let key_manager = create_memory_db_key_manager().unwrap();
     let output1 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(output1_value),
@@ -1958,7 +1958,7 @@ async fn test_txo_revalidation() {
 
     let output2_value = 2_000_000;
     let output2 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(output2_value),
@@ -2204,7 +2204,7 @@ async fn scan_for_recovery_test() {
             MicroMinotari::from(amount),
             commitment_mask_key.key_id,
             features,
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(public_script_key),
             script_key_id,
             PublicKey::default(),

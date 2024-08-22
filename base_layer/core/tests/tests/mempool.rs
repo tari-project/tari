@@ -1236,7 +1236,7 @@ async fn consensus_validation_large_tx() {
             amount_for_last_output
         };
         let output = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &test_params,
             output_amount,
@@ -1398,7 +1398,7 @@ async fn validation_reject_min_fee() {
 
     let test_params = TestParams::new(&key_manager).await;
     let wallet_output = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &test_params,
         input.value,
@@ -1604,7 +1604,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: script![Nop],
+        script: script![Nop].unwrap(),
         input_data: None,
         covenant: Default::default(),
         input_version: Some(TransactionInputVersion::V1),
@@ -1621,7 +1621,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: script![Nop],
+        script: script![Nop].unwrap(),
         input_data: None,
         covenant: Default::default(),
         input_version: None,
@@ -1639,7 +1639,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: script![Nop],
+        script: script![Nop].unwrap(),
         input_data: None,
         covenant: Default::default(),
         input_version: None,

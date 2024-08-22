@@ -28,6 +28,7 @@ use tari_crypto::{
     keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
 };
+use tari_max_size::MaxSizeVec;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     ByteArray,
@@ -58,9 +59,12 @@ macro_rules! script {
 const MAX_MULTISIG_LIMIT: u8 = 32;
 const MAX_SCRIPT_BYTES: usize = 4096;
 
+/// The sized vector of opcodes that make up a script
+pub type ScriptOpcodes = MaxSizeVec<Opcode, 128>;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
-    script: Vec<Opcode>,
+    script: ScriptOpcodes,
 }
 
 impl BorshSerialize for TariScript {
@@ -95,8 +99,9 @@ impl BorshDeserialize for TariScript {
 }
 
 impl TariScript {
-    pub fn new(script: Vec<Opcode>) -> Self {
-        TariScript { script }
+    pub fn new(script: Vec<Opcode>) -> Result<Self, ScriptError> {
+        let script = ScriptOpcodes::try_from(script)?;
+        Ok(TariScript { script })
     }
 
     /// This pattern matches two scripts ensure they have the same instructions in the opcodes, but not the same values
@@ -144,7 +149,7 @@ impl TariScript {
         // Local execution state
         let mut state = ExecutionState::default();
 
-        for opcode in &self.script {
+        for opcode in self.script.iter() {
             if self.should_execute(opcode, &state)? {
                 self.execute_opcode(opcode, &mut stack, context, &mut state)?
             } else {
@@ -190,7 +195,7 @@ impl TariScript {
     }
 
     pub fn as_slice(&self) -> &[Opcode] {
-        self.script.as_slice()
+        self.script.as_ref()
     }
 
     /// Calculate the hash of the script.
@@ -206,7 +211,7 @@ impl TariScript {
 
     /// Try to deserialise a byte slice into a valid Tari script
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ScriptError> {
-        let script = Opcode::parse(bytes)?;
+        let script = ScriptOpcodes::try_from(Opcode::parse(bytes)?)?;
 
         Ok(TariScript { script })
     }
@@ -685,7 +690,7 @@ impl Hex for TariScript {
 /// The default Tari script is to push a sender pubkey onto the stack
 impl Default for TariScript {
     fn default() -> Self {
-        script!(PushPubKey(Box::default()))
+        script!(PushPubKey(Box::default())).expect("default will not fail")
     }
 }
 
@@ -756,28 +761,28 @@ mod test {
 
     #[test]
     fn pattern_match() {
-        let script_a = script!(Or(1));
-        let script_b = script!(Or(1));
+        let script_a = script!(Or(1)).unwrap();
+        let script_b = script!(Or(1)).unwrap();
         assert_eq!(script_a, script_b);
         assert!(script_a.pattern_match(&script_b));
 
-        let script_b = script!(Or(2));
+        let script_b = script!(Or(2)).unwrap();
         assert_ne!(script_a, script_b);
         assert!(script_a.pattern_match(&script_b));
 
-        let script_b = script!(Or(2) Or(2));
+        let script_b = script!(Or(2) Or(2)).unwrap();
         assert_ne!(script_a, script_b);
         assert!(!script_a.pattern_match(&script_b));
 
-        let script_a = script!(Or(2) Or(1));
-        let script_b = script!(Or(3) Or(5));
+        let script_a = script!(Or(2) Or(1)).unwrap();
+        let script_b = script!(Or(3) Or(5)).unwrap();
         assert_ne!(script_a, script_b);
         assert!(script_a.pattern_match(&script_b));
     }
 
     #[test]
     fn op_or() {
-        let script = script!(Or(1));
+        let script = script!(Or(1)).unwrap();
 
         let inputs = inputs!(4, 4);
         let result = script.execute(&inputs).unwrap();
@@ -787,7 +792,7 @@ mod test {
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
 
-        let script = script!(Or(3));
+        let script = script!(Or(3)).unwrap();
 
         let inputs = inputs!(1, 2, 1, 3);
         let result = script.execute(&inputs).unwrap();
@@ -811,7 +816,7 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::StackUnderflow));
 
-        let script = script!(OrVerify(1));
+        let script = script!(OrVerify(1)).unwrap();
 
         let inputs = inputs!(1, 4, 4);
         let result = script.execute(&inputs).unwrap();
@@ -821,7 +826,7 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::VerifyFailed));
 
-        let script = script!(OrVerify(2));
+        let script = script!(OrVerify(2)).unwrap();
 
         let inputs = inputs!(1, 2, 2, 3);
         let result = script.execute(&inputs).unwrap();
@@ -835,7 +840,7 @@ mod test {
     #[test]
     fn op_if_then_else() {
         // basic
-        let script = script!(IfThen PushInt(420) Else PushInt(66) EndIf);
+        let script = script!(IfThen PushInt(420) Else PushInt(66) EndIf).unwrap();
         let inputs = inputs!(1);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap(), Number(420));
@@ -845,54 +850,57 @@ mod test {
         assert_eq!(result.unwrap(), Number(66));
 
         // nested
-        let script = script!(IfThen PushOne IfThen PushInt(420) Else PushInt(555) EndIf Else PushInt(66) EndIf);
+        let script =
+            script!(IfThen PushOne IfThen PushInt(420) Else PushInt(555) EndIf Else PushInt(66) EndIf).unwrap();
         let inputs = inputs!(1);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap(), Number(420));
 
-        let script = script!(IfThen PushInt(420) Else PushZero IfThen PushInt(111) Else PushInt(66) EndIf Nop EndIf);
+        let script =
+            script!(IfThen PushInt(420) Else PushZero IfThen PushInt(111) Else PushInt(66) EndIf Nop EndIf).unwrap();
         let inputs = inputs!(0);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap(), Number(66));
 
         // duplicate else
-        let script = script!(IfThen PushInt(420) Else PushInt(66) Else PushInt(777) EndIf);
+        let script = script!(IfThen PushInt(420) Else PushInt(66) Else PushInt(777) EndIf).unwrap();
         let inputs = inputs!(0);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap_err(), ScriptError::InvalidOpcode);
 
         // unexpected else
-        let script = script!(Else);
+        let script = script!(Else).unwrap();
         let inputs = inputs!(0);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap_err(), ScriptError::InvalidOpcode);
 
         // unexpected endif
-        let script = script!(EndIf);
+        let script = script!(EndIf).unwrap();
         let inputs = inputs!(0);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap_err(), ScriptError::InvalidOpcode);
 
         // duplicate endif
-        let script = script!(IfThen PushInt(420) Else PushInt(66) EndIf EndIf);
+        let script = script!(IfThen PushInt(420) Else PushInt(66) EndIf EndIf).unwrap();
         let inputs = inputs!(0);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap_err(), ScriptError::InvalidOpcode);
 
         // no else or endif
-        let script = script!(IfThen PushOne IfThen PushOne);
+        let script = script!(IfThen PushOne IfThen PushOne).unwrap();
         let inputs = inputs!(1);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap_err(), ScriptError::MissingOpcode);
 
         // no else
-        let script = script!(IfThen PushOne EndIf);
+        let script = script!(IfThen PushOne EndIf).unwrap();
         let inputs = inputs!(1);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap_err(), ScriptError::MissingOpcode);
 
         // nested bug
-        let script = script!(IfThen PushInt(111) Else PushZero IfThen PushInt(222) Else PushInt(333) EndIf EndIf);
+        let script =
+            script!(IfThen PushInt(111) Else PushZero IfThen PushInt(222) Else PushInt(333) EndIf EndIf).unwrap();
         let inputs = inputs!(1);
         let result = script.execute(&inputs);
         assert_eq!(result.unwrap(), Number(111));
@@ -901,7 +909,7 @@ mod test {
     #[test]
     fn op_check_height() {
         let inputs = ExecutionStack::default();
-        let script = script!(CheckHeight(5));
+        let script = script!(CheckHeight(5)).unwrap();
 
         for block_height in 1..=10 {
             let ctx = context_with_height(u64::try_from(block_height).unwrap());
@@ -911,12 +919,12 @@ mod test {
             );
         }
 
-        let script = script!(CheckHeight(u64::MAX));
+        let script = script!(CheckHeight(u64::MAX)).unwrap();
         let ctx = context_with_height(i64::MAX as u64);
         let err = script.execute_with_context(&inputs, &ctx).unwrap_err();
         assert!(matches!(err, ScriptError::ValueExceedsBounds));
 
-        let script = script!(CheckHeightVerify(5));
+        let script = script!(CheckHeightVerify(5)).unwrap();
         let inputs = inputs!(1);
 
         for block_height in 1..5 {
@@ -934,7 +942,7 @@ mod test {
 
     #[test]
     fn op_compare_height() {
-        let script = script!(CompareHeight);
+        let script = script!(CompareHeight).unwrap();
         let inputs = inputs!(5);
 
         for block_height in 1..=10 {
@@ -945,7 +953,7 @@ mod test {
             );
         }
 
-        let script = script!(CompareHeightVerify);
+        let script = script!(CompareHeightVerify).unwrap();
         let inputs = inputs!(1, 5);
 
         for block_height in 1..5 {
@@ -964,37 +972,37 @@ mod test {
     #[test]
     fn op_drop_push() {
         let inputs = inputs!(420);
-        let script = script!(Drop PushOne);
+        let script = script!(Drop PushOne).unwrap();
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
 
-        let script = script!(Drop PushZero);
+        let script = script!(Drop PushZero).unwrap();
         assert_eq!(script.execute(&inputs).unwrap(), Number(0));
 
-        let script = script!(Drop PushInt(5));
+        let script = script!(Drop PushInt(5)).unwrap();
         assert_eq!(script.execute(&inputs).unwrap(), Number(5));
     }
 
     #[test]
     fn op_comparison_to_zero() {
-        let script = script!(GeZero);
+        let script = script!(GeZero).unwrap();
         let inputs = inputs!(1);
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
         let inputs = inputs!(0);
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
 
-        let script = script!(GtZero);
+        let script = script!(GtZero).unwrap();
         let inputs = inputs!(1);
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
         let inputs = inputs!(0);
         assert_eq!(script.execute(&inputs).unwrap(), Number(0));
 
-        let script = script!(LeZero);
+        let script = script!(LeZero).unwrap();
         let inputs = inputs!(-1);
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
         let inputs = inputs!(0);
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
 
-        let script = script!(LtZero);
+        let script = script!(LtZero).unwrap();
         let inputs = inputs!(-1);
         assert_eq!(script.execute(&inputs).unwrap(), Number(1));
         let inputs = inputs!(0);
@@ -1006,7 +1014,7 @@ mod test {
         let mut rng = rand::thread_rng();
         let (_, p) = RistrettoPublicKey::random_keypair(&mut rng);
         let c = PedersenCommitment::from_public_key(&p);
-        let script = script!(HashSha256);
+        let script = script!(HashSha256).unwrap();
 
         let hash = Sha256::digest(p.as_bytes());
         let inputs = inputs!(p.clone());
@@ -1016,7 +1024,7 @@ mod test {
         let inputs = inputs!(c.clone());
         assert_eq!(script.execute(&inputs).unwrap(), Hash(hash.into()));
 
-        let script = script!(HashSha3);
+        let script = script!(HashSha3).unwrap();
 
         let hash = Sha3::digest(p.as_bytes());
         let inputs = inputs!(p);
@@ -1029,14 +1037,14 @@ mod test {
 
     #[test]
     fn op_return() {
-        let script = script!(Return);
+        let script = script!(Return).unwrap();
         let inputs = ExecutionStack::default();
         assert_eq!(script.execute(&inputs), Err(ScriptError::Return));
     }
 
     #[test]
     fn op_add() {
-        let script = script!(Add);
+        let script = script!(Add).unwrap();
         let inputs = inputs!(3, 2);
         assert_eq!(script.execute(&inputs).unwrap(), Number(5));
         let inputs = inputs!(3, -3);
@@ -1049,7 +1057,7 @@ mod test {
 
     #[test]
     fn op_add_commitments() {
-        let script = script!(Add);
+        let script = script!(Add).unwrap();
         let mut rng = rand::thread_rng();
         let (_, c1) = RistrettoPublicKey::random_keypair(&mut rng);
         let (_, c2) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -1065,19 +1073,19 @@ mod test {
     #[test]
     fn op_sub() {
         use crate::StackItem::Number;
-        let script = script!(Add Sub);
+        let script = script!(Add Sub).unwrap();
         let inputs = inputs!(5, 3, 2);
         assert_eq!(script.execute(&inputs).unwrap(), Number(0));
         let inputs = inputs!(i64::MAX, 1);
         assert_eq!(script.execute(&inputs), Err(ScriptError::ValueExceedsBounds));
-        let script = script!(Sub);
+        let script = script!(Sub).unwrap();
         let inputs = inputs!(5, 3);
         assert_eq!(script.execute(&inputs).unwrap(), Number(2));
     }
 
     #[test]
     fn serialisation() {
-        let script = script!(Add Sub Add);
+        let script = script!(Add Sub Add).unwrap();
         assert_eq!(&script.to_bytes(), &[0x93, 0x94, 0x93]);
         assert_eq!(TariScript::from_bytes(&[0x93, 0x94, 0x93]).unwrap(), script);
         assert_eq!(script.to_hex(), "939493");
@@ -1092,14 +1100,14 @@ mod test {
         let m_key = RistrettoSecretKey::random(&mut rng);
         let sig = CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
-        let script = script!(CheckSig(msg));
+        let script = script!(CheckSig(msg)).unwrap();
         let inputs = inputs!(sig.clone(), pub_key.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
         let n_key = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(n_key.as_bytes());
-        let script = script!(CheckSig(msg));
+        let script = script!(CheckSig(msg)).unwrap();
         let inputs = inputs!(sig, pub_key);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1113,14 +1121,14 @@ mod test {
         let m_key = RistrettoSecretKey::random(&mut rng);
         let sig = CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
-        let script = script!(CheckSigVerify(msg) PushOne);
+        let script = script!(CheckSigVerify(msg) PushOne).unwrap();
         let inputs = inputs!(sig.clone(), pub_key.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
         let n_key = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(n_key.as_bytes());
-        let script = script!(CheckSigVerify(msg));
+        let script = script!(CheckSigVerify(msg)).unwrap();
         let inputs = inputs!(sig, pub_key);
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::VerifyFailed));
@@ -1166,7 +1174,7 @@ mod test {
         // 1 of 2
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(1, 2, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1181,7 +1189,7 @@ mod test {
         // 2 of 2
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(2, 2, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1201,7 +1209,7 @@ mod test {
         // 1 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
         let ops = vec![CheckMultiSig(1, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1219,7 +1227,7 @@ mod test {
         // 2 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
         let ops = vec![CheckMultiSig(2, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1240,7 +1248,7 @@ mod test {
         // check that sigs are only counted once
         let keys = vec![p_alice.clone(), p_bob.clone(), p_alice.clone()];
         let ops = vec![CheckMultiSig(2, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1259,7 +1267,7 @@ mod test {
         // 3 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol];
         let ops = vec![CheckMultiSig(3, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1277,21 +1285,21 @@ mod test {
         // errors
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(0, 2, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(1, 0, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice, p_bob];
         let ops = vec![CheckMultiSig(2, 1, keys, msg)];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice);
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
@@ -1300,7 +1308,7 @@ mod test {
         let (msg, data) = multisig_data(33);
         let keys = data.iter().map(|(_, p, _)| p.clone()).collect();
         let sigs = data.iter().take(17).map(|(_, _, s)| s.clone());
-        let script = script!(CheckMultiSig(17, 33, keys, msg));
+        let script = script!(CheckMultiSig(17, 33, keys, msg)).unwrap();
         let items = sigs.map(StackItem::Signature).collect();
         let inputs = ExecutionStack::new(items);
         let err = script.execute(&inputs).unwrap_err();
@@ -1315,7 +1323,7 @@ mod test {
             data[3].1.clone(),
         ];
         let ops = vec![CheckMultiSig(3, 4, keys, msg)];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(data[0].2.clone(), data[1].2.clone(), data[2].2.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
@@ -1332,7 +1340,7 @@ mod test {
             data[6].1.clone(),
         ];
         let ops = vec![CheckMultiSig(5, 7, keys, msg)];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(
             data[0].2.clone(),
             data[1].2.clone(),
@@ -1363,7 +1371,7 @@ mod test {
         // 1 of 2
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(1, 2, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(Number(1), s_alice.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1378,7 +1386,7 @@ mod test {
         // 2 of 2
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(2, 2, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1393,7 +1401,7 @@ mod test {
         // 1 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
         let ops = vec![CheckMultiSigVerify(1, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(Number(1), s_alice.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1411,7 +1419,7 @@ mod test {
         // 2 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
         let ops = vec![CheckMultiSigVerify(2, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1432,7 +1440,7 @@ mod test {
         // 2 of 3 (returning the aggregate public key of the signatories)
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
         let ops = vec![CheckMultiSigVerifyAggregatePubKey(2, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let agg_pub_key = script.execute(&inputs).unwrap();
@@ -1461,7 +1469,7 @@ mod test {
         // 3 of 3
         let keys = vec![p_alice.clone(), p_bob.clone(), p_carol];
         let ops = vec![CheckMultiSigVerify(3, 3, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
@@ -1479,21 +1487,21 @@ mod test {
         // errors
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(0, 2, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(1, 0, keys, msg.clone())];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
         let keys = vec![p_alice, p_bob];
         let ops = vec![CheckMultiSigVerify(2, 1, keys, msg)];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice);
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
@@ -1507,7 +1515,7 @@ mod test {
             data[3].1.clone(),
         ];
         let ops = vec![CheckMultiSigVerify(3, 4, keys, msg)];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(Number(1), data[0].2.clone(), data[1].2.clone(), data[2].2.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
@@ -1524,7 +1532,7 @@ mod test {
             data[6].1.clone(),
         ];
         let ops = vec![CheckMultiSigVerify(5, 7, keys, msg)];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(
             Number(1),
             data[0].2.clone(),
@@ -1548,7 +1556,7 @@ mod test {
 
         // Unlike in Bitcoin where P2PKH includes a CheckSig at the end of the script, that part of the process is built
         // into definition of how TariScript is evaluated by a base node or wallet
-        let script = script!(Dup HashBlake256 PushHash(pkh) EqualVerify);
+        let script = script!(Dup HashBlake256 PushHash(pkh) EqualVerify).unwrap();
         let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581";
         // Test serialisation
         assert_eq!(script.to_hex(), hex_script);
@@ -1571,7 +1579,7 @@ mod test {
         let sig = CheckSigSchnorrSignature::sign(&secret_key, message, &mut rng).unwrap();
 
         // Produce a script using the signature
-        let script = script!(CheckSig(slice_to_boxed_message(message.as_bytes())));
+        let script = script!(CheckSig(slice_to_boxed_message(message.as_bytes()))).unwrap();
 
         // Produce input satisfying the script
         let input = inputs!(sig, public_key);
@@ -1626,7 +1634,7 @@ mod test {
 
         let lock_height = 4000u64;
 
-        let script = script!(Dup PushPubKey(Box::new(p_bob.clone())) CheckHeight(lock_height) GeZero IfThen PushPubKey(Box::new(p_alice.clone())) OrVerify(2) Else EqualVerify EndIf );
+        let script = script!(Dup PushPubKey(Box::new(p_bob.clone())) CheckHeight(lock_height) GeZero IfThen PushPubKey(Box::new(p_alice.clone())) OrVerify(2) Else EqualVerify EndIf ).unwrap();
 
         // Alice tries to spend the output before the height is reached
         let inputs_alice_spends_early = inputs!(p_alice.clone());
@@ -1695,7 +1703,7 @@ mod test {
             EndIf,
             EndIf,
         ];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         // alice
         let inputs = inputs!(s_alice);
@@ -1723,7 +1731,7 @@ mod test {
 
         // Generate a test script
         let ops = vec![ToRistrettoPoint];
-        let script = TariScript::new(ops);
+        let script = TariScript::new(ops).unwrap();
 
         // Invalid stack type
         let inputs = inputs!(RistrettoPublicKey::default());
@@ -1771,7 +1779,7 @@ mod test {
 
     #[test]
     fn test_compare_height_block_height_exceeds_bounds() {
-        let script = script!(CompareHeight);
+        let script = script!(CompareHeight).unwrap();
 
         let inputs = inputs!(0);
         let ctx = context_with_height(u64::MAX);
@@ -1781,7 +1789,7 @@ mod test {
 
     #[test]
     fn test_compare_height_underflows() {
-        let script = script!(CompareHeight);
+        let script = script!(CompareHeight).unwrap();
 
         let inputs = ExecutionStack::new(vec![Number(i64::MIN)]);
         let ctx = context_with_height(i64::MAX as u64);
@@ -1791,7 +1799,7 @@ mod test {
 
     #[test]
     fn test_compare_height_underflows_on_empty_stack() {
-        let script = script!(CompareHeight);
+        let script = script!(CompareHeight).unwrap();
 
         let inputs = ExecutionStack::new(vec![]);
         let ctx = context_with_height(i64::MAX as u64);
@@ -1801,7 +1809,7 @@ mod test {
 
     #[test]
     fn test_compare_height_valid_with_uint_result() {
-        let script = script!(CompareHeight);
+        let script = script!(CompareHeight).unwrap();
 
         let inputs = inputs!(100);
         let ctx = context_with_height(24_u64);
@@ -1812,7 +1820,7 @@ mod test {
 
     #[test]
     fn test_compare_height_valid_with_int_result() {
-        let script = script!(CompareHeight);
+        let script = script!(CompareHeight).unwrap();
 
         let inputs = inputs!(100);
         let ctx = context_with_height(110_u64);
@@ -1823,7 +1831,7 @@ mod test {
 
     #[test]
     fn test_check_height_block_height_exceeds_bounds() {
-        let script = script!(CheckHeight(0));
+        let script = script!(CheckHeight(0)).unwrap();
 
         let inputs = ExecutionStack::new(vec![]);
         let ctx = context_with_height(u64::MAX);
@@ -1833,7 +1841,7 @@ mod test {
 
     #[test]
     fn test_check_height_exceeds_bounds() {
-        let script = script!(CheckHeight(u64::MAX));
+        let script = script!(CheckHeight(u64::MAX)).unwrap();
 
         let inputs = ExecutionStack::new(vec![]);
         let ctx = context_with_height(10_u64);
@@ -1843,7 +1851,7 @@ mod test {
 
     #[test]
     fn test_check_height_overflows_on_max_stack() {
-        let script = script!(CheckHeight(0));
+        let script = script!(CheckHeight(0)).unwrap();
 
         let mut inputs = ExecutionStack::new(vec![]);
 
@@ -1858,7 +1866,7 @@ mod test {
 
     #[test]
     fn test_check_height_valid_with_uint_result() {
-        let script = script!(CheckHeight(24));
+        let script = script!(CheckHeight(24)).unwrap();
 
         let inputs = ExecutionStack::new(vec![]);
         let ctx = context_with_height(100_u64);
@@ -1869,7 +1877,7 @@ mod test {
 
     #[test]
     fn test_check_height_valid_with_int_result() {
-        let script = script!(CheckHeight(100));
+        let script = script!(CheckHeight(100)).unwrap();
 
         let inputs = ExecutionStack::new(vec![]);
         let ctx = context_with_height(24_u64);

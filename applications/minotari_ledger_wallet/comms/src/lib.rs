@@ -59,15 +59,15 @@ mod test {
     fn test_push_pub_key_serialized_byte_representation() {
         let mut scripts = Vec::new();
 
-        scripts.push((script!(Nop), NOP_IDENTIFIER, "".to_string()));
-        scripts.push((script!(PushOne), PUSH_ONE_IDENTIFIER, "".to_string()));
+        scripts.push((script!(Nop).unwrap(), NOP_IDENTIFIER, "".to_string()));
+        scripts.push((script!(PushOne).unwrap(), PUSH_ONE_IDENTIFIER, "".to_string()));
 
         for pub_key in [
             RistrettoPublicKey::default(),
             RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut OsRng)),
         ] {
             scripts.push((
-                script!(PushPubKey(Box::new(pub_key.clone()))),
+                script!(PushPubKey(Box::new(pub_key.clone()))).unwrap(),
                 PUSH_PUBKEY_IDENTIFIER,
                 pub_key.to_hex(),
             ));
@@ -75,7 +75,11 @@ mod test {
 
         let key = RistrettoSecretKey::random(&mut OsRng);
         let msg = slice_to_boxed_message(key.as_bytes());
-        scripts.push((script!(CheckSigVerify(msg)), CHECK_SIG_VERIFY_IDENTIFIER, key.to_hex()));
+        scripts.push((
+            script!(CheckSigVerify(msg)).unwrap(),
+            CHECK_SIG_VERIFY_IDENTIFIER,
+            key.to_hex(),
+        ));
 
         for (script, hex_identifier, hex_payload) in scripts {
             let mut serialized = Vec::new();

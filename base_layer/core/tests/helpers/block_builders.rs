@@ -109,7 +109,7 @@ pub async fn create_coinbase(
         .unwrap();
 
     let wallet_output = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::create_coinbase(maturity_height, extra, RangeProofType::BulletProofPlus),
         &p,
         value,
@@ -238,7 +238,7 @@ pub async fn create_genesis_block_with_utxos(
     key_manager: &MemoryDbKeyManager,
 ) -> (ChainBlock, Vec<WalletOutput>) {
     let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let output_features = OutputFeatures::default();
     let mut outputs = Vec::new();
     outputs.push(coinbase);

@@ -193,7 +193,7 @@ impl<T, const MAX_SIZE: usize> FromIterator<T> for MaxSizeVec<T, MAX_SIZE> {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MaxSizeVecError {
     #[error("Invalid vector length: expected {expected}, got {actual}")]
     MaxSizeVecLengthError { expected: usize, actual: usize },

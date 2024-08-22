@@ -634,7 +634,7 @@ mod test {
         // Start the builder
         let builder = SenderTransactionInitializer::new(&create_consensus_constants(0), key_manager.clone());
         let err = builder.build().await.unwrap_err();
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(err.message, "Missing Lock Height,Missing Fee per gram");
 
@@ -681,7 +681,7 @@ mod test {
         let mut builder = err.builder;
         let change = TestParams::new(&key_manager).await;
         builder.with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
@@ -721,7 +721,7 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &p,
             MicroMinotari(5000) - expected_fee,
@@ -817,7 +817,7 @@ mod test {
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &p,
             MicroMinotari(500),
@@ -856,7 +856,7 @@ mod test {
                 .expect("Failed to borsh serialized size"),
         );
         let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
@@ -867,7 +867,7 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
@@ -894,7 +894,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
@@ -917,7 +917,7 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
@@ -950,7 +950,7 @@ mod test {
         let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;
         let fee_per_gram = MicroMinotari(6);
 
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             fee_per_gram,
@@ -984,7 +984,7 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),

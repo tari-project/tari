@@ -242,7 +242,9 @@ impl ConsensusConstants {
         let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size()? + max_extra_size + script![Nop].get_serialized_size()?,
+            output_features.get_serialized_size()? +
+                max_extra_size +
+                script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()?,
         );
         Ok(self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size))
     }

@@ -1456,10 +1456,15 @@ mod test {
     pub async fn make_input(val: MicroMinotari, key_manager: &MemoryDbKeyManager) -> (TransactionInput, WalletOutput) {
         let test_params = TestParams::new(key_manager).await;
 
-        let wallet_output =
-            create_wallet_output_with_data(script!(Nop), OutputFeatures::default(), &test_params, val, key_manager)
-                .await
-                .unwrap();
+        let wallet_output = create_wallet_output_with_data(
+            script!(Nop).unwrap(),
+            OutputFeatures::default(),
+            &test_params,
+            val,
+            key_manager,
+        )
+        .await
+        .unwrap();
         let input = wallet_output.to_transaction_input(key_manager).await.unwrap();
 
         (input, wallet_output)

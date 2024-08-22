@@ -152,7 +152,7 @@ mod test {
     #[tokio::test]
     async fn it_filters_tari_script() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let script = script!(CheckHeight(100));
+        let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(field_eq(
             @field::script,
             @script(script.clone())

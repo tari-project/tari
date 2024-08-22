@@ -197,7 +197,7 @@ mod test {
         };
         let dest_pk = PublicKey::from_hex("b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849").unwrap();
         let sender_pk = dest_pk.clone();
-        let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pk)) Else CheckHeightVerify(100) PushPubKey(Box::new(sender_pk)) EndIf);
+        let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pk)) Else CheckHeightVerify(100) PushPubKey(Box::new(sender_pk)) EndIf).unwrap();
         let covenant = covenant!(field_eq(@field::script, @script(script.clone())));
 
         let decoded = Covenant::from_bytes(&mut covenant.to_bytes().as_bytes()).unwrap();

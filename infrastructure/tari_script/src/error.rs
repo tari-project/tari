@@ -18,6 +18,7 @@
 use std::num::TryFromIntError;
 
 use serde::{Deserialize, Serialize};
+use tari_max_size::MaxSizeVecError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
@@ -51,6 +52,14 @@ pub enum ScriptError {
     InvalidDigest,
     #[error("A compare opcode failed, aborting the script immediately with reason: `{0}`")]
     CompareFailed(String),
+    #[error("Max sized vector error: {0}")]
+    MaxSizeVecError(#[from] MaxSizeVecError),
+}
+
+impl ScriptError {
+    pub fn to_std_io_error(self) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, self.to_string())
+    }
 }
 
 impl From<TryFromIntError> for ScriptError {

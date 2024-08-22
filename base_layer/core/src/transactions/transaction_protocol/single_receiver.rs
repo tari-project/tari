@@ -184,7 +184,7 @@ mod test {
             MicroMinotari(5000),
             test_params.commitment_mask_key_id,
             OutputFeatures::default(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             ExecutionStack::default(),
             test_params.script_key_id,
             PublicKey::default(),
@@ -225,7 +225,7 @@ mod test {
             MicroMinotari(5000),
             test_params.commitment_mask_key_id,
             OutputFeatures::default(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             ExecutionStack::default(),
             test_params.script_key_id,
             PublicKey::default(),
@@ -262,7 +262,7 @@ mod test {
         let m = TransactionMetadata::new(MicroMinotari(100), 0);
         let test_params = TestParams::new(&key_manager).await;
         let test_params2 = TestParams::new(&key_manager).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let sender_offset_public_key = key_manager
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)
             .await

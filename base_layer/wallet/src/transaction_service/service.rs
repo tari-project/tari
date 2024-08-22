@@ -1428,7 +1428,7 @@ where
             Else
                 CheckHeightVerify(height) PushPubKey(Box::new(self.resources.one_sided_tari_address.public_spend_key().clone()))
             EndIf
-        );
+        )?;
 
         // Empty covenant
         let covenant = Covenant::default();
@@ -1937,7 +1937,7 @@ where
                 fee_per_gram,
                 tx_meta,
                 message.clone(),
-                script!(Nop),
+                script!(Nop)?,
                 Covenant::default(),
                 MicroMinotari::zero(),
             )
@@ -2007,7 +2007,7 @@ where
                     .features
                     .clone(),
             )
-            .with_script(script!(Nop))
+            .with_script(script!(Nop)?)
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),

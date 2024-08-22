@@ -976,7 +976,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        output = output.with_script(script![Nop]);
+        output = output.with_script(script![Nop].map_err(|e| Status::invalid_argument(e.to_string()))?);
 
         let (tx_id, transaction) = output_manager
             .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())

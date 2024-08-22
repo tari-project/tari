@@ -407,7 +407,7 @@ async fn it_limits_the_script_byte_size() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-    schema1.script = script!(Nop Nop Nop);
+    schema1.script = script!(Nop Nop Nop).unwrap();
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
@@ -433,7 +433,7 @@ async fn it_limits_the_encrypted_data_byte_size() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-    schema1.script = script!(Nop Nop Nop);
+    schema1.script = script!(Nop Nop Nop).unwrap();
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
