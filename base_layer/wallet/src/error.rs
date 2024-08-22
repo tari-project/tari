@@ -103,6 +103,8 @@ pub enum WalletError {
     UnexpectedApiResponse { method: String, api: String },
     #[error("Public address not set for this wallet")]
     PublicAddressNotSet,
+    #[error("Hex error: `{0}`")]
+    HexError(String),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";
@@ -116,6 +118,12 @@ impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
         log::error!(target: LOG_TARGET, "{}", err);
         Self::new(ExitCode::WalletError, err.to_string())
+    }
+}
+
+impl From<HexError> for WalletError {
+    fn from(err: HexError) -> Self {
+        WalletError::HexError(err.to_string())
     }
 }
 

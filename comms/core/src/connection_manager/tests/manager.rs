@@ -72,6 +72,7 @@ async fn connect_to_nonexistent_peer() {
         peer_manager,
         event_tx,
         shutdown.to_signal(),
+        &[0, 0, 0, 0],
     );
 
     rt_handle.spawn(connection_manager.run());

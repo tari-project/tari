@@ -79,6 +79,7 @@ pub async fn create<P: AsRef<Path>>(
     let builder = CommsBuilder::new()
         .allow_test_addresses()
         .with_network_byte(0x25)
+        .with_noise_prologue(b"dht propagation example".to_vec())
         .with_shutdown_signal(shutdown_signal)
         .with_node_info(NodeNetworkInfo {
             major_version: 0,

@@ -94,6 +94,7 @@ where
         peer_manager,
         event_tx,
         shutdown,
+        &[1, 1, 1, 1]
     );
     connection_manager.add_protocols(protocols);
 

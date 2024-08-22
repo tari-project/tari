@@ -49,16 +49,18 @@ pub struct NoiseConfig {
     node_identity: Arc<NodeIdentity>,
     parameters: NoiseParams,
     recv_timeout: Duration,
+    noise_prologue: Vec<u8>,
 }
 
 impl NoiseConfig {
     /// Create a new NoiseConfig with the provided keypair
-    pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
+    pub fn new(node_identity: Arc<NodeIdentity>, noise_prologue: &[u8]) -> Self {
         let parameters: NoiseParams = NOISE_PARAMETERS.parse().expect("Invalid noise parameters");
         Self {
             node_identity,
             parameters,
             recv_timeout: Duration::from_secs(3),
+            noise_prologue: noise_prologue.to_vec(),
         }
     }
 
@@ -78,11 +80,9 @@ impl NoiseConfig {
     where
         TSocket: AsyncWrite + AsyncRead + Unpin,
     {
-        const TARI_PROLOGUE: &[u8] = b"com.tari.comms.noise.prologue";
-
         let handshake_state = {
             let builder = snow::Builder::with_resolver(self.parameters.clone(), Box::<TariCryptoResolver>::default())
-                .prologue(TARI_PROLOGUE)
+                .prologue(&self.noise_prologue)
                 .local_private_key(self.node_identity.secret_key().as_bytes());
 
             match direction {
@@ -128,18 +128,19 @@ mod test {
     #[test]
     fn new() {
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        let config = NoiseConfig::new(node_identity.clone());
+        let config = NoiseConfig::new(node_identity.clone(), &[0]);
         check_noise_params(&config);
         assert_eq!(config.node_identity.public_key(), node_identity.public_key());
     }
 
     #[tokio::test]
     async fn upgrade_socket() {
+        let noise_prologue = [0, 1];
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        let config1 = NoiseConfig::new(node_identity1.clone());
+        let config1 = NoiseConfig::new(node_identity1.clone(), &noise_prologue);
 
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        let config2 = NoiseConfig::new(node_identity2.clone());
+        let config2 = NoiseConfig::new(node_identity2.clone(), &noise_prologue);
 
         let (in_socket, out_socket) = MemorySocket::new_pair();
         let (mut socket_in, mut socket_out) = future::join(

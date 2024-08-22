@@ -24,6 +24,8 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use log::{error, trace};
 use minotari_app_utilities::{identity_management, identity_management::load_from_json};
+use tari_common::{configuration::Network, get_static_genesis_block_hash};
+use tari_common_types::types::FixedHash;
 // Re-exports
 pub use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
@@ -40,6 +42,7 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 
 use crate::{
     config::ApplicationConfig,
@@ -75,6 +78,10 @@ pub async fn start(
             config.chat_client.network,
             node_identity,
             publisher,
+            FixedHash::from_hex(get_static_genesis_block_hash(
+                Network::get_current_or_user_setting_or_default(),
+            ))?
+            .to_vec(),
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {

@@ -5972,6 +5972,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
+ "tari_utilities",
  "thiserror",
 ]
 

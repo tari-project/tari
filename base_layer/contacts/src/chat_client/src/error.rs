@@ -30,6 +30,7 @@ use tari_comms::peer_manager::PeerManagerError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_p2p::initialization::CommsInitializationError;
 use tari_storage::lmdb_store::LMDBError;
+use tari_utilities::hex::HexError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -73,4 +74,12 @@ pub enum NetworkingError {
     ServiceInitializerError(#[from] anyhow::Error),
     #[error("Comms failed to spawn")]
     CommsSpawnError,
+    #[error("Hex error: `{0}`")]
+    HexError(String),
+}
+
+impl From<HexError> for NetworkingError {
+    fn from(err: HexError) -> Self {
+        NetworkingError::HexError(err.to_string())
+    }
 }

@@ -25,9 +25,11 @@ use std::{cmp, str::FromStr, sync::Arc};
 use log::*;
 use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, Network},
     exit_codes::{ExitCode, ExitError},
+    get_static_genesis_block_hash,
 };
+use tari_common_types::types::FixedHash;
 use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
     peer_manager::Peer,
@@ -65,6 +67,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::ApplicationConfig;
 
@@ -125,6 +128,11 @@ where B: BlockchainBackend + 'static
                 base_node_config.network,
                 self.node_identity.clone(),
                 publisher,
+                FixedHash::from_hex(get_static_genesis_block_hash(
+                    Network::get_current_or_user_setting_or_default(),
+                ))
+                .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+                .to_vec(),
             ))
             .add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::BaseNode,

@@ -210,12 +210,13 @@ where
         peer_manager: Arc<PeerManager>,
         connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
         shutdown_signal: ShutdownSignal,
+        noise_prologue: &[u8],
     ) -> Self {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
 
-        let noise_config =
-            NoiseConfig::new(node_identity.clone()).with_recv_timeout(config.noise_handshake_recv_timeout);
+        let noise_config = NoiseConfig::new(node_identity.clone(), noise_prologue)
+            .with_recv_timeout(config.noise_handshake_recv_timeout);
 
         let listener = PeerListener::new(
             config.clone(),

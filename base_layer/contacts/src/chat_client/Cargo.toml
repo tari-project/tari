@@ -19,6 +19,7 @@ tari_p2p = { path = "../../../p2p" }
 tari_service_framework= { path = "../../../service_framework" }
 tari_shutdown = { path = "../../../../infrastructure/shutdown" }
 tari_storage = { path = "../../../../infrastructure/storage" }
+tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.41"
 async-trait = "0.1.52"

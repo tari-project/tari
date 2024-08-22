@@ -27,11 +27,14 @@ use digest::consts::U32;
 use futures::executor::block_on;
 use log::*;
 use rand::rngs::OsRng;
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{
+    configuration::{bootstrap::ApplicationType, Network},
+    get_static_genesis_block_hash,
+};
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
+    types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -196,6 +199,10 @@ where
                 config.network,
                 node_identity.clone(),
                 publisher,
+                FixedHash::from_hex(get_static_genesis_block_hash(
+                    Network::get_current_or_user_setting_or_default(),
+                ))?
+                .to_vec(),
             ))
             .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
                 config.output_manager_service_config,

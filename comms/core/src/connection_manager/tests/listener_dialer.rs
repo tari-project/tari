@@ -55,7 +55,7 @@ async fn listen() -> Result<(), Box<dyn Error>> {
     let mut shutdown = Shutdown::new();
     let peer_manager = build_peer_manager();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let noise_config = NoiseConfig::new(node_identity.clone());
+    let noise_config = NoiseConfig::new(node_identity.clone(), &[1]);
     let listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse()?,
@@ -84,9 +84,10 @@ async fn smoke() {
     // receives and checks the message and then disconnects and shuts down.
     let (event_tx, mut event_rx) = mpsc::channel(10);
     let mut shutdown = Shutdown::new();
+    let noise_prologue = [1, 2, 3];
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let noise_config1 = NoiseConfig::new(node_identity1.clone());
+    let noise_config1 = NoiseConfig::new(node_identity1.clone(), &noise_prologue);
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
@@ -106,7 +107,7 @@ async fn smoke() {
     let address = listener.listen().await.unwrap();
 
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let noise_config2 = NoiseConfig::new(node_identity2.clone());
+    let noise_config2 = NoiseConfig::new(node_identity2.clone(), &noise_prologue);
     let (request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let mut dialer = Dialer::new(
@@ -187,9 +188,10 @@ async fn smoke() {
 async fn banned() {
     let (event_tx, mut event_rx) = mpsc::channel(10);
     let mut shutdown = Shutdown::new();
+    let noise_prologue = [1, 2, 3, 4];
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let noise_config1 = NoiseConfig::new(node_identity1.clone());
+    let noise_config1 = NoiseConfig::new(node_identity1.clone(), &noise_prologue);
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
@@ -214,7 +216,7 @@ async fn banned() {
     peer.ban_for(Duration::from_secs(60 * 60), "".to_string());
     peer_manager1.add_peer(peer).await.unwrap();
 
-    let noise_config2 = NoiseConfig::new(node_identity2.clone());
+    let noise_config2 = NoiseConfig::new(node_identity2.clone(), &noise_prologue);
     let (request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let mut dialer = Dialer::new(

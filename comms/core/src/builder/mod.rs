@@ -128,6 +128,7 @@ pub struct CommsBuilder {
     connectivity_config: ConnectivityConfig,
     shutdown_signal: Option<ShutdownSignal>,
     maintain_n_closest_connections_only: Option<usize>,
+    noise_prologue: Vec<u8>,
 }
 
 impl Default for CommsBuilder {
@@ -142,6 +143,7 @@ impl Default for CommsBuilder {
             connectivity_config: ConnectivityConfig::default(),
             shutdown_signal: None,
             maintain_n_closest_connections_only: None,
+            noise_prologue: b"com.tari.comms.noise.prologue".to_vec(),
         }
     }
 }
@@ -176,6 +178,16 @@ impl CommsBuilder {
     pub fn with_network_byte(mut self, network_byte: u8) -> Self {
         self.connection_manager_config.network_info.network_byte = network_byte;
         self
+    }
+
+    /// Set the noise prologue for this comms instance.
+    pub fn with_noise_prologue(mut self, prologue: Vec<u8>) -> Self {
+        self.noise_prologue = prologue;
+        self
+    }
+
+    pub fn get_noise_prologue(&self) -> Vec<u8> {
+        self.noise_prologue.clone()
     }
 
     /// Set a network info (versions etc) as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)

@@ -174,6 +174,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1)
         .with_network_byte(Network::LocalNet.as_byte())
+        .with_noise_prologue(b"let us test the network".to_vec())
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
@@ -450,6 +451,7 @@ pub struct P2pInitializer {
     network: Network,
     node_identity: Arc<NodeIdentity>,
     connector: Option<PubsubDomainConnector>,
+    noise_prologue: Vec<u8>,
 }
 
 impl P2pInitializer {
@@ -460,6 +462,7 @@ impl P2pInitializer {
         network: Network,
         node_identity: Arc<NodeIdentity>,
         connector: PubsubDomainConnector,
+        noise_prologue: Vec<u8>,
     ) -> Self {
         Self {
             config,
@@ -468,6 +471,7 @@ impl P2pInitializer {
             network,
             node_identity,
             connector: Some(connector),
+            noise_prologue,
         }
     }
 
@@ -555,6 +559,7 @@ impl ServiceInitializer for P2pInitializer {
 
         let mut builder = CommsBuilder::new()
             .with_shutdown_signal(context.get_shutdown_signal())
+            .with_noise_prologue(self.noise_prologue.clone())
             .with_node_identity(self.node_identity.clone())
             .with_node_info(NodeNetworkInfo {
                 major_version: MAJOR_NETWORK_VERSION,

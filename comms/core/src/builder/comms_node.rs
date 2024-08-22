@@ -132,6 +132,7 @@ impl UnspawnedCommsNode {
         TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
         TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     {
+        let noise_prologue = self.builder.get_noise_prologue();
         let UnspawnedCommsNode {
             builder,
             connection_manager_request_rx,
@@ -187,6 +188,7 @@ impl UnspawnedCommsNode {
             peer_manager.clone(),
             connection_manager_requester.get_event_publisher(),
             shutdown_signal.clone(),
+            &noise_prologue,
         );
 
         ext_context.register_complete_signal(connection_manager.complete_signal());

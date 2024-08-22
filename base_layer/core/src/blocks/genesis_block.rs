@@ -49,6 +49,11 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     }
 }
 
+/// Returns the genesis block hash for the selected network.
+pub fn get_genesis_block_hash(network: Network) -> FixedHash {
+    *get_genesis_block(network).hash()
+}
+
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut utxos = Vec::new();
     let mut counter = 1;
@@ -473,6 +478,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 mod test {
     use std::convert::TryFrom;
 
+    use tari_common::get_static_genesis_block_hash;
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
 
     use super::*;
@@ -623,5 +629,37 @@ mod test {
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
+    }
+
+    // Update `tari_common::get_static_genesis_block_hash` with the correct values if the genesis block change
+    #[test]
+    fn test_get_static_genesis_block_hash() {
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::Igor,
+            Network::Esmeralda,
+            Network::LocalNet,
+        ] {
+            match network {
+                Network::MainNet => assert_genesis_block_hash(network),
+                Network::StageNet => assert_genesis_block_hash(network),
+                Network::NextNet => assert_genesis_block_hash(network),
+                Network::Igor => assert_genesis_block_hash(network),
+                Network::Esmeralda => assert_genesis_block_hash(network),
+                Network::LocalNet => assert_genesis_block_hash(network),
+            }
+        }
+    }
+
+    fn assert_genesis_block_hash(network: Network) {
+        assert_eq!(
+            get_genesis_block_hash(network),
+            FixedHash::from_hex(get_static_genesis_block_hash(network)).unwrap(),
+            "network: {}, expected hash: {} (update `tari_common::get_static_genesis_block_hash`)",
+            network,
+            get_genesis_block_hash(network)
+        );
     }
 }

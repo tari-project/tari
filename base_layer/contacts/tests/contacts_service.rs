@@ -108,6 +108,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
             Network::LocalNet,
             node_identity.clone(),
             publisher,
+            b"tari.contats_service.testing.prologue".to_vec(),
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
