@@ -524,6 +524,10 @@ where
                         (state, Err(ConnectionManagerError::DialCancelled)) => break (state, Err(ConnectionManagerError::DialCancelled)),
                         (state, Err(err)) => {
                             debug!(target: LOG_TARGET, "Failed to dial peer {} | Attempt {} | Error: {}", state.peer().node_id.short_str(), state.num_attempts(), err);
+                            if let ConnectionManagerError::NoiseHandshakeError(_) = err {
+                                // If the noise handshake failed, we should not retry the dial
+                                break (state, Err(err));
+                            }
                             if state.num_attempts() >= config.max_dial_attempts {
                                 break (state, Err(ConnectionManagerError::ConnectFailedMaximumAttemptsReached));
                             }
@@ -546,6 +550,7 @@ where
     /// Attempts to dial a peer sequentially on all addresses; if connections are to be minimized only.
     /// Returns ownership of the given `DialState` and a success or failure result for the dial,
     /// or None if the dial was cancelled inflight
+    #[allow(clippy::too_many_lines)]
     async fn dial_peer(
         mut dial_state: DialState,
         noise_config: &NoiseConfig,
@@ -596,7 +601,7 @@ where
                 let initial_dial_time = timer.elapsed();
 
                 debug!(
-                    "Dialed peer: {} on address: {} on tcp after: {}",
+                    "Dialed peer: {} on address: {} on tcp after: {} ms",
                     node_id.short_str(),
                     moved_address,
                     timer.elapsed().as_millis()
@@ -644,13 +649,20 @@ where
                         dial_state.peer().node_id.short_str(),
                         err,
                     );
-
                     dial_state
                         .peer_mut()
                         .addresses
                         .mark_failed_connection_attempt(&address, err.to_string());
-                    // Try the next address
-                    continue;
+
+                    match err {
+                        ConnectionManagerError::NoiseHandshakeError(_) => {
+                            return (dial_state, Err(err));
+                        },
+                        _ => {
+                            // Try the next address
+                            continue;
+                        },
+                    }
                 },
                 // Canceled
                 Either::Right(_) => {

@@ -68,6 +68,8 @@ pub enum ConnectionManagerError {
     // send the same response to multiple requesters
     #[error("Noise error: {0}")]
     NoiseError(String),
+    #[error("Noise handshake error: {0}")]
+    NoiseHandshakeError(String),
     #[error("Peer is banned, denying connection")]
     PeerBanned,
     #[error("Identity protocol failed: {0}")]
@@ -94,7 +96,10 @@ impl From<yamux::ConnectionError> for ConnectionManagerError {
 
 impl From<noise::NoiseError> for ConnectionManagerError {
     fn from(err: noise::NoiseError) -> Self {
-        ConnectionManagerError::NoiseError(err.to_string())
+        match err {
+            noise::NoiseError::HandshakeFailed(_) => ConnectionManagerError::NoiseHandshakeError(err.to_string()),
+            _ => ConnectionManagerError::NoiseError(err.to_string()),
+        }
     }
 }
 

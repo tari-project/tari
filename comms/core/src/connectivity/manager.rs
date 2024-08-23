@@ -602,6 +602,29 @@ impl ConnectivityManagerActor {
         Ok(())
     }
 
+    async fn on_peer_handshake_failure(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
+        let num_failed = self.mark_peer_failed(node_id.clone());
+
+        if (self.peer_manager.find_by_node_id(node_id).await?).is_some() {
+            debug!(
+                target: LOG_TARGET,
+                "Peer `{}` was marked as offline after {} attempts due to incompatible handshake noise prologue. \
+                Removing peer from peer list",
+                node_id,
+                num_failed,
+            );
+            self.peer_manager.delete_peer(node_id).await?;
+            self.ban_peer(
+                node_id,
+                Duration::from_secs(3 * 24 * 60 * 60),
+                "Incompatible handshake noise prologue".to_string(),
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
     async fn handle_connection_manager_event(
         &mut self,
         event: &ConnectionManagerEvent,
@@ -684,7 +707,11 @@ impl ConnectivityManagerActor {
                     target: LOG_TARGET,
                     "Connection to peer '{}' failed because '{:?}'", node_id, err
                 );
-                self.on_peer_connection_failure(node_id).await?;
+                if let ConnectionManagerError::NoiseHandshakeError(_) = err {
+                    self.on_peer_handshake_failure(node_id).await?;
+                } else {
+                    self.on_peer_connection_failure(node_id).await?;
+                }
                 (node_id, ConnectionStatus::Failed, None)
             },
             _ => return Ok(()),
