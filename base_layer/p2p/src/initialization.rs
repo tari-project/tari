@@ -464,6 +464,11 @@ impl P2pInitializer {
         connector: PubsubDomainConnector,
         noise_prologue: Vec<u8>,
     ) -> Self {
+        const PREFIX: &[u8] = b"com.tari.comms.noise.";
+        let mut noise_prologue_buf = vec![0u8; PREFIX.len() + noise_prologue.len()];
+        noise_prologue_buf[..PREFIX.len()].copy_from_slice(PREFIX);
+        noise_prologue_buf[PREFIX.len()..].copy_from_slice(&noise_prologue);
+
         Self {
             config,
             user_agent,
@@ -471,7 +476,7 @@ impl P2pInitializer {
             network,
             node_identity,
             connector: Some(connector),
-            noise_prologue,
+            noise_prologue: noise_prologue_buf,
         }
     }
 
