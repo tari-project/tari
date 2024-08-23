@@ -30,6 +30,9 @@ pub enum LedgerDeviceError {
     /// HID API error
     #[error("HID API error `{0}`")]
     HidApi(String),
+    /// HID API error
+    #[error("HID API error refresh `{0}`")]
+    HidApiRefresh(String),
     /// Native HID transport error
     #[error("Native HID transport error `{0}`")]
     NativeTransport(String),

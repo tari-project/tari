@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ops::Deref;
+use std::{ops::Deref, sync::Mutex};
 
 use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
@@ -34,17 +34,48 @@ pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
 pub const EXPECTED_VERSION: &str = env!("CARGO_PKG_VERSION");
 const WALLET_CLA: u8 = 0x80;
 
-pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {
-    let hid = hidapi()?;
-    let transport = TransportNativeHID::new(hid).map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))?;
-    Ok(transport)
+struct HidManager {
+    inner: Option<HidApi>,
 }
 
-fn hidapi() -> Result<&'static HidApi, LedgerDeviceError> {
-    static HIDAPI: Lazy<Result<HidApi, String>> =
-        Lazy::new(|| HidApi::new().map_err(|e| format!("Unable to get HIDAPI: {}", e)));
+impl HidManager {
+    fn new() -> Result<Self, LedgerDeviceError> {
+        let hidapi = HidApi::new().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))?;
+        Ok(Self { inner: Some(hidapi) })
+    }
 
-    HIDAPI.as_ref().map_err(|e| LedgerDeviceError::HidApi(e.to_string()))
+    fn refresh_if_needed(&mut self) -> Result<(), LedgerDeviceError> {
+        // We need to clear out the inner HidApi instance before creating a new one
+        // This is because only one instance may exist, even when it no longers holds a connection,
+        // and we want this dropped before replacing
+        self.inner = None;
+
+        self.inner = Some(HidApi::new().map_err(|e| LedgerDeviceError::HidApiRefresh(e.to_string()))?);
+
+        Ok(())
+    }
+
+    fn get_hidapi(&self) -> Option<&HidApi> {
+        self.inner.as_ref()
+    }
+}
+
+static HID_MANAGER: Lazy<Mutex<HidManager>> =
+    Lazy::new(|| Mutex::new(HidManager::new().expect("Failed to initialize HidManager")));
+
+pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {
+    let mut manager = HID_MANAGER
+        .lock()
+        .map_err(|_| LedgerDeviceError::NativeTransport("Mutex lock error".to_string()))?;
+
+    match TransportNativeHID::new(manager.get_hidapi().unwrap()) {
+        Ok(transport) => Ok(transport),
+        Err(_) => {
+            manager.refresh_if_needed()?;
+            TransportNativeHID::new(manager.get_hidapi().unwrap())
+                .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+        },
+    }
 }
 
 #[derive(Debug, Clone)]
