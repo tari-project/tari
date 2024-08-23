@@ -33,6 +33,9 @@ pub enum LedgerDeviceError {
     /// Native HID transport error
     #[error("Native HID transport error `{0}`")]
     NativeTransport(String),
+    /// HID transport exchange error
+    #[error("Native HID transport exchange error `{0}`")]
+    NativeTransportExchange(String),
     /// Ledger application not started
     #[error("Ledger application not started")]
     ApplicationNotStarted,

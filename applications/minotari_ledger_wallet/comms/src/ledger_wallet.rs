@@ -60,7 +60,7 @@ impl<D: Deref<Target = [u8]>> Command<D> {
     pub fn execute(&self) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
         get_transport()?
             .exchange(&self.inner)
-            .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+            .map_err(|e| LedgerDeviceError::NativeTransportExchange(e.to_string()))
     }
 
     pub fn execute_with_transport(
@@ -69,7 +69,7 @@ impl<D: Deref<Target = [u8]>> Command<D> {
     ) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
         transport
             .exchange(&self.inner)
-            .map_err(|e| LedgerDeviceError::NativeTransport(e.to_string()))
+            .map_err(|e| LedgerDeviceError::NativeTransportExchange(e.to_string()))
     }
 
     pub fn build_command(account: u64, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
