@@ -49,11 +49,6 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     }
 }
 
-/// Returns the genesis block hash for the selected network.
-pub fn get_genesis_block_hash(network: Network) -> FixedHash {
-    *get_genesis_block(network).hash()
-}
-
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut utxos = Vec::new();
     let mut counter = 1;
@@ -474,10 +469,12 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
     }
 }
 
+// Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
     use std::convert::TryFrom;
 
+    use serial_test::serial;
     use tari_common::get_static_genesis_block_hash;
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
 
@@ -495,61 +492,103 @@ mod test {
     };
 
     #[test]
-    #[cfg(tari_target_network_testnet)]
+    // #[cfg(tari_target_network_testnet)]
+    #[serial]
     fn esmeralda_genesis_sanity_check() {
-        let _ = Network::set_current(Network::Esmeralda);
+        let network = Network::Esmeralda;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('esmeralda_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 164, 1);
+        check_block(network, &block, 164, 1);
+        assert_genesis_block_hash(network);
+        remove_network_env_var()
     }
 
     #[test]
-    #[cfg(tari_target_network_nextnet)]
+    #[serial]
+    // #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
-        let _ = Network::set_current(Network::NextNet);
+        let network = Network::NextNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('nextnet_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 0, 0);
+        check_block(network, &block, 0, 0);
+        assert_genesis_block_hash(network);
+        remove_network_env_var()
     }
 
     #[test]
-    #[cfg(tari_target_network_mainnet)]
+    #[serial]
+    // #[cfg(tari_target_network_mainnet)]
     fn mainnet_genesis_sanity_check() {
-        let _ = Network::set_current(Network::MainNet);
+        let network = Network::MainNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('mainnet_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
-        check_block(Network::MainNet, &block, 164, 1);
+        check_block(network, &block, 164, 1);
+        assert_genesis_block_hash(network);
+        remove_network_env_var()
     }
 
     #[test]
-    #[cfg(tari_target_network_mainnet)]
+    #[serial]
+    // #[cfg(tari_target_network_mainnet)]
     fn stagenet_genesis_sanity_check() {
-        let _ = Network::set_current(Network::StageNet);
+        let network = Network::StageNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('stagenet_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 0, 0);
+        check_block(network, &block, 0, 0);
+        assert_genesis_block_hash(network);
+        remove_network_env_var()
     }
 
     #[test]
-    #[cfg(tari_target_network_testnet)]
+    #[serial]
+    // #[cfg(tari_target_network_testnet)]
     fn igor_genesis_sanity_check() {
-        let _ = Network::set_current(Network::Igor);
+        let network = Network::Igor;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('igor_genesis_sanity_check()')");
+        }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 0, 0);
+        check_block(network, &block, 0, 0);
+        assert_genesis_block_hash(network);
+        remove_network_env_var()
     }
 
     #[test]
-    #[cfg(tari_target_network_testnet)]
+    #[serial]
+    // #[cfg(tari_target_network_testnet)]
     fn localnet_genesis_sanity_check() {
-        let _ = Network::set_current(Network::LocalNet);
+        let network = Network::LocalNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('localnet_genesis_sanity_check()')");
+        }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
-        check_block(Network::LocalNet, &block, 0, 0);
+        check_block(network, &block, 0, 0);
+        assert_genesis_block_hash(network);
+        remove_network_env_var()
     }
 
     fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
@@ -631,9 +670,21 @@ mod test {
             .unwrap();
     }
 
-    // Update `tari_common::get_static_genesis_block_hash` with the correct values if the genesis block change
+    // This is a convenience test to check all networks are covered and to be able to test all networks at once
+    // without the need to re-compile or be dependent on the global static network setting. Update
+    // `tari_common::get_static_genesis_block_hash` with the correct values if the genesis block change.
     #[test]
+    #[serial]
     fn test_get_static_genesis_block_hash() {
+        if Network::is_set() {
+            println!("\nNote!! Static network constant is set, cannot run `test_get_static_genesis_block_hash`\n");
+            return;
+        }
+        if std::env::var("TARI_NETWORK").is_ok() {
+            println!("\nNote!! env_var 'TARI_NETWORK' in use, cannot run `test_get_static_genesis_block_hash`\n");
+            return;
+        }
+
         for network in [
             Network::MainNet,
             Network::StageNet,
@@ -642,6 +693,10 @@ mod test {
             Network::Esmeralda,
             Network::LocalNet,
         ] {
+            set_network_by_env_var(network);
+            if !network_matches(network) {
+                panic!("Network could not be set ('test_get_static_genesis_block_hash()')");
+            }
             match network {
                 Network::MainNet => assert_genesis_block_hash(network),
                 Network::StageNet => assert_genesis_block_hash(network),
@@ -650,16 +705,51 @@ mod test {
                 Network::Esmeralda => assert_genesis_block_hash(network),
                 Network::LocalNet => assert_genesis_block_hash(network),
             }
+            remove_network_env_var();
         }
     }
 
     fn assert_genesis_block_hash(network: Network) {
+        let expected_hash = *get_genesis_block(network).hash();
         assert_eq!(
-            get_genesis_block_hash(network),
-            FixedHash::from_hex(get_static_genesis_block_hash(network)).unwrap(),
+            expected_hash.to_hex(),
+            get_static_genesis_block_hash(network),
             "network: {}, expected hash: {} (update `tari_common::get_static_genesis_block_hash`)",
             network,
-            get_genesis_block_hash(network)
+            expected_hash
         );
+    }
+
+    fn set_network_by_env_var_or_force_set(network: Network) {
+        set_network_by_env_var(network);
+        if Network::get_current_or_user_setting_or_default() != network {
+            let _ = Network::set_current(network);
+        }
+    }
+
+    // Targeted network compilations will override inferred network hashes; this has effect only if
+    // `Network::set_current(<NETWORK>)` has not been called.
+    fn set_network_by_env_var(network: Network) {
+        // Do not override the env_var if network is already set; another test may fail
+        if std::env::var("TARI_NETWORK").is_err() {
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+        }
+    }
+
+    fn remove_network_env_var() {
+        std::env::remove_var("TARI_NETWORK");
+    }
+
+    fn network_matches(network: Network) -> bool {
+        let current_network = Network::get_current_or_user_setting_or_default();
+        if current_network == network {
+            true
+        } else {
+            println!(
+                "\nNetwork mismatch!! Required: {:?}, current: {:?}.\n",
+                network, current_network
+            );
+            false
+        }
     }
 }

@@ -86,11 +86,11 @@ pub(crate) const LOG_TARGET: &str = "common::config";
 /// are wrong.
 pub fn get_static_genesis_block_hash<'a>(network: Network) -> &'a str {
     match network {
-        Network::MainNet => "54537be28b5d91b58d27fc52b7dc0cc8cea1977f199eb509d8b4978b0d6630c9",
-        Network::StageNet => "40afb45c7f10a2dd7bcdd3802273518aba20ac468a75cdfd0c85342a82096557",
-        Network::NextNet => "fed55ccea50122f9bc7ca913e4bbc0fcbd6913c10cb77bf08f98486ec88d5f02",
-        Network::Igor => "6cf2950380c69c991612f4ba0afb80281a41bb016239adc642c78817c2e1dbd4",
+        Network::MainNet => "ba4379a1319a6315d5262f61761d3f609f5b8eb9fa30a05f0d18a80c25d6bae9",
+        Network::StageNet => "cd073787a0bd8803a2546919523c687ccd88c8f0b39d652783530502e101f351",
+        Network::NextNet => "5ae9384d705f8df49d7e5b5988297440a53bc8be48b8792f8bc0a2c3d17c3479",
+        Network::Igor => "50ed5847a5b4b88dfd86fd48597801b72565a0e1ba14701fddbeaca356e8b4c3",
         Network::Esmeralda => "6598d13c5dcb398f5cad294473421bc2fed69071b56fada4387a6ad03a44df08",
-        Network::LocalNet => "7a32e20ebaf29f7cd67f59a7894050488c350f9d97fcea0765b7a4723e2d0bf7",
+        Network::LocalNet => "b693c14804ceaafaee77c2d01310a221960383128de6b0f36c581fb706332bb3",
     }
 }

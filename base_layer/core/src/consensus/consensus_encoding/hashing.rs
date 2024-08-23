@@ -145,44 +145,59 @@ mod tests {
 
     #[test]
     fn it_uses_the_network_environment_variable_if_set() {
-        // This test will not pass if `Network::set_current(<NETWORK>)` is called before the test
-        if !Network::is_set() {
-            let label = "test";
-            let input = [1u8; 32];
+        // Targeted network compilations will override inferred network hashes; this only has effect if
+        // `Network::set_current(<NETWORK>)` has not been called. The test may also not run if
+        // `std::env::var("TARI_NETWORK")` has been set by some other test.
+        if Network::is_set() {
+            println!(
+                "\nNote!! Static network constant is set, cannot run \
+                 `it_uses_the_network_environment_variable_if_set`\n"
+            );
+            return;
+        }
+        if std::env::var("TARI_NETWORK").is_ok() {
+            println!(
+                "\nNote!! env_var 'TARI_NETWORK' in use, cannot run \
+                 `it_uses_the_network_environment_variable_if_set`\n"
+            );
+            return;
+        }
 
-            for network in [
-                Network::MainNet,
-                Network::StageNet,
-                Network::NextNet,
-                Network::LocalNet,
-                Network::Igor,
-                Network::Esmeralda,
-            ] {
-                println!("Testing network: {:?}", network);
-                // Generate a specific network hash
-                let hash_specify_network =
-                    DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, network)
-                        .chain(&input)
-                        .finalize();
+        let label = "test";
+        let input = [1u8; 32];
 
-                // Generate an inferred network hash
-                std::env::set_var("TARI_NETWORK", network.as_key_str());
-                println!(
-                    "TARI_NETWORK:    {:?}",
-                    std::env::var("TARI_NETWORK").unwrap_or_default()
-                );
-                println!(
-                    "Network:         {:?}\n",
-                    Network::get_current_or_user_setting_or_default()
-                );
-                let inferred_network_hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            println!("Testing network: {:?}", network);
+            // Generate a specific network hash
+            let hash_specify_network =
+                DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, network)
                     .chain(&input)
                     .finalize();
-                std::env::remove_var("TARI_NETWORK");
 
-                // They should be equal
-                assert_eq!(hash_specify_network, inferred_network_hash);
-            }
+            // Generate an inferred network hash
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+            println!(
+                "TARI_NETWORK:    {:?}",
+                std::env::var("TARI_NETWORK").unwrap_or_default()
+            );
+            println!(
+                "Network:         {:?}\n",
+                Network::get_current_or_user_setting_or_default()
+            );
+            let inferred_network_hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
+                .chain(&input)
+                .finalize();
+            std::env::remove_var("TARI_NETWORK");
+
+            // They should be equal
+            assert_eq!(hash_specify_network, inferred_network_hash);
         }
     }
 }
