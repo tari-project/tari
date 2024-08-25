@@ -492,7 +492,6 @@ mod test {
     };
 
     #[test]
-    // #[cfg(tari_target_network_testnet)]
     #[serial]
     fn esmeralda_genesis_sanity_check() {
         let network = Network::Esmeralda;
@@ -510,7 +509,6 @@ mod test {
 
     #[test]
     #[serial]
-    // #[cfg(tari_target_network_nextnet)]
     fn nextnet_genesis_sanity_check() {
         let network = Network::NextNet;
         set_network_by_env_var_or_force_set(network);
@@ -527,7 +525,6 @@ mod test {
 
     #[test]
     #[serial]
-    // #[cfg(tari_target_network_mainnet)]
     fn mainnet_genesis_sanity_check() {
         let network = Network::MainNet;
         set_network_by_env_var_or_force_set(network);
@@ -544,7 +541,6 @@ mod test {
 
     #[test]
     #[serial]
-    // #[cfg(tari_target_network_mainnet)]
     fn stagenet_genesis_sanity_check() {
         let network = Network::StageNet;
         set_network_by_env_var_or_force_set(network);
@@ -561,7 +557,6 @@ mod test {
 
     #[test]
     #[serial]
-    // #[cfg(tari_target_network_testnet)]
     fn igor_genesis_sanity_check() {
         let network = Network::Igor;
         set_network_by_env_var_or_force_set(network);
@@ -577,7 +572,6 @@ mod test {
 
     #[test]
     #[serial]
-    // #[cfg(tari_target_network_testnet)]
     fn localnet_genesis_sanity_check() {
         let network = Network::LocalNet;
         set_network_by_env_var_or_force_set(network);
