@@ -355,7 +355,7 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+                "GetViewKey: Native HID transport error `Ledger device not found`".to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
