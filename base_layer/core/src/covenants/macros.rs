@@ -36,18 +36,27 @@
 /// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8)))).unwrap();
 /// covenant.execute(...)?;
 /// ```
+
 #[macro_export]
 macro_rules! covenant {
     ($token:ident($($args:tt)*)) => {{
         let mut covenant = $crate::covenants::Covenant::new();
-        $crate::__covenant_inner!(@ { covenant } $token($($args)*),);
-        Ok::<_, $crate::covenants::CovenantError>(covenant)
+        // We declare and use a closure to ensure that the covenant is returned as a Result
+         let ops = ||{
+            $crate::__covenant_inner!(@ { covenant } $token($($args)*),);
+            Ok::<_, $crate::covenants::CovenantError>(covenant)
+        };
+        ops()
     }};
 
     ($token:ident()) => {{
         let mut covenant = $crate::covenants::Covenant::new();
-        $crate::__covenant_inner!(@ { covenant } $token(),);
-        Ok::<_, $crate::covenants::CovenantError>(covenant)
+        // We declare and use a closure to ensure that the covenant is returned as a Result
+        let ops = ||{
+            $crate::__covenant_inner!(@ { covenant } $token(),);
+            Ok::<_, $crate::covenants::CovenantError>(covenant)
+        };
+        ops()
     }};
 
     () => { Ok::<_, $crate::covenants::CovenantError>($crate::covenants::Covenant::new()) };
@@ -179,18 +188,17 @@ mod test {
     use crate::covenants::{arguments::CovenantArg, filters::CovenantFilter, token::CovenantToken, Covenant};
 
     #[test]
-    fn simple() -> Result<(), Box<dyn std::error::Error>> {
+    fn simple() {
         let covenant = covenant!(identity()).unwrap();
         assert_eq!(covenant.tokens().len(), 1);
         assert!(matches!(
             covenant.tokens()[0],
             CovenantToken::Filter(CovenantFilter::Identity(_))
         ));
-        Ok(())
     }
 
     #[test]
-    fn script() -> Result<(), Box<dyn std::error::Error>> {
+    fn script() {
         let hash = "53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd";
         let hash = {
             let mut buf = [0u8; 32];
@@ -206,6 +214,5 @@ mod test {
         assert_eq!(covenant, decoded);
         unpack_enum!(CovenantArg::TariScript(decoded_script) = decoded.tokens()[2].as_arg().unwrap());
         assert_eq!(script, *decoded_script);
-        Ok(())
     }
 }

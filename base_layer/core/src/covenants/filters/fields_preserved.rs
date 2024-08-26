@@ -48,7 +48,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_outputs_that_match_input_fields() -> Result<(), Box<dyn std::error::Error>> {
+    async fn it_filters_outputs_that_match_input_fields() {
         let covenant =
             covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type))).unwrap();
         let key_manager = create_memory_db_key_manager().unwrap();
@@ -76,7 +76,5 @@ mod test {
 
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
         assert_eq!(output_set.len(), 2);
-
-        Ok(())
     }
 }

@@ -443,7 +443,7 @@ mod test {
             }
 
             #[tokio::test]
-            async fn it_returns_false_if_not_eq() -> Result<(), Box<dyn std::error::Error>> {
+            async fn it_returns_false_if_not_eq() {
                 let key_manager = create_memory_db_key_manager().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
@@ -486,7 +486,6 @@ mod test {
                 assert!(!OutputField::MinimumValuePromise
                     .is_eq(&output, &MicroMinotari::default())
                     .unwrap());
-                Ok(())
             }
         }
 

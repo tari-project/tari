@@ -9872,7 +9872,7 @@ mod test {
     }
 
     #[test]
-    fn test_covenant_create_filled() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_covenant_create_filled() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -9887,7 +9887,6 @@ mod test {
             covenant_destroy(covenant);
             byte_vector_destroy(covenant_bytes);
         }
-        Ok(())
     }
 
     #[test]

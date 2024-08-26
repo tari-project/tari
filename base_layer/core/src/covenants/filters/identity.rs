@@ -43,7 +43,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn it_returns_the_outputset_unchanged() -> Result<(), Box<dyn std::error::Error>> {
+    async fn it_returns_the_outputset_unchanged() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(identity()).unwrap();
         let input = create_input(&key_manager).await;
@@ -52,6 +52,5 @@ mod tests {
         let previous_len = output_set.len();
         IdentityFilter.filter(&mut context, &mut output_set).unwrap();
         assert_eq!(output_set.len(), previous_len);
-        Ok(())
     }
 }

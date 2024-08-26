@@ -61,7 +61,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() -> Result<(), Box<dyn std::error::Error>> {
+    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let features = OutputFeatures {
             maturity: 42,
@@ -94,6 +94,5 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
-        Ok(())
     }
 }

@@ -296,14 +296,14 @@ mod test {
         }
 
         #[test]
-        fn test() -> Result<(), Box<dyn std::error::Error>> {
+        fn test() {
             test_case(CovenantArg::Uint(2048), &[ARG_UINT, 0, 8, 0, 0, 0, 0, 0, 0][..]);
             test_case(
-                CovenantArg::Covenant(covenant!(identity())?),
+                CovenantArg::Covenant(covenant!(identity()).unwrap()),
                 &[ARG_COVENANT, 0x01, 0x20][..],
             );
             test_case(
-                CovenantArg::Bytes(BytesArg::try_from(vec![0x01, 0x02, 0xaa])?),
+                CovenantArg::Bytes(BytesArg::try_from(vec![0x01, 0x02, 0xaa]).unwrap()),
                 &[ARG_BYTES, 0x03, 0x00, 0x00, 0x00, 0x01, 0x02, 0xaa][..],
             );
             test_case(
@@ -331,7 +331,6 @@ mod test {
                 CovenantArg::OutputFields(OutputFields::from(vec![OutputField::Features, OutputField::Commitment])),
                 &[ARG_OUTPUT_FIELDS, 0x02, FIELD_FEATURES, FIELD_COMMITMENT],
             );
-            Ok(())
         }
     }
 }

@@ -57,7 +57,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_filters_outputset_using_symmetric_difference() -> Result<(), Box<dyn std::error::Error>> {
+    async fn it_filters_outputset_using_symmetric_difference() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone())))).unwrap();
@@ -80,6 +80,5 @@ mod test {
 
         assert_eq!(output_set.len(), 2);
         assert_eq!(output_set.get_selected_indexes(), vec![7, 8]);
-        Ok(())
     }
 }

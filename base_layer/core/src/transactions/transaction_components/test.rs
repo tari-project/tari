@@ -620,7 +620,7 @@ mod validate_internal_consistency {
     }
 
     #[tokio::test]
-    async fn it_validates_that_the_covenant_is_honoured() -> Result<(), Box<dyn std::error::Error>> {
+    async fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant))).unwrap();
         let features = OutputFeatures { ..Default::default() };
@@ -724,6 +724,5 @@ mod validate_internal_consistency {
         )
         .await
         .unwrap();
-        Ok(())
     }
 }

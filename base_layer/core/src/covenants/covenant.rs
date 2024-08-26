@@ -208,7 +208,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn it_executes_the_covenant() -> Result<(), Box<dyn std::error::Error>> {
+    async fn it_executes_the_covenant() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         outputs[4].features.maturity = 42;
@@ -223,11 +223,10 @@ mod test {
         .unwrap();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_borsh_de_serialization() -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_borsh_de_serialization() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         outputs[4].features.maturity = 42;
@@ -246,7 +245,6 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(covenant, Covenant::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
-        Ok(())
     }
 
     #[tokio::test]
