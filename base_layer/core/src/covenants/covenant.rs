@@ -27,7 +27,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::{VarIntReader, VarIntWriter};
-use tari_common_types::MaxSizeVec;
+use tari_max_size::MaxSizeVec;
 
 use super::decoder::CovenantDecodeError;
 use crate::{
