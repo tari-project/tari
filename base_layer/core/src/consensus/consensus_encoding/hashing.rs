@@ -120,7 +120,7 @@ mod tests {
         let network = Network::get_current_or_user_setting_or_default();
 
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
-        let test_subject = script!(Nop);
+        let test_subject = script!(Nop).unwrap();
         let mut hasher = Blake2b::<U32>::default();
         TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
 

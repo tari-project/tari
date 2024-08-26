@@ -206,7 +206,7 @@ async fn inbound_fetch_utxos() {
         MicroMinotari(10_000),
         &key_manager,
         &Default::default(),
-        &script!(Nop),
+        &script!(Nop).unwrap(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -281,7 +281,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         .with_lock_height(txn_schema.lock_height)
         .with_fee_per_gram(txn_schema.fee)
         .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))),
+            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
             ExecutionStack::default(),
             change.script_key_id,
             change.commitment_mask_key_id,
@@ -362,7 +362,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
 #[tokio::test]
 async fn test_sender_transaction_protocol_for_overflow() {
     let key_manager = create_memory_db_key_manager().unwrap();
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let amount = MicroMinotari(u64::MAX); // This is the adversary's attack!
     let output_features = OutputFeatures::default();
     let covenant = Covenant::default();

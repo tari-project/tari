@@ -12,6 +12,7 @@ tari_core = { path = "../../base_layer/core", default-features = false }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
+tari_max_size = { path = "../../infrastructure/max_size" }
 minotari_app_utilities = { path = "../minotari_app_utilities", features = ["miner_input"] }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 tari_crypto = { version = "0.20.3" }

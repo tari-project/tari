@@ -3241,6 +3241,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_features",
+ "tari_max_size",
  "tari_script",
  "tari_utilities",
  "thiserror",
@@ -3337,6 +3338,7 @@ dependencies = [
  "tari_hashing",
  "tari_key_manager",
  "tari_libtor",
+ "tari_max_size",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",
@@ -3413,6 +3415,7 @@ dependencies = [
  "tari_core",
  "tari_features",
  "tari_key_manager",
+ "tari_max_size",
  "tari_utilities",
  "thiserror",
  "tokio",
@@ -3451,6 +3454,7 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
+ "tari_max_size",
  "tari_utilities",
  "thiserror",
  "tokio",
@@ -3570,6 +3574,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_key_manager",
+ "tari_max_size",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
@@ -5968,6 +5973,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_contacts",
+ "tari_max_size",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
@@ -6168,6 +6174,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_crypto",
+ "tari_max_size",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
@@ -6237,6 +6244,7 @@ dependencies = [
  "tari_features",
  "tari_hashing",
  "tari_key_manager",
+ "tari_max_size",
  "tari_metrics",
  "tari_mmr",
  "tari_p2p",
@@ -6390,6 +6398,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_max_size"
+version = "1.3.0-pre.0"
+dependencies = [
+ "borsh",
+ "serde",
+ "tari_utilities",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_metrics"
 version = "1.3.0-pre.0"
 dependencies = [
@@ -6471,6 +6489,7 @@ dependencies = [
  "sha2 0.10.8",
  "sha3",
  "tari_crypto",
+ "tari_max_size",
  "tari_utilities",
  "thiserror",
 ]

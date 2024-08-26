@@ -378,7 +378,7 @@ pub async fn create_pre_mine_genesis_block_info(
             Else
             PushPubKey(Box::new(backup_key.clone()))
             EndIf
-        );
+        ).map_err(|e| e.to_string())?;
         let output = WalletOutputBuilder::new(item.value, commitment_mask.key_id)
             .with_features(OutputFeatures::new(
                 OutputFeaturesVersion::get_current_version(),

@@ -132,7 +132,7 @@ async fn range_proof_verification() {
         test_params_2.commitment_mask_key_id.clone(),
     )
     .with_features(OutputFeatures::default())
-    .with_script(script![Nop])
+    .with_script(script![Nop].unwrap())
     .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
     .await
     .unwrap()
@@ -524,7 +524,7 @@ async fn inputs_not_malleable() {
         2,
         15.into(),
         &Default::default(),
-        &script![Nop],
+        &script![Nop].unwrap(),
         &Default::default(),
         &key_manager,
     )
@@ -538,7 +538,7 @@ async fn inputs_not_malleable() {
         .unwrap();
 
     let mut inputs = tx.body().inputs().clone();
-    inputs[0].set_script(script![Drop]).unwrap();
+    inputs[0].set_script(script![Drop].unwrap()).unwrap();
     inputs[0].input_data = stack;
     tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 

@@ -17,6 +17,7 @@ tari_contacts = { path = "../../base_layer/contacts" }
 tari_crypto = { version = "0.20.3" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
+tari_max_size = { path = "../../infrastructure/max_size" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }

@@ -77,7 +77,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -97,7 +97,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .await
         .unwrap()
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -107,7 +107,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     let change = TestParams::new(&key_manager).await;
     builder.with_change_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         inputs!(change.script_key_pk),
         change.script_key_id.clone(),
         change.commitment_mask_key_id.clone(),

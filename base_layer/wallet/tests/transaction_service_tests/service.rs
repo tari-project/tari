@@ -2546,7 +2546,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
             MicroMinotari::from(25),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -2675,7 +2675,7 @@ async fn finalize_tx_with_missing_output() {
             MicroMinotari::from(20),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -3309,7 +3309,7 @@ async fn test_transaction_cancellation() {
 
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -3331,7 +3331,7 @@ async fn test_transaction_cancellation() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
@@ -3339,7 +3339,7 @@ async fn test_transaction_cancellation() {
             TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -3397,7 +3397,7 @@ async fn test_transaction_cancellation() {
 
     // Lets cancel the last one using a Comms stack message
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
         MicroMinotari::from(100_000),
@@ -3417,7 +3417,7 @@ async fn test_transaction_cancellation() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
@@ -3425,7 +3425,7 @@ async fn test_transaction_cancellation() {
             TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -4189,7 +4189,7 @@ async fn test_restarting_transaction_protocols() {
         .await
         .unwrap()
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -4198,7 +4198,7 @@ async fn test_restarting_transaction_protocols() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
@@ -4599,7 +4599,7 @@ async fn test_resend_on_startup() {
     // First we will check the Send Tranasction message
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -4620,7 +4620,7 @@ async fn test_resend_on_startup() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
@@ -4628,7 +4628,7 @@ async fn test_resend_on_startup() {
             TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -5128,7 +5128,7 @@ async fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -5149,7 +5149,7 @@ async fn test_transaction_timeout_cancellation() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
@@ -5157,7 +5157,7 @@ async fn test_transaction_timeout_cancellation() {
             TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),

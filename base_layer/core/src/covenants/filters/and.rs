@@ -54,7 +54,7 @@ mod test {
     #[tokio::test]
     async fn it_filters_outputset_using_intersection() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let script = script!(CheckHeight(101));
+        let script = script!(CheckHeight(101)).unwrap();
         let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))));
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
@@ -64,7 +64,7 @@ mod test {
             |outputs| {
                 // output satisfying maturity only
                 outputs[2].features.maturity = 42;
-                outputs[2].script = script!(CheckHeight(102));
+                outputs[2].script = script!(CheckHeight(102)).unwrap();
                 // output satisfying maturity and script
                 outputs[5].features.maturity = 42;
                 outputs[5].script = script.clone();

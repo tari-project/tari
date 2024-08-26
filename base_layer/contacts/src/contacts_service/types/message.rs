@@ -25,8 +25,9 @@ use std::{convert::TryFrom, fmt::Display};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{tari_address::TariAddress, MaxSizeBytes};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
+use tari_max_size::MaxSizeBytes;
 use tari_p2p::tari_message::TariMessageType;
 use tari_utilities::ByteArray;
 

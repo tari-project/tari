@@ -780,10 +780,10 @@ where
 
         // Confirm script hash is for the expected script, at the moment assuming Nop or Push_pubkey
         // if the script is Push_pubkey(default_key) we know we have to fill it in.
-        let script = if single_round_sender_data.script == script!(Nop) {
+        let script = if single_round_sender_data.script == script!(Nop)? {
             single_round_sender_data.script.clone()
-        } else if single_round_sender_data.script == script!(PushPubKey(Box::default())) {
-            script!(PushPubKey(Box::new(script_public_key.pub_key.clone())))
+        } else if single_round_sender_data.script == script!(PushPubKey(Box::default()))? {
+            script!(PushPubKey(Box::new(script_public_key.pub_key.clone())))?
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
@@ -1031,7 +1031,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
             ExecutionStack::default(),
             change_script_key.key_id,
             change_commitment_mask_key.key_id,
@@ -1084,7 +1084,7 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
-        let nop_script = script![Nop];
+        let nop_script = script![Nop]?;
         let weighting = self.resources.consensus_constants.transaction_weight_params();
         let mut features_and_scripts_byte_size = 0;
         for output in &outputs {
@@ -1139,7 +1139,7 @@ where
                 .get_next_commitment_mask_and_script_key()
                 .await?;
             builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script_key.pub_key))),
+                script!(PushPubKey(Box::new(change_script_key.pub_key)))?,
                 ExecutionStack::default(),
                 change_script_key.key_id,
                 change_commitment_mask_key.key_id,
@@ -1364,7 +1364,7 @@ where
             range_proof_type,
             ..Default::default()
         };
-        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())));
+        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())))?;
         let metadata_byte_size = self
             .resources
             .consensus_constants
@@ -1400,7 +1400,7 @@ where
             )
             .await?
             .with_change_data(
-                script!(PushPubKey(Box::default())),
+                script!(PushPubKey(Box::default()))?,
                 ExecutionStack::default(),
                 TariKeyId::default(),
                 TariKeyId::default(),
@@ -1665,7 +1665,7 @@ where
             range_proof_type,
             ..Default::default()
         };
-        let temp_script = script!(PushPubKey(Box::default()));
+        let temp_script = script!(PushPubKey(Box::default()))?;
         let metadata_byte_size = self
             .resources
             .consensus_constants
@@ -1693,7 +1693,7 @@ where
             .await?
             .with_sender_address(self.resources.one_sided_tari_address.clone())
             .with_recipient_data(
-                script!(PushPubKey(Box::default())),
+                script!(PushPubKey(Box::default()))?,
                 output_features,
                 Covenant::default(),
                 minimum_value_promise,
@@ -1701,7 +1701,7 @@ where
             )
             .await?
             .with_change_data(
-                script!(PushPubKey(Box::default())),
+                script!(PushPubKey(Box::default()))?,
                 ExecutionStack::default(),
                 TariKeyId::default(),
                 TariKeyId::default(),
@@ -1903,7 +1903,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone()))),
+            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
             ExecutionStack::default(),
             change_script_public_key.key_id.clone(),
             change_commitment_mask_key_id.key_id,
@@ -2538,7 +2538,7 @@ where
                 .get_next_commitment_mask_and_script_key()
                 .await?;
             tx_builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script.pub_key))),
+                script!(PushPubKey(Box::new(change_script.pub_key)))?,
                 ExecutionStack::default(),
                 change_script.key_id,
                 change_mask.key_id,
@@ -2620,7 +2620,7 @@ where
             .key_manager
             .get_next_commitment_mask_and_script_key()
             .await?;
-        let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())));
+        let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
         let payment_id = PaymentId::Address(self.resources.interactive_tari_address.clone());
         let encrypted_data = self
             .resources
@@ -2878,7 +2878,7 @@ where
                     .get_next_commitment_mask_and_script_key()
                     .await?;
                 builder.with_change_data(
-                    script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
+                    script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
                     ExecutionStack::default(),
                     change_script_key.key_id,
                     change_commitment_mask_key.key_id,
@@ -2963,7 +2963,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
             ExecutionStack::default(),
             change_script_key.key_id,
             change_commitment_mask_key.key_id,

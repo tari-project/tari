@@ -11652,7 +11652,7 @@ mod test {
             let key_manager = create_memory_db_key_manager().unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
                     MicroMinotari(1234u64),
@@ -11675,7 +11675,7 @@ mod test {
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
-            let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(
@@ -11804,7 +11804,7 @@ mod test {
             // Test import with bulletproof range proof
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(key_manager)),
                     MicroMinotari(1234u64),
@@ -11855,7 +11855,8 @@ mod test {
             let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
-            let script_ptr_1 = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr_1 =
+                CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_1 =
                 CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
@@ -11897,7 +11898,7 @@ mod test {
             };
             let utxo_2 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     features,
                     &runtime.block_on(TestParams::new(key_manager)),
                     MicroMinotari(12345u64),
@@ -11921,7 +11922,8 @@ mod test {
             let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant.clone()));
             let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data));
             let minimum_value_promise = utxo_2.minimum_value_promise.as_u64();
-            let script_ptr_2 = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr_2 =
+                CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_2 =
                 CString::into_raw(CString::new(utxo_2.input_data.to_hex()).unwrap()) as *const c_char;
 
@@ -12030,7 +12032,7 @@ mod test {
             let key_manager = create_memory_db_key_manager().unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
                     MicroMinotari(1234u64),
@@ -12055,7 +12057,7 @@ mod test {
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
-            let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(

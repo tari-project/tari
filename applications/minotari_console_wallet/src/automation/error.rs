@@ -37,6 +37,7 @@ use tari_common_types::types::FixedHashSizeError;
 use tari_core::transactions::{tari_amount::MicroMinotariError, transaction_components::TransactionError};
 use tari_crypto::signatures::SchnorrSignatureError;
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_script::ScriptError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -92,6 +93,8 @@ pub enum CommandError {
     GrpcTlsError(#[from] GrpcTlsError),
     #[error("Invalid signature: `{0}`")]
     FailedSignature(#[from] SchnorrSignatureError),
+    #[error("Tari script error: {0}")]
+    ScriptError(#[from] ScriptError),
 }
 
 impl From<HexError> for CommandError {

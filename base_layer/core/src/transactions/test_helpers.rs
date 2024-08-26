@@ -203,7 +203,8 @@ impl TestParams {
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
         let output_features = OutputFeatures { ..Default::default() };
         Ok(self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].get_serialized_size()? + output_features.get_serialized_size()?,
+            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
+                output_features.get_serialized_size()?,
         ) * num_outputs)
     }
 }
@@ -232,7 +233,7 @@ impl Default for UtxoTestParams {
     fn default() -> Self {
         Self {
             value: 10.into(),
-            script: script![Nop],
+            script: script![Nop].unwrap(),
             features: OutputFeatures::default(),
             input_data: None,
             covenant: Covenant::default(),
@@ -438,7 +439,7 @@ macro_rules! txn_schema {
             fee: $fee,
             lock_height: $lock,
             features: $features.clone(),
-            script: tari_script::script![Nop],
+            script: tari_script::script![Nop].unwrap(),
             covenant: Default::default(),
             input_data: None,
             input_version: $input_version.clone(),
@@ -540,7 +541,7 @@ pub async fn create_tx(
         output_count,
         fee_per_gram,
         &output_features,
-        &script![Nop],
+        &script![Nop].unwrap(),
         &Default::default(),
         key_manager,
     )
@@ -717,7 +718,7 @@ pub async fn create_stx_protocol_internal(
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
         .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))),
+            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
             ExecutionStack::default(),
             change.script_key_id,
             change.commitment_mask_key_id,

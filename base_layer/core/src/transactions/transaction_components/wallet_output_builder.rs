@@ -361,7 +361,7 @@ mod test {
         let (commitment_mask_key, script_key_id) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
-        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -403,7 +403,7 @@ mod test {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
-        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await

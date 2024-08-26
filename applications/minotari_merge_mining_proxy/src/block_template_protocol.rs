@@ -26,7 +26,7 @@ use std::{cmp, convert::TryFrom, sync::Arc};
 use log::*;
 use minotari_app_utilities::parse_miner_input::BaseNodeGrpcClient;
 use minotari_node_grpc_client::grpc;
-use tari_common_types::{tari_address::TariAddress, types::FixedHash, MaxSizeBytes};
+use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
@@ -37,6 +37,7 @@ use tari_core::{
     },
     AuxChainHashes,
 };
+use tari_max_size::MaxSizeBytes;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{

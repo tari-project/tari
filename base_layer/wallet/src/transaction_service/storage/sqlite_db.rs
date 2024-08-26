@@ -2286,7 +2286,7 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
         let test_params = TestParams::new(&key_manager).await;
         let input = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &test_params,
             MicroMinotari::from(100_000),
@@ -2304,7 +2304,7 @@ mod test {
             .await
             .unwrap()
             .with_recipient_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 OutputFeatures::default(),
                 Default::default(),
                 MicroMinotari::zero(),
@@ -2313,7 +2313,7 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id,
                 change.commitment_mask_key_id,
@@ -2391,7 +2391,7 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &test_params,
             MicroMinotari::from(100_000),

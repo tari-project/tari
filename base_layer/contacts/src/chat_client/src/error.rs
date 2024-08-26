@@ -25,9 +25,9 @@ use std::io;
 use diesel::ConnectionError;
 use minotari_app_utilities::identity_management::IdentityError;
 use tari_common_sqlite::error::StorageError as SqliteStorageError;
-use tari_common_types::MaxSizeBytesError;
 use tari_comms::peer_manager::PeerManagerError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
+use tari_max_size::MaxSizeBytesError;
 use tari_p2p::initialization::CommsInitializationError;
 use tari_storage::lmdb_store::LMDBError;
 

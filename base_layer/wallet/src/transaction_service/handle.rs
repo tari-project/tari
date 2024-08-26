@@ -33,8 +33,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
-    MaxSizeBytes,
-    MaxSizeString,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -54,6 +52,7 @@ use tari_core::{
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_script::CheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;

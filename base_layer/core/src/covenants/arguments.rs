@@ -27,10 +27,8 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
-use tari_common_types::{
-    types::{Commitment, FixedHash, PublicKey},
-    MaxSizeBytes,
-};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_max_size::MaxSizeBytes;
 use tari_script::TariScript;
 use tari_utilities::{hex::Hex, ByteArray};
 
@@ -316,7 +314,11 @@ mod test {
                 CovenantArg::Hash(FixedHash::zero()),
                 &from_hex("010000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
-            test_case(CovenantArg::TariScript(script!(Nop)), &[ARG_TARI_SCRIPT, 0x01, 0x73]);
+            test_case(CovenantArg::TariScript(script!(Nop).unwrap()), &[
+                ARG_TARI_SCRIPT,
+                0x01,
+                0x73,
+            ]);
             test_case(CovenantArg::OutputField(OutputField::Covenant), &[
                 ARG_OUTPUT_FIELD,
                 FIELD_COVENANT,

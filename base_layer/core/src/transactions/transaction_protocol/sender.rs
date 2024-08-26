@@ -1119,7 +1119,7 @@ mod test {
         let bob_key = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let fee_per_gram = MicroMinotari(4);
@@ -1230,7 +1230,7 @@ mod test {
         let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![]).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let expected_fee = builder.fee().calculate(
             MicroMinotari(20),
             1,
@@ -1345,7 +1345,7 @@ mod test {
         let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![]).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
@@ -1450,7 +1450,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
         builder
@@ -1489,7 +1489,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
         builder
@@ -1532,7 +1532,7 @@ mod test {
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroMinotari(25000);
         let input = create_test_input(alice_value, 0, &key_manager_alice, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
 
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager_alice.clone());
@@ -1542,7 +1542,7 @@ mod test {
             .with_fee_per_gram(MicroMinotari(20))
             .with_change_data(
                 // "colour" this output so that we can find it later
-                script!(PushInt(1) Drop Nop),
+                script!(PushInt(1) Drop Nop).unwrap(),
                 inputs!(change_params.script_key_pk),
                 change_params.script_key_id.clone(),
                 change_params.commitment_mask_key_id.clone(),
