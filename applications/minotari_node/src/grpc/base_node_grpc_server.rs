@@ -2003,26 +2003,32 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .borrow()
             .state_info
             .clone();
+        let short_desc = state.short_desc();
         let response = match state {
             StateInfo::HeaderSync(None) => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
                 state: tari_rpc::SyncState::HeaderStarting.into(),
+                short_desc,
+
             },
             StateInfo::HeaderSync(Some(info)) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Header.into(),
+                short_desc,
             },
             StateInfo::Connecting(_) => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
                 state: tari_rpc::SyncState::BlockStarting.into(),
+                short_desc,
             },
             StateInfo::BlockSync(info) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Block.into(),
+                short_desc,
             },
             _ => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
@@ -2032,6 +2038,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 } else {
                     tari_rpc::SyncState::Startup.into()
                 },
+                short_desc
             },
         };
         Ok(Response::new(response))
