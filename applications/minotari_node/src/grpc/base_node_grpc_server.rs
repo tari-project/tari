@@ -2010,7 +2010,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 local_height: 0,
                 state: tari_rpc::SyncState::HeaderStarting.into(),
                 short_desc,
-
             },
             StateInfo::HeaderSync(Some(info)) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
