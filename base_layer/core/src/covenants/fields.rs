@@ -471,7 +471,7 @@ mod test {
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
                 assert!(!OutputField::Covenant
-                    .is_eq(&output, &covenant!(and(identity(), identity())))
+                    .is_eq(&output, &covenant!(and(identity(), identity())).unwrap())
                     .unwrap());
                 assert!(!OutputField::Features
                     .is_eq(&output, &OutputFeatures::default())

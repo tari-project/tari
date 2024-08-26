@@ -71,7 +71,7 @@ mod test {
         let mut hasher = Blake2b::<U32>::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(borsh::to_vec(&features).unwrap()).finalize();
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into()))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
