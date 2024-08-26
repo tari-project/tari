@@ -2037,7 +2037,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 } else {
                     tari_rpc::SyncState::Startup.into()
                 },
-                short_desc
+                short_desc,
             },
         };
         Ok(Response::new(response))
