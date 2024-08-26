@@ -22,12 +22,13 @@
 
 use std::{
     fmt::{Debug, Formatter},
+    net::TcpListener,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
-use std::net::TcpListener;
+
 use minotari_app_utilities::identity_management::save_as_json;
 use minotari_node::{config::GrpcMethod, run_base_node, BaseNodeConfig, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
@@ -258,13 +259,13 @@ impl BaseNodeProcess {
 
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
-        loop{
+        loop {
             // lets wait till the port is cleared
             if TcpListener::bind(("127.0.0.1", self.port)).is_ok() {
                 break;
             }
         }
-        loop{
+        loop {
             // lets wait till the port is cleared
             if TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
                 break;

@@ -91,8 +91,9 @@ pub async fn spawn_wallet(
             .join(format!("{}_grpc_port_{}", wallet_name.clone(), grpc_port));
 
         wallet_config = WalletConfig::default();
-        wallet_config.base_node_service_config.base_node_monitor_max_refresh_interval = Duration::from_secs(5);
-
+        wallet_config
+            .base_node_service_config
+            .base_node_monitor_max_refresh_interval = Duration::from_secs(5);
     };
 
     let base_node = base_node_name.map(|name| {
