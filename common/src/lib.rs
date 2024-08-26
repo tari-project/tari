@@ -84,7 +84,7 @@ pub(crate) const LOG_TARGET: &str = "common::config";
 /// applications that need to know the genesis block hash for a specific network, but do not have access to the
 /// genesis block in tari_core. Test `fn test_get_static_genesis_block_hash()` in tari_core will fail if these values
 /// are wrong.
-pub fn get_static_genesis_block_hash<'a>(network: Network) -> &'a str {
+pub fn get_static_genesis_block_hash(network: Network) -> &'static str {
     match network {
         Network::MainNet => "ba4379a1319a6315d5262f61761d3f609f5b8eb9fa30a05f0d18a80c25d6bae9",
         Network::StageNet => "cd073787a0bd8803a2546919523c687ccd88c8f0b39d652783530502e101f351",

@@ -605,7 +605,7 @@ impl ConnectivityManagerActor {
     async fn on_peer_handshake_failure(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
         let num_failed = self.mark_peer_failed(node_id.clone());
 
-        if (self.peer_manager.find_by_node_id(node_id).await?).is_some() {
+        if self.peer_manager.exists_node_id(node_id).await {
             debug!(
                 target: LOG_TARGET,
                 "Peer `{}` was marked as offline after {} attempts due to incompatible handshake noise prologue. \
