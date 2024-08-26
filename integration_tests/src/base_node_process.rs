@@ -21,6 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryInto,
     fmt::{Debug, Formatter},
     net::TcpListener,
     path::PathBuf,
@@ -261,13 +262,13 @@ impl BaseNodeProcess {
         self.kill_signal.trigger();
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.port)).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.port.try_into().unwrap())).is_ok() {
                 break;
             }
         }
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.grpc_port.try_into().unwrap())).is_ok() {
                 break;
             }
         }
