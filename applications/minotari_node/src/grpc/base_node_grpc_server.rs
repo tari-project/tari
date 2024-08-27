@@ -225,7 +225,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetNetworkDifficulty)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetNetworkDifficulty: from_tip: {:?} start_height: {:?} end_height: {:?}",
             request.from_tip,
@@ -329,7 +329,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending GetNetworkDifficulty response stream to client"
         );
@@ -343,7 +343,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetMempoolTransactions)?;
         let report_error_flag = self.report_error_flag();
         let _request = request.into_inner();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
 
         let mut mempool = self.mempool_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
@@ -390,7 +390,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
             }
         });
-        debug!(target: LOG_TARGET, "Sending GetMempool response stream to client");
+        trace!(target: LOG_TARGET, "Sending GetMempool response stream to client");
         Ok(Response::new(rx))
     }
 
@@ -404,7 +404,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::ListHeaders)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for ListHeaders: from_height: {}, num_headers:{}, sorting:{}",
             request.from_height,
@@ -469,7 +469,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         )
         .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
         task::spawn(async move {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Starting base node request {}-{}",
                 header_range.start(),
@@ -481,7 +481,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Either::Right(page_iter)
             };
             for (start, end) in page_iter {
-                debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
+                trace!(target: LOG_TARGET, "Page: {}-{}", start, end);
                 let result_data = match handler.get_blocks(start..=end, true).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
@@ -541,11 +541,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                     Ok(result_data) => {
                         let result_size = result_data.len();
-                        debug!(target: LOG_TARGET, "Result headers: {}", result_size);
+                        trace!(target: LOG_TARGET, "Result headers: {}", result_size);
 
                         for response in result_data {
                             // header wont be none here as we just filled it in above
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
                                 "Sending block header: {}",
                                 response.header.as_ref().map( | h| h.height).unwrap_or(0)
@@ -564,7 +564,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(target: LOG_TARGET, "Sending ListHeaders response stream to client");
+        trace!(target: LOG_TARGET, "Sending ListHeaders response stream to client");
         Ok(Response::new(rx))
     }
 
@@ -575,7 +575,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetNewBlockTemplate)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
         let algo = request
             .algo
@@ -626,7 +626,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             initial_sync_achieved: status_watch.borrow().bootstrapped,
         };
 
-        debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
+        trace!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
         Ok(Response::new(response))
     }
 
@@ -637,7 +637,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetNewBlock)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get new block");
         let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
             obscure_error_if_true(
                 report_error_flag,
@@ -730,7 +730,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             tari_unique_id: gen_hash,
             miner_data: Some(miner_data),
         };
-        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        trace!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
     }
 
@@ -744,7 +744,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 "`GetNewBlockTemplateWithCoinbases` method not made available",
             ));
         }
-        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template with coinbases");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get new block template with coinbases");
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         let algo = request
@@ -971,7 +971,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             tari_unique_id: gen_hash,
             miner_data: Some(miner_data),
         };
-        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        trace!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
     }
 
@@ -987,7 +987,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block with coinbases");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get new block with coinbases");
         let mut block_template: NewBlockTemplate = request
             .new_template
             .ok_or_else(|| {
@@ -1194,7 +1194,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             tari_unique_id: gen_hash,
             miner_data: Some(miner_data),
         };
-        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        trace!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
     }
 
@@ -1205,7 +1205,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetNewBlockBlob)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
         let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
             obscure_error_if_true(
                 report_error_flag,
@@ -1277,7 +1277,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             utxo_mr: header.output_mr.to_vec(),
             tari_unique_id: gen_hash,
         };
-        debug!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
+        trace!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
         Ok(Response::new(response))
     }
 
@@ -1295,7 +1295,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             )
         })?;
         let block_height = block.header.height;
-        debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
+        trace!(target: LOG_TARGET, "Miner submitted block: {}", block);
         info!(
             target: LOG_TARGET,
             "Received SubmitBlock #{} request from client", block_height
@@ -1308,7 +1308,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
             .to_vec();
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending SubmitBlock #{} response to client", block_height
         );
@@ -1321,22 +1321,22 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitBlockBlob)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
+        trace!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
         let request = request.into_inner();
-        debug!(target: LOG_TARGET, "request: {:?}", request);
+        trace!(target: LOG_TARGET, "request: {:?}", request);
         let mut header_bytes = request.header_blob.as_slice();
         let mut body_bytes = request.body_blob.as_slice();
-        debug!(target: LOG_TARGET, "doing header");
+        trace!(target: LOG_TARGET, "doing header");
 
         let header = BorshDeserialize::deserialize(&mut header_bytes)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-        debug!(target: LOG_TARGET, "doing body");
+        trace!(target: LOG_TARGET, "doing body");
         let body = BorshDeserialize::deserialize(&mut body_bytes)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
 
         let block = Block::new(header, body);
         let block_height = block.header.height;
-        debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
+        trace!(target: LOG_TARGET, "Miner submitted block: {}", block);
         info!(
             target: LOG_TARGET,
             "Received SubmitBlock #{} request from client", block_height
@@ -1349,7 +1349,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
             .to_vec();
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending SubmitBlock #{} response to client", block_height
         );
@@ -1373,7 +1373,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::invalid_argument(format!("Invalid transaction provided: {}", e)),
                 )
             })?;
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
             txn.body.kernels().len(),
@@ -1404,7 +1404,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
         };
 
-        debug!(target: LOG_TARGET, "Sending SubmitTransaction response to client");
+        trace!(target: LOG_TARGET, "Sending SubmitTransaction response to client");
         Ok(Response::new(response))
     }
 
@@ -1430,7 +1430,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::invalid_argument(format!("excess_sig could not be converted '{}'", e)),
                 )
             })?;
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Received TransactionState request from client ({} excess_sig)",
             excess_sig
@@ -1452,7 +1452,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let response = tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::Mined.into(),
             };
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Sending Transaction state response to client {:?}", response
             );
@@ -1488,7 +1488,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
         };
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending Transaction state response to client {:?}", response
         );
@@ -1501,7 +1501,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::GetPeersStream>, Status> {
         self.check_method_enabled(GrpcMethod::GetPeers)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
 
         let peers = self
             .comms
@@ -1524,7 +1524,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(target: LOG_TARGET, "Sending peers response to client");
+        trace!(target: LOG_TARGET, "Sending peers response to client");
         Ok(Response::new(rx))
     }
 
@@ -1535,7 +1535,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetBlocks)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetBlocks: {:?}", request.heights
         );
@@ -1572,7 +1572,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 for block in blocks {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "GetBlock GRPC sending block #{}",
                         block.header().height
@@ -1593,7 +1593,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
+        trace!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
         Ok(Response::new(rx))
     }
 
@@ -1603,7 +1603,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
         self.check_method_enabled(GrpcMethod::GetTipInfo)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
         let mut handler = self.node_service.clone();
 
@@ -1621,7 +1621,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             base_node_state: state.into(),
         };
 
-        debug!(target: LOG_TARGET, "Sending MetaData response to client");
+        trace!(target: LOG_TARGET, "Sending MetaData response to client");
         Ok(Response::new(response))
     }
 
@@ -1631,7 +1631,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::SearchKernelsStream>, Status> {
         self.check_method_enabled(GrpcMethod::SearchKernels)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
 
         let kernels = request
@@ -1677,7 +1677,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(target: LOG_TARGET, "Sending SearchKernels response stream to client");
+        trace!(target: LOG_TARGET, "Sending SearchKernels response stream to client");
         Ok(Response::new(rx))
     }
 
@@ -1687,7 +1687,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::SearchUtxosStream>, Status> {
         self.check_method_enabled(GrpcMethod::SearchUtxos)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
         let request = request.into_inner();
 
         let outputs = request
@@ -1732,7 +1732,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(target: LOG_TARGET, "Sending SearchUtxos response stream to client");
+        trace!(target: LOG_TARGET, "Sending SearchUtxos response stream to client");
         Ok(Response::new(rx))
     }
 
@@ -1743,7 +1743,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
         self.check_method_enabled(GrpcMethod::FetchMatchingUtxos)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
 
         let hashes = request
@@ -1799,7 +1799,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending FindMatchingUtxos response stream to client"
         );
@@ -1813,7 +1813,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetBlockTiming)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetBlockTiming: from_tip: {:?} start_height: {:?} end_height: {:?}",
             request.from_tip,
@@ -1852,7 +1852,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
 
         let response = tari_rpc::BlockTimingResponse { max, min, avg };
-        debug!(target: LOG_TARGET, "Sending GetBlockTiming response to client");
+        trace!(target: LOG_TARGET, "Sending GetBlockTiming response to client");
         Ok(Response::new(response))
     }
 
@@ -1862,8 +1862,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
         self.check_method_enabled(GrpcMethod::GetConstants)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
-        debug!(target: LOG_TARGET, "Sending GetConstants response to client");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
+        trace!(target: LOG_TARGET, "Sending GetConstants response to client");
 
         let block_height = request.into_inner().block_height;
 
@@ -1940,7 +1940,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
         self.check_method_enabled(GrpcMethod::GetTokensInCirculation)?;
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
         let mut heights = request.heights;
         heights = heights
@@ -1988,7 +1988,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
 
-        debug!(target: LOG_TARGET, "Sending GetTokensInCirculation response to client");
+        trace!(target: LOG_TARGET, "Sending GetTokensInCirculation response to client");
         Ok(Response::new(rx))
     }
 
@@ -2048,7 +2048,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         self.check_method_enabled(GrpcMethod::GetSyncInfo)?;
-        debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
         let response = self
             .state_machine_handle
             .get_status_info_watch()
@@ -2065,7 +2065,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             })
             .unwrap_or_default();
 
-        debug!(target: LOG_TARGET, "Sending SyncData response to client");
+        trace!(target: LOG_TARGET, "Sending SyncData response to client");
         Ok(Response::new(response))
     }
 
@@ -2252,7 +2252,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
         self.check_method_enabled(GrpcMethod::GetActiveValidatorNodes)?;
         let request = request.into_inner();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetActiveValidatorNodes");
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
@@ -2273,7 +2273,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 if tx.send(Ok(active_validator_node)).await.is_err() {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "[get_active_validator_nodes] Client has disconnected before stream completed"
                     );
@@ -2281,7 +2281,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
             }
         });
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending GetActiveValidatorNodes response stream to client"
         );
@@ -2295,7 +2295,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetTemplateRegistrations)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
 
         let (mut tx, rx) = mpsc::channel(10);
 
@@ -2354,7 +2354,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 if tx.send(Ok(resp)).await.is_err() {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "[get_template_registrations] Client has disconnected before stream completed"
                     );
@@ -2362,7 +2362,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
             }
         });
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending GetTemplateRegistrations response stream to client"
         );
@@ -2377,7 +2377,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetSideChainUtxos)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
-        debug!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
 
         let (mut tx, rx) = mpsc::channel(10);
 
@@ -2463,7 +2463,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         };
 
                         if tx.send(Ok(resp)).await.is_err() {
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
                                 "[get_template_registrations] Client has disconnected before stream completed"
                             );
@@ -2493,7 +2493,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
             }
         });
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Sending GetTemplateRegistrations response stream to client"
         );
@@ -2516,7 +2516,7 @@ async fn get_block_group(
     let calc_type: CalcType = request.calc_type();
     let height_request: tari_rpc::HeightRequest = request.into();
 
-    debug!(
+    trace!(
         target: LOG_TARGET,
         "Incoming GRPC request for GetBlockSize: from_tip: {:?} start_height: {:?} end_height: {:?}",
         height_request.from_tip,
@@ -2560,7 +2560,7 @@ async fn get_block_group(
         },
     }
     .unwrap_or_default();
-    debug!(
+    trace!(
         target: LOG_TARGET,
         "Sending GetBlockSize response to client: {:?}", value
     );

@@ -789,7 +789,7 @@ where
                          Some(msg) => {
                             #[cfg(feature = "metrics")]
                             metrics::outbound_response_bytes(&self.node_id, &self.protocol).observe(msg.len() as f64);
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
                                 "({}) Sending body len = {}",
                                 self.logging_context_string,
@@ -799,7 +799,7 @@ where
                             self.framed.send(msg).await?;
                         },
                         None => {
-                            debug!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
+                            trace!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
                             break;
                         },
                     }

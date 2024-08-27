@@ -361,7 +361,7 @@ impl MessagingProtocol {
         match notification.event {
             // Peer negotiated to speak the messaging protocol with us
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "NewInboundSubstream for peer '{}'",
                     node_id.short_str()

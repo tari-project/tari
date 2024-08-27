@@ -348,7 +348,7 @@ where
         config: &ConnectionManagerConfig,
     ) -> Result<PeerConnection, ConnectionManagerError> {
         const CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
@@ -361,7 +361,7 @@ where
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
         let latency = timer.elapsed();
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Noise socket upgrade completed in {:.2?} with public key '{}'",
             latency,
