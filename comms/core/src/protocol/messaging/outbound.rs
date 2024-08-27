@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use futures::{future, SinkExt, StreamExt};
 use tokio::{pin, sync::mpsc};
-use tracing::{debug, error, span, Instrument, Level};
+use tracing::{debug, error, span, trace, Instrument, Level};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
