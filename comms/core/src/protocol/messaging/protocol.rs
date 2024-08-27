@@ -295,11 +295,11 @@ impl MessagingProtocol {
             }
         };
 
-        debug!(target: LOG_TARGET, "Sending message {}", out_msg);
+        trace!(target: LOG_TARGET, "Sending message {}", out_msg);
         let tag = out_msg.tag;
         match sender.send(out_msg) {
             Ok(_) => {
-                debug!(target: LOG_TARGET, "Message ({}) dispatched to outbound handler", tag,);
+                trace!(target: LOG_TARGET, "Message ({}) dispatched to outbound handler", tag,);
                 Ok(())
             },
             Err(err) => {

@@ -620,7 +620,7 @@ impl DhtConnectivity {
         match event {
             PeerConnected(conn) => {
                 self.handle_new_peer_connected(*conn.clone()).await?;
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Peer: node_id '{}', allow_list '{}', connected '{}'",
                     conn.peer_node_id(),
