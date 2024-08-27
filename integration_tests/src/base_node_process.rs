@@ -229,7 +229,7 @@ pub async fn spawn_base_node_with_config(
             GrpcMethod::GetSideChainUtxos,
         ];
 
-        // Heirachically set the base path for all configs
+        // Hierarchically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
 
         println!(
