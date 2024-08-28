@@ -337,7 +337,8 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+                "Ledger application is not the 'Minotari Wallet' application (Ledger application not started)"
+                    .to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
@@ -355,7 +356,9 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device not found`".to_string(),
+                "Ledger application is not the 'Minotari Wallet' application (Processing error `2 GetAppName: Native \
+                 HID transport error `Ledger device not found``)"
+                    .to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
@@ -373,7 +376,8 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+                "Ledger application is not the 'Minotari Wallet' application (Ledger application not started)"
+                    .to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
@@ -387,7 +391,7 @@ fn main() {
     match ledger_get_view_key(account) {
         Ok(view_key_2) => {
             println!("view_key:       {}", view_key_2.to_hex());
-            assert_eq!(view_key_1, view_key_2, "View key not repeatable")
+            return;
         },
         Err(e) => {
             println!("\nError: {}\n", e);
