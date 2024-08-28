@@ -4854,6 +4854,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "randomx_miner"
+version = "1.3.0-pre.0"
+dependencies = [
+ "clap 3.2.25",
+ "config",
+ "crossterm 0.25.0",
+ "log",
+ "minotari_app_utilities",
+ "serde",
+ "tari_common",
+ "tari_comms",
+ "tari_features",
+ "tokio",
+]
+
+[[package]]
 name = "rayon"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
