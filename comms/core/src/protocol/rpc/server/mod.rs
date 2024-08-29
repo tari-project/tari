@@ -374,7 +374,10 @@ where
             Some(max) if max > 0 => {
                 debug_assert!(*count <= max);
                 if *count >= max {
-                    return Err(RpcServerError::MaxSessionsPerClientReached { node_id });
+                    return Err(RpcServerError::MaxSessionsPerClientReached {
+                        node_id,
+                        max_sessions: max,
+                    });
                 }
             },
             Some(_) | None => {},
@@ -403,16 +406,19 @@ where
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
         if !self.executor.can_spawn() {
+            let msg = format!("Used all {} sessions", self.executor.max_available());
             debug!(
                 target: LOG_TARGET,
                 "Rejecting RPC session request for peer `{}` because {}",
                 node_id,
-                HandshakeRejectReason::NoSessionsAvailable
+                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
             );
             handshake
-                .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
+                    "Cannot spawn more sessions",
+                ))
                 .await?;
-            return Err(RpcServerError::MaximumSessionsReached);
+            return Err(RpcServerError::MaximumSessionsReached(msg));
         }
 
         let service = match self.service.make_service(protocol.clone()).await {
@@ -441,7 +447,9 @@ where
 
             Err(err) => {
                 handshake
-                    .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                    .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
+                        "Maximum sessions for client",
+                    ))
                     .await?;
                 return Err(err);
             },
@@ -477,7 +485,7 @@ where
 
                 node_id
             })
-            .map_err(|_| RpcServerError::MaximumSessionsReached)?;
+            .map_err(|e| RpcServerError::MaximumSessionsReached(format!("{:?}", e)))?;
 
         self.tasks.push(handle);
 

@@ -25,6 +25,7 @@ use tokio::{sync::mpsc, time::error::Elapsed};
 
 use crate::{
     connection_manager::PeerConnectionRequest,
+    multiplexing::YamuxControlError,
     noise,
     peer_manager::PeerManagerError,
     peer_validator::PeerValidatorError,
@@ -84,6 +85,8 @@ pub enum ConnectionManagerError {
     PeerValidationError(#[from] PeerValidatorError),
     #[error("No contactable addresses for peer {0} left")]
     NoContactableAddressesForPeer(String),
+    #[error("Yamux error: {0}")]
+    YamuxControlError(#[from] YamuxControlError),
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {
@@ -107,8 +110,8 @@ impl From<PeerConnectionError> for ConnectionManagerError {
 /// Error type for PeerConnection
 #[derive(Debug, Error)]
 pub enum PeerConnectionError {
-    #[error("Yamux connection error: {0}")]
-    YamuxConnectionError(#[from] yamux::ConnectionError),
+    #[error("Yamux error: {0}")]
+    YamuxControlError(#[from] YamuxControlError),
     #[error("Internal oneshot reply channel was unexpectedly cancelled")]
     InternalReplyCancelled,
     #[error("Failed to send internal request: {0}")]

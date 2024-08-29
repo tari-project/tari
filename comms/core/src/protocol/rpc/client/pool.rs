@@ -99,9 +99,12 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
                     Ok(c) => c,
                     // This is an edge case where the remote node does not have any further sessions available. This is
                     // gracefully handled by returning one of the existing used sessions.
-                    Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => self
+                    Err(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val)) => self
                         .get_least_used()
-                        .ok_or(RpcClientPoolError::NoMoreRemoteRpcSessions)?,
+                        .ok_or(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val))?,
+                    Err(RpcClientPoolError::NoMoreRemoteClientRpcSessions(val)) => self
+                        .get_least_used()
+                        .ok_or(RpcClientPoolError::NoMoreRemoteClientRpcSessions(val))?,
                     Err(err) => {
                         return Err(err);
                     },
@@ -258,8 +261,10 @@ impl<T: RpcPoolClient> RpcPoolClient for RpcClientLease<T> {
 pub enum RpcClientPoolError {
     #[error("Peer connection to peer '{peer}' dropped")]
     PeerConnectionDropped { peer: NodeId },
-    #[error("No peer RPC sessions are available")]
-    NoMoreRemoteRpcSessions,
+    #[error("No peer RPC server sessions are available")]
+    NoMoreRemoteServerRpcSessions(String),
+    #[error("No peer RPC client sessions are available")]
+    NoMoreRemoteClientRpcSessions(String),
     #[error("Failed to create client connection: {0}")]
     FailedToConnect(RpcError),
 }
@@ -267,9 +272,12 @@ pub enum RpcClientPoolError {
 impl From<RpcError> for RpcClientPoolError {
     fn from(err: RpcError) -> Self {
         match err {
-            RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable)) => {
-                RpcClientPoolError::NoMoreRemoteRpcSessions
-            },
+            RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::NoServerSessionsAvailable(val),
+            )) => RpcClientPoolError::NoMoreRemoteServerRpcSessions(val.to_string()),
+            RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::NoClientSessionsAvailable(val),
+            )) => RpcClientPoolError::NoMoreRemoteClientRpcSessions(val.to_string()),
             err => RpcClientPoolError::FailedToConnect(err),
         }
     }

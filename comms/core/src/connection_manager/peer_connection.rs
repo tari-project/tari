@@ -54,7 +54,7 @@ use crate::protocol::rpc::{
 use crate::{
     framing,
     framing::CanonicalFraming,
-    multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
+    multiplexing::{Control, IncomingSubstreams, Substream, Yamux, YamuxControlError},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
@@ -521,34 +521,32 @@ impl PeerConnectionActor {
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool, minimized: Minimized) -> Result<(), PeerConnectionError> {
         self.request_rx.close();
-        match self.control.close().await {
-            Err(yamux::ConnectionError::Closed) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "(Peer = {}) Connection already closed",
-                    self.peer_node_id.short_str()
-                );
 
-                return Ok(());
-            },
-            // Only emit closed event once
-            _ => {
-                if !silent {
-                    self.notify_event(ConnectionManagerEvent::PeerDisconnected(
-                        self.id,
-                        self.peer_node_id.clone(),
-                        minimized,
-                    ))
-                    .await;
-                }
-            },
+        // Only emit closed event once
+        if let Err(e) = self.control.close().await {
+            match e {
+                YamuxControlError::ConnectionClosed => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "On disconnect: (Peer = {}) Connection already closed ({})",
+                        self.peer_node_id.short_str(),
+                        e
+                    );
+                    return Ok(());
+                },
+                e => trace!(target: LOG_TARGET, "On disconnect: ({})", e),
+            }
         }
 
-        debug!(
-            target: LOG_TARGET,
-            "(Peer = {}) Connection closed",
-            self.peer_node_id.short_str()
-        );
+        if !silent {
+            self.notify_event(ConnectionManagerEvent::PeerDisconnected(
+                self.id,
+                self.peer_node_id.clone(),
+                minimized,
+            ))
+            .await;
+        }
+        trace!(target: LOG_TARGET, "(Peer = {}) Connection closed", self.peer_node_id.short_str());
 
         Ok(())
     }
