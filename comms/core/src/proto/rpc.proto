@@ -56,5 +56,5 @@ message RpcSessionReply {
         HANDSHAKE_REJECT_REASON_NO_CLIENT_SESSIONS_AVAILABLE = 3;
         HANDSHAKE_REJECT_REASON_PROTOCOL_NOT_SUPPORTED= 4;
     }
-    HandshakeRejectReason reject_reason = 4;
+    HandshakeRejectReason reject_reason = 3;
 }
