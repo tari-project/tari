@@ -536,6 +536,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 
     let num_retries = 100;
     let mut current_status = 0;
+    let mut total_found = 0;
 
     for _ in 0..num_retries {
         let mut txs = client
@@ -554,12 +555,13 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         if found_tx >= num_txs {
             return;
         }
+        total_found += found_tx;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     panic!(
-        "Wallet {} failed to have at least num {} txs with status {}, current status is {}",
-        wallet, num_txs, transaction_status, current_status
+        "Wallet {} failed to have at least num {} txs with status {}, current status is {}, scanned txs {}",
+        wallet, num_txs, transaction_status, current_status, total_found
     );
 }
 
