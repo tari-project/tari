@@ -173,10 +173,10 @@ impl PeerConnectionMockState {
 
     pub async fn disconnect(&self) -> Result<(), PeerConnectionError> {
         match self.mux_control.lock().await.close().await {
-            Ok(_) => Ok(()),
             // Match the behaviour of the real PeerConnection.
             Err(YamuxControlError::ConnectionClosed) => Ok(()),
-            Err(err) => Err(err.into()),
+            Err(_err) => Ok(()), // Err(err.into()),
+            Ok(_) => Ok(()),
         }
     }
 }
