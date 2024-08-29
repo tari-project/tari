@@ -20,14 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Stream multiplexers typically used to allow multiplexed substreams over an ordered reliable byte stream.
+use futures::channel::oneshot::Canceled;
+use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
+use yamux::ConnectionError;
 
-#[cfg(feature = "metrics")]
-mod metrics;
+/// Error type for PeerConnection
+#[derive(Debug, Error, Clone)]
+pub enum YamuxControlError {
+    #[error("Yamux connection error: {0}")]
+    ConnectionError(String),
+    #[error("Yamux connection closed")]
+    ConnectionClosed,
+    #[error("Yamux request send error: {0}")]
+    RequestSendError(String),
+    #[error("Yamux request send error: {0}")]
+    RequestCanceled(#[from] Canceled),
+}
 
-mod error;
-mod yamux;
-pub use self::{
-    error::YamuxControlError,
-    yamux::{Control, IncomingSubstreams, Substream, Yamux},
-};
+impl From<ConnectionError> for YamuxControlError {
+    fn from(err: ConnectionError) -> Self {
+        match err {
+            ConnectionError::Closed => Self::ConnectionClosed,
+            _ => Self::ConnectionError(err.to_string()),
+        }
+    }
+}
+
+impl<T> From<SendError<T>> for YamuxControlError {
+    fn from(err: SendError<T>) -> Self {
+        Self::RequestSendError(err.to_string())
+    }
+}

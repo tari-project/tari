@@ -398,7 +398,9 @@ async fn rejected_no_sessions_available() {
     let err = GreetingClient::builder().connect(framed).await.unwrap_err();
     assert!(matches!(
         err,
-        RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable))
+        RpcError::HandshakeError(RpcHandshakeError::Rejected(
+            HandshakeRejectReason::NoServerSessionsAvailable(_)
+        ))
     ));
 }
 
@@ -518,7 +520,11 @@ async fn max_global_sessions() {
         .unwrap_err();
 
     unpack_enum!(RpcError::HandshakeError(err) = err);
-    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
+    unpack_enum!(
+        RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable(
+            "session limit reached"
+        )) = err
+    );
 
     client.close().await;
 
@@ -561,7 +567,11 @@ async fn max_per_client_sessions() {
         .unwrap_err();
 
     unpack_enum!(RpcError::HandshakeError(err) = err);
-    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
+    unpack_enum!(
+        RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable(
+            "session limit reached"
+        )) = err
+    );
 
     drop(client);
 

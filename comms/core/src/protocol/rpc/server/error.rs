@@ -38,10 +38,10 @@ pub enum RpcServerError {
     DecodeError(#[from] DecodeError),
     #[error("IO Error: {0}")]
     Io(#[from] io::Error),
-    #[error("Maximum number of RPC sessions reached")]
-    MaximumSessionsReached,
+    #[error("Maximum number of RPC sessions reached: {0}")]
+    MaximumSessionsReached(String),
     #[error("Maximum number of client RPC sessions reached for node {node_id}")]
-    MaxSessionsPerClientReached { node_id: NodeId },
+    MaxSessionsPerClientReached { node_id: NodeId, max_sessions: usize },
     #[error("Internal service request canceled")]
     RequestCanceled,
     #[error("Stream was closed by remote")]

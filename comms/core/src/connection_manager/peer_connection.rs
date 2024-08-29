@@ -54,7 +54,7 @@ use crate::protocol::rpc::{
 use crate::{
     framing,
     framing::CanonicalFraming,
-    multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
+    multiplexing::{Control, IncomingSubstreams, Substream, Yamux, YamuxControlError},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
@@ -522,7 +522,7 @@ impl PeerConnectionActor {
     async fn disconnect(&mut self, silent: bool, minimized: Minimized) -> Result<(), PeerConnectionError> {
         self.request_rx.close();
         match self.control.close().await {
-            Err(yamux::ConnectionError::Closed) => {
+            Err(YamuxControlError::ConnectionClosed) => {
                 debug!(
                     target: LOG_TARGET,
                     "(Peer = {}) Connection already closed",

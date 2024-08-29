@@ -33,7 +33,6 @@ use tokio::{
     sync::{mpsc, Mutex},
 };
 use tokio_stream::StreamExt;
-use yamux::ConnectionError;
 
 use crate::{
     connection_manager::{
@@ -45,7 +44,7 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing,
-    multiplexing::{IncomingSubstreams, Substream, Yamux},
+    multiplexing::{IncomingSubstreams, Substream, Yamux, YamuxControlError},
     peer_manager::{NodeId, Peer, PeerFeatures},
     test_utils::{node_identity::build_node_identity, transport},
     utils::atomic_ref_counter::AtomicRefCounter,
@@ -176,7 +175,7 @@ impl PeerConnectionMockState {
         match self.mux_control.lock().await.close().await {
             Ok(_) => Ok(()),
             // Match the behaviour of the real PeerConnection.
-            Err(ConnectionError::Closed) => Ok(()),
+            Err(YamuxControlError::ConnectionClosed) => Ok(()),
             Err(err) => Err(err.into()),
         }
     }
