@@ -31,11 +31,11 @@ use tari_comms::multiaddr::Multiaddr;
 #[serde(deny_unknown_fields)]
 pub struct RandomXMinerConfig {
     /// The address for the monero node, or merge mining proxy
-    pub monero_base_node_address: Option<Multiaddr>,
+    pub monero_base_node_address: Option<String>,
     /// Monero wallet address
     pub monero_wallet_address: Option<String>,
     /// An address to post hash results too
-    pub universe_address: Option<Multiaddr>,
+    pub universe_address: Option<String>,
     /// What mode to run in, eco or max
     pub mode: MiningMode,
     /// Selected network

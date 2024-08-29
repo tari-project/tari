@@ -13,159 +13,52 @@ refresh_rate: 30 seconds
 appenders:
   # An appender named "stdout" that writes to file.
   stdout:
-    kind: rolling_file
-    path: "{{log_dir}}/log/randomx_miner/stdout.log"
-    append: false
+    kind: console
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
+      pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
     filters:
       - kind: threshold
-        level: info
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 10mb
-      roller:
-        kind: delete
+        level: debug
 
-  # An appender named "network" that writes to a file with a custom pattern encoder
-  network:
+  randomx_miner:
     kind: rolling_file
-    path: "{{log_dir}}/log/randomx_miner/network.log"
+    path: "{{log_dir}}/log/randomx_miner/randomx_miner.log"
     policy:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 200mb
       roller:
         kind: fixed_window
         base: 1
-        count: 5
-        pattern: "{{log_dir}}/log/randomx_miner/network.{}.log"
+        count: 50
+        pattern: "{{log_dir}}/log/randomx_miner/randomx_miner.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-  # An appender named "base_layer" that writes to a file with a custom pattern encoder
-  base_layer:
-    kind: rolling_file
-    path: "{{log_dir}}/log/randomx_miner/base_layer.log"
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 10mb
-      roller:
-        kind: fixed_window
-        base: 1
-        count: 5
-        pattern: "{{log_dir}}/log/randomx_miner/base_layer.{}.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
-
-  # An appender named "base_layer" that writes to a file with a custom pattern encoder
-  other:
-    kind: rolling_file
-    path: "{{log_dir}}/log/randomx_miner/other.log"
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 10mb
-      roller:
-        kind: fixed_window
-        base: 1
-        count: 5
-        pattern: "{{log_dir}}/log/randomx_miner/other.{}.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
-
-  # An appender named "contacts" that writes to a file with a custom pattern encoder
-  contacts:
-    kind: rolling_file
-    path: "{{log_dir}}/log/randomx_miner/contacts.log"
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 10mb
-      roller:
-        kind: fixed_window
-        base: 1
-        count: 5
-        pattern: "{{log_dir}}/log/randomx_miner/contacts.{}.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
-
-# root (to base_layer)
+# root
 root:
   level: debug
   appenders:
-    - other
+    - stdout
+    - randomx_miner
 
 loggers:
-  # base_layer
-  randomx_miner:
-    level: debug
-    appenders:
-      - base_layer
-      - stdout
-    additive: false
-  # other
   h2:
     level: info
     appenders:
-      - other
+      - stdout
+      - randomx_miner
     additive: false
   hyper:
     level: info
     appenders:
-      - other
+      - stdout
+      - randomx_miner
     additive: false
-  tokio_util:
+  selectors:
     level: error
     appenders:
-      - other
-    additive: false
-  # network
-  comms:
-    level: info
-    appenders:
-      - network
-    additive: false
-  contacts:
-    level: info
-    appenders:
-      - contacts
-    additive: false
-  comms::noise:
-    level: error
-    appenders:
-      - network
-    additive: false
-  p2p:
-    level: info
-    appenders:
-      - network
-  # Route log events sent to the "mio" logger to the "other" appender
-  mio:
-    level: error
-    appenders:
-      - network
-    additive: false
-  yamux:
-    level: error
-    appenders:
-      - network
-    additive: false
-  tracing:
-    level: error
-    appenders:
-      - network
-    additive: false
-  # Route R2D2 log events
-  r2d2:
-    level: warn
-    appenders:
-      - other
+      - stdout
+      - randomx_miner
     additive: false

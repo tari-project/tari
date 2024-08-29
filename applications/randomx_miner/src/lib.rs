@@ -23,9 +23,13 @@
 mod cli;
 use cli::Cli;
 mod config;
+mod error;
+pub use error::{ConfigError, Error};
+mod json_rpc;
+pub use json_rpc::Request;
 mod run_miner;
 use run_miner::start_miner;
-use tari_common::exit_codes::ExitError;
+use tari_common::exit_codes::{ExitCode, ExitError};
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::main";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::randomx_miner::main";
@@ -34,5 +38,7 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::randomx_miner::main";
 minotari_app_utilities::deny_non_64_bit_archs!();
 
 pub async fn run_miner(cli: Cli) -> Result<(), ExitError> {
-    start_miner(cli).await
+    start_miner(cli)
+        .await
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, e.to_string()))
 }

@@ -35,6 +35,10 @@ mod cli;
 use cli::Cli;
 mod run_miner;
 use run_miner::start_miner;
+mod error;
+use tari_common::exit_codes::ExitCode;
+mod json_rpc;
+use json_rpc::Request;
 
 mod config;
 
@@ -62,5 +66,7 @@ async fn main_inner() -> Result<(), ExitError> {
         &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
-    start_miner(cli).await
+    start_miner(cli)
+        .await
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, e.to_string()))
 }
