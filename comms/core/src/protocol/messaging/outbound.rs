@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use futures::{future, SinkExt, StreamExt};
 use tokio::{pin, sync::mpsc};
-use tracing::{debug, error, span, Instrument, Level};
+use tracing::{debug, error, span, trace, Instrument, Level};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
@@ -272,7 +272,7 @@ impl OutboundMessaging {
         let stream = outbound_stream.map(|mut out_msg| {
             #[cfg(feature = "metrics")]
             outbound_count.inc();
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Message for peer '{}' sending {} on stream {}", peer_node_id, out_msg, stream_id
             );

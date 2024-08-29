@@ -602,14 +602,14 @@ impl DhtConnectivity {
     fn insert_connection_handle(&mut self, conn: PeerConnection) {
         // Remove any existing connection for this peer
         self.remove_connection_handle(conn.peer_node_id());
-        debug!(target: LOG_TARGET, "Insert new peer connection {}", conn);
+        trace!(target: LOG_TARGET, "Insert new peer connection {}", conn);
         self.connection_handles.push(conn);
     }
 
     fn remove_connection_handle(&mut self, node_id: &NodeId) {
         if let Some(idx) = self.connection_handles.iter().position(|c| c.peer_node_id() == node_id) {
             let conn = self.connection_handles.swap_remove(idx);
-            debug!(target: LOG_TARGET, "Removing peer connection {}", conn);
+            trace!(target: LOG_TARGET, "Removing peer connection {}", conn);
         }
     }
 
@@ -620,7 +620,7 @@ impl DhtConnectivity {
         match event {
             PeerConnected(conn) => {
                 self.handle_new_peer_connected(*conn.clone()).await?;
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Peer: node_id '{}', allow_list '{}', connected '{}'",
                     conn.peer_node_id(),

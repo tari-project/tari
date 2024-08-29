@@ -525,7 +525,7 @@ impl ConnectivityManagerActor {
         selection: ConnectivitySelection,
     ) -> Result<Vec<PeerConnection>, ConnectivityError> {
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Selecting from {} connected node peers",
             self.pool.count_connected_nodes()

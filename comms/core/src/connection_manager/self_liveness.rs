@@ -180,7 +180,7 @@ where
         match framed.next().await {
             Some(res) => {
                 let val = res?;
-                debug!(target: LOG_TARGET, "Received: {}", val);
+                trace!(target: LOG_TARGET, "Received: {}", val);
                 Ok(Some(timer.elapsed()))
             },
             None => Ok(None),
