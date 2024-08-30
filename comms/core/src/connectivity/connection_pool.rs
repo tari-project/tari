@@ -37,6 +37,12 @@ pub enum ConnectionStatus {
     Disconnected(Minimized),
 }
 
+impl ConnectionStatus {
+    pub fn is_connected(self) -> bool {
+        matches!(self, ConnectionStatus::Connected)
+    }
+}
+
 impl fmt::Display for ConnectionStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
@@ -58,7 +64,7 @@ impl PeerConnectionState {
 
     /// Return true if the underlying connection exists and is connected, otherwise false
     pub fn is_connected(&self) -> bool {
-        self.connection().filter(|c| c.is_connected()).is_some()
+        self.status.is_connected() && self.connection().map_or(false, |c| c.is_connected())
     }
 
     pub fn connection_mut(&mut self) -> Option<&mut PeerConnection> {
