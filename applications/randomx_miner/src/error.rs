@@ -28,8 +28,6 @@ pub enum Error {
     CommonConfig(#[from] tari_common::configuration::error::ConfigError),
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
-    #[error("General error: {0}")]
-    General(String),
     #[error("Request error: {0}")]
     Request(#[from] RequestError),
 }

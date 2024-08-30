@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+mod get_block_count;
+mod get_block_template;
+pub use get_block_count::get_block_count;
+pub use get_block_template::get_block_template;
 
 #[derive(Serialize)]
 pub struct Request<'a> {
@@ -39,35 +44,4 @@ impl Request<'_> {
             params,
         }
     }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct GetBlockCountResponse {
-    jsonrpc: String,
-    id: String,
-    pub result: GetBlockCountResult,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct GetBlockCountResult {
-    pub count: u64,
-    pub status: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct GetBlockTemplateResponse {
-    jsonrpc: String,
-    id: String,
-    pub result: GetBlockTemplateResult,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct GetBlockTemplateResult {
-    pub blocktemplate_blob: String,
-    pub blockhashing_blob: String,
-    pub difficulty: u64,
-    pub height: u64,
-    pub prev_hash: String,
-    pub reserved_offset: u64,
-    pub status: String,
 }

@@ -25,7 +25,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
-use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
