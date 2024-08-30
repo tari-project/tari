@@ -1,6 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+## [1.3.1-pre.0](https://github.com/tari-project/tari/compare/v1.3.0-pre.0...v1.3.1-pre.0) (2024-08-30)
+
+
+### Features
+
+* add merge mining proxy support for p2pool ([#6474](https://github.com/tari-project/tari/issues/6474)) ([bed32d5](https://github.com/tari-project/tari/commit/bed32d5628538843f978cc2e5db25dff4814547b))
+* add more verbose comms errors ([#6507](https://github.com/tari-project/tari/issues/6507)) ([169572a](https://github.com/tari-project/tari/commit/169572aa3e76e2dee649451c461245e5f6c9cb70))
+* improve header validation speed ([#6510](https://github.com/tari-project/tari/issues/6510)) ([da5b443](https://github.com/tari-project/tari/commit/da5b44382c35a9b5a98405f2b0a30b1a92253746))
+* ledger reconnect ([#6503](https://github.com/tari-project/tari/issues/6503)) ([444b5a3](https://github.com/tari-project/tari/commit/444b5a359e0e9efdafccfab8f49d4d9a8f48f3c1))
+* limit open-ended vectors for covenants ([#6497](https://github.com/tari-project/tari/issues/6497)) ([7a1150d](https://github.com/tari-project/tari/commit/7a1150d2edc2b3663f58246d654534c4140df2a7))
+* limit open-ended vectors for tari script ([#6501](https://github.com/tari-project/tari/issues/6501)) ([f91cffa](https://github.com/tari-project/tari/commit/f91cffa018935e3f3a683e13853a6c798c4fcb21))
+
+
+### Bug Fixes
+
+* **comms:** always send disconnect notification to conn manager ([#6511](https://github.com/tari-project/tari/issues/6511)) ([26e85a8](https://github.com/tari-project/tari/commit/26e85a8c49b45825ea744a16b8518d83c6d9490c))
+* correct the expected return errors in ledger demo ([#6506](https://github.com/tari-project/tari/issues/6506)) ([8d5da30](https://github.com/tari-project/tari/commit/8d5da30f05f18937e7196e72145d6cc07d4b661e))
+* **minotari node:** add get_sync_progress to allow list if mining is enabled ([#6498](https://github.com/tari-project/tari/issues/6498)) ([e9c420d](https://github.com/tari-project/tari/commit/e9c420d4509d05738144d2602dec6b70d7d39948))
 
 ## [1.3.0-pre.0](https://github.com/tari-project/tari/compare/v1.2.0-pre.0...v1.3.0-pre.0) (2024-08-22)
 
