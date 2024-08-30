@@ -115,6 +115,10 @@ pub enum OutputManagerRequest {
     CreateCoinSplitEven((Vec<Commitment>, usize, MicroMinotari)),
     PreviewCoinJoin((Vec<Commitment>, MicroMinotari)),
     PreviewCoinSplitEven((Vec<Commitment>, usize, MicroMinotari)),
+    ScrapeWallet {
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+    },
     CreateCoinJoin {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroMinotari,
@@ -162,6 +166,9 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
+            ScrapeWallet { tx_id, fee_per_gram } => {
+                write!(f, "ScrapeWallet (tx_id: {}, fee_per_gram: {})", tx_id, fee_per_gram)
+            },
             EncumberAggregateUtxo {
                 tx_id,
                 output_hash,
@@ -507,6 +514,21 @@ impl OutputManagerHandle {
                 covenant,
                 minimum_value_promise,
             })
+            .await??
+        {
+            OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn scrape_wallet(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram })
             .await??
         {
             OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
