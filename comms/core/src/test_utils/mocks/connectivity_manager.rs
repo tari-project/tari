@@ -148,6 +148,10 @@ impl ConnectivityManagerMockState {
         assert!(is_found, "expected call to dial peer {} but no dial was found", peer);
     }
 
+    pub async fn is_peer_dialed(&self, peer: &NodeId) -> bool {
+        self.with_state(|state| state.dialed_peers.contains(peer)).await
+    }
+
     pub async fn await_call_count(&self, count: usize) {
         let mut attempts = 0;
         while self.call_count().await < count {

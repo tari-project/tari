@@ -6879,10 +6879,11 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
         }
     };
 
-    if let Err(e) = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.set_base_node_peer((*public_key).clone(), parsed_addr))
-    {
+    if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.set_base_node_peer(
+        (*public_key).clone(),
+        parsed_addr,
+        None,
+    )) {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
