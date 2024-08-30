@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -781,10 +780,10 @@ where
 
         // Confirm script hash is for the expected script, at the moment assuming Nop or Push_pubkey
         // if the script is Push_pubkey(default_key) we know we have to fill it in.
-        let script = if single_round_sender_data.script == script!(Nop) {
+        let script = if single_round_sender_data.script == script!(Nop)? {
             single_round_sender_data.script.clone()
-        } else if single_round_sender_data.script == script!(PushPubKey(Box::default())) {
-            script!(PushPubKey(Box::new(script_public_key.pub_key.clone())))
+        } else if single_round_sender_data.script == script!(PushPubKey(Box::default()))? {
+            script!(PushPubKey(Box::new(script_public_key.pub_key.clone())))?
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
@@ -1032,7 +1031,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
             ExecutionStack::default(),
             change_script_key.key_id,
             change_commitment_mask_key.key_id,
@@ -1085,7 +1084,7 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
-        let nop_script = script![Nop];
+        let nop_script = script![Nop]?;
         let weighting = self.resources.consensus_constants.transaction_weight_params();
         let mut features_and_scripts_byte_size = 0;
         for output in &outputs {
@@ -1140,7 +1139,7 @@ where
                 .get_next_commitment_mask_and_script_key()
                 .await?;
             builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script_key.pub_key))),
+                script!(PushPubKey(Box::new(change_script_key.pub_key)))?,
                 ExecutionStack::default(),
                 change_script_key.key_id,
                 change_commitment_mask_key.key_id,
@@ -1365,7 +1364,7 @@ where
             range_proof_type,
             ..Default::default()
         };
-        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())));
+        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())))?;
         let metadata_byte_size = self
             .resources
             .consensus_constants
@@ -1401,7 +1400,7 @@ where
             )
             .await?
             .with_change_data(
-                script!(PushPubKey(Box::default())),
+                script!(PushPubKey(Box::default()))?,
                 ExecutionStack::default(),
                 TariKeyId::default(),
                 TariKeyId::default(),
@@ -1627,6 +1626,9 @@ where
         {
             if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
                 let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                let script_key = self
+                    .pre_mine_script_key_from_payment_id(payment_id.clone(), tx_id)
+                    .await?;
                 WalletOutput::new_with_rangeproof(
                     output.version,
                     amount,
@@ -1634,7 +1636,7 @@ where
                     output.features,
                     output.script,
                     ExecutionStack::default(),
-                    self.resources.key_manager.get_spend_key().await?.key_id, // Only of the master wallet
+                    script_key.key_id,
                     output.sender_offset_public_key,
                     output.metadata_signature,
                     0,
@@ -1663,14 +1665,14 @@ where
             range_proof_type,
             ..Default::default()
         };
-        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())));
+        let temp_script = script!(PushPubKey(Box::default()))?;
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
                 output_features.get_serialized_size()? +
-                    script.get_serialized_size()? +
+                    temp_script.get_serialized_size()? +
                     Covenant::default().get_serialized_size()?,
             );
         let fee = self.get_fee_calc();
@@ -1691,7 +1693,7 @@ where
             .await?
             .with_sender_address(self.resources.one_sided_tari_address.clone())
             .with_recipient_data(
-                push_pubkey_script(recipient_address.public_spend_key()),
+                script!(PushPubKey(Box::default()))?,
                 output_features,
                 Covenant::default(),
                 minimum_value_promise,
@@ -1699,7 +1701,7 @@ where
             )
             .await?
             .with_change_data(
-                script!(PushPubKey(Box::default())),
+                script!(PushPubKey(Box::default()))?,
                 ExecutionStack::default(),
                 TariKeyId::default(),
                 TariKeyId::default(),
@@ -1749,8 +1751,8 @@ where
             )
             .await?;
 
-        let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;
-        let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+        let commitment_mask_key = shared_secret_to_output_spending_key(&shared_secret)?;
+        let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask_key).await?;
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         let encryption_key_id = self.resources.key_manager.import_key(encryption_private_key).await?;
@@ -1767,13 +1769,19 @@ where
                 .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
         );
 
-        // Create the output with a partially signed metadata signature
+        let script_spending_key = self
+            .resources
+            .key_manager
+            .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
+            .await?;
+        let script = push_pubkey_script(&script_spending_key);
         let payment_id = match payment_id {
             PaymentId::Open(v) => PaymentId::AddressAndData(self.resources.interactive_tari_address.clone(), v),
             PaymentId::Empty => PaymentId::Address(self.resources.one_sided_tari_address.clone()),
             _ => payment_id,
         };
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
+
+        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(
                 sender_message
                     .single()
@@ -1791,7 +1799,7 @@ where
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
+            .with_script_key(KeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.key_manager,
@@ -1895,7 +1903,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone()))),
+            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
             ExecutionStack::default(),
             change_script_public_key.key_id.clone(),
             change_commitment_mask_key_id.key_id,
@@ -2530,7 +2538,7 @@ where
                 .get_next_commitment_mask_and_script_key()
                 .await?;
             tx_builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script.pub_key))),
+                script!(PushPubKey(Box::new(change_script.pub_key)))?,
                 ExecutionStack::default(),
                 change_script.key_id,
                 change_mask.key_id,
@@ -2612,7 +2620,7 @@ where
             .key_manager
             .get_next_commitment_mask_and_script_key()
             .await?;
-        let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())));
+        let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
         let payment_id = PaymentId::Address(self.resources.interactive_tari_address.clone());
         let encrypted_data = self
             .resources
@@ -2870,7 +2878,7 @@ where
                     .get_next_commitment_mask_and_script_key()
                     .await?;
                 builder.with_change_data(
-                    script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
+                    script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
                     ExecutionStack::default(),
                     change_script_key.key_id,
                     change_commitment_mask_key.key_id,
@@ -2955,7 +2963,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone()))),
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
             ExecutionStack::default(),
             change_script_key.key_id,
             change_commitment_mask_key.key_id,

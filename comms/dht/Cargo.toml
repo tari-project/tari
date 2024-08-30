@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "1.2.0-pre.0"
+version = "1.3.0-pre.0"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -10,14 +10,14 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { path = "../core", features = ["rpc"], version = "1.2.0-pre.0" }
-tari_common = { path = "../../common", version = "1.2.0-pre.0" }
-tari_comms_rpc_macros = {  path = "../rpc_macros" , version = "1.2.0-pre.0"}
+tari_comms = { path = "../core", features = ["rpc"], version = "1.3.0-pre.0" }
+tari_common = { path = "../../common", version = "1.3.0-pre.0" }
+tari_comms_rpc_macros = {  path = "../rpc_macros" , version = "1.3.0-pre.0"}
 tari_crypto = { version = "0.20.3" }
 tari_utilities = { version = "0.7" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.2.0-pre.0" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.2.0-pre.0" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.2.0-pre.0" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.3.0-pre.0" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.3.0-pre.0" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.3.0-pre.0" }
 
 anyhow = "1.0.53"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -62,7 +62,7 @@ clap = "3.2"
 
 
 [build-dependencies]
-tari_common = { path = "../../common", version = "1.2.0-pre.0" }
+tari_common = { path = "../../common", version = "1.3.0-pre.0" }
 
 [features]
 test-mocks = []

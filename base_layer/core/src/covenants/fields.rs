@@ -410,7 +410,7 @@ mod test {
                             sidechain_feature: Some(side_chain_features),
                             ..Default::default()
                         },
-                        script: script![Drop Nop],
+                        script: script![Drop Nop].unwrap(),
                         ..Default::default()
                     },
                     &key_manager,
@@ -455,7 +455,7 @@ mod test {
                             output_type: OutputType::Burn,
                             ..Default::default()
                         },
-                        script: script![Drop Nop],
+                        script: script![Drop Nop].unwrap(),
                         minimum_value_promise: MicroMinotari(123456),
                         value: MicroMinotari(123456),
                         ..Default::default()
@@ -466,12 +466,12 @@ mod test {
                 .remove(0);
 
                 assert!(!OutputField::Commitment.is_eq(&output, &Commitment::default()).unwrap());
-                assert!(!OutputField::Script.is_eq(&output, &script![Nop Drop]).unwrap());
+                assert!(!OutputField::Script.is_eq(&output, &script![Nop Drop].unwrap()).unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
                 assert!(!OutputField::Covenant
-                    .is_eq(&output, &covenant!(and(identity(), identity())))
+                    .is_eq(&output, &covenant!(and(identity(), identity())).unwrap())
                     .unwrap());
                 assert!(!OutputField::Features
                     .is_eq(&output, &OutputFeatures::default())
@@ -503,7 +503,7 @@ mod test {
                             maturity: 42,
                             ..Default::default()
                         },
-                        script: script![Drop Nop],
+                        script: script![Drop Nop].unwrap(),
                         ..Default::default()
                     },
                     &key_manager,
@@ -583,7 +583,7 @@ mod test {
                     1,
                     UtxoTestParams {
                         features,
-                        script: script![Drop Nop],
+                        script: script![Drop Nop].unwrap(),
                         minimum_value_promise: MicroMinotari(123456),
                         value: MicroMinotari(123456),
                         ..Default::default()

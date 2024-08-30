@@ -24,10 +24,8 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    MaxSizeString,
-};
+use tari_common_types::types::{PublicKey, Signature};
+use tari_max_size::MaxSizeString;
 use tari_utilities::ByteArray;
 
 use crate::{

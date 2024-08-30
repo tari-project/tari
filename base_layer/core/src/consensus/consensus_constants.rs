@@ -160,7 +160,7 @@ pub struct PowAlgorithmConstants {
 const PRE_MINE_VALUE: u64 = 0; // 6_030_157_777_181_012;
 const INITIAL_EMISSION: MicroMinotari = MicroMinotari(13_952_877_857);
 const ESMERALDA_INITIAL_EMISSION: MicroMinotari = INITIAL_EMISSION;
-const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 - 14_700_000_000) * 1_000_000);
+pub const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 - 14_700_000_000) * 1_000_000);
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -242,7 +242,9 @@ impl ConsensusConstants {
         let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size()? + max_extra_size + script![Nop].get_serialized_size()?,
+            output_features.get_serialized_size()? +
+                max_extra_size +
+                script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()?,
         );
         Ok(self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size))
     }

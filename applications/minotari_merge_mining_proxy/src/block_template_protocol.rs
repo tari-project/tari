@@ -34,9 +34,11 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-        transaction_components::{encrypted_data::PaymentId, TransactionKernel, TransactionOutput},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, TransactionKernel, TransactionOutput},
     },
+    AuxChainHashes,
 };
+use tari_max_size::MaxSizeBytes;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -182,7 +184,7 @@ impl BlockTemplateProtocol<'_> {
                 .save_final_block_template_if_key_unique(
                     // `aux_chain_mr` is used as the key because it is stored in the ExtraData field in the Monero
                     // block
-                    final_template_data.aux_chain_mr.clone(),
+                    final_template_data.aux_chain_mr.to_vec(),
                     final_template_data.clone(),
                 )
                 .await;
@@ -357,7 +359,7 @@ impl BlockTemplateProtocol<'_> {
             total_fees.into(),
             block_reward.into(),
             tari_height,
-            self.config.coinbase_extra.as_bytes(),
+            &CoinBaseExtra::try_from(self.config.coinbase_extra.as_bytes().to_vec())?,
             &self.key_manager,
             &self.wallet_payment_address,
             true,
@@ -387,7 +389,7 @@ impl BlockTemplateProtocol<'_> {
 
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.
-pub fn calculate_aux_chain_merkle_root(hashes: Vec<monero::Hash>) -> Result<(monero::Hash, u32), MmProxyError> {
+pub fn calculate_aux_chain_merkle_root(hashes: AuxChainHashes) -> Result<(monero::Hash, u32), MmProxyError> {
     if hashes.is_empty() {
         Err(MmProxyError::MissingDataError(
             "No aux chain hashes provided".to_string(),
@@ -409,7 +411,7 @@ fn add_monero_data(
     let merge_mining_hash = FixedHash::try_from(tari_block_result.merge_mining_hash.clone())
         .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
 
-    let aux_chain_hashes = vec![monero::Hash::from_slice(merge_mining_hash.as_slice())];
+    let aux_chain_hashes = AuxChainHashes::try_from(vec![monero::Hash::from_slice(merge_mining_hash.as_slice())])?;
     let tari_difficulty = miner_data.target_difficulty;
     let block_template_data = BlockTemplateDataBuilder::new()
         .tari_block(
@@ -454,7 +456,8 @@ fn add_monero_data(
         blockhashing_blob,
         blocktemplate_blob,
         aux_chain_hashes,
-        aux_chain_mr: aux_chain_mr.to_bytes().to_vec(),
+        aux_chain_mr: AuxChainMr::try_from(aux_chain_mr.to_bytes().to_vec())
+            .map_err(|e| MmProxyError::ConversionError(e.to_string()))?,
     })
 }
 
@@ -471,6 +474,8 @@ impl NewBlockTemplateData {
     }
 }
 
+/// The AuxChainMerkleRoot is a 32 byte hash
+pub type AuxChainMr = MaxSizeBytes<32>;
 /// Final outputs for required for merge mining
 #[derive(Debug, Clone)]
 pub struct FinalBlockTemplateData {
@@ -478,8 +483,8 @@ pub struct FinalBlockTemplateData {
     pub target_difficulty: Difficulty,
     pub blockhashing_blob: String,
     pub blocktemplate_blob: String,
-    pub aux_chain_hashes: Vec<monero::Hash>,
-    pub aux_chain_mr: Vec<u8>,
+    pub aux_chain_hashes: AuxChainHashes,
+    pub aux_chain_mr: AuxChainMr,
 }
 
 /// Container struct for monero mining data inputs obtained from monerod

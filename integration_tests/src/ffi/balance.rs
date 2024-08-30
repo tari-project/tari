@@ -48,6 +48,7 @@ impl Balance {
             available = ffi_import::balance_get_available(self.ptr, &mut error);
             if error > 0 {
                 println!("balance_get_available error {}", error);
+                panic!("balance_get_available error");
             }
         }
         available
@@ -60,6 +61,7 @@ impl Balance {
             time_locked = ffi_import::balance_get_time_locked(self.ptr, &mut error);
             if error > 0 {
                 println!("balance_get_time_locked error {}", error);
+                panic!("balance_get_time_locked error");
             }
         }
         time_locked
@@ -72,6 +74,7 @@ impl Balance {
             pending_incoming = ffi_import::balance_get_pending_incoming(self.ptr, &mut error);
             if error > 0 {
                 println!("balance_get_pending_incoming error {}", error);
+                panic!("balance_get_pending_incoming error");
             }
         }
         pending_incoming
@@ -84,6 +87,7 @@ impl Balance {
             pending_outgoing = ffi_import::balance_get_pending_outgoing(self.ptr, &mut error);
             if error > 0 {
                 println!("balance_get_pending_outgoing error {}", error);
+                panic!("balance_get_pending_outgoing error");
             }
         }
         pending_outgoing

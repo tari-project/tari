@@ -124,7 +124,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     key_manager: &MemoryDbKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
-    create_wallet_output_with_data(script!(Nop), features, &test_params, value, key_manager)
+    create_wallet_output_with_data(script!(Nop).unwrap(), features, &test_params, value, key_manager)
         .await
         .unwrap()
 }

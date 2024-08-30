@@ -8,7 +8,6 @@ use blake2::Blake2b;
 use digest::{consts::U64, Digest};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
-    io::SyscallError,
     random::LedgerRng,
     ui::gadgets::{MessageScroller, SingleMessage},
 };
@@ -75,8 +74,7 @@ impl<const S: usize> TryFrom<&[u8]> for Bip32Path<S> {
 
         // We cannot have too many elements in the path, and must have `u32` path elements
         let input_path_len = (data.len() - 1) / 4;
-        if input_path_len > S || data[0] as usize * 4 != data.len() - 1
-        {
+        if input_path_len > S || data[0] as usize * 4 != data.len() - 1 {
             return Err(AppSW::WrongApduLength);
         }
 
@@ -147,32 +145,27 @@ fn cx_error_to_string(e: CxError) -> String {
 }
 
 // Get a raw 64 byte key hash from the BIP32 path.
-// - The wrapper function for the syscall `os_perso_derive_node_bip32`, `bip32_derive`, requires a 96 byte buffer when
-//   called with `CurvesId::Ed25519` as it checks the consistency of the curve choice and key length in order to prevent
-//   the underlying syscall from panicking.
-// - The syscall `os_perso_derive_node_bip32` returns 96 bytes as:
-//     private key: 64 bytes
-//     chain: 32 bytes
-//   Example:
-//     d8a57c1be0c52e9643485e77aac56d72fa6c4eb831466c2abd2d320c82d3d14929811c598c13d431bad433e037dbd97265492cea42bc2e3aad15440210a20a2d0000000000000000000000000000000000000000000000000000000000000000
-//  - This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 64
-//    uniformly distributed random bytes.
-fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
-    let mut key_buffer = Zeroizing::new([0u8; 96]);
-    const BIP32_KEY_LENGTH: usize = 64;
-    let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key_buffer.as_mut(), Some(&mut [])) {
+// Note: We use `CurvesId::Secp256k1` as the curve for the bip32 key derivation because it provides better entropy when
+//       compared to `CurvesId::Ed25519`. There is also no need for compatibility to `tari_crypto` as the output is only
+//       ever used in a subsequent key derivation function.
+fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
+    let mut key_buffer = Zeroizing::new([0u8; 64]);
+    match bip32_derive(CurvesId::Secp256k1, path, key_buffer.as_mut(), Some(&mut [])) {
         Ok(_) => {
-            let binding = &key_buffer.as_ref()[..BIP32_KEY_LENGTH];
-            if binding == &[0u8; BIP32_KEY_LENGTH] {
+            if key_buffer.deref() == &[0u8; 64] {
                 return Err(cx_error_to_string(CxError::InternalError));
+            } else {
+                Ok(key_buffer)
             }
-            let mut key_bytes = Zeroizing::new([0u8; BIP32_KEY_LENGTH]);
-            // `copy_from_slice` will not panic as the length of the slice is equal to the length of the array
-            key_bytes.as_mut().copy_from_slice(binding);
-            key_bytes
         },
         Err(e) => return Err(cx_error_to_string(e)),
-    };
+    }
+}
+
+//  This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 64
+//  uniformly distributed random bytes.
+fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
+    let raw_key_64 = get_raw_bip32_key(path)?;
 
     let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
     DomainSeparatedHasher::<Blake2b<U64>, LedgerHashDomain>::new_with_label("raw_key")
@@ -182,23 +175,42 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     Ok(raw_key_hashed)
 }
 
-/// Get a raw 64 byte key hash from the BIP32 path. In cas of an error, display an interactive message on the device.
-pub fn get_raw_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, SyscallError> {
+/// Derive a secret key from a BIP32 path. In case of an error, display an interactive message on the device.
+pub fn derive_from_bip32_key(
+    u64_account: u64,
+    u64_index: u64,
+    u64_key_type: KeyType,
+) -> Result<RistrettoSecretKey, AppSW> {
+    let account = u64_to_string(u64_account);
+    let index = u64_to_string(u64_index);
+    let key_type = u64_to_string(u64_key_type.as_byte() as u64);
+
+    let mut bip32_path = "m/44'/".to_string();
+    bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
+    bip32_path.push_str(&"'/");
+    bip32_path.push_str(&account);
+    bip32_path.push_str(&"'/0/");
+    bip32_path.push_str(&index);
+    bip32_path.push_str(&"'/");
+    bip32_path.push_str(&key_type);
+    let path: [u32; 6] = make_bip32_path(bip32_path.as_bytes());
+
     match get_raw_key_hash(&path) {
-        Ok(val) => Ok(val),
+        Ok(val) => get_key_from_uniform_bytes(&val),
         Err(e) => {
             let mut msg = "".to_string();
             msg.push_str("Err: raw key >>...");
             SingleMessage::new(&msg).show_and_wait();
             SingleMessage::new(&e).show_and_wait();
-            Err(SyscallError::InvalidParameter.into())
+            return Err(AppSW::KeyDeriveFail);
         },
     }
 }
 
-pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
-    match RistrettoSecretKey::from_uniform_bytes(bytes) {
-        Ok(val) => Ok(Zeroizing::new(val)),
+/// Get a 32 byte secret key from 64 uniform bytes
+pub fn get_key_from_uniform_bytes(bytes: &Zeroizing<[u8; 64]>) -> Result<RistrettoSecretKey, AppSW> {
+    match RistrettoSecretKey::from_uniform_bytes(bytes.as_ref()) {
+        Ok(val) => Ok(val),
         Err(e) => {
             MessageScroller::new(&format!(
                 "Err: key conversion {:?}. Length: {:?}",
@@ -212,6 +224,7 @@ pub fn get_key_from_uniform_bytes(bytes: &[u8]) -> Result<Zeroizing<RistrettoSec
     }
 }
 
+/// Get a 32 byte secret key from 32 canonical bytes
 pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, AppSW> {
     match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
@@ -228,52 +241,33 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     }
 }
 
+/// Get the domain separated alpha key hasher
 pub fn alpha_hasher(
-    alpha: Zeroizing<RistrettoSecretKey>,
-    blinding_factor: Zeroizing<RistrettoSecretKey>,
-) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
-    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-    let hasher = hasher.chain(blinding_factor.as_bytes()).finalize();
-    let private_key = get_key_from_uniform_bytes(hasher.as_ref())?;
+    alpha: RistrettoSecretKey,
+    blinding_factor: RistrettoSecretKey,
+) -> Result<RistrettoSecretKey, AppSW> {
+    let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
+    DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key")
+        .chain(blinding_factor.as_bytes())
+        .finalize_into(raw_key_hashed.as_mut().into());
+    let private_key = get_key_from_uniform_bytes(&raw_key_hashed)?;
 
-    Ok(Zeroizing::new(private_key.deref() + alpha.deref()))
+    Ok(private_key + alpha)
 }
 
-pub fn derive_from_bip32_key(
-    u64_account: u64,
-    u64_index: u64,
-    u64_key_type: KeyType,
-) -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
-    let account = u64_to_string(u64_account);
-    let index = u64_to_string(u64_index);
-    let key_type = u64_to_string(u64_key_type.as_byte() as u64);
-
-    let mut bip32_path = "m/44'/".to_string();
-    bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
-    bip32_path.push_str(&"'/");
-    bip32_path.push_str(&account);
-    bip32_path.push_str(&"'/0/");
-    bip32_path.push_str(&index);
-    bip32_path.push_str(&"'/");
-    bip32_path.push_str(&key_type);
-    let path: [u32; 6] = make_bip32_path(bip32_path.as_bytes());
-
-    match get_raw_key(&path) {
-        Ok(val) => get_key_from_uniform_bytes(&val.as_ref()),
-        Err(e) => {
-            SingleMessage::new(&format!("Key error {:?}", e)).show_and_wait();
-            return Err(AppSW::KeyDeriveFail);
-        },
-    }
-}
-
-pub fn get_random_nonce() -> Result<Zeroizing<RistrettoSecretKey>, AppSW> {
+/// Get a uniform random nonce
+pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
     let mut raw_bytes = [0u8; 64];
     LedgerRng.fill_bytes(&mut raw_bytes);
     if raw_bytes == [0u8; 64] {
         return Err(AppSW::RandomNonceFail);
     }
-    Ok(Zeroizing::new(
-        RistrettoSecretKey::from_uniform_bytes(&raw_bytes).expect("will not fail"),
-    ))
+    match RistrettoSecretKey::from_uniform_bytes(&raw_bytes) {
+        Ok(val) => Ok(val),
+        Err(e) => {
+            MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
+            SingleMessage::new(&e.to_string()).show_and_wait();
+            Err(AppSW::KeyDeriveFromUniform)
+        },
+    }
 }

@@ -48,6 +48,7 @@ impl Kernel {
             ptr = ffi_import::transaction_kernel_get_excess_hex(self.ptr, &mut error);
             if error > 0 {
                 println!("transaction_kernel_get_excess_hex error {}", error);
+                panic!("transaction_kernel_get_excess_hex error");
             }
         }
         FFIString::from_ptr(ptr).as_string()
@@ -60,6 +61,7 @@ impl Kernel {
             ptr = ffi_import::transaction_kernel_get_excess_public_nonce_hex(self.ptr, &mut error);
             if error > 0 {
                 println!("transaction_kernel_get_excess_public_nonce_hex error {}", error);
+                panic!("transaction_kernel_get_excess_public_nonce_hex error");
             }
         }
         FFIString::from_ptr(ptr).as_string()
@@ -72,6 +74,7 @@ impl Kernel {
             ptr = ffi_import::transaction_kernel_get_excess_signature_hex(self.ptr, &mut error);
             if error > 0 {
                 println!("transaction_kernel_get_excess_signature_hex error {}", error);
+                panic!("transaction_kernel_get_excess_signature_hex error");
             }
         }
         FFIString::from_ptr(ptr).as_string()

@@ -17,7 +17,6 @@ use tari_crypto::{
     },
 };
 use tari_hashing::TransactionHashDomain;
-use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
@@ -77,7 +76,7 @@ pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW
         extract_common_values(data)?;
 
     let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
-    let blinding_factor: Zeroizing<RistrettoSecretKey> =
+    let blinding_factor: RistrettoSecretKey =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[152..184])?.into();
     let script_private_key = alpha_hasher(alpha, blinding_factor)?;
     let script_public_key = RistrettoPublicKey::from_secret_key(&script_private_key);
@@ -107,8 +106,8 @@ fn extract_common_values(
         u64,
         u64,
         u64,
-        Zeroizing<RistrettoSecretKey>,
-        Zeroizing<RistrettoSecretKey>,
+        RistrettoSecretKey,
+        RistrettoSecretKey,
         PedersenCommitment,
         [u8; 32],
     ),
@@ -129,9 +128,8 @@ fn extract_common_values(
     txi_version_bytes.clone_from_slice(&data[16..24]);
     let txi_version = u64::from_le_bytes(txi_version_bytes);
 
-    let value: Zeroizing<RistrettoSecretKey> =
-        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[24..56])?.into();
-    let commitment_private_key: Zeroizing<RistrettoSecretKey> =
+    let value: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[24..56])?.into();
+    let commitment_private_key: RistrettoSecretKey =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[56..88])?.into();
 
     let commitment: PedersenCommitment = get_key_from_canonical_bytes(&data[88..120])?;
@@ -153,9 +151,9 @@ fn extract_common_values(
 fn get_script_signature(
     txi_version: u64,
     network: u64,
-    value: Zeroizing<RistrettoSecretKey>,
-    commitment_private_key: Zeroizing<RistrettoSecretKey>,
-    script_private_key: Zeroizing<RistrettoSecretKey>,
+    value: RistrettoSecretKey,
+    commitment_private_key: RistrettoSecretKey,
+    script_private_key: RistrettoSecretKey,
     script_public_key: RistrettoPublicKey,
     commitment: PedersenCommitment,
     script_message: [u8; 32],

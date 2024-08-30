@@ -1,15 +1,7 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::{
-    borrow::ToOwned,
-    string::{String, ToString},
-    vec::Vec,
-};
-
-use tari_utilities::hex::from_hex;
-
-pub const PUSH_PUBKEY_IDENTIFIER: &str = "217e";
+use alloc::string::{String, ToString};
 
 /// Convert a u16 to a string
 pub fn u16_to_string(number: u16) -> String {
@@ -41,19 +33,6 @@ pub fn u16_to_string(number: u16) -> String {
     String::from_utf8_lossy(&buffer[..pos]).to_string()
 }
 
-/// Convert a hex string to serialized bytes made up as an identifier concatenated with data
-pub fn hex_to_bytes_serialized(identifier: &str, data: &str) -> Result<Vec<u8>, String> {
-    if identifier.len() % 2 != 0 {
-        return Err("Invalid identifier".to_string());
-    }
-    if data.len() % 2 != 0 {
-        return Err("Invalid payload".to_string());
-    }
-
-    let hex = identifier.to_owned() + data;
-    from_hex(hex.as_str()).map_err(|e| e.to_string())
-}
-
 /// The Tari dual address size
 pub const TARI_DUAL_ADDRESS_SIZE: usize = 67;
 
@@ -68,13 +47,13 @@ pub fn tari_dual_address_display(address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE]) -
 }
 
 /// Get the public spend key bytes from a serialized Tari dual address
-pub fn get_public_spend_key_from_tari_dual_address(
+pub fn get_public_spend_key_bytes_from_tari_dual_address(
     address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE],
 ) -> Result<[u8; 32], String> {
     validate_checksum(address_bytes.as_ref())?;
-    let mut public_spend_key = [0u8; 32];
-    public_spend_key.copy_from_slice(&address_bytes[34..66]);
-    Ok(public_spend_key)
+    let mut public_spend_key_bytes = [0u8; 32];
+    public_spend_key_bytes.copy_from_slice(&address_bytes[34..66]);
+    Ok(public_spend_key_bytes)
 }
 
 // Determine whether a byte slice ends with a valid checksum

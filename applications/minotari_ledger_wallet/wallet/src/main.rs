@@ -95,6 +95,7 @@ unsafe impl critical_section::Impl for MyCriticalSection {
 
 // Application status words.
 #[repr(u16)]
+#[derive(Debug)]
 pub enum AppSW {
     Deny = AppSWMapping::Deny as u16,
     WrongP1P2 = AppSWMapping::WrongP1P2 as u16,
@@ -149,6 +150,7 @@ pub enum KeyType {
     OneSidedSenderOffset = 0x04,
     Random = 0x06,
     PreMine = 0x07,
+    MetadataEphemeralNonce = 0x08,
 }
 
 impl KeyType {
@@ -166,6 +168,7 @@ impl KeyType {
                 BranchMapping::Spend => Ok(Self::Spend),
                 BranchMapping::RandomKey => Ok(Self::Random),
                 BranchMapping::PreMine => Ok(Self::PreMine),
+                BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
                 _ => Err(AppSW::BadBranchKey),
             }
         } else {

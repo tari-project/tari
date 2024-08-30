@@ -35,6 +35,7 @@ use tari_core::{
     transactions::{key_manager::CoreKeyManagerError, CoinbaseBuildError},
 };
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};
 
@@ -117,6 +118,10 @@ pub enum MmProxyError {
     UnexpectedMissingData(String),
     #[error("Failed to get block template: {0}")]
     FailedToGetBlockTemplate(String),
+    #[error("Max sized vector error: {0}")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
+    #[error("Max sized vector error: {0}")]
+    MaxSizeVecError(#[from] MaxSizeVecError),
 }
 
 impl From<tonic::Status> for MmProxyError {

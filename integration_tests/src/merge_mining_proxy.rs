@@ -141,6 +141,7 @@ impl MergeMiningProxyProcess {
             let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
             if let Err(e) = rt.block_on(merge_miner(cli)) {
                 println!("Error running merge mining proxy : {:?}", e);
+                panic!("Error running merge mining proxy");
             }
         });
     }

@@ -48,6 +48,7 @@ impl CompletedTransactions {
             length = ffi_import::completed_transactions_get_length(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transactions_get_length error {}", error);
+                panic!("completed_transactions_get_length error");
             }
         }
         length
@@ -60,6 +61,7 @@ impl CompletedTransactions {
             ptr = ffi_import::completed_transactions_get_at(self.ptr, position, &mut error);
             if error > 0 {
                 println!("completed_transactions_get_at error {}", error);
+                panic!("completed_transactions_get_at error");
             }
         }
         CompletedTransaction::from_ptr(ptr)

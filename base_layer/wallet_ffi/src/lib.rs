@@ -145,6 +145,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
+            CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
@@ -2725,7 +2726,15 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
-    let decoded_metadata = (*metadata).0.clone();
+    let decoded_metadata = match CoinBaseExtra::try_from((*metadata).0.clone()) {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a metadata: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("metadata".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
     let output_features = TariOutputFeatures::new(
         decoded_version,
@@ -4100,6 +4109,57 @@ pub unsafe extern "C" fn completed_transaction_get_message(
         Ok(v) => result = v,
         _ => {
             error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+
+    result.into_raw()
+}
+
+/// Gets the payment id of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+/// to an empty char array if transaction is null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_payment_id(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *const c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let payment_id = (*transaction).payment_id.clone();
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return result.into_raw();
+    }
+    let payment_id_str = match payment_id {
+        None => "".to_string(),
+        Some(v) => {
+            let bytes = v.get_data();
+            if bytes.is_empty() {
+                format!("#{}", v)
+            } else {
+                String::from_utf8(bytes)
+                    .unwrap_or_else(|_| "Invalid string".to_string())
+                    .to_string()
+            }
+        },
+    };
+    match CString::new(payment_id_str) {
+        Ok(v) => result = v,
+        _ => {
+            error = LibWalletError::from(InterfaceError::PointerError("payment id".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
         },
     }
@@ -9803,7 +9863,7 @@ mod test {
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
             assert_eq!(error, 0);
-            let empty_covenant = covenant!();
+            let empty_covenant = covenant!().unwrap();
             assert_eq!(*covenant, empty_covenant);
 
             covenant_destroy(covenant);
@@ -9817,7 +9877,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let expected_covenant = covenant!(identity());
+            let expected_covenant = covenant!(identity()).unwrap();
             let covenant_bytes = Box::into_raw(Box::new(ByteVector(borsh::to_vec(&expected_covenant).unwrap())));
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
@@ -9930,7 +9990,7 @@ mod test {
             let range_proof_type = RangeProofType::RevealedValue.as_byte();
             let maturity: c_ulonglong = 20;
 
-            let expected_metadata = vec![1; 1024];
+            let expected_metadata = vec![1; 64];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
 
             let output_features = output_features_create_from_bytes(
@@ -9952,7 +10012,7 @@ mod test {
                 RangeProofType::from_byte(range_proof_type).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert_eq!((*output_features).coinbase_extra, expected_metadata);
+            assert_eq!((*output_features).coinbase_extra.to_vec(), expected_metadata);
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -11592,7 +11652,7 @@ mod test {
             let key_manager = create_memory_db_key_manager().unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
                     MicroMinotari(1234u64),
@@ -11615,7 +11675,7 @@ mod test {
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
-            let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(
@@ -11744,7 +11804,7 @@ mod test {
             // Test import with bulletproof range proof
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(key_manager)),
                     MicroMinotari(1234u64),
@@ -11795,7 +11855,8 @@ mod test {
             let covenant_ptr_1 = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr_1 = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
-            let script_ptr_1 = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr_1 =
+                CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_1 =
                 CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
@@ -11831,13 +11892,13 @@ mod test {
                 version: OutputFeaturesVersion::V0,
                 output_type: Default::default(),
                 maturity: 0,
-                coinbase_extra: vec![],
+                coinbase_extra: CoinBaseExtra::try_from(vec![]).unwrap(),
                 sidechain_feature: None,
                 range_proof_type: RangeProofType::RevealedValue,
             };
             let utxo_2 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     features,
                     &runtime.block_on(TestParams::new(key_manager)),
                     MicroMinotari(12345u64),
@@ -11861,7 +11922,8 @@ mod test {
             let covenant_ptr_2 = Box::into_raw(Box::new(utxo_2.covenant.clone()));
             let encrypted_data_ptr_2 = Box::into_raw(Box::new(utxo_2.encrypted_data));
             let minimum_value_promise = utxo_2.minimum_value_promise.as_u64();
-            let script_ptr_2 = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr_2 =
+                CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr_2 =
                 CString::into_raw(CString::new(utxo_2.input_data.to_hex()).unwrap()) as *const c_char;
 
@@ -11970,7 +12032,7 @@ mod test {
             let key_manager = create_memory_db_key_manager().unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
-                    script!(Nop),
+                    script!(Nop).unwrap(),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
                     MicroMinotari(1234u64),
@@ -11995,7 +12057,7 @@ mod test {
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
-            let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
+            let script_ptr = CString::into_raw(CString::new(script!(Nop).unwrap().to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
             let tari_utxo = create_tari_unblinded_output(

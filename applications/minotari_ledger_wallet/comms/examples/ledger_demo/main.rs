@@ -222,13 +222,14 @@ fn main() {
     // GetViewKey
     println!("\ntest: GetViewKey");
 
-    match ledger_get_view_key(account) {
-        Ok(view_key) => println!("view_key:       {}", view_key.to_hex()),
+    let view_key_1 = match ledger_get_view_key(account) {
+        Ok(val) => val,
         Err(e) => {
             println!("\nError: {}\n", e);
             return;
         },
-    }
+    };
+    println!("view_key:       {}", view_key_1.to_hex());
 
     // GetDHSharedSecret
     println!("\ntest: GetDHSharedSecret");
@@ -336,7 +337,8 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+                "Ledger application is not the 'Minotari Wallet' application (Ledger application not started)"
+                    .to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
@@ -354,7 +356,9 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+                "Ledger application is not the 'Minotari Wallet' application (Processing error `2 GetAppName: Native \
+                 HID transport error `Ledger device not found``)"
+                    .to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
@@ -372,7 +376,8 @@ fn main() {
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing(
-                "GetViewKey: Native HID transport error `Ledger device: Io error`".to_string(),
+                "Ledger application is not the 'Minotari Wallet' application (Ledger application not started)"
+                    .to_string(),
             ) {
                 println!("\nError: Unexpected response ({})\n", e);
                 return;
@@ -384,14 +389,13 @@ fn main() {
     println!("\ntest: Ledger app restart");
     prompt_with_message("Start the 'MinoTari Wallet' Ledger app and press Enter to continue..");
     match ledger_get_view_key(account) {
-        Ok(view_key) => println!("view_key:       {}", view_key.to_hex()),
+        Ok(view_key_2) => {
+            println!("view_key:       {}", view_key_2.to_hex());
+        },
         Err(e) => {
             println!("\nError: {}\n", e);
-            return;
         },
     }
-
-    println!("\nTest completed successfully\n");
 }
 
 pub fn get_random_nonce() -> PrivateKey {

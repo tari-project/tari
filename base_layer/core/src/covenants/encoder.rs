@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn it_encodes_tokens_correctly() {
-        let covenant = covenant!(and(identity(), or(identity())));
+        let covenant = covenant!(and(identity(), or(identity()))).unwrap();
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();
         encoder.write_to(&mut buf).unwrap();
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn it_encodes_args_correctly() {
         let dummy = FixedHash::zero();
-        let covenant = covenant!(field_eq(@field::features, @hash(dummy)));
+        let covenant = covenant!(field_eq(@field::features, @hash(dummy))).unwrap();
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();
         encoder.write_to(&mut buf).unwrap();

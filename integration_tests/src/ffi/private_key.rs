@@ -46,6 +46,7 @@ impl PrivateKey {
             ptr = ffi_import::private_key_create(bytes.get_ptr(), &mut error);
             if error > 0 {
                 println!("private_key_create error {}", error);
+                panic!("private_key_create error");
             }
         }
         Self { ptr }
@@ -68,6 +69,7 @@ impl PrivateKey {
             ptr = ffi_import::private_key_from_hex(CString::new(key).unwrap().into_raw(), &mut error);
             if error > 0 {
                 println!("private_key_from_hex error {}", error);
+                panic!("private_key_from_hex error");
             }
         }
         Self { ptr }
@@ -85,6 +87,7 @@ impl PrivateKey {
             ptr = ffi_import::private_key_get_bytes(self.ptr, &mut error);
             if error > 0 {
                 println!("private_key_get_bytes error {}", error);
+                panic!("private_key_get_bytes error");
             }
         }
         FFIBytes::from_ptr(ptr)

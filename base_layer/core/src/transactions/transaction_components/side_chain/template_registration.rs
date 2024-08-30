@@ -22,11 +22,8 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    types::{PublicKey, Signature},
-    MaxSizeBytes,
-    MaxSizeString,
-};
+use tari_common_types::types::{PublicKey, Signature};
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CodeTemplateRegistration {

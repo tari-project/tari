@@ -81,10 +81,10 @@ where
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
         let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
-        let push_pub_key_script = script!(PushPubKey(Box::default()));
+        let push_pub_key_script = script!(PushPubKey(Box::default()))?;
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
-            if output.script != script!(Nop) &&
+            if output.script != script!(Nop)? &&
                 known_script_index.is_none() &&
                 !output.script.pattern_match(&push_pub_key_script)
             {
@@ -201,7 +201,7 @@ where
         known_script_index: Option<usize>,
         known_scripts: &[KnownOneSidedPaymentScript],
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
-        let (input_data, script_key) = if script == &script!(Nop) {
+        let (input_data, script_key) = if script == &script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
             let key = if let KeyId::Derived { key } = spending_key {
                 TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?

@@ -1205,7 +1205,7 @@ pub async fn command_runner(
                     &TransactionOutputVersion::get_current_version(),
                     &script!(PushPubKey(Box::new(
                         session_info.recipient_address.public_spend_key().clone()
-                    ))),
+                    )))?,
                     &leader_info.output_features,
                     &leader_info.sender_offset_pubkey,
                     &leader_info.metadata_signature_ephemeral_commitment,
@@ -1935,7 +1935,7 @@ fn write_utxos_to_csv_file(
             commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
-            String::from_utf8(utxo.features.coinbase_extra.clone())
+            String::from_utf8(utxo.features.coinbase_extra.to_vec())
                 .unwrap_or_else(|_| utxo.features.coinbase_extra.to_hex()),
             utxo.script.to_hex(),
             utxo.covenant.to_bytes().to_hex(),

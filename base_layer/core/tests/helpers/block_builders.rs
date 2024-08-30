@@ -42,6 +42,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{
+            CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -64,7 +65,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 pub async fn create_coinbase(
     value: MicroMinotari,
     maturity_height: u64,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     key_manager: &MemoryDbKeyManager,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager).await;
@@ -108,7 +109,7 @@ pub async fn create_coinbase(
         .unwrap();
 
     let wallet_output = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::create_coinbase(maturity_height, extra, RangeProofType::BulletProofPlus),
         &p,
         value,
@@ -130,7 +131,7 @@ async fn genesis_template(
     let (utxo, kernel, output) = create_coinbase(
         coinbase_value,
         consensus_constants.coinbase_min_maturity(),
-        Some(b"The big bang".to_vec()),
+        Some(CoinBaseExtra::try_from(b"The big bang".to_vec()).unwrap()),
         key_manager,
     )
     .await;
@@ -237,7 +238,7 @@ pub async fn create_genesis_block_with_utxos(
     key_manager: &MemoryDbKeyManager,
 ) -> (ChainBlock, Vec<WalletOutput>) {
     let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let output_features = OutputFeatures::default();
     let mut outputs = Vec::new();
     outputs.push(coinbase);
@@ -330,7 +331,7 @@ pub async fn chain_block_with_new_coinbase(
     prev_block: &ChainBlock,
     transactions: Vec<Transaction>,
     consensus_manager: &ConsensusManager,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     key_manager: &MemoryDbKeyManager,
 ) -> (NewBlockTemplate, WalletOutput) {
     let height = prev_block.height() + 1;

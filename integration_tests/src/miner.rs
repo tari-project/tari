@@ -42,7 +42,7 @@ use tari_core::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, WalletOutput},
     },
 };
 use tonic::transport::Channel;
@@ -289,7 +289,7 @@ async fn create_block_template_with_coinbase(
         MicroMinotari::from(fee),
         MicroMinotari::from(reward),
         height,
-        &[],
+        &CoinBaseExtra::default(),
         key_manager,
         script_key_id,
         wallet_payment_address,

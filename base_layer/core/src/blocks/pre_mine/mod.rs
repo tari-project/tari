@@ -47,6 +47,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
+            CoinBaseExtra,
             KernelFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -377,13 +378,13 @@ pub async fn create_pre_mine_genesis_block_info(
             Else
             PushPubKey(Box::new(backup_key.clone()))
             EndIf
-        );
+        ).map_err(|e| e.to_string())?;
         let output = WalletOutputBuilder::new(item.value, commitment_mask.key_id)
             .with_features(OutputFeatures::new(
                 OutputFeaturesVersion::get_current_version(),
                 OutputType::Standard,
                 item.maturity,
-                Vec::new(),
+                CoinBaseExtra::default(),
                 None,
                 RangeProofType::RevealedValue,
             ))
@@ -443,6 +444,7 @@ mod test {
             UpfrontRelease,
             BLOCKS_PER_DAY,
         },
+        consensus::consensus_constants::MAINNET_PRE_MINE_VALUE,
         transactions::{
             tari_amount::MicroMinotari,
             transaction_components::{TransactionKernel, TransactionOutput},
@@ -634,10 +636,7 @@ mod test {
             Network::StageNet,
         ] {
             let total_pre_mine_value = get_pre_mine_value(network).unwrap();
-            assert_eq!(
-                total_pre_mine_value,
-                MicroMinotari::from((21_000_000_000 - 14_700_000_000) * 1_000_000)
-            )
+            assert_eq!(total_pre_mine_value, MAINNET_PRE_MINE_VALUE)
         }
     }
 

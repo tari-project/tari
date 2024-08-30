@@ -145,7 +145,7 @@ impl ContactsTab {
             Span::raw(" field, "),
             Span::styled("K", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
-            Span::styled("Emoji ID", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("Tari Address", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" field, "),
             Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to save Contact."),
@@ -239,12 +239,10 @@ impl ContactsTab {
                         self.edit_contact_mode = ContactInputMode::None;
                         self.show_edit_contact = false;
 
-                        if let Err(_e) = Handle::current()
+                        if let Err(e) = Handle::current()
                             .block_on(app_state.upsert_contact(self.alias_field.clone(), self.address_field.clone()))
                         {
-                            self.error_message = Some(
-                                "Invalid Tari address or Emoji ID provided\n Press Enter to continue.".to_string(),
-                            );
+                            self.error_message = Some(e.to_string() + "\nPress Enter to continue.");
                         }
 
                         self.alias_field = "".to_string();

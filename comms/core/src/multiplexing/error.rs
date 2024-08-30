@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use futures::channel::oneshot::Canceled;
+use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
+use yamux::ConnectionError;
 
-use tari_core::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
+/// Error type for PeerConnection
+#[derive(Debug, Error, Clone)]
+pub enum YamuxControlError {
+    #[error("Yamux connection error: {0}")]
+    ConnectionError(String),
+    #[error("Yamux connection closed")]
+    ConnectionClosed,
+    #[error("Yamux request send error: {0}")]
+    RequestSendError(String),
+    #[error("Yamux request send error: {0}")]
+    RequestCanceled(#[from] Canceled),
+}
 
-use crate::tari_rpc as grpc;
+impl From<ConnectionError> for YamuxControlError {
+    fn from(err: ConnectionError) -> Self {
+        match err {
+            ConnectionError::Closed => Self::ConnectionClosed,
+            _ => Self::ConnectionError(err.to_string()),
+        }
+    }
+}
 
-impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
-    type Error = String;
-
-    #[allow(deprecated)]
-    fn try_from(pow: grpc::ProofOfWork) -> Result<Self, Self::Error> {
-        Ok(Self {
-            pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            pow_data: PowData::try_from(pow.pow_data).map_err(|e| e.to_string())?,
-        })
+impl<T> From<SendError<T>> for YamuxControlError {
+    fn from(err: SendError<T>) -> Self {
+        Self::RequestSendError(err.to_string())
     }
 }

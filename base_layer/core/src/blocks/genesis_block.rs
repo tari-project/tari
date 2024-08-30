@@ -31,13 +31,10 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, ProofOfWork},
+    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
     OutputSmt,
 };
-
-// This can be adjusted as required, but must be limited
-const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -152,7 +149,13 @@ fn get_stagenet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_nextnet_genesis_block() -> ChainBlock {
@@ -205,7 +208,13 @@ fn get_nextnet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
@@ -223,9 +232,9 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("7f118dd2269ec9c634fde19cd04d34f5b4e4dea609926999d9a4d73e4f03536a").unwrap();
+            FixedHash::from_hex("439e53c0eac3bd64f8ab946b5e2d474f6cb15ec6fecd13804e68f0f1a801b30d").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("b07420673fd88130c35f9b3b4239404202240857287f0d01ac5acba4b0d4518f").unwrap();
+            FixedHash::from_hex("1b422532f3be9001ae8f9bc716f61f473d6d7ba20e9df5fe08a09cf3ed4228b5").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -244,7 +253,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
 fn get_mainnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("16 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
     let not_before_proof = b"I am the standin mainnet genesis block, \
         \
        I am not the real mainnet block \
@@ -252,7 +261,13 @@ fn get_mainnet_genesis_block_raw() -> Block {
         I am only a standin \
         \
        Do not take me for the real one. I am only a placeholder for the real one";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_igor_genesis_block() -> ChainBlock {
@@ -306,7 +321,13 @@ fn get_igor_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_esmeralda_genesis_block() -> ChainBlock {
@@ -326,9 +347,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("a9ce2a25711e25d98409b590663cf3fc4ac3d08b1192fef8f69e7f696f78d026").unwrap();
+            FixedHash::from_hex("351cc183f692dcba280ec4e8988538fc51ffdeeff13ed3ea868026c81df5cc17").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("97d30b00f8f74da1b1d44ac9dcb93ca0eae367428fef97feec48649cca6f2ab7").unwrap();
+            FixedHash::from_hex("024b4cde6fdc73edbfde822c1496d7bdf156bc25caaf45eb6642fa62ff846964").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -347,7 +368,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("16 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -361,7 +382,13 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_localnet_genesis_block() -> ChainBlock {
@@ -395,15 +422,18 @@ fn get_localnet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
-fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[u8]) -> Block {
+fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &PowData) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
-
-    let mut not_before_proof = not_before_proof.to_vec();
-    not_before_proof.truncate(NOT_BEFORE_PROOF_BYTES_SIZE);
 
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis_timestamp.timestamp() as u64;
@@ -432,7 +462,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3x,
-                pow_data: not_before_proof,
+                pow_data: not_before_proof.clone(),
             },
         },
         body: AggregateBody::new(vec![], vec![], vec![]),

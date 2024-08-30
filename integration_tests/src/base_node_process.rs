@@ -21,7 +21,9 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryInto,
     fmt::{Debug, Formatter},
+    net::TcpListener,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -106,11 +108,10 @@ pub async fn spawn_base_node_with_config(
 
         base_node_identity = node_ps.identity.clone();
     } else {
-        // each spawned wallet will use different ports
+        // each spawned base node will use different ports
         port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
-        // temp_dir_path = tempdir().unwrap().path().to_path_buf();
         temp_dir_path = world
             .current_base_dir
             .as_ref()
@@ -228,7 +229,7 @@ pub async fn spawn_base_node_with_config(
             GrpcMethod::GetSideChainUtxos,
         ];
 
-        // Heirachically set the base path for all configs
+        // Hierarchically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
 
         println!(
@@ -259,5 +260,17 @@ impl BaseNodeProcess {
 
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
+        loop {
+            // lets wait till the port is cleared
+            if TcpListener::bind(("127.0.0.1", self.port.try_into().unwrap())).is_ok() {
+                break;
+            }
+        }
+        loop {
+            // lets wait till the port is cleared
+            if TcpListener::bind(("127.0.0.1", self.grpc_port.try_into().unwrap())).is_ok() {
+                break;
+            }
+        }
     }
 }

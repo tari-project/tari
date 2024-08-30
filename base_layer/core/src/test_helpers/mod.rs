@@ -43,12 +43,12 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{difficulty::CheckedAdd, sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType, Transaction, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, Transaction, WalletOutput},
     },
 };
 
@@ -114,7 +114,7 @@ pub async fn create_block(
         MicroMinotari::from(0),
         reward,
         header.height,
-        &[],
+        &CoinBaseExtra::default(),
         km,
         script_key_id,
         wallet_payment_address,
@@ -185,8 +185,8 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
     let achieved_target_diff = AchievedTargetDifficulty::try_construct(
         header.pow_algo(),
-        Difficulty::min().checked_add(1).unwrap(),
-        Difficulty::min().checked_add(1).unwrap(),
+        Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
+        Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
     )
     .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)

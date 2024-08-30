@@ -1,24 +1,24 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::{format, string::String};
-use core::ops::Deref;
+use alloc::{format, string::String, vec::Vec};
 
 use blake2::Blake2b;
-use digest::consts::{U32, U64};
+use borsh::{io, BorshSerialize};
+use digest::{
+    consts::{U32, U64},
+    Digest,
+};
 use ledger_device_sdk::{
     io::Comm,
-    random::Random,
     ui::{
         bitmaps::{CROSSMARK, EYE, VALIDATE_14},
         gadgets::{Field, MultiFieldReview, SingleMessage},
     },
 };
 use minotari_ledger_wallet_common::{
-    get_public_spend_key_from_tari_dual_address,
-    hex_to_bytes_serialized,
+    get_public_spend_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
-    PUSH_PUBKEY_IDENTIFIER,
     TARI_DUAL_ADDRESS_SIZE,
 };
 use tari_crypto::{
@@ -31,7 +31,7 @@ use tari_crypto::{
         RistrettoPublicKey,
         RistrettoSecretKey,
     },
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::ByteArray,
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, TransactionHashDomain};
 use zeroize::Zeroizing;
@@ -39,7 +39,7 @@ use zeroize::Zeroizing;
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, get_key_from_uniform_bytes},
+    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, get_key_from_uniform_bytes, get_random_nonce},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -69,8 +69,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let value_u64 = u64::from_le_bytes(value_bytes);
     let value = Minotari::new(u64::from_le_bytes(value_bytes));
 
-    let commitment_mask: Zeroizing<RistrettoSecretKey> =
-        get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
+    let commitment_mask: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
 
     let mut receiver_address_bytes = [0u8; TARI_DUAL_ADDRESS_SIZE]; // 67 bytes
     receiver_address_bytes.clone_from_slice(&data[72..139]);
@@ -109,34 +108,34 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         return Err(AppSW::UserCancelled);
     }
 
-    let value_as_private_key: Zeroizing<RistrettoSecretKey> = Zeroizing::new(value_u64.into());
+    let value_as_private_key: RistrettoSecretKey = value_u64.into();
 
     let sender_offset_private_key =
         derive_from_bip32_key(account, sender_offset_key_index, KeyType::OneSidedSenderOffset)?;
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_private_key);
 
-    let r_a = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
-    let r_x = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
-    let ephemeral_private_key = derive_from_bip32_key(account, u32::random().into(), KeyType::Nonce)?;
+    let r_a = get_random_nonce()?;
+    let r_x = get_random_nonce()?;
+    let ephemeral_private_key = get_random_nonce()?;
 
     let factory = ExtendedPedersenCommitmentFactory::default();
 
-    let commitment = factory.commit(&commitment_mask, value_as_private_key.deref());
+    let commitment = factory.commit(&commitment_mask, &value_as_private_key);
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
-    let receiver_public_spend_key: Zeroizing<RistrettoPublicKey> =
-        match get_public_spend_key_from_tari_dual_address(&receiver_address_bytes) {
-            Ok(bytes) => get_key_from_canonical_bytes::<RistrettoPublicKey>(&bytes)?.into(),
+    let receiver_public_spend_key: RistrettoPublicKey =
+        match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+            Ok(bytes) => get_key_from_canonical_bytes::<RistrettoPublicKey>(&bytes)?,
             Err(e) => {
                 SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
                 return Err(AppSW::MetadataSignatureFail);
             },
         };
 
-    let script_message = message_from_script(network, &commitment_mask, &receiver_public_spend_key)?;
+    let script = tari_script_with_address(&commitment_mask, &receiver_public_spend_key)?;
     let metadata_signature_message =
-        metadata_signature_message_from_script_and_common(network, &script_message, &metadata_signature_message_common);
+        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -193,7 +192,7 @@ fn finalize_metadata_signature_challenge(
     challenge.into()
 }
 
-fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8; 32], common: &[u8; 32]) -> [u8; 32] {
+fn metadata_signature_message_from_script_and_common(network: u64, script: &Script, common: &[u8; 32]) -> [u8; 32] {
     DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
         .chain(script)
         .chain(common)
@@ -201,32 +200,37 @@ fn metadata_signature_message_from_script_and_common(network: u64, script: &[u8;
         .into()
 }
 
-fn message_from_script(
-    network: u64,
-    commitment_mask: &Zeroizing<RistrettoSecretKey>,
-    receiver_public_spend_key: &Zeroizing<RistrettoPublicKey>,
-) -> Result<[u8; 32], AppSW> {
-    let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
-    let hashed_bytes = hasher.chain(commitment_mask.as_bytes()).finalize();
-    let hashed_commitment_mask = get_key_from_uniform_bytes(hashed_bytes.as_ref())?;
-    let hashed_commitment_mask_public_key =
-        Zeroizing::new(RistrettoPublicKey::from_secret_key(&hashed_commitment_mask));
-    let stealth_key = Zeroizing::new(receiver_public_spend_key.deref() + hashed_commitment_mask_public_key.deref());
+fn tari_script_with_address(
+    commitment_mask: &RistrettoSecretKey,
+    receiver_public_spend_key: &RistrettoPublicKey,
+) -> Result<Script, AppSW> {
+    let mut raw_key_hashed = Zeroizing::new([0u8; 64]);
+    DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key")
+        .chain(commitment_mask.as_bytes())
+        .finalize_into(raw_key_hashed.as_mut().into());
+    let hashed_commitment_mask = get_key_from_uniform_bytes(&raw_key_hashed)?;
+    let hashed_commitment_mask_public_key = RistrettoPublicKey::from_secret_key(&hashed_commitment_mask);
+    let stealth_key = receiver_public_spend_key + hashed_commitment_mask_public_key;
 
-    let serialized_script = match hex_to_bytes_serialized(PUSH_PUBKEY_IDENTIFIER, &stealth_key.deref().to_hex()) {
-        Ok(script) => script,
-        Err(e) => {
-            SingleMessage::new(&format!("Script error: {:?}", e.to_string())).show_and_wait();
-            return Err(AppSW::MetadataSignatureFail);
-        },
-    };
+    let mut serialized_script: Vec<u8> = stealth_key.as_bytes().to_vec();
+    serialized_script.insert(0, 0x7e); // OpCode
+    serialized_script.insert(0, 33); // Length
 
-    Ok(
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
-            .chain(&serialized_script)
-            .finalize()
-            .into(),
-    )
+    Ok(Script {
+        inner: serialized_script,
+    })
+}
+
+struct Script {
+    pub inner: Vec<u8>,
+}
+impl BorshSerialize for Script {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        for b in &self.inner {
+            b.serialize(writer)?;
+        }
+        Ok(())
+    }
 }
 
 struct Minotari(pub u64);

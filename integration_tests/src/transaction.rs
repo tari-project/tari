@@ -106,7 +106,7 @@ impl TestTransactionBuilder {
     }
 
     async fn create_utxo(&mut self, key_manager: &MemoryDbKeyManager, num_inputs: usize) {
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let features = OutputFeatures::default();
         let covenant = Covenant::default();
         let value = self.amount -

@@ -48,6 +48,7 @@ impl PendingOutboundTransaction {
             tx_id = ffi_import::pending_outbound_transaction_get_transaction_id(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_outbound_transaction_get_transaction_id error {}", error);
+                panic!("pending_outbound_transaction_get_transaction_id error");
             }
         }
         tx_id
@@ -64,6 +65,7 @@ impl PendingOutboundTransaction {
                     "pending_outbound_transaction_get_destination_tari_address error {}",
                     error
                 );
+                panic!("pending_outbound_transaction_get_destination_tari_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -77,6 +79,7 @@ impl PendingOutboundTransaction {
             amount = ffi_import::pending_outbound_transaction_get_amount(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_outbound_transaction_get_amount error {}", error);
+                panic!("pending_outbound_transaction_get_amount error");
             }
         }
         amount
@@ -90,6 +93,7 @@ impl PendingOutboundTransaction {
             fee = ffi_import::pending_outbound_transaction_get_fee(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_outbound_transaction_get_fee error {}", error);
+                panic!("pending_outbound_transaction_get_fee error");
             }
         }
         fee
@@ -103,6 +107,7 @@ impl PendingOutboundTransaction {
             timestamp = ffi_import::pending_outbound_transaction_get_timestamp(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_outbound_transaction_get_timestamp error {}", error);
+                panic!("pending_outbound_transaction_get_timestamp error");
             }
         }
         timestamp
@@ -116,6 +121,7 @@ impl PendingOutboundTransaction {
             ptr = ffi_import::pending_outbound_transaction_get_message(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_outbound_transaction_get_message error {}", error);
+                panic!("pending_outbound_transaction_get_message error");
             }
         }
         FFIString::from_ptr(ptr as *mut i8).as_string()
@@ -129,6 +135,7 @@ impl PendingOutboundTransaction {
             status = ffi_import::pending_outbound_transaction_get_status(self.ptr, &mut error);
             if error > 0 {
                 println!("pending_outbound_transaction_get_status error {}", error);
+                panic!("pending_outbound_transaction_get_status error");
             }
         }
         status

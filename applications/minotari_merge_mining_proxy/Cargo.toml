@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The Tari merge mining proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.2.0-pre.0"
+version = "1.3.0-pre.0"
 edition = "2018"
 
 [features]
@@ -26,6 +26,7 @@ tari_core = { path = "../../base_layer/core", default-features = false, features
 tari_key_manager = { path = "../../base_layer/key_manager", features = [
     "key_manager_service",
 ] }
+tari_max_size = { path = "../../infrastructure/max_size" }
 tari_utilities = { version = "0.7" }
 
 anyhow = "1.0.53"

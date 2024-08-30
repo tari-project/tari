@@ -48,6 +48,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
+            CoinBaseExtra,
             EncryptedData,
             OutputFeatures,
             OutputType,
@@ -535,6 +536,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 
     let num_retries = 100;
     let mut current_status = 0;
+    let mut total_found = 0;
 
     for _ in 0..num_retries {
         let mut txs = client
@@ -553,12 +555,13 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         if found_tx >= num_txs {
             return;
         }
+        total_found += found_tx;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     panic!(
-        "Wallet {} failed to have at least num {} txs with status {}, current status is {}",
-        wallet, num_txs, transaction_status, current_status
+        "Wallet {} failed to have at least num {} txs with status {}, current status is {}, scanned txs {}",
+        wallet, num_txs, transaction_status, current_status, total_found
     );
 }
 
@@ -2257,7 +2260,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             _ => panic!("Invalid output type"),
         };
         let maturity = output[6].parse::<u64>().unwrap();
-        let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
+        let coinbase_extra = CoinBaseExtra::try_from(Vec::from_hex(&output[7]).unwrap()).unwrap();
         let script = TariScript::from_hex(&output[8]).unwrap();
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
@@ -2368,7 +2371,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             _ => panic!("Invalid output type"),
         };
         let maturity = output[6].parse::<u64>().unwrap();
-        let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
+        let coinbase_extra = CoinBaseExtra::try_from(Vec::from_hex(&output[7]).unwrap()).unwrap();
         let script = TariScript::from_hex(&output[8]).unwrap();
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
@@ -2479,7 +2482,7 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
             _ => panic!("Invalid output type"),
         };
         let maturity = output[6].parse::<u64>().unwrap();
-        let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
+        let coinbase_extra = CoinBaseExtra::try_from(Vec::from_hex(&output[7]).unwrap()).unwrap();
         let script = TariScript::from_hex(&output[8]).unwrap();
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();

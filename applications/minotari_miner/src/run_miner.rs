@@ -57,7 +57,7 @@ use tari_core::{
         generate_coinbase,
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
-        transaction_components::encrypted_data::PaymentId,
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra},
     },
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
@@ -422,7 +422,7 @@ async fn get_new_block_base_node(
         fee,
         reward,
         height,
-        config.coinbase_extra.as_bytes(),
+        &CoinBaseExtra::try_from(config.coinbase_extra.as_bytes().to_vec())?,
         key_manager,
         wallet_payment_address,
         true,

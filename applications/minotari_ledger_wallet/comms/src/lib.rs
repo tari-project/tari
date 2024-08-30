@@ -28,10 +28,8 @@ pub mod ledger_wallet;
 mod test {
     use borsh::BorshSerialize;
     use minotari_ledger_wallet_common::{
-        get_public_spend_key_from_tari_dual_address,
-        hex_to_bytes_serialized,
+        get_public_spend_key_bytes_from_tari_dual_address,
         tari_dual_address_display,
-        PUSH_PUBKEY_IDENTIFIER,
         TARI_DUAL_ADDRESS_SIZE,
     };
     use rand::rngs::OsRng;
@@ -46,6 +44,7 @@ mod test {
     const NOP_IDENTIFIER: &str = "0173";
     const PUSH_ONE_IDENTIFIER: &str = "017c";
     const CHECK_SIG_VERIFY_IDENTIFIER: &str = "21ad";
+    const PUSH_PUBKEY_IDENTIFIER: &str = "217e";
 
     #[test]
     // This is testing the serialization of the 'PushPubKey' script and the byte representation of the script as needed
@@ -60,15 +59,15 @@ mod test {
     fn test_push_pub_key_serialized_byte_representation() {
         let mut scripts = Vec::new();
 
-        scripts.push((script!(Nop), NOP_IDENTIFIER, "".to_string()));
-        scripts.push((script!(PushOne), PUSH_ONE_IDENTIFIER, "".to_string()));
+        scripts.push((script!(Nop).unwrap(), NOP_IDENTIFIER, "".to_string()));
+        scripts.push((script!(PushOne).unwrap(), PUSH_ONE_IDENTIFIER, "".to_string()));
 
         for pub_key in [
             RistrettoPublicKey::default(),
             RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut OsRng)),
         ] {
             scripts.push((
-                script!(PushPubKey(Box::new(pub_key.clone()))),
+                script!(PushPubKey(Box::new(pub_key.clone()))).unwrap(),
                 PUSH_PUBKEY_IDENTIFIER,
                 pub_key.to_hex(),
             ));
@@ -76,20 +75,17 @@ mod test {
 
         let key = RistrettoSecretKey::random(&mut OsRng);
         let msg = slice_to_boxed_message(key.as_bytes());
-        scripts.push((script!(CheckSigVerify(msg)), CHECK_SIG_VERIFY_IDENTIFIER, key.to_hex()));
+        scripts.push((
+            script!(CheckSigVerify(msg)).unwrap(),
+            CHECK_SIG_VERIFY_IDENTIFIER,
+            key.to_hex(),
+        ));
 
         for (script, hex_identifier, hex_payload) in scripts {
             let mut serialized = Vec::new();
             script.serialize(&mut serialized).unwrap();
             let hex_data = hex_identifier.to_owned() + &hex_payload;
             assert_eq!(hex_data, serialized.to_vec().to_hex());
-            assert_eq!(
-                hex_to_bytes_serialized(hex_identifier, &hex_payload).unwrap(),
-                serialized.as_slice(),
-                "Change in script serialization detected: {:?}, expected {}",
-                script,
-                hex_identifier
-            );
         }
     }
 
@@ -111,7 +107,7 @@ mod test {
         );
         // Getting the public spend key from the address
         assert_eq!(
-            get_public_spend_key_from_tari_dual_address(&tari_address_bytes)
+            get_public_spend_key_bytes_from_tari_dual_address(&tari_address_bytes)
                 .unwrap()
                 .to_vec(),
             tari_address.public_spend_key().to_vec()

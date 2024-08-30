@@ -182,6 +182,7 @@ mod test {
             @fields(@field::commitment),
             @hash(hash),
         ))
+        .unwrap()
         .write_to(&mut bytes)
         .unwrap();
         let mut buf = bytes.as_slice();
