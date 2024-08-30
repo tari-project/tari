@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use log::{debug, info};
 use reqwest::Client;
 use tari_common::{load_configuration, DefaultConfigLoader};
+use tari_comms::message::MessageExt;
 use tari_core::proof_of_work::{
     monero_rx::deserialize_monero_block_from_hex,
     randomx_factory::RandomXFactory,
@@ -63,21 +64,20 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
 
     let tip = Arc::new(Mutex::new(0u64));
     let mut blocks_found: u64 = 0;
+
+    info!(target: LOG_TARGET, "Starting new mining cycle");
+
+    get_block_count(&client, &node_address, tip.clone()).await?;
+    let block_template = get_block_template(&client, &node_address, &monero_wallet_address).await?;
+
+    let mut count = 0u32;
     loop {
-        info!(target: LOG_TARGET, "Starting new mining cycle");
-
-        get_block_count(&client, &node_address, tip.clone()).await?;
-        let block_template = get_block_template(&client, &node_address, &monero_wallet_address).await?;
-
-        loop {
-            mining_cycle(block_template.clone())?;
-        }
-
-        sleep(Duration::from_secs(15)).await
+        mining_cycle(block_template.clone(), count)?;
+        count += 1;
     }
 }
 
-fn mining_cycle(block_template: BlockTemplate) -> Result<(Difficulty, Vec<u8>), MiningError> {
+fn mining_cycle(block_template: BlockTemplate, count: u32) -> Result<(Difficulty, Vec<u8>), MiningError> {
     let randomx_factory = RandomXFactory::default();
 
     // Assign these flags later
@@ -87,23 +87,18 @@ fn mining_cycle(block_template: BlockTemplate) -> Result<(Difficulty, Vec<u8>), 
     let vm = randomx_factory.create(&key)?;
 
     let block = deserialize_monero_block_from_hex(&block_template.blocktemplate_blob)?;
-    let bytes = hex::decode(block_template.blockhashing_blob).unwrap();
+    let mut bytes = hex::decode(block_template.blockhashing_blob)?;
 
-    let versions = "0c0c";
+    let nonce_position = 38;
+    let nonce_bytes: [u8; 4] = bytes[nonce_position..nonce_position + 4]
+        .try_into()
+        .expect("Slice with incorrect length"); // Remove this expect
+    let mut nonce = u32::from_le_bytes(nonce_bytes);
+    debug!(target: LOG_TARGET, "Nonce bytes: {:?}", nonce);
 
-    let input = &format!(
-        "{}{}{}{}{}{}",
-        versions,
-        to_hex(&block.header.timestamp.to_le_bytes()),
-        to_hex(&block.header.prev_id.to_bytes()),
-        to_hex(&block.header.nonce.to_le_bytes()),
-        to_hex(&block.tx_hashes[0].to_bytes()),
-        to_hex(&block_template.height.to_le_bytes())
-    );
-    debug!(target: LOG_TARGET, "Input: {}", input);
-    let input = from_hex(input)?;
+    bytes[nonce_position..nonce_position + 4].copy_from_slice(&count.to_le_bytes());
 
-    let hash = vm.calculate_hash(&input)?;
+    let hash = vm.calculate_hash(&bytes)?;
     debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
     let difficulty = Difficulty::little_endian_difficulty(&hash)?;
     debug!(target: LOG_TARGET, "Difficulty: {}", difficulty);
