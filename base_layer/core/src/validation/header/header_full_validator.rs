@@ -50,12 +50,11 @@ pub struct HeaderFullValidator {
 
 impl HeaderFullValidator {
     pub fn new(rules: ConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
-
-        let gen_hash = rules.get_genesis_block().hash().clone();
+        let gen_hash = *rules.get_genesis_block().hash();
         Self {
             rules,
             difficulty_calculator,
-            gen_hash
+            gen_hash,
         }
     }
 }
