@@ -136,12 +136,8 @@ impl BlockTemplateProtocol<'_> {
                             .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?
                     },
                     None => {
-                        let (_new_template, block_template_with_coinbase, height) = self
-                            .get_block_template_in_unnecessarily_complicated_manner(
-                                block_templates,
-                                best_block_hash,
-                                &mut loop_count,
-                            )
+                        let (block_template_with_coinbase, height) = self
+                            .get_block_template_from_cache_or_new(block_templates, best_block_hash, &mut loop_count)
                             .await?;
 
                         match self.get_new_block(block_template_with_coinbase).await {
@@ -156,6 +152,13 @@ impl BlockTemplateProtocol<'_> {
                                     },
                                 );
                                 b
+                            },
+                            Err(MmProxyError::FailedPreconditionBlockLostRetry) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Block lost, retrying to get new block template (try {})", loop_count
+                                );
+                                continue;
                             },
                             Err(err) => {
                                 error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
@@ -223,17 +226,13 @@ impl BlockTemplateProtocol<'_> {
         }
     }
 
-    // TODO: I don't know why this is so complicated, but I've extracted it into it's own method to hide the ugliness
-    async fn get_block_template_in_unnecessarily_complicated_manner(
+    async fn get_block_template_from_cache_or_new(
         &mut self,
         block_templates: &BlockTemplateRepository,
         best_block_hash: FixedHash,
         loop_count: &mut u64,
-    ) -> Result<(NewBlockTemplateData, NewBlockTemplate, u64), MmProxyError> {
-        let (new_template, block_template_with_coinbase, height) = match block_templates
-            .get_new_template(best_block_hash)
-            .await
-        {
+    ) -> Result<(NewBlockTemplate, u64), MmProxyError> {
+        let (block_template_with_coinbase, height) = match block_templates.get_new_template(best_block_hash).await {
             None => {
                 let new_template = match self.get_new_block_template().await {
                     Ok(val) => val,
@@ -263,7 +262,7 @@ impl BlockTemplateProtocol<'_> {
                     )
                     .await;
 
-                (new_template, template_with_coinbase, height)
+                (template_with_coinbase, height)
             },
             Some((new_template, template_with_coinbase)) => {
                 let height = new_template
@@ -273,10 +272,10 @@ impl BlockTemplateProtocol<'_> {
                     .map(|h| h.height)
                     .unwrap_or_default();
                 debug!(target: LOG_TARGET, "Used existing new block template at height: #{} (try {})", height, loop_count);
-                (new_template, template_with_coinbase, height)
+                (template_with_coinbase, height)
             },
         };
-        Ok((new_template, block_template_with_coinbase, height))
+        Ok((block_template_with_coinbase, height))
     }
 
     /// Get new block from base node.
