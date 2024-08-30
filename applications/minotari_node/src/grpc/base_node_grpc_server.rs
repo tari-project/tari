@@ -311,6 +311,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let randomx_estimated_hash_rate = randomx_hash_rate_moving_average.average();
                     let estimated_hash_rate = sha3x_estimated_hash_rate.saturating_add(randomx_estimated_hash_rate);
 
+                    let block = match handler.get_block(current_height, true).await {
+                        Ok(block) => block,
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Base node service error: {:?}", err,);
+                            let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal(format!("Error fetching block at height {}", current_height)),
+                            )));
+                            return;
+                        },
+                    };
+                    if block.is_none() {
+                        let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Block not found at height {}", current_height)),
+                        )));
+                        return;
+                    }
+                    let block = block.unwrap();
+                    let coinbases = block.block().body.get_coinbase_outputs();
+
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
@@ -319,6 +340,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         height: current_height,
                         timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),
+                        num_coinbases: coinbases.len() as u64,
+                        first_coinbase_extra: coinbases
+                            .first()
+                            .map(|c| c.features.coinbase_extra.to_vec())
+                            .unwrap_or_default(),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
