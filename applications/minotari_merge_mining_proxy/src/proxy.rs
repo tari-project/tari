@@ -39,7 +39,8 @@ use bytes::Bytes;
 use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
-use minotari_app_utilities::parse_miner_input::BaseNodeGrpcClient;
+use minotari_app_grpc::tari_rpc::SubmitBlockRequest;
+use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
@@ -76,6 +77,7 @@ impl MergeMiningProxyService {
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
         base_node_client: BaseNodeGrpcClient,
+        p2pool_client: Option<ShaP2PoolGrpcClient>,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
         wallet_payment_address: TariAddress,
@@ -88,6 +90,7 @@ impl MergeMiningProxyService {
                 block_templates,
                 http_client,
                 base_node_client,
+                p2pool_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
                 last_assigned_monerod_server: Arc::new(RwLock::new(None)),
@@ -160,6 +163,7 @@ struct InnerService {
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: BaseNodeGrpcClient,
+    p2pool_client: Option<ShaP2PoolGrpcClient>,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
@@ -292,6 +296,7 @@ impl InnerService {
                 .try_into()
                 .map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
+            let p2pool_client = self.p2pool_client.clone();
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
@@ -313,8 +318,29 @@ impl InnerService {
             };
 
             let height = tari_header_mut.height;
+            info!(
+                target: LOG_TARGET,
+                "Checking if we must submit block #{} to Minotari node with achieved target {} and expected target: {}",
+                height,
+                achieved_target,
+                block_data.template.tari_difficulty
+            );
             if achieved_target >= block_data.template.tari_difficulty {
-                match base_node_client.submit_block(block_data.template.tari_block).await {
+                let resp = match p2pool_client {
+                    Some(mut client) => {
+                        info!(target: LOG_TARGET, "Submiting to p2pool");
+                        client
+                            .submit_block(SubmitBlockRequest {
+                                block: Some(block_data.template.tari_block),
+
+                                wallet_payment_address: self.wallet_payment_address.to_hex(),
+                            })
+                            .await
+                    },
+                    None => base_node_client.submit_block(block_data.template.tari_block).await,
+                };
+
+                match resp {
                     Ok(resp) => {
                         if self.config.submit_to_origin {
                             json_resp = json_rpc::success_response(
@@ -451,6 +477,7 @@ impl InnerService {
 
         let new_block_protocol = BlockTemplateProtocol::new(
             &mut grpc_client,
+            self.p2pool_client.clone(),
             self.config.clone(),
             self.consensus_manager.clone(),
             self.wallet_payment_address.clone(),

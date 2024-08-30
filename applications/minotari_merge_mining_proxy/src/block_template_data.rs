@@ -104,15 +104,7 @@ impl BlockTemplateRepository {
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
     pub async fn get_final_template<T: AsRef<[u8]>>(&self, merge_mining_hash: T) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
-        b.get(merge_mining_hash.as_ref()).map(|item| {
-            trace!(
-                target: LOG_TARGET,
-                "Retrieving block template at height #{} with merge mining hash: {:?}",
-                item.data.clone().template.new_block_template.header.unwrap_or_default().height,
-                hex::encode(merge_mining_hash.as_ref())
-            );
-            item.data.clone()
-        })
+        b.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
@@ -165,7 +157,7 @@ impl BlockTemplateRepository {
         let b = self.blocks.read().await;
         b.values()
             .find(|item| {
-                let header = item.data.template.new_block_template.header.clone().unwrap_or_default();
+                let header = item.data.template.tari_block.header.clone().unwrap_or_default();
                 FixedHash::try_from(header.prev_hash).unwrap_or(FixedHash::default()) == current_best_block_hash
             })
             .map(|val| val.data.clone())
@@ -223,7 +215,6 @@ pub struct BlockTemplateData {
     pub tari_merge_mining_hash: FixedHash,
     #[allow(dead_code)]
     pub aux_chain_hashes: AuxChainHashes,
-    pub new_block_template: grpc::NewBlockTemplate,
 }
 
 impl BlockTemplateData {}
@@ -238,7 +229,6 @@ pub struct BlockTemplateDataBuilder {
     tari_difficulty: Option<u64>,
     tari_merge_mining_hash: Option<FixedHash>,
     aux_chain_hashes: AuxChainHashes,
-    new_block_template: Option<grpc::NewBlockTemplate>,
 }
 
 impl BlockTemplateDataBuilder {
@@ -281,11 +271,6 @@ impl BlockTemplateDataBuilder {
         self
     }
 
-    pub fn new_block_template(mut self, template: grpc::NewBlockTemplate) -> Self {
-        self.new_block_template = Some(template);
-        self
-    }
-
     /// Build a new [BlockTemplateData], all the values have to be set.
     ///
     /// # Errors
@@ -313,9 +298,6 @@ impl BlockTemplateDataBuilder {
         if self.aux_chain_hashes.is_empty() {
             return Err(MmProxyError::MissingDataError("aux chain hashes are empty".to_string()));
         };
-        let new_block_template = self
-            .new_block_template
-            .ok_or_else(|| MmProxyError::MissingDataError("new_block_template not provided".to_string()))?;
 
         Ok(BlockTemplateData {
             monero_seed,
@@ -325,7 +307,6 @@ impl BlockTemplateDataBuilder {
             tari_difficulty,
             tari_merge_mining_hash,
             aux_chain_hashes: self.aux_chain_hashes,
-            new_block_template,
         })
     }
 }
@@ -355,7 +336,6 @@ pub mod test {
             total_fees: 100,
             algo: Some(grpc::PowAlgo { pow_algo: 0 }),
         };
-        let new_block_template = grpc::NewBlockTemplate::default();
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.try_into().unwrap())
@@ -363,8 +343,7 @@ pub mod test {
             .monero_difficulty(123456)
             .tari_difficulty(12345)
             .tari_merge_mining_hash(hash)
-            .aux_hashes(AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap())
-            .new_block_template(new_block_template);
+            .aux_hashes(AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap());
         let block_template_data = btdb.build().unwrap();
         FinalBlockTemplateData {
             template: block_template_data,
