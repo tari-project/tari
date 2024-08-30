@@ -22,10 +22,8 @@
 
 use serde::Serialize;
 
-mod get_block_count;
-mod get_block_template;
-pub use get_block_count::get_block_count;
-pub use get_block_template::get_block_template;
+pub mod get_block_count;
+pub mod get_block_template;
 
 #[derive(Serialize)]
 pub struct Request<'a> {

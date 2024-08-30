@@ -41,7 +41,7 @@ pub struct GetBlockTemplateResponse {
 }
 
 #[allow(dead_code)] // not all fields are used currently
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct BlockTemplate {
     pub blocktemplate_blob: String,
     pub blockhashing_blob: String,

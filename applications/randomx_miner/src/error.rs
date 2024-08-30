@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_core::proof_of_work::monero_rx::MergeMineError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Config error: {0}")]
@@ -30,6 +32,8 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error("Request error: {0}")]
     Request(#[from] RequestError),
+    #[error("Mining cycle error: {0}")]
+    Mining(#[from] MiningError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -48,4 +52,18 @@ pub enum RequestError {
     GetBlockCount(String),
     #[error("Failed to process request `get_block_template`: {0}")]
     GetBlockTemplate(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MiningError {
+    #[error("DifficultyError`: {0}")]
+    Difficulty(#[from] tari_core::proof_of_work::DifficultyError),
+    #[error("RandomXVMFactoryError`: {0}")]
+    RandomXVMFactory(#[from] tari_core::proof_of_work::randomx_factory::RandomXVMFactoryError),
+    #[error("HexError`: {0}")]
+    Hex(#[from] tari_utilities::hex::HexError),
+    #[error("FromHexError`: {0}")]
+    FromHex(#[from] hex::FromHexError),
+    #[error("MergeMineError`: {0}")]
+    MergeMine(#[from] MergeMineError),
 }

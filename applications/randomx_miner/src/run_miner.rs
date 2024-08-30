@@ -22,16 +22,25 @@
 
 use std::{sync::Arc, time::Duration};
 
-use log::info;
+use log::{debug, info};
 use reqwest::Client;
 use tari_common::{load_configuration, DefaultConfigLoader};
+use tari_core::proof_of_work::{
+    monero_rx::deserialize_monero_block_from_hex,
+    randomx_factory::RandomXFactory,
+    Difficulty,
+};
+use tari_utilities::hex::{from_hex, to_hex};
 use tokio::{sync::Mutex, time::sleep};
 
 use crate::{
     cli::Cli,
     config::RandomXMinerConfig,
-    error::{ConfigError, Error},
-    json_rpc::{get_block_count, get_block_template},
+    error::{ConfigError, Error, MiningError},
+    json_rpc::{
+        get_block_count::get_block_count,
+        get_block_template::{get_block_template, BlockTemplate},
+    },
 };
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::main";
@@ -52,7 +61,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
 
     let client = Client::new();
 
-    let mut tip = Arc::new(Mutex::new(0u64));
+    let tip = Arc::new(Mutex::new(0u64));
     let mut blocks_found: u64 = 0;
     loop {
         info!(target: LOG_TARGET, "Starting new mining cycle");
@@ -60,6 +69,50 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
         get_block_count(&client, &node_address, tip.clone()).await?;
         let block_template = get_block_template(&client, &node_address, &monero_wallet_address).await?;
 
+        loop {
+            mining_cycle(block_template.clone())?;
+        }
+
         sleep(Duration::from_secs(15)).await
     }
+}
+
+fn mining_cycle(block_template: BlockTemplate) -> Result<(Difficulty, Vec<u8>), MiningError> {
+    let randomx_factory = RandomXFactory::default();
+
+    // Assign these flags later
+    // let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
+
+    let key = hex::decode(&block_template.prev_hash)?;
+    let vm = randomx_factory.create(&key)?;
+
+    let block = deserialize_monero_block_from_hex(&block_template.blocktemplate_blob)?;
+    let bytes = hex::decode(block_template.blockhashing_blob).unwrap();
+
+    let versions = "0c0c";
+
+    let input = &format!(
+        "{}{}{}{}{}{}",
+        versions,
+        to_hex(&block.header.timestamp.to_le_bytes()),
+        to_hex(&block.header.prev_id.to_bytes()),
+        to_hex(&block.header.nonce.to_le_bytes()),
+        to_hex(&block.tx_hashes[0].to_bytes()),
+        to_hex(&block_template.height.to_le_bytes())
+    );
+    debug!(target: LOG_TARGET, "Input: {}", input);
+    let input = from_hex(input)?;
+
+    let hash = vm.calculate_hash(&input)?;
+    debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
+    let difficulty = Difficulty::little_endian_difficulty(&hash)?;
+    debug!(target: LOG_TARGET, "Difficulty: {}", difficulty);
+
+    if difficulty.as_u64() >= block_template.difficulty {
+        println!("Valid block found!");
+    } else {
+        println!("Keep mining...");
+    }
+
+    Ok((difficulty, hash))
 }
