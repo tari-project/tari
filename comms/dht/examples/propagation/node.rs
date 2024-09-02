@@ -83,7 +83,7 @@ pub async fn create<P: AsRef<Path>>(
         .with_node_info(NodeNetworkInfo {
             major_version: 0,
             minor_version: 0,
-            network_byte: 0x25,
+            network_wire_byte: 0x25,
             user_agent: "/tari/propagator/0.0.1".to_string(),
         })
         .with_node_identity(node_identity.clone())
