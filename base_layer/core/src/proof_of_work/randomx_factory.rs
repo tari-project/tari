@@ -9,7 +9,7 @@ use std::{
 };
 
 use log::*;
-use randomx_rs::{RandomXCache, RandomXError, RandomXFlag, RandomXVM};
+use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 
 const LOG_TARGET: &str = "c::pow::randomx_factory";
 
@@ -35,24 +35,14 @@ pub struct RandomXVMInstance {
 }
 
 impl RandomXVMInstance {
-    fn create(key: &[u8], flags: RandomXFlag) -> Result<Self, RandomXVMFactoryError> {
-        let (flags, cache) = match RandomXCache::new(flags, key) {
-            Ok(cache) => (flags, cache),
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Error initializing RandomX cache with flags {:?}. {:?}. Fallback to default flags", flags, err
-                );
-                // This is informed by how RandomX falls back on any cache allocation failure
-                // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
-                let flags = RandomXFlag::FLAG_DEFAULT;
-                let cache = RandomXCache::new(flags, key)?;
-                (flags, cache)
-            },
-        };
-
+    fn create(
+        key: &[u8],
+        flags: RandomXFlag,
+        cache: Option<RandomXCache>,
+        dataset: Option<RandomXDataset>,
+    ) -> Result<Self, RandomXVMFactoryError> {
         // Note: Memory required per VM in light mode is 256MB
-        let vm = RandomXVM::new(flags, Some(cache), None)?;
+        let vm = RandomXVM::new(flags, cache, dataset)?;
 
         // Note: No dataset is initialized here because we want to run in light mode. Only a cache
         // is required by the VM for verification, giving it a dataset will only make the VM
@@ -106,15 +96,26 @@ impl RandomXFactory {
         }
     }
 
+    pub fn new_with_flags(max_vms: usize, flags: RandomXFlag) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(RandomXFactoryInner::new_with_flags(max_vms, flags))),
+        }
+    }
+
     /// Create a new RandomX VM instance with the specified key
-    pub fn create(&self, key: &[u8]) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
+    pub fn create(
+        &self,
+        key: &[u8],
+        cache: Option<RandomXCache>,
+        dataset: Option<RandomXDataset>,
+    ) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
         let res;
         {
             let mut inner = self
                 .inner
                 .write()
                 .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
-            res = inner.create(key)?;
+            res = inner.create(key, cache, dataset)?;
         }
         Ok(res)
     }
@@ -158,8 +159,25 @@ impl RandomXFactoryInner {
         }
     }
 
+    pub(crate) fn new_with_flags(max_vms: usize, flags: RandomXFlag) -> Self {
+        debug!(
+            target: LOG_TARGET,
+            "RandomX factory started with {} max VMs and recommended flags = {:?}", max_vms, flags
+        );
+        Self {
+            flags,
+            vms: Default::default(),
+            max_vms,
+        }
+    }
+
     /// Create a new RandomXVMInstance
-    pub(crate) fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
+    pub(crate) fn create(
+        &mut self,
+        key: &[u8],
+        cache: Option<RandomXCache>,
+        dataset: Option<RandomXDataset>,
+    ) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
         if let Some(entry) = self.vms.get_mut(key) {
             let vm = entry.1.clone();
             entry.0 = Instant::now();
@@ -180,7 +198,7 @@ impl RandomXFactoryInner {
             }
         }
 
-        let vm = RandomXVMInstance::create(key, self.flags)?;
+        let vm = RandomXVMInstance::create(key, self.flags, cache, dataset)?;
 
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
 
@@ -216,14 +234,14 @@ mod test {
         let factory = RandomXFactory::new(2);
 
         let key = b"some-key";
-        let vm = factory.create(&key[..]).unwrap();
+        let vm = factory.create(&key[..], None, None).unwrap();
         let preimage = b"hashme";
         let hash1 = vm.calculate_hash(&preimage[..]).unwrap();
-        let vm = factory.create(&key[..]).unwrap();
+        let vm = factory.create(&key[..], None, None).unwrap();
         assert_eq!(vm.calculate_hash(&preimage[..]).unwrap(), hash1);
 
         let key = b"another-key";
-        let vm = factory.create(&key[..]).unwrap();
+        let vm = factory.create(&key[..], None, None).unwrap();
         assert_ne!(vm.calculate_hash(&preimage[..]).unwrap(), hash1);
     }
 
@@ -236,7 +254,7 @@ mod test {
             let factory = factory.clone();
             threads.push(tokio::spawn(async move {
                 let key = b"some-key";
-                let vm = factory.create(&key[..]).unwrap();
+                let vm = factory.create(&key[..], None, None).unwrap();
                 let preimage = b"hashme";
                 let _hash = vm.calculate_hash(&preimage[..]).unwrap();
             }));
