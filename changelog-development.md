@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+## [1.3.1-pre.1](https://github.com/tari-project/tari/compare/v1.3.1-pre.0...v1.3.1-pre.1) (2024-09-02)
+
+### Bug Fixes
+
+* remove sub repo
+
+## [1.3.0-pre.0](https://github.com/tari-project/tari/compare/v1.2.0-pre.0...v1.3.0-pre.0) (2024-08-22)
+
 ## [1.3.1-pre.0](https://github.com/tari-project/tari/compare/v1.3.0-pre.0...v1.3.1-pre.0) (2024-08-30)
 
 
