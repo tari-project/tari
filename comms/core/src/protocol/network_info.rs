@@ -32,7 +32,7 @@ pub struct NodeNetworkInfo {
     /// The byte that MUST be sent (outbound connections) or MUST be received (inbound connections) for a connection to
     /// be established. This byte cannot be 0x46 (E) because that is reserved for liveness.
     /// Default: 0x00
-    pub network_byte: u8,
+    pub network_wire_byte: u8,
     /// The user agent string for this node
     pub user_agent: String,
 }

@@ -244,7 +244,7 @@ where
             #[cfg(feature = "metrics")]
             metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
-                Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
+                Ok(WireMode::Comms(byte)) if byte == config.network_info.network_wire_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
                     let result = Self::perform_socket_upgrade_procedure(
                         &node_identity,
@@ -290,7 +290,7 @@ where
                         target: LOG_TARGET,
                         "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
-                        config.network_info.network_byte,
+                        config.network_info.network_wire_byte,
                         byte,
                     );
                     let _result = socket.shutdown().await;
@@ -320,7 +320,7 @@ where
                         "Peer at address '{}' failed to send its wire format. Expected network byte {:x?} or liveness \
                          byte {:x?} not received. Error: {}",
                         peer_addr,
-                        config.network_info.network_byte,
+                        config.network_info.network_wire_byte,
                         LIVENESS_WIRE_MODE,
                         err
                     );

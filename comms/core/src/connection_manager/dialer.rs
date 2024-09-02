@@ -515,7 +515,7 @@ where
             tokio::select! {
                 _ = delay => {
                     debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
-                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_byte).await {
+                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_wire_byte).await {
                         (state, Ok((socket, addr))) => {
                             debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer().node_id.short_str(), state.num_attempts());
                             break (state, Ok((socket, addr)));
