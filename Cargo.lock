@@ -3224,7 +3224,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "argon2",
  "base64 0.13.1",
@@ -3253,7 +3253,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "clap 3.2.25",
  "dialoguer 0.10.4",
@@ -3275,7 +3275,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_chat_ffi"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "cbindgen",
  "chrono",
@@ -3300,7 +3300,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "blake2",
  "chrono",
@@ -3356,14 +3356,14 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "bs58 0.5.1",
 ]
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "borsh",
  "dialoguer 0.11.0",
@@ -3384,7 +3384,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3426,7 +3426,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -3463,7 +3463,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mining_helper_ffi"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3539,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "argon2",
  "async-trait",
@@ -3590,7 +3590,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -5956,7 +5956,7 @@ dependencies = [
 
 [[package]]
 name = "tari_chat_client"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5983,7 +5983,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "config",
@@ -6008,7 +6008,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -6022,7 +6022,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "base64 0.21.5",
  "bitflags 2.4.1",
@@ -6047,7 +6047,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6096,7 +6096,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
@@ -6140,7 +6140,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "futures 0.3.29",
  "proc-macro2",
@@ -6155,7 +6155,7 @@ dependencies = [
 
 [[package]]
 name = "tari_contacts"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "chrono",
  "diesel",
@@ -6189,7 +6189,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6288,11 +6288,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 
 [[package]]
 name = "tari_hashing"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "blake2",
  "borsh",
@@ -6350,7 +6350,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "argon2",
  "async-trait",
@@ -6385,7 +6385,7 @@ dependencies = [
 
 [[package]]
 name = "tari_libtor"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "derivative",
  "libtor",
@@ -6399,7 +6399,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "borsh",
  "serde",
@@ -6409,7 +6409,7 @@ dependencies = [
 
 [[package]]
 name = "tari_metrics"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "futures 0.3.29",
@@ -6424,7 +6424,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "bincode",
  "blake2",
@@ -6442,7 +6442,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
@@ -6478,7 +6478,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "blake2",
  "borsh",
@@ -6496,7 +6496,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6513,7 +6513,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "futures 0.3.29",
  "tokio",
@@ -6521,7 +6521,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -6534,7 +6534,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "1.3.1-pre.0"
+version = "1.3.1-pre.1"
 dependencies = [
  "futures 0.3.29",
  "futures-test",
