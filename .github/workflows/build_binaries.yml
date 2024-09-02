@@ -22,7 +22,7 @@ env:
   TS_BUNDLE_ID_BASE: "com.tarilabs"
   TS_SIG_FN: "sha256-unsigned.txt"
   ## Must be a JSon string
-  TS_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy"]'
+  TS_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy","randomx_miner"]'
   TS_FEATURES: "default, safe"
   TS_LIBRARIES: "minotari_mining_helper_ffi"
   # For debug builds
