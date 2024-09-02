@@ -20,17 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use log::{debug, error};
 use reqwest::Client;
 use serde::Deserialize;
-use tokio::sync::Mutex;
 
-use crate::{
-    error::{Error, RequestError},
-    Request,
-};
+use crate::{error::RequestError, Request};
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::json_rpc::get_block_count";
 
@@ -48,7 +42,7 @@ pub struct BlockCount {
     pub status: String,
 }
 
-pub async fn get_block_count(client: &Client, node_address: &String, tip: Arc<Mutex<u64>>) -> Result<(), Error> {
+pub async fn get_block_count(client: &Client, node_address: &String) -> Result<u64, RequestError> {
     let response = client
         .post(format!("{}/json_rpc", &node_address.to_string()))
         .json(&Request::new("get_block_count", serde_json::Value::Null))
@@ -56,23 +50,24 @@ pub async fn get_block_count(client: &Client, node_address: &String, tip: Arc<Mu
         .await
         .map_err(|e| {
             error!(target: LOG_TARGET, "Reqwest error: {:?}", e);
-            Error::from(RequestError::GetBlockCount(e.to_string()))
+            RequestError::GetBlockCount(e.to_string())
         })?
         .json::<GetBlockCountResponse>()
-        .await?;
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Reqwest error: {:?}", e);
+            RequestError::GetBlockCount(e.to_string())
+        })?;
     debug!(target: LOG_TARGET, "`get_block_count` Response: {:?}", response);
 
     if response.result.status == "OK" {
         debug!(target: LOG_TARGET, "`get_block_count` Blockchain tip (block height): {}", response.result.count);
-        *tip.lock().await = response.result.count;
+        Ok(response.result.count)
     } else {
         debug!(target: LOG_TARGET, "Failed to get the block count. Status: {}", response.result.status);
-        return Err(RequestError::GetBlockCount(format!(
+        Err(RequestError::GetBlockCount(format!(
             "Failed to get the block count. Status: {}",
             response.result.status
-        ))
-        .into());
+        )))
     }
-
-    Ok(())
 }

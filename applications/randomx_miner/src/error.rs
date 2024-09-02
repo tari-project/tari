@@ -66,4 +66,8 @@ pub enum MiningError {
     FromHex(#[from] hex::FromHexError),
     #[error("MergeMineError`: {0}")]
     MergeMine(#[from] MergeMineError),
+    #[error("Request error: {0}")]
+    Request(#[from] RequestError),
+    #[error("RandomXError: {0}")]
+    RandomX(#[from] randomx_rs::RandomXError),
 }

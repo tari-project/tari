@@ -25,10 +25,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{
-    error::{Error, RequestError},
-    Request,
-};
+use crate::{error::RequestError, Request};
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::json_rpc::get_block_template";
 
@@ -56,7 +53,7 @@ pub async fn get_block_template(
     client: &Client,
     node_address: &String,
     monero_wallet_address: &String,
-) -> Result<BlockTemplate, Error> {
+) -> Result<BlockTemplate, RequestError> {
     let response = client
         .post(format!("{}/json_rpc", &node_address.to_string()))
         .json(&Request::new(
@@ -70,10 +67,14 @@ pub async fn get_block_template(
         .await
         .map_err(|e| {
             error!(target: LOG_TARGET, "Reqwest error: {:?}", e);
-            Error::from(RequestError::GetBlockTemplate(e.to_string()))
+            RequestError::GetBlockTemplate(e.to_string())
         })?
         .json::<GetBlockTemplateResponse>()
-        .await?;
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Reqwest error: {:?}", e);
+            RequestError::GetBlockTemplate(e.to_string())
+        })?;
     debug!(target: LOG_TARGET, "`get_block_template` Response: {:?}", response);
 
     if response.result.status == "OK" {
@@ -83,7 +84,6 @@ pub async fn get_block_template(
         Err(RequestError::GetBlockCount(format!(
             "Failed to get the block template. Status: {}",
             response.result.status
-        ))
-        .into())
+        )))
     }
 }
