@@ -81,7 +81,6 @@ use tower::ServiceBuilder;
 use crate::{
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     config::{P2pConfig, PeerSeedsConfig},
-    get_network_wire_byte,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
     TransportConfig,
@@ -560,7 +559,7 @@ impl ServiceInitializer for P2pInitializer {
             .with_node_info(NodeNetworkInfo {
                 major_version: MAJOR_NETWORK_VERSION,
                 minor_version: MINOR_NETWORK_VERSION,
-                network_wire_byte: get_network_wire_byte(self.network)?,
+                network_wire_byte: self.network.as_wire_byte(),
                 user_agent: self.user_agent.clone(),
             })
             .with_minimize_connections(if self.config.dht.minimize_connections {

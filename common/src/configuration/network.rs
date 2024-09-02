@@ -32,6 +32,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
 
+const LIVENESS_WIRE_MODE: u8 = 0xa7;
+const MAIN_NET_RANGE: std::ops::Range<u8> = 0..40;
+const STAGE_NET_RANGE: std::ops::Range<u8> = 40..80;
+const NEXT_NET_RANGE: std::ops::Range<u8> = 80..120;
+const LOCAL_NET_RANGE: std::ops::Range<u8> = 120..160;
+const IGOR_RANGE: std::ops::Range<u8> = 160..200;
+const ESMERALDA_RANGE: std::ops::Range<u8> = 200..240;
+const LEGACY_RANGE: [u8; 6] = [0x00, 0x01, 0x02, 0x10, 0x24, 0x26];
+
 static CURRENT_NETWORK: OnceLock<Network> = OnceLock::new();
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
@@ -85,6 +94,66 @@ impl Network {
             Esmeralda => "esmeralda",
             LocalNet => "localnet",
         }
+    }
+
+    /// This function returns the network wire byte for any chosen network. Increase these numbers for any given network
+    /// when network traffic separation is required.
+    /// Note: Do not re-use previous values.
+    pub fn as_wire_byte(self) -> u8 {
+        let wire_byte = match self {
+            // Choose a value in 'MAIN_NET_RANGE' or assign 'self.as_byte()'
+            Network::MainNet => self.as_byte(),
+            // Choose a value in 'STAGE_NET_RANGE' or assign 'self.as_byte()'
+            Network::StageNet => self.as_byte(),
+            // Choose a value in 'NEXT_NET_RANGE' or assign 'self.as_byte()'
+            Network::NextNet => self.as_byte(),
+            // Choose a value in 'LOCAL_NET_RANGE' or assign 'self.as_byte()'
+            Network::LocalNet => self.as_byte(),
+            // Choose a value in 'IGOR_RANGE' or assign 'self.as_byte()'
+            Network::Igor => self.as_byte(),
+            // Choose a value in 'ESMERALDA_RANGE' or assign 'self.as_byte()'
+            Network::Esmeralda => self.as_byte(),
+        };
+        // The error is squashed to make this method infallible, and the method is called here to ensure that the
+        // range constants are used.
+        let _unused = self.verify_network_wire_byte_range(wire_byte);
+        wire_byte
+    }
+
+    // Helper function to verify the network wire byte range
+    fn verify_network_wire_byte_range(self, network_wire_byte: u8) -> Result<(), String> {
+        // 'LIVENESS_WIRE_MODE' is reserved for '0xa7'
+        if network_wire_byte == LIVENESS_WIRE_MODE {
+            return Err("Invalid network wire byte, cannot be '0x46', reserved for 'LIVENESS_WIRE_MODE'".to_string());
+        }
+
+        // Legacy compatibility
+        if network_wire_byte == self.as_byte() {
+            return Ok(());
+        }
+        if LEGACY_RANGE.contains(&network_wire_byte) {
+            return Err(format!(
+                "Invalid network wire byte `{}` for network `{}`",
+                network_wire_byte, self
+            ));
+        }
+
+        // Verify binned values
+        let valid = match self {
+            Network::MainNet => MAIN_NET_RANGE.contains(&network_wire_byte),
+            Network::StageNet => STAGE_NET_RANGE.contains(&network_wire_byte),
+            Network::NextNet => NEXT_NET_RANGE.contains(&network_wire_byte),
+            Network::LocalNet => LOCAL_NET_RANGE.contains(&network_wire_byte),
+            Network::Igor => IGOR_RANGE.contains(&network_wire_byte),
+            Network::Esmeralda => ESMERALDA_RANGE.contains(&network_wire_byte),
+        };
+        if !valid {
+            return Err(format!(
+                "Invalid network wire byte `{}` for network `{}`",
+                network_wire_byte, self
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -235,5 +304,105 @@ mod test {
         assert_eq!(Network::try_from(0x10).unwrap(), Network::LocalNet);
         assert_eq!(Network::try_from(0x24).unwrap(), Network::Igor);
         assert_eq!(Network::try_from(0x26).unwrap(), Network::Esmeralda);
+    }
+
+    #[test]
+    fn test_as_wire_byte() {
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            assert!(network.verify_network_wire_byte_range(LIVENESS_WIRE_MODE).is_err());
+
+            let wire_byte = Network::as_wire_byte(network);
+            assert!(network.verify_network_wire_byte_range(wire_byte).is_ok());
+
+            for val in 0..255 {
+                match network {
+                    Network::MainNet => {
+                        if val == LIVENESS_WIRE_MODE {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if val == Network::MainNet.as_byte() {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else if LEGACY_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if MAIN_NET_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        }
+                    },
+                    Network::StageNet => {
+                        if val == LIVENESS_WIRE_MODE {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if val == Network::StageNet.as_byte() {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else if LEGACY_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if STAGE_NET_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        }
+                    },
+                    Network::NextNet => {
+                        if val == LIVENESS_WIRE_MODE {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if val == Network::NextNet.as_byte() {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else if LEGACY_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if NEXT_NET_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        }
+                    },
+                    Network::LocalNet => {
+                        if val == LIVENESS_WIRE_MODE {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if val == Network::LocalNet.as_byte() {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else if LEGACY_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if LOCAL_NET_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        }
+                    },
+                    Network::Igor => {
+                        if val == LIVENESS_WIRE_MODE {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if val == Network::Igor.as_byte() {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else if LEGACY_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if IGOR_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        }
+                    },
+                    Network::Esmeralda => {
+                        if val == LIVENESS_WIRE_MODE {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if val == Network::Esmeralda.as_byte() {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else if LEGACY_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        } else if ESMERALDA_RANGE.contains(&val) {
+                            assert!(network.verify_network_wire_byte_range(val).is_ok());
+                        } else {
+                            assert!(network.verify_network_wire_byte_range(val).is_err());
+                        }
+                    },
+                }
+            }
+        }
     }
 }
