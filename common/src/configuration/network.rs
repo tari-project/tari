@@ -32,7 +32,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
 
-const LIVENESS_WIRE_MODE: u8 = 0xa7;
 const MAIN_NET_RANGE: std::ops::Range<u8> = 0..40;
 const STAGE_NET_RANGE: std::ops::Range<u8> = 40..80;
 const NEXT_NET_RANGE: std::ops::Range<u8> = 80..120;
@@ -58,6 +57,9 @@ pub enum Network {
 }
 
 impl Network {
+    /// The reserved wire byte for liveness ('LIVENESS_WIRE_MODE')
+    pub const RESERVED_WIRE_BYTE: u8 = 0xa7;
+
     pub fn get_current_or_user_setting_or_default() -> Self {
         match CURRENT_NETWORK.get() {
             Some(&network) => network,
@@ -120,11 +122,14 @@ impl Network {
         wire_byte
     }
 
-    // Helper function to verify the network wire byte range
-    fn verify_network_wire_byte_range(self, network_wire_byte: u8) -> Result<(), String> {
+    /// Helper function to verify the network wire byte range
+    pub fn verify_network_wire_byte_range(self, network_wire_byte: u8) -> Result<(), String> {
         // 'LIVENESS_WIRE_MODE' is reserved for '0xa7'
-        if network_wire_byte == LIVENESS_WIRE_MODE {
-            return Err("Invalid network wire byte, cannot be '0x46', reserved for 'LIVENESS_WIRE_MODE'".to_string());
+        if network_wire_byte == Network::RESERVED_WIRE_BYTE {
+            return Err(format!(
+                "Invalid network wire byte, cannot be '{}', reserved for 'LIVENESS_WIRE_MODE'",
+                Network::RESERVED_WIRE_BYTE
+            ));
         }
 
         // Legacy compatibility
@@ -316,7 +321,9 @@ mod test {
             Network::Igor,
             Network::Esmeralda,
         ] {
-            assert!(network.verify_network_wire_byte_range(LIVENESS_WIRE_MODE).is_err());
+            assert!(network
+                .verify_network_wire_byte_range(Network::RESERVED_WIRE_BYTE)
+                .is_err());
 
             let wire_byte = Network::as_wire_byte(network);
             assert!(network.verify_network_wire_byte_range(wire_byte).is_ok());
@@ -324,7 +331,7 @@ mod test {
             for val in 0..255 {
                 match network {
                     Network::MainNet => {
-                        if val == LIVENESS_WIRE_MODE {
+                        if val == Network::RESERVED_WIRE_BYTE {
                             assert!(network.verify_network_wire_byte_range(val).is_err());
                         } else if val == Network::MainNet.as_byte() {
                             assert!(network.verify_network_wire_byte_range(val).is_ok());
@@ -337,7 +344,7 @@ mod test {
                         }
                     },
                     Network::StageNet => {
-                        if val == LIVENESS_WIRE_MODE {
+                        if val == Network::RESERVED_WIRE_BYTE {
                             assert!(network.verify_network_wire_byte_range(val).is_err());
                         } else if val == Network::StageNet.as_byte() {
                             assert!(network.verify_network_wire_byte_range(val).is_ok());
@@ -350,7 +357,7 @@ mod test {
                         }
                     },
                     Network::NextNet => {
-                        if val == LIVENESS_WIRE_MODE {
+                        if val == Network::RESERVED_WIRE_BYTE {
                             assert!(network.verify_network_wire_byte_range(val).is_err());
                         } else if val == Network::NextNet.as_byte() {
                             assert!(network.verify_network_wire_byte_range(val).is_ok());
@@ -363,7 +370,7 @@ mod test {
                         }
                     },
                     Network::LocalNet => {
-                        if val == LIVENESS_WIRE_MODE {
+                        if val == Network::RESERVED_WIRE_BYTE {
                             assert!(network.verify_network_wire_byte_range(val).is_err());
                         } else if val == Network::LocalNet.as_byte() {
                             assert!(network.verify_network_wire_byte_range(val).is_ok());
@@ -376,7 +383,7 @@ mod test {
                         }
                     },
                     Network::Igor => {
-                        if val == LIVENESS_WIRE_MODE {
+                        if val == Network::RESERVED_WIRE_BYTE {
                             assert!(network.verify_network_wire_byte_range(val).is_err());
                         } else if val == Network::Igor.as_byte() {
                             assert!(network.verify_network_wire_byte_range(val).is_ok());
@@ -389,7 +396,7 @@ mod test {
                         }
                     },
                     Network::Esmeralda => {
-                        if val == LIVENESS_WIRE_MODE {
+                        if val == Network::RESERVED_WIRE_BYTE {
                             assert!(network.verify_network_wire_byte_range(val).is_err());
                         } else if val == Network::Esmeralda.as_byte() {
                             assert!(network.verify_network_wire_byte_range(val).is_ok());

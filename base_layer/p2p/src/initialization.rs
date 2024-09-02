@@ -602,3 +602,24 @@ impl ServiceInitializer for P2pInitializer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_comms::connection_manager::WireMode;
+    #[test]
+    fn self_liveness_network_wire_byte_is_consistent() {
+        let wire_mode = WireMode::Liveness;
+        assert_eq!(wire_mode.as_byte(), Network::RESERVED_WIRE_BYTE);
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            assert!(network.verify_network_wire_byte_range(wire_mode.as_byte()).is_err());
+        }
+    }
+}

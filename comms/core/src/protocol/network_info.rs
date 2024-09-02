@@ -30,7 +30,7 @@ pub struct NodeNetworkInfo {
     /// NOT reject the connection if a remote peer advertises a different minor version number.
     pub minor_version: u8,
     /// The byte that MUST be sent (outbound connections) or MUST be received (inbound connections) for a connection to
-    /// be established. This byte cannot be 0x46 (E) because that is reserved for liveness.
+    /// be established. This byte cannot be `LIVENESS_WIRE_MODE` (E) because that is reserved for liveness.
     /// Default: 0x00
     pub network_wire_byte: u8,
     /// The user agent string for this node
