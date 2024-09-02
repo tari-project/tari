@@ -36,7 +36,6 @@ pub struct RandomXVMInstance {
 
 impl RandomXVMInstance {
     fn create(
-        key: &[u8],
         flags: RandomXFlag,
         cache: Option<RandomXCache>,
         dataset: Option<RandomXDataset>,
@@ -198,7 +197,7 @@ impl RandomXFactoryInner {
             }
         }
 
-        let vm = RandomXVMInstance::create(key, self.flags, cache, dataset)?;
+        let vm = RandomXVMInstance::create(self.flags, cache, dataset)?;
 
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
 

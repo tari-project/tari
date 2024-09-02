@@ -52,6 +52,8 @@ pub enum RequestError {
     GetBlockCount(String),
     #[error("Failed to process request `get_block_template`: {0}")]
     GetBlockTemplate(String),
+    #[error("Failed to process request `submit_block`: {0}")]
+    SubmitBlock(String),
 }
 
 #[derive(Debug, thiserror::Error)]

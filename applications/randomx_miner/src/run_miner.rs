@@ -21,27 +21,29 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    cmp::max,
     collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use log::{debug, info, warn};
+use monero::VarInt;
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXFlag};
 use reqwest::Client;
 use tari_common::{load_configuration, DefaultConfigLoader};
 use tari_core::proof_of_work::{
+    monero_rx::{deserialize_monero_block_from_hex, serialize_monero_block_to_hex},
     randomx_factory::{RandomXFactory, RandomXVMInstance},
     Difficulty,
 };
+use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::RwLock;
 
 use crate::{
     cli::Cli,
     config::RandomXMinerConfig,
     error::{ConfigError, Error, MiningError},
-    json_rpc::{get_block_count::get_block_count, get_block_template::get_block_template},
+    json_rpc::{get_block_count::get_block_count, get_block_template::get_block_template, submit_block::submit_block},
 };
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::main";
@@ -129,7 +131,7 @@ async fn thread_work(
         Some(dataset) => dataset.clone(),
         None => {
             drop(read_lock);
-            let d = RandomXDataset::new(RandomXFlag::FLAG_DEFAULT, cache.clone(), 0)?;
+            let d = RandomXDataset::new(flags, cache.clone(), 0)?;
             datasets.write().await.insert(key.to_vec(), d.clone());
             d
         },
@@ -142,10 +144,8 @@ async fn thread_work(
     let mut max_difficulty_reached = 0;
     debug!(target: LOG_TARGET, "Mining now");
     loop {
-        let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone()).await?;
-        count += 1;
+        let (difficulty, _) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone()).await?;
 
-        // Check the hash rate every second
         let now = Instant::now();
         let elapsed_since_last_check = now.duration_since(last_check_time);
 
@@ -155,20 +155,24 @@ async fn thread_work(
 
             println!("Hash Rate: {:.2} H/s", hash_rate);
 
-            last_check_time = now; // Reset the last check time
+            last_check_time = now;
         }
 
-        unsafe {
-            if difficulty.as_u64() > max_difficulty_reached {
-                max_difficulty_reached = difficulty.as_u64();
-                println!("New max difficulty reached: {}", max_difficulty_reached);
-            }
+        if difficulty.as_u64() > max_difficulty_reached {
+            max_difficulty_reached = difficulty.as_u64();
+            println!("New max difficulty reached: {}", max_difficulty_reached);
         }
 
         if difficulty.as_u64() >= block_template.difficulty {
             println!("Valid block found!");
+            let mut block = deserialize_monero_block_from_hex(&block_template.blocktemplate_blob)?;
+            block.header.nonce = count;
+            block.header.timestamp = VarInt(EpochTime::now().as_u64());
+            let block_hex = serialize_monero_block_to_hex(&block)?;
+            submit_block(client, node_address, block_hex).await?;
             return Ok(());
         }
+        count += 1;
     }
 }
 

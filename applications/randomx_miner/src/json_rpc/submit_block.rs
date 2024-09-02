@@ -20,27 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::Serialize;
+use log::{debug, error};
+use reqwest::Client;
+use serde::Deserialize;
+use serde_json::json;
 
-pub mod get_block_count;
-pub mod get_block_template;
-pub mod submit_block;
+use crate::{error::RequestError, json_rpc::Request};
 
-#[derive(Serialize)]
-pub struct Request<'a> {
-    jsonrpc: &'a str,
-    id: &'a str,
-    method: &'a str,
-    params: serde_json::Value,
-}
+pub const LOG_TARGET: &str = "minotari::randomx_miner::json_rpc::submit_block";
 
-impl Request<'_> {
-    pub fn new(method: &str, params: serde_json::Value) -> Request {
-        Request {
-            jsonrpc: "2.0",
-            id: "0",
-            method,
-            params,
-        }
+pub async fn submit_block(client: &Client, node_address: &String, block_hash: String) -> Result<(), RequestError> {
+    let response = client
+        .post(format!("{}/json_rpc", &node_address.to_string()))
+        .json(&Request::new("submitblock", json![block_hash]))
+        .send()
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Reqwest error: {:?}", e);
+            RequestError::SubmitBlock(e.to_string())
+        })?;
+    debug!(target: LOG_TARGET, "`submit_block` Response: {:?}", response);
+
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        debug!(target: LOG_TARGET, "Failed to get the block template. {:?}", response);
+        Err(RequestError::SubmitBlock(format!(
+            "Failed to get the block template. Status: {:?}",
+            response
+        )))
     }
 }
