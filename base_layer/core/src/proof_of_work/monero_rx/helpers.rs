@@ -63,7 +63,7 @@ pub fn randomx_difficulty(
     consensus: &ConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
-    debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
+    trace!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)

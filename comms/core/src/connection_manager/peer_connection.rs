@@ -532,7 +532,6 @@ impl PeerConnectionActor {
                         self.peer_node_id.short_str(),
                         e
                     );
-                    return Ok(());
                 },
                 e => trace!(target: LOG_TARGET, "On disconnect: ({})", e),
             }
