@@ -22,7 +22,7 @@
 
 mod aggregate_body;
 mod base_node_state;
-mod block;
+pub mod block;
 mod block_header;
 mod chain_metadata;
 mod com_and_pub_signature;
