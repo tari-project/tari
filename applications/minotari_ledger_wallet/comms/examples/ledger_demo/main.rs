@@ -391,15 +391,11 @@ fn main() {
     match ledger_get_view_key(account) {
         Ok(view_key_2) => {
             println!("view_key:       {}", view_key_2.to_hex());
-            return;
         },
         Err(e) => {
             println!("\nError: {}\n", e);
-            return;
         },
     }
-
-    println!("\nTest completed successfully\n");
 }
 
 pub fn get_random_nonce() -> PrivateKey {
