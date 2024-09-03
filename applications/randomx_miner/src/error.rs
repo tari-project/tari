@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::proof_of_work::monero_rx::MergeMineError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Config error: {0}")]
@@ -67,7 +65,7 @@ pub enum MiningError {
     #[error("FromHexError`: {0}")]
     FromHex(#[from] hex::FromHexError),
     #[error("MergeMineError`: {0}")]
-    MergeMine(#[from] MergeMineError),
+    MergeMine(#[from] tari_core::proof_of_work::monero_rx::MergeMineError),
     #[error("Request error: {0}")]
     Request(#[from] RequestError),
     #[error("RandomXError: {0}")]

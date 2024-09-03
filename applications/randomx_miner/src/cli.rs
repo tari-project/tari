@@ -32,6 +32,10 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
+    #[clap(long, alias = "monero-base-node-address")]
+    pub monero_base_node_address: Option<String>,
+    #[clap(long, alias = "monero-wallet-address")]
+    pub monero_wallet_address: Option<String>,
     #[clap(long, alias = "mine-until-height")]
     pub mine_until_height: Option<u64>,
     #[clap(long, alias = "max-blocks")]
