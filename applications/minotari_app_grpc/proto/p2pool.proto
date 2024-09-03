@@ -31,7 +31,9 @@ service ShaP2Pool {
   rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
 }
 
-message GetNewBlockRequest {}
+message GetNewBlockRequest {
+  tari.rpc.PowAlgo pow = 1;
+}
 
 message GetNewBlockResponse {
   tari.rpc.GetNewBlockResult block = 1;
