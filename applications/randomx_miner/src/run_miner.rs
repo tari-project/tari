@@ -100,9 +100,9 @@ async fn thread_work(
     let flags = randomx_factory.get_flags()?;
     let current_height = get_block_count(client, node_address).await?;
     let block_template = get_block_template(client, node_address, monero_wallet_address).await?;
-    let blockhashing_bytes = hex::decode(block_template.blockhashing_blob)?;
+    let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
-    let key = hex::decode(&block_template.prev_hash)?;
+    let key = hex::decode(&block_template.seed_hash)?;
 
     debug!(target: LOG_TARGET, "Initializing cache");
     let read_lock = caches.read().await;
@@ -144,32 +144,35 @@ async fn thread_work(
     let mut max_difficulty_reached = 0;
     debug!(target: LOG_TARGET, "Mining now");
     loop {
-        let (difficulty, _) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone()).await?;
+        let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone()).await?;
 
         let now = Instant::now();
         let elapsed_since_last_check = now.duration_since(last_check_time);
 
-        if elapsed_since_last_check >= Duration::from_secs(10) {
+        if elapsed_since_last_check >= Duration::from_secs(2) {
             let total_elapsed_time = now.duration_since(start_time).as_secs_f64();
             let hash_rate = count as f64 / total_elapsed_time;
 
-            println!("Hash Rate: {:.2} H/s", hash_rate);
+            info!(
+                "Hash Rate: {:.2} H/s | Max difficulty reached: {}",
+                hash_rate, max_difficulty_reached
+            );
 
             last_check_time = now;
         }
 
         if difficulty.as_u64() > max_difficulty_reached {
             max_difficulty_reached = difficulty.as_u64();
-            println!("New max difficulty reached: {}", max_difficulty_reached);
         }
 
         if difficulty.as_u64() >= block_template.difficulty {
-            println!("Valid block found!");
-            let mut block = deserialize_monero_block_from_hex(&block_template.blocktemplate_blob)?;
-            block.header.nonce = count;
-            block.header.timestamp = VarInt(EpochTime::now().as_u64());
-            let block_hex = serialize_monero_block_to_hex(&block)?;
+            info!("Valid block found!");
+            let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
+            block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
+
+            let block_hex = hex::encode(block_template_bytes.clone());
             submit_block(client, node_address, block_hex).await?;
+
             return Ok(());
         }
         count += 1;
@@ -184,9 +187,13 @@ async fn mining_cycle(
     let nonce_position = 38;
     blockhashing_bytes[nonce_position..nonce_position + 4].copy_from_slice(&count.to_le_bytes());
 
+    let timestamp_position = 8;
+    let timestamp_bytes: [u8; 4] = (EpochTime::now().as_u64() as u32).to_le_bytes();
+    blockhashing_bytes[timestamp_position..timestamp_position + 4].copy_from_slice(&timestamp_bytes);
+
     let hash = vm.calculate_hash(&blockhashing_bytes)?;
     // Check last byte of hash and see if it's over difficulty
     let difficulty = Difficulty::little_endian_difficulty(&hash)?;
 
-    Ok((difficulty, hash))
+    Ok((difficulty, blockhashing_bytes))
 }

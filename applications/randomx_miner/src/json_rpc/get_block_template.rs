@@ -46,6 +46,7 @@ pub struct BlockTemplate {
     pub height: u64,
     pub prev_hash: String,
     pub reserved_offset: u64,
+    pub seed_hash: String,
     pub status: String,
 }
 
