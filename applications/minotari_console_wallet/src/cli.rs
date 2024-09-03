@@ -149,6 +149,8 @@ pub enum CliCommands {
     CreateTlsCerts,
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
+    CreateCommitmentProof(CreateCommitmentProofArgs),
+    VerifyCommitmentProof(VerifyCommitmentProofArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -379,4 +381,19 @@ pub struct RegisterValidatorNodeArgs {
 pub struct SyncArgs {
     #[clap(short, long, default_value = "0")]
     pub sync_to_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateCommitmentProofArgs {
+    pub commitment: UniPublicKey,
+    pub message: String,
+    pub minimum_value: Option<MicroMinotari>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct VerifyCommitmentProofArgs {
+    pub commitment: UniPublicKey,
+    pub message: String,
+    pub minimum_value: Option<MicroMinotari>,
+    pub proof: String,
 }

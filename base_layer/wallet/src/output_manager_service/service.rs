@@ -30,7 +30,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, RANGE_PROOF_BIT_LENGTH},
 };
 use tari_comms::types::CommsDHKE;
 use tari_core::{
@@ -45,7 +45,7 @@ use tari_core::{
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
+        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -80,7 +80,10 @@ use tari_script::{
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArray,
+};
 use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
@@ -130,7 +133,7 @@ impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -487,7 +490,122 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
+            OutputManagerRequest::CreateCommitmentProof(commitment, message, minimum_value) => self
+                .create_commitment_proof(commitment, message, minimum_value)
+                .await
+                .map(OutputManagerResponse::CommitmentProofCreated),
+            OutputManagerRequest::VerifyCommitmentProof(commitment, message, minimum_value, proof) => self
+                .verify_commitment_proof(commitment, message, minimum_value, proof)
+                .map(OutputManagerResponse::CommitmentProofVerified),
         }
+    }
+
+    async fn create_commitment_proof(
+        &self,
+        commitment: Commitment,
+        message: String,
+        minimum_value: Option<MicroMinotari>,
+    ) -> Result<Vec<u8>, OutputManagerError> {
+        use tari_bulletproofs_plus::*;
+
+        // Get the output details
+        let output: WalletOutput = self.resources.db.fetch_by_commitment(commitment.clone())?.into();
+        let mask = self
+            .resources
+            .key_manager
+            .get_private_key(&output.spending_key_id)
+            .await?;
+
+        // Generate the parameters
+        let params = range_parameters::RangeParameters::init(
+            RANGE_PROOF_BIT_LENGTH,
+            1,
+            ristretto::create_pedersen_gens_with_extension_degree(
+                generators::pedersen_gens::ExtensionDegree::DefaultPedersen,
+            ),
+        )
+        .map_err(|_| OutputManagerError::RangeProofError("Unable to create commitment proof".to_string()))?;
+
+        // Generate the witness
+        let opening = commitment_opening::CommitmentOpening::new(output.value.as_u64(), vec![mask.into()]);
+        let witness = range_witness::RangeWitness::init(vec![opening])
+            .map_err(|_| OutputManagerError::RangeProofError("Unable to create commitment proof".to_string()))?;
+
+        // Generate the statement
+        let statement = range_statement::RangeStatement::init(
+            params,
+            vec![commitment.as_public_key().point()],
+            vec![minimum_value.map(|v| v.as_u64())],
+            None,
+        )
+        .map_err(|_| OutputManagerError::RangeProofError("Unable to create commitment proof".to_string()))?;
+
+        // Start the transcript
+        let mut transcript = merlin::Transcript::new(b"Tari commitment proof");
+        transcript.append_u64(b"version", 1);
+        transcript.append_message(b"message", message.as_bytes());
+
+        // Generate the proof
+        let proof = ristretto::RistrettoRangeProof::prove(&mut transcript, &statement, &witness)
+            .map_err(|_| OutputManagerError::RangeProofError("Unable to create commitment proof".to_string()))?;
+
+        Ok(proof.to_bytes())
+    }
+
+    fn verify_commitment_proof(
+        &self,
+        commitment: Commitment,
+        message: String,
+        minimum_value: Option<MicroMinotari>,
+        proof: String,
+    ) -> Result<(), OutputManagerError> {
+        use tari_bulletproofs_plus::*;
+
+        // Try to decode the proof from hex to bytes
+        let bytes = from_hex(&proof)
+            .map_err(|_| OutputManagerError::RangeProofError("Unable to parse commitment proof".to_string()))?;
+
+        // Generate the parameters
+        let params = range_parameters::RangeParameters::init(
+            RANGE_PROOF_BIT_LENGTH,
+            1,
+            ristretto::create_pedersen_gens_with_extension_degree(
+                generators::pedersen_gens::ExtensionDegree::DefaultPedersen,
+            ),
+        )
+        .map_err(|_| {
+            OutputManagerError::RangeProofError("Unable to set up commitment proof verification".to_string())
+        })?;
+
+        // Generate the statement
+        let statement = range_statement::RangeStatement::init(
+            params,
+            vec![commitment.as_public_key().point()],
+            vec![minimum_value.map(|v| v.as_u64())],
+            None,
+        )
+        .map_err(|_| {
+            OutputManagerError::RangeProofError("Unable to set up commitment proof verification".to_string())
+        })?;
+
+        // Start the transcript
+        let mut transcript = merlin::Transcript::new(b"Tari commitment proof");
+        transcript.append_u64(b"version", 1);
+        transcript.append_message(b"message", message.as_bytes());
+
+        // Try to parse the proof
+        let proof = ristretto::RistrettoRangeProof::from_bytes(&bytes)
+            .map_err(|_| OutputManagerError::RangeProofError("Unable to parse commitment proof".to_string()))?;
+
+        // Verify the proof
+        ristretto::RistrettoRangeProof::verify_batch(
+            &mut [transcript],
+            &[statement],
+            &[proof],
+            range_proof::VerifyAction::VerifyOnly,
+        )
+        .map_err(|_| OutputManagerError::RangeProofError("Commitment proof verification failed".to_string()))
+        .and(Ok(()))
     }
 
     fn get_output_info_by_tx_id(&self, tx_id: TxId) -> Result<OutputInfoByTxId, OutputManagerError> {

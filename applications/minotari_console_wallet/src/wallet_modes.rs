@@ -530,7 +530,7 @@ async fn run_grpc(
 mod test {
     use std::path::Path;
 
-    use crate::{cli::CliCommands, wallet_modes::parse_command_file};
+    use crate::{cli::CliCommands, wallet_modes::parse_command_file, Cli};
 
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -640,6 +640,8 @@ mod test {
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
                 CliCommands::Sync(_) => {},
                 CliCommands::ExportViewKeyAndSpendKey(_) => {},
+                CliCommands::CreateCommitmentProof(_) => {},
+                CliCommands::VerifyCommitmentProof(_) => {},
             }
         }
         assert!(
