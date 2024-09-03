@@ -70,26 +70,50 @@ For more information see [LedgerCTL](https://github.com/LedgerHQ/ledgerctl).
 ## Building
 
 It is recommended to build the Ledger application via the official `ledger-app-builder` Docker image, as the Docker 
-image is properly supported and always kept up to date.
+image is properly setup, supported and always kept up to date.
 
 ### Option 1: Using Docker
 
 Ensure Docker Desktop is installed and running on your machine.
 
-The following command has to be run from the root of the Tari repository:
+The following command has to be run from the root of the Tari repository.  
 
+Replace ```{TARGET}``` with the appropriate value (e.g., `nanosplus`, `nanos`, etc.).
+
+Compiled resources will be found in `applications/minotari_ledger_wallet/wallet/target/{TARGET}/release`
+
+Single all-inclusive command without requiring manual interaction with the Docker container.
+
+#### Unix/MacOS:
+```bash
+docker run --rm -it \
+  -v ".:/app" \
+  -w /app/applications/minotari_ledger_wallet/wallet \
+  ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder \
+  cargo ledger build {TARGET}
 ```
+
+#### Windows:
+```DOS
+docker run --rm -it -v ".:/app" -w /app/applications/minotari_ledger_wallet/wallet ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder cargo ledger build {TARGET}
+```
+
+or  
+
+If one would rather run smaller command snippets individually:   
+* start with running a temporary docker container for building the ledger wallet:
+```DOS
 docker run --rm -it -v ".:/app" ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder
 ```
-
-This will load the Docker vm where you can now build the ledger app. Navigate to the wallet directory
-`applications/minotari_ledger_wallet/wallet` to build.
-
+* change to the folder where the ledger wallet code can be found inside of the temporary docker container:
+```DOS
+cd /app/applications/minotari_ledger_wallet/wallet
 ```
+* now build the ledger wallet then exit and close the temporary docker container:
+```DOS
 cargo ledger build {TARGET}
+exit
 ```
-
-where TARGET = nanosplus, nanos, etc.
 
 **Notes:** 
 - The application has to be installed on the device manually. Please see the _**Manual installation**_ section below.

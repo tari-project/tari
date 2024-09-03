@@ -559,7 +559,7 @@ impl ServiceInitializer for P2pInitializer {
             .with_node_info(NodeNetworkInfo {
                 major_version: MAJOR_NETWORK_VERSION,
                 minor_version: MINOR_NETWORK_VERSION,
-                network_byte: self.network.as_byte(),
+                network_wire_byte: self.network.as_wire_byte(),
                 user_agent: self.user_agent.clone(),
             })
             .with_minimize_connections(if self.config.dht.minimize_connections {
@@ -600,5 +600,16 @@ impl ServiceInitializer for P2pInitializer {
         context.register_handle(dht);
         debug!(target: LOG_TARGET, "P2P Initialized");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_comms::connection_manager::WireMode;
+    #[test]
+    fn self_liveness_network_wire_byte_is_consistent() {
+        let wire_mode = WireMode::Liveness;
+        assert_eq!(wire_mode.as_byte(), Network::RESERVED_WIRE_BYTE);
     }
 }
