@@ -457,8 +457,9 @@ async fn get_new_block_base_node(
 async fn get_new_block_p2pool_node(
     sha_p2pool_client: &mut ShaP2PoolGrpcClient,
 ) -> Result<GetNewBlockResponse, MinerError> {
-    let mut pow_algo = PowAlgo::default();
-    pow_algo.set_pow_algo(PowAlgos::Sha3x);
+    let pow_algo = PowAlgo {
+        pow_algo: PowAlgos::Sha3x.into(),
+    };
     let block_result = sha_p2pool_client
         .get_new_block(GetNewBlockRequest { pow: Some(pow_algo) })
         .await?
