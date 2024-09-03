@@ -136,9 +136,9 @@ pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
         include_str!("../../config/presets/g_miner.toml"),
         include_str!("../../config/presets/f_merge_mining_proxy.toml"),
         include_str!("../../config/presets/e_validator_node.toml"),
-        include_str!("../../config/presets/h_collectibles.toml"),
-        include_str!("../../config/presets/i_indexer.toml"),
-        include_str!("../../config/presets/j_dan_wallet_daemon.toml"),
+        include_str!("../../config/presets/i_collectibles.toml"),
+        include_str!("../../config/presets/j_indexer.toml"),
+        include_str!("../../config/presets/k_dan_wallet_daemon.toml"),
     ]
 }
 

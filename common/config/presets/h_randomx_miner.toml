@@ -1,0 +1,13 @@
+########################################################################################################################
+#                                                                                                                      #
+#                      RandomX Miner Configuration Options (RandomXMinerConfig)                                                       #
+#                                                                                                                      #
+########################################################################################################################
+
+[randomx_miner]
+
+# Monero base node or Tari MergeMinerProxy address (default = "http://127.0.0.1:18081")
+#monero_base_node_address = "http://127.0.0.1:18081"
+
+# Monero wallet address (default = "none")
+#monero_wallet_address = "none"
