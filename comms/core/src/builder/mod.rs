@@ -174,7 +174,7 @@ impl CommsBuilder {
 
     /// Set a network byte as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
     pub fn with_network_byte(mut self, network_byte: u8) -> Self {
-        self.connection_manager_config.network_info.network_byte = network_byte;
+        self.connection_manager_config.network_info.network_wire_byte = network_byte;
         self
     }
 

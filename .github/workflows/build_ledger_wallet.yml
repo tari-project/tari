@@ -12,16 +12,30 @@ name: Build minotari_ledger_wallet
     - cron: "05 00 * * *"
   workflow_dispatch:
 
+env:
+  TS_FILENAME: "minotari_ledger_wallet"
+  SHARUN: "shasum --algorithm 256"
+
+concurrency:
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
 permissions: {}
 
 jobs:
-  build:
+  builds:
     name: building ${{ matrix.ledger_target }}
-    continue-on-error: true
+    continue-on-error: ${{ matrix.best_effort || false }}
     strategy:
       fail-fast: false
       matrix:
-        ledger_target: [nanox, nanosplus]
+        include:
+          - ledger_target: nanos
+            best_effort: true
+          - ledger_target: nanox
+            best_effort: true
+          - ledger_target: nanosplus
 
     permissions:
       packages: write
@@ -44,16 +58,67 @@ jobs:
             ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder \
             cargo ledger build ${{ matrix.ledger_target }}
 
-      - name: List ledger firmware
+      - name: env Setup
+        env:
+          SHA_SHORT: ${GITHUB_SHA::7}
         shell: bash
         run: |
+          BINFILE="${TS_FILENAME}-${{ matrix.ledger_target }}-${{ github.ref_name }}-${{ env.SHA_SHORT }}"
+          echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
+
+      - name: archive ledger firmware for ${{ matrix.ledger_target }}
+        shell: bash
+        run: |
+          # set -xo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/dist"
+          cd "${GITHUB_WORKSPACE}/dist"
+          echo "Copying files for ${{ env.BINFILE }} to $(pwd)"
           ls -la ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/
+          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/*.json .
+          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/key_14x14.gif .
+          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/minotari_ledger_wallet.* .
+          echo "Compute files shasum"
+          ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.sha256"
+          echo "Checksum verification for files is "
+          ${SHARUN} --check "${{ env.BINFILE }}.sha256"
+          7z a "${{ env.BINFILE }}.zip" *
+          echo "Compute archive shasum"
+          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for ${{ matrix.ledger_target }}
         uses: actions/upload-artifact@v4
         with:
-          name: minotari_ledger_wallet-${{ matrix.ledger_target }}-${{ github.ref_name }}-${{ github.sha }}
-          path: |
-            ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/*.json
-            ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/key_14x14.gif
-            ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/minotari_ledger_wallet.*
+          name: ${{ env.BINFILE }}
+          path: "${{ github.workspace }}/dist/${{ env.BINFILE }}.zip*"
+
+  create-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: [ builds ]
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "${{ env.TS_FILENAME }}*"
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.TS_FILENAME }}*/**/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: true
+          draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          replacesArtifacts: true

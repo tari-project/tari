@@ -56,6 +56,7 @@ pub(crate) use self_liveness::SelfLivenessCheck;
 pub use self_liveness::SelfLivenessStatus;
 
 mod wire_mode;
+pub use wire_mode::WireMode;
 
 #[cfg(test)]
 mod tests;
