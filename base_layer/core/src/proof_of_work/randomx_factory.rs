@@ -36,12 +36,17 @@ pub struct RandomXVMInstance {
 
 impl RandomXVMInstance {
     fn create(
+        key: &[u8],
         flags: RandomXFlag,
         cache: Option<RandomXCache>,
         dataset: Option<RandomXDataset>,
     ) -> Result<Self, RandomXVMFactoryError> {
         // Note: Memory required per VM in light mode is 256MB
-        let vm = RandomXVM::new(flags, cache, dataset)?;
+        let cache = match cache {
+            Some(c) => c,
+            None => RandomXCache::new(flags, key)?,
+        };
+        let vm = RandomXVM::new(flags, Some(cache), dataset)?;
 
         // Note: No dataset is initialized here because we want to run in light mode. Only a cache
         // is required by the VM for verification, giving it a dataset will only make the VM
@@ -197,7 +202,7 @@ impl RandomXFactoryInner {
             }
         }
 
-        let vm = RandomXVMInstance::create(self.flags, cache, dataset)?;
+        let vm = RandomXVMInstance::create(key, self.flags, cache, dataset)?;
 
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
 
