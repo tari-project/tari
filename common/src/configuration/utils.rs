@@ -108,7 +108,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 /// Returns a new configuration file template in parts from the embedded presets. If non_interactive is false, the user
 /// is prompted to select if they would like to select a base node configuration that enables mining or not.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn prompt_default_config() -> [&'static str; 12] {
+pub fn prompt_default_config() -> [&'static str; 13] {
     let mine = prompt(
         "Node config does not exist.\nWould you like to mine (Y/n)?\nNOTE: this will enable additional gRPC methods \
          that could be used to monitor and submit blocks from this node.",
@@ -118,7 +118,7 @@ pub fn prompt_default_config() -> [&'static str; 12] {
 
 /// Returns the default configuration file template in parts from the embedded presets. If use_mining_config is true,
 /// the base node configuration that enables mining is returned, otherwise the non-mining configuration is returned.
-pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
+pub fn get_default_config(use_mining_config: bool) -> [&'static str; 13] {
     let base_node_allow_methods = if use_mining_config {
         include_str!("../../config/presets/c_base_node_b_mining_allow_methods.toml")
     } else {
@@ -135,6 +135,7 @@ pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
         include_str!("../../config/presets/d_console_wallet.toml"),
         include_str!("../../config/presets/g_miner.toml"),
         include_str!("../../config/presets/f_merge_mining_proxy.toml"),
+        include_str!("../../config/presets/h_randomx_miner.toml"),
         include_str!("../../config/presets/e_validator_node.toml"),
         include_str!("../../config/presets/i_collectibles.toml"),
         include_str!("../../config/presets/j_indexer.toml"),

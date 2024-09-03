@@ -11,3 +11,6 @@
 
 # Monero wallet address (default = "none")
 #monero_wallet_address = "none"
+
+# Number of mining threads (default: number of logical CPU cores)
+#num_mining_threads = 8

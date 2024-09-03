@@ -22,7 +22,6 @@
 
 use log::{debug, error};
 use reqwest::Client;
-use serde::Deserialize;
 use serde_json::json;
 
 use crate::{error::RequestError, json_rpc::Request};

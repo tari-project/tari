@@ -41,6 +41,8 @@ pub struct RandomXMinerConfig {
     pub network: Network,
     /// The relative path to store persistent config
     pub config_dir: PathBuf,
+    /// Number of mining threads
+    pub num_mining_threads: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
@@ -65,6 +67,7 @@ impl Default for RandomXMinerConfig {
             mode: Default::default(),
             network: Default::default(),
             config_dir: PathBuf::from("config/randomx_miner"),
+            num_mining_threads: num_cpus::get(),
         }
     }
 }

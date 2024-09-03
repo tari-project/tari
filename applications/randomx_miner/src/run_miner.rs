@@ -26,13 +26,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use dialoguer::Input as InputPrompt;
 use log::{debug, info, warn};
-use monero::VarInt;
+use minotari_app_utilities::parse_miner_input::process_quit;
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXFlag};
-use reqwest::Client;
+use reqwest::Client as ReqwestClient;
 use tari_common::{load_configuration, DefaultConfigLoader};
 use tari_core::proof_of_work::{
-    monero_rx::{deserialize_monero_block_from_hex, serialize_monero_block_to_hex},
     randomx_factory::{RandomXFactory, RandomXVMInstance},
     Difficulty,
 };
@@ -57,21 +57,16 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
     let mut config = RandomXMinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
 
-    let node_address = config.monero_base_node_address.ok_or(ConfigError::MissingBaseNode)?;
-    info!(target: LOG_TARGET, "Using Monero node address: {}", node_address);
+    let node_address = monero_base_node_address(&cli, &config)?;
+    let monero_wallet_address = monero_wallet_address(&cli, &config)?;
+    let threads = cli.num_mining_threads.unwrap_or(config.num_mining_threads);
 
-    let monero_wallet_address = config
-        .monero_wallet_address
-        .ok_or(ConfigError::MissingMoneroWalletAddress)?;
-    info!(target: LOG_TARGET, "Mining to Monero wallet address: {}", &monero_wallet_address);
-
-    let client = Client::new();
-    let mut blocks_found: u64 = 0;
+    let client = ReqwestClient::new();
 
     info!(target: LOG_TARGET, "Starting new mining cycle");
 
     let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
-    let randomx_factory = RandomXFactory::new_with_flags(2, flags);
+    let randomx_factory = RandomXFactory::new_with_flags(threads, flags);
 
     let caches: SafeRandomXCache = Default::default();
     let datasets: SafeRandomXDataset = Default::default();
@@ -90,7 +85,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
 }
 
 async fn thread_work(
-    client: &Client,
+    client: &ReqwestClient,
     node_address: &String,
     monero_wallet_address: &String,
     randomx_factory: &RandomXFactory,
@@ -98,7 +93,6 @@ async fn thread_work(
     datasets: SafeRandomXDataset,
 ) -> Result<(), MiningError> {
     let flags = randomx_factory.get_flags()?;
-    let current_height = get_block_count(client, node_address).await?;
     let block_template = get_block_template(client, node_address, monero_wallet_address).await?;
     let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
@@ -196,4 +190,54 @@ async fn mining_cycle(
     let difficulty = Difficulty::little_endian_difficulty(&hash)?;
 
     Ok((difficulty, blockhashing_bytes))
+}
+
+fn monero_base_node_address(cli: &Cli, config: &RandomXMinerConfig) -> Result<String, ConfigError> {
+    let monero_base_node_address = cli
+        .monero_base_node_address
+        .as_ref()
+        .cloned()
+        .or_else(|| config.monero_base_node_address.as_ref().cloned())
+        .or_else(|| {
+            if !cli.non_interactive_mode {
+                let base_node = InputPrompt::<String>::new()
+                    .with_prompt("Please enter the 'monero-base-node-address' ('quit' or 'exit' to quit) ")
+                    .interact()
+                    .unwrap();
+                process_quit(&base_node);
+                Some(base_node.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or(ConfigError::MissingBaseNode)?;
+
+    info!(target: LOG_TARGET, "Using Monero node address: {}", &monero_base_node_address);
+
+    Ok(monero_base_node_address)
+}
+
+fn monero_wallet_address(cli: &Cli, config: &RandomXMinerConfig) -> Result<String, ConfigError> {
+    let monero_wallet_address = cli
+        .monero_wallet_address
+        .as_ref()
+        .cloned()
+        .or_else(|| config.monero_wallet_address.as_ref().cloned())
+        .or_else(|| {
+            if !cli.non_interactive_mode {
+                let address = InputPrompt::<String>::new()
+                    .with_prompt("Please enter the 'monero-wallet-address' ('quit' or 'exit' to quit) ")
+                    .interact()
+                    .unwrap();
+                process_quit(&address);
+                Some(address.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or(ConfigError::MissingMoneroWalletAddress)?;
+
+    info!(target: LOG_TARGET, "Mining to Monero wallet address: {}", &monero_wallet_address);
+
+    Ok(monero_wallet_address)
 }
