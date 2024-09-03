@@ -1880,9 +1880,7 @@ pub async fn command_runner(
                         Some(ref custom) => SeedPeer::from_str(custom)
                             .map(|node| Some(Peer::from(node)))
                             .map_err(|e| CommandError::General(e.to_string()))?,
-                        None => {
-                            get_custom_base_node_peer_from_db(&wallet)
-                        },
+                        None => get_custom_base_node_peer_from_db(&wallet),
                     };
 
                     let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
