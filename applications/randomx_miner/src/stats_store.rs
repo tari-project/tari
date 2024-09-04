@@ -28,13 +28,15 @@ use tari_utilities::epoch_time::EpochTime;
 pub struct StatsStore {
     start_time: AtomicU64,
     hashed_count: AtomicU64,
+    num_threads: usize,
 }
 
 impl StatsStore {
-    pub fn new() -> Self {
+    pub fn new(num_threads: usize) -> Self {
         Self {
             start_time: AtomicU64::new(0),
             hashed_count: AtomicU64::new(0),
+            num_threads,
         }
     }
 
@@ -45,11 +47,34 @@ impl StatsStore {
     }
 
     pub fn hashes_per_second(&self) -> u64 {
-        let elapsed = EpochTime::now().as_u64() - self.start_time.load(Ordering::SeqCst);
-        self.hashed_count.load(Ordering::SeqCst) / elapsed
+        self.hashed_count.load(Ordering::SeqCst) / self.elapsed_time()
     }
 
     pub fn inc_hashed_count(&self) {
         self.hashed_count.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn start_time(&self) -> u64 {
+        self.start_time.load(Ordering::SeqCst)
+    }
+
+    fn elapsed_time(&self) -> u64 {
+        EpochTime::now().as_u64() - self.start_time.load(Ordering::SeqCst)
+    }
+
+    pub fn pretty_print(
+        &self,
+        thread_number: usize,
+        nonce: usize,
+        cycle_start: u64,
+        max_difficulty_reached: u64,
+    ) -> String {
+        format!(
+            "Thread {} Hash Rate: {:.2} H/s or Total Hash Rate: {:.2} H/s | Thread max difficulty reached: {}",
+            thread_number,
+            (nonce / self.num_threads) as u64 / cycle_start,
+            self.hashes_per_second(),
+            max_difficulty_reached
+        )
     }
 }

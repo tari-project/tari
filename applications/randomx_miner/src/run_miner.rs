@@ -159,6 +159,11 @@ fn thread_work<'a>(
             if difficulty.as_u64() > max_difficulty_reached {
                 max_difficulty_reached = difficulty.as_u64();
             }
+            let elapsed_since_last_check = Instant::now().duration_since(stats_last_check_time);
+            if elapsed_since_last_check >= Duration::from_secs(2) {
+                info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, start.elapsed().as_secs(), max_difficulty_reached));
+                stats_last_check_time = Instant::now();
+            }
 
             if difficulty.as_u64() >= block_template.difficulty {
                 info!(target: LOG_TARGET, "Thread {} found a block! 🎉", thread_number);

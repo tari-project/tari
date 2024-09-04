@@ -20,8 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub const LOG_TARGET: &str = "minotari::randomx_miner::shared_dataset";
+
 use std::sync::RwLock;
 
+use log::debug;
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXFlag};
 
 use crate::error::DatasetError;
@@ -55,11 +58,13 @@ impl SharedDataset {
         &self,
         key: String,
         flags: RandomXFlag,
+        thread_number: usize,
     ) -> Result<(RandomXDataset, RandomXCache), DatasetError> {
         {
             let read_guard = self.inner.read().map_err(|e| DatasetError::ReadLock(e.to_string()))?;
             if let Some(existing_dataset) = read_guard.as_ref() {
                 if existing_dataset.identifier == key {
+                    debug!(target: LOG_TARGET, "Thread {} found existing dataset", thread_number);
                     return Ok((existing_dataset.dataset.clone(), existing_dataset.cache.clone()));
                 }
             }
@@ -71,6 +76,7 @@ impl SharedDataset {
             // Double-check the condition after acquiring the write lock to avoid race conditions.
             if let Some(existing_dataset) = &*write_guard {
                 if existing_dataset.identifier == key {
+                    debug!(target: LOG_TARGET, "Thread {} found existing dataset found after waiting for write lock", thread_number);
                     return Ok((existing_dataset.dataset.clone(), existing_dataset.cache.clone()));
                 }
             }
@@ -78,11 +84,11 @@ impl SharedDataset {
             let cache = RandomXCache::new(flags, &hex::decode(key.clone())?)?;
             let new_dataset = RandomXDataset::new(flags, cache.clone(), 0)?;
 
-            // Step 4: Update the Option inside the RwLock with the new dataset.
             *write_guard = Some(Dataset::new(key, new_dataset, cache));
+            debug!(target: LOG_TARGET, "Thread {} created new dataset", thread_number);
         }
 
-        // Step 5: Return the updated dataset wrapped in Arc<RwLock>.
+        // Return the updated or created dataset
         {
             let read_guard = self.inner.read().map_err(|e| DatasetError::ReadLock(e.to_string()))?;
             if let Some(existing_dataset) = read_guard.as_ref() {
