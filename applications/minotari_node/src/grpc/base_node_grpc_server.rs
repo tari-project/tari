@@ -269,6 +269,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
+
+        debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {} to {}", start_height, end_height);
         task::spawn(async move {
             for (start, end) in page_iter {
                 // headers are returned by height
