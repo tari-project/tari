@@ -23,15 +23,8 @@
 //! Methods for seting up a new block.
 use std::{cmp, convert::TryFrom, sync::Arc};
 
-use crate::{
-    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
-    common::merge_mining,
-    config::MergeMiningProxyConfig,
-    error::MmProxyError,
-};
 use log::*;
-use minotari_app_grpc::tari_rpc::pow_algo::PowAlgos;
-use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo};
+use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
@@ -47,6 +40,13 @@ use tari_core::{
 };
 use tari_max_size::MaxSizeBytes;
 use tari_utilities::{hex::Hex, ByteArray};
+
+use crate::{
+    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
+    common::merge_mining,
+    config::MergeMiningProxyConfig,
+    error::MmProxyError,
+};
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy::block_template_protocol";
 
@@ -133,11 +133,14 @@ impl BlockTemplateProtocol<'_> {
                         let pow_algo = PowAlgo {
                             pow_algo: PowAlgos::Randomx.into(),
                         };
-                        let block_result = client.get_new_block(GetNewBlockRequest { pow: Some(pow_algo) }).await?.into_inner();
+                        let block_result = client
+                            .get_new_block(GetNewBlockRequest { pow: Some(pow_algo) })
+                            .await?
+                            .into_inner();
                         block_result
                             .block
                             .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?
-                    }
+                    },
                     None => {
                         let (block_template_with_coinbase, height) = self
                             .get_block_template_from_cache_or_new(block_templates, best_block_hash, &mut loop_count)
@@ -155,20 +158,20 @@ impl BlockTemplateProtocol<'_> {
                                     },
                                 );
                                 b
-                            }
+                            },
                             Err(MmProxyError::FailedPreconditionBlockLostRetry) => {
                                 debug!(
                                     target: LOG_TARGET,
                                     "Block lost, retrying to get new block template (try {})", loop_count
                                 );
                                 continue;
-                            }
+                            },
                             Err(err) => {
                                 error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
                                 return Err(err);
-                            }
+                            },
                         }
-                    }
+                    },
                 };
 
                 let height = block
@@ -242,7 +245,7 @@ impl BlockTemplateProtocol<'_> {
                     Err(err) => {
                         error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
                         return Err(err);
-                    }
+                    },
                 };
                 let height = new_template
                     .template
@@ -266,7 +269,7 @@ impl BlockTemplateProtocol<'_> {
                     .await;
 
                 (template_with_coinbase, height)
-            }
+            },
             Some((new_template, template_with_coinbase)) => {
                 let height = new_template
                     .template
@@ -276,7 +279,7 @@ impl BlockTemplateProtocol<'_> {
                     .unwrap_or_default();
                 debug!(target: LOG_TARGET, "Used existing new block template at height: #{} (try {})", height, loop_count);
                 (template_with_coinbase, height)
-            }
+            },
         };
         Ok((block_template_with_coinbase, height))
     }
@@ -295,7 +298,7 @@ impl BlockTemplateProtocol<'_> {
                     return Err(MmProxyError::FailedPreconditionBlockLostRetry);
                 }
                 Err(status.into())
-            }
+            },
         }
     }
 
@@ -369,7 +372,7 @@ impl BlockTemplateProtocol<'_> {
             self.config.range_proof_type,
             PaymentId::Empty,
         )
-            .await?;
+        .await?;
         Ok((coinbase_output, coinbase_kernel))
     }
 

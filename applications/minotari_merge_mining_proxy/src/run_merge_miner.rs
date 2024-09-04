@@ -81,7 +81,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
                        `--enable-grpc` or enable it in the config.";
             println!("{}", msg);
             return Err(e.into());
-        }
+        },
     };
 
     let p2pool_client = if config.p2pool_enabled {
@@ -127,7 +127,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("Listening on {}...", listen_addr);
             builder.serve(service).await?;
             Ok(())
-        }
+        },
         Err(err) => {
             error!(target: LOG_TARGET, "Fatal: Cannot bind to '{}'.", listen_addr);
             println!("Fatal: Cannot bind to '{}'.", listen_addr);
@@ -137,7 +137,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("'<xmrig folder>/config.json'.");
             println!();
             Err(err.into())
-        }
+        },
     }
 }
 
@@ -148,7 +148,7 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
         }),
         max_weight: 0,
     })
-        .await
+    .await
     {
         return Err(MmProxyError::BaseNodeNotResponding(e));
     }

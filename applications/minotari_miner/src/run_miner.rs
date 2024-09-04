@@ -180,7 +180,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 &wallet_payment_address,
                 &consensus_manager,
             )
-                .await
+            .await
             {
                 err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
                     // Any GRPC error we will try to reconnect with a standard delay
@@ -193,31 +193,31 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                                 base_node_client = nc.base_node_client;
                                 p2pool_node_client = nc.p2pool_node_client;
                                 break;
-                            }
+                            },
                             Err(err) => {
                                 error!(target: LOG_TARGET, "Connection error: {:?}", err);
                                 continue;
-                            }
+                            },
                         }
                     }
-                }
+                },
                 Err(MinerError::MineUntilHeightReached(h)) => {
                     warn!(
                         target: LOG_TARGET,
                         "Prescribed blockchain height {} reached. Aborting ...", h
                     );
                     return Ok(());
-                }
+                },
                 Err(MinerError::MinerLostBlock(h)) => {
                     warn!(
                         target: LOG_TARGET,
                         "Height {} already mined by other node. Restarting ...", h
                     );
-                }
+                },
                 Err(err) => {
                     error!(target: LOG_TARGET, "Error: {:?}", err);
                     sleep(config.wait_timeout()).await;
-                }
+                },
                 Ok(submitted) => {
                     info!(target: LOG_TARGET, "💰 Found block");
                     if submitted {
@@ -228,7 +228,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                             return Ok(());
                         }
                     }
-                }
+                },
             }
         }
     }
@@ -249,7 +249,7 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
                        `--enable-grpc` or enable it in the config.";
             println!("{}", msg);
             return Err(e);
-        }
+        },
     };
 
     // init client to sha p2pool grpc if enabled
@@ -263,7 +263,7 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
                            `--enable-grpc` or enable it in the config.";
                 println!("{}", msg);
                 return Err(e);
-            }
+            },
         };
     }
 
@@ -382,7 +382,7 @@ async fn get_new_block(
         wallet_payment_address,
         consensus_manager,
     )
-        .await
+    .await
 }
 
 async fn get_new_block_base_node(
@@ -432,8 +432,8 @@ async fn get_new_block_base_node(
         config.range_proof_type,
         PaymentId::Empty,
     )
-        .await
-        .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
+    .await
+    .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
     debug!(target: LOG_TARGET, "Coinbase kernel: {}", coinbase_kernel);
     debug!(target: LOG_TARGET, "Coinbase output: {}", coinbase_output);
 
@@ -519,7 +519,7 @@ async fn mining_cycle(
         wallet_payment_address,
         consensus_manager,
     )
-        .await?;
+    .await?;
     let block = block_result.block;
     let header = block.clone().header.ok_or_else(|| err_empty("block.header"))?;
 
@@ -572,7 +572,7 @@ async fn mining_cycle(
                     mined_block,
                     wallet_payment_address,
                 )
-                    .await?;
+                .await?;
                 block_submitted = true;
                 break;
             } else {
