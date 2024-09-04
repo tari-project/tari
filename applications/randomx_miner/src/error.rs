@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use randomx_rs::RandomXDataset;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Config error: {0}")]
@@ -70,4 +72,18 @@ pub enum MiningError {
     Request(#[from] RequestError),
     #[error("RandomXError: {0}")]
     RandomX(#[from] randomx_rs::RandomXError),
+    #[error("Tokio runtime error: {0}")]
+    TokioRuntime(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DatasetError {
+    #[error("Failed to generate the cache")]
+    CacheCreation,
+    #[error("Failed to generate the dataset")]
+    DatasetCreation,
+    #[error("Could not acquire writelock for dataset")]
+    WriteLock,
+    #[error("Could not acquire readlock for dataset")]
+    ReadLock,
 }

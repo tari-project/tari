@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
-    sync::Arc,
+    thread,
     time::{Duration, Instant},
 };
 
@@ -36,20 +35,17 @@ use tari_core::proof_of_work::{
     randomx_factory::{RandomXFactory, RandomXVMInstance},
     Difficulty,
 };
+use tari_shutdown::Shutdown;
 use tari_utilities::epoch_time::EpochTime;
-use tokio::sync::RwLock;
 
 use crate::{
     cli::Cli,
     config::RandomXMinerConfig,
-    error::{ConfigError, Error, MiningError},
+    error::{ConfigError, DatasetError, Error, MiningError, MiningError::TokioRuntime},
     json_rpc::{get_block_count::get_block_count, get_block_template::get_block_template, submit_block::submit_block},
 };
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::main";
-
-type SafeRandomXCache = Arc<RwLock<HashMap<Vec<u8>, RandomXCache>>>;
-type SafeRandomXDataset = Arc<RwLock<HashMap<Vec<u8>, RandomXDataset>>>;
 
 pub async fn start_miner(cli: Cli) -> Result<(), Error> {
     let config_path = cli.common.config_path();
@@ -59,53 +55,57 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
 
     let node_address = monero_base_node_address(&cli, &config)?;
     let monero_wallet_address = monero_wallet_address(&cli, &config)?;
-    let threads = cli.num_mining_threads.unwrap_or(config.num_mining_threads);
+    let num_threads = cli.num_mining_threads.unwrap_or(config.num_mining_threads);
 
+    let mut shutdown = Shutdown::new();
     let client = ReqwestClient::new();
 
-    info!(target: LOG_TARGET, "Starting new mining cycle");
+    debug!(target: LOG_TARGET, "Starting new mining cycle");
 
     let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
-    let randomx_factory = RandomXFactory::new_with_flags(threads, flags);
+    let randomx_factory = RandomXFactory::new_with_flags(num_threads, flags);
 
-    let caches: SafeRandomXCache = Default::default();
-    let datasets: SafeRandomXDataset = Default::default();
+    info!(target: LOG_TARGET, "Starting {} threads", num_threads);
+    let mut threads = vec![];
 
-    loop {
-        thread_work(
-            &client,
-            &node_address,
-            &monero_wallet_address,
-            &randomx_factory,
-            caches.clone(),
-            datasets.clone(),
-        )
-        .await?;
+    for i in 0..num_threads {
+        let rclient = client.clone();
+        let node_address = node_address.clone();
+        let monero_wallet_address = monero_wallet_address.clone();
+        let randomx_factory = randomx_factory.clone();
+        threads.push(thread::spawn(move || {
+            thread_work(&rclient, &node_address, &monero_wallet_address, &randomx_factory)
+        }));
     }
+
+    for t in threads {
+        t.join().unwrap()?;
+    }
+
+    shutdown.trigger();
+
+    Ok(())
 }
 
-async fn thread_work(
+fn thread_work<'a>(
     client: &ReqwestClient,
-    node_address: &String,
-    monero_wallet_address: &String,
+    node_address: &'a str,
+    monero_wallet_address: &'a str,
     randomx_factory: &RandomXFactory,
-    caches: SafeRandomXCache,
-    datasets: SafeRandomXDataset,
 ) -> Result<(), MiningError> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| TokioRuntime(e.to_string()))?;
     let flags = randomx_factory.get_flags()?;
-    let block_template = get_block_template(client, node_address, monero_wallet_address).await?;
-    let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
-    let key = hex::decode(&block_template.seed_hash)?;
+    loop {
+        let block_template = runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
+        let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
-    debug!(target: LOG_TARGET, "Initializing cache");
-    let read_lock = caches.read().await;
-    let (flags, cache) = match read_lock.get(&key) {
-        Some(cache) => (flags, cache.clone()),
-        None => match RandomXCache::new(flags, &key) {
+        let key = hex::decode(&block_template.seed_hash)?;
+
+        debug!(target: LOG_TARGET, "Initializing cache");
+        let (flags, cache) = match RandomXCache::new(flags, &key) {
             Ok(cache) => (flags, cache),
             Err(err) => {
-                drop(read_lock);
                 warn!(
                     target: LOG_TARGET,
                     "Error initializing RandomX cache with flags {:?}. {:?}. Fallback to default flags", flags, err
@@ -114,66 +114,60 @@ async fn thread_work(
                 // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
                 let flags = RandomXFlag::FLAG_DEFAULT;
                 let cache = RandomXCache::new(flags, &key)?;
-                caches.write().await.insert(key.to_vec(), cache.clone());
                 (flags, cache)
             },
-        },
-    };
-    debug!(target: LOG_TARGET, "Initializing dataset");
-    let read_lock = datasets.read().await;
-    let dataset = match read_lock.get(&key) {
-        Some(dataset) => dataset.clone(),
-        None => {
-            drop(read_lock);
-            let d = RandomXDataset::new(flags, cache.clone(), 0)?;
-            datasets.write().await.insert(key.to_vec(), d.clone());
-            d
-        },
-    };
+        };
 
-    let vm = randomx_factory.create(&key, Some(cache), Some(dataset))?;
-    let mut count = 0u32;
-    let start_time = Instant::now();
-    let mut last_check_time = start_time;
-    let mut max_difficulty_reached = 0;
-    debug!(target: LOG_TARGET, "Mining now");
-    loop {
-        let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone()).await?;
+        debug!(target: LOG_TARGET, "Initializing dataset");
+        let dataset = RandomXDataset::new(flags, cache.clone(), 0)?;
 
-        let now = Instant::now();
-        let elapsed_since_last_check = now.duration_since(last_check_time);
+        let vm = randomx_factory.create(&key, Some(cache), Some(dataset))?;
+        let mut count = 0u32;
+        let start_time = Instant::now();
+        let mut last_check_time = start_time;
+        let mut max_difficulty_reached = 0;
+        debug!(target: LOG_TARGET, "Mining now");
+        loop {
+            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone())?;
 
-        if elapsed_since_last_check >= Duration::from_secs(2) {
-            let total_elapsed_time = now.duration_since(start_time).as_secs_f64();
-            let hash_rate = count as f64 / total_elapsed_time;
+            let now = Instant::now();
+            let elapsed_since_last_check = now.duration_since(last_check_time);
 
-            info!(
-                "Hash Rate: {:.2} H/s | Max difficulty reached: {}",
-                hash_rate, max_difficulty_reached
-            );
+            if elapsed_since_last_check >= Duration::from_secs(2) {
+                let total_elapsed_time = now.duration_since(start_time).as_secs_f64();
+                let hash_rate = count as f64 / total_elapsed_time;
 
-            last_check_time = now;
+                info!(
+                    "Hash Rate: {:.2} H/s | Max difficulty reached: {}",
+                    hash_rate, max_difficulty_reached
+                );
+
+                last_check_time = now;
+            }
+
+            if difficulty.as_u64() > max_difficulty_reached {
+                max_difficulty_reached = difficulty.as_u64();
+            }
+
+            if difficulty.as_u64() >= block_template.difficulty {
+                info!("Valid block found!");
+                let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
+                block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
+
+                let block_hex = hex::encode(block_template_bytes.clone());
+
+                runtime
+                    .block_on(submit_block(client, node_address, block_hex))
+                    .map_err(MiningError::Request)?;
+
+                break;
+            }
+            count += 1;
         }
-
-        if difficulty.as_u64() > max_difficulty_reached {
-            max_difficulty_reached = difficulty.as_u64();
-        }
-
-        if difficulty.as_u64() >= block_template.difficulty {
-            info!("Valid block found!");
-            let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
-            block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
-
-            let block_hex = hex::encode(block_template_bytes.clone());
-            submit_block(client, node_address, block_hex).await?;
-
-            return Ok(());
-        }
-        count += 1;
     }
 }
 
-async fn mining_cycle(
+fn mining_cycle(
     mut blockhashing_bytes: Vec<u8>,
     count: u32,
     vm: RandomXVMInstance,

@@ -46,7 +46,7 @@ pub struct Cli {
     pub miner_max_diff: Option<u64>,
     #[clap(short, long, alias = "non-interactive", env = "TARI_NON_INTERACTIVE")]
     pub non_interactive_mode: bool,
-    #[clap(short, long, alias = "num-mining-threads")]
+    #[clap(short = 't', long, alias = "num-mining-threads")]
     pub num_mining_threads: Option<usize>,
 }
 

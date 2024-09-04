@@ -28,7 +28,7 @@ use crate::{error::RequestError, json_rpc::Request};
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::json_rpc::submit_block";
 
-pub async fn submit_block(client: &Client, node_address: &String, block_hash: String) -> Result<(), RequestError> {
+pub async fn submit_block<'a>(client: &Client, node_address: &'a str, block_hash: String) -> Result<(), RequestError> {
     let response = client
         .post(format!("{}/json_rpc", &node_address.to_string()))
         .json(&Request::new("submitblock", json!([block_hash])))
