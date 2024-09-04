@@ -206,10 +206,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     pub async fn get_random_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(target: LOG_TARGET, "get_random_key: wallet type {}", self.wallet_type);
-        }
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
@@ -258,10 +254,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(target: LOG_TARGET, "get_public_key_at_key_id: key_id {}, wallet type {}", key_id, self.wallet_type);
-        }
         match key_id {
             KeyId::Managed { branch, index } => {
                 if let WalletType::Ledger(ledger) = &*self.wallet_type {
@@ -728,15 +720,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<CommsDHKE, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "get_diffie_hellman_shared_secret: secret_key_id {}, wallet type {}",
-                secret_key_id,
-                self.wallet_type
-            );
-        }
         if let WalletType::Ledger(ledger) = &*self.wallet_type {
             if let KeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
@@ -775,20 +758,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "get_diffie_hellman_stealth_domain_hasher: secret_key_id {}, wallet type {}",
-                secret_key_id,
-                self.wallet_type
-            );
-        }
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => match secret_key_id {
                 KeyId::Managed { branch, index } => match TransactionKeyManagerBranch::from_key(branch) {
                     TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                        debug!(target: LOG_TARGET, "get_diffie_hellman_stealth_domain_hasher: {}", self.wallet_type);
                         #[cfg(not(feature = "ledger"))]
                         {
                             Err(TransactionError::LedgerNotSupported(format!(
@@ -871,15 +844,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "get_script_signature: script_key_id {}, wallet type {}",
-                script_key_id,
-                self.wallet_type
-            );
-        }
         let commitment = self.get_commitment(commitment_mask_key_id, value).await?;
         let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
 
@@ -1064,17 +1028,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "get_script_offset: script_key_ids {:?}, sender_offset_key_ids {:?}, wallet type {}",
-                script_key_ids,
-                sender_offset_key_ids,
-                self.wallet_type
-            );
-        }
-
         match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 let mut total_script_private_key = PrivateKey::default();
@@ -1233,15 +1186,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         private_key_id: &TariKeyId,
         challenge: &[u8],
     ) -> Result<CheckSigSchnorrSignature, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "sign_script_message: private_key_id {}, wallet type {}",
-                private_key_id,
-                self.wallet_type
-            );
-        }
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
@@ -1287,16 +1231,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         nonce_key_id: &TariKeyId,
         challenge: &[u8; 64],
     ) -> Result<Signature, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "sign_with_nonce_and_challenge: private_key_id {}, nonce_key_id {}, wallet type {}",
-                private_key_id,
-                nonce_key_id,
-                self.wallet_type
-            );
-        }
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
@@ -1417,16 +1351,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        #[cfg(feature = "ledger")]
-        {
-            debug!(
-                target: LOG_TARGET,
-                "get_one_sided_metadata_signature: commitment_mask_key_id {}, sender_offset_key_id {}, wallet type {}",
-                commitment_mask_key_id,
-                sender_offset_key_id,
-                self.wallet_type
-            );
-        }
         match &*self.wallet_type {
             WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
                 let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
@@ -1456,17 +1380,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 #[cfg(feature = "ledger")]
                 {
                     let sender_offset_key_index = sender_offset_key_id.managed_index().ok_or_else(|| {
-                        debug!(target: LOG_TARGET, "Invalid key id {:?}", sender_offset_key_id);
                         TransactionError::KeyManagerError("Invalid index for sender offset".to_string())
                     })?;
 
                     let commitment_mask = self.get_private_key(commitment_mask_key_id).await?;
 
-                    debug!(
-                        target: LOG_TARGET,
-                        "get_one_sided_metadata_signature: (ledger) account {}",
-                        ledger.account,
-                    );
                     let comm_and_pub_sig = ledger_get_one_sided_metadata_signature(
                         ledger.account,
                         ledger.network,
