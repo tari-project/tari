@@ -149,6 +149,7 @@ pub enum CliCommands {
     CreateTlsCerts,
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
+    ImportPaperWallet(ImportPaperWalletArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -317,6 +318,12 @@ pub struct ExportTxArgs {
 pub struct ExportViewKeyAndSpendKeyArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ImportPaperWalletArgs {
+    #[clap(short, long)]
+    pub seed_words: String,
 }
 
 #[derive(Debug, Args, Clone)]

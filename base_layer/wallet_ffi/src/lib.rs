@@ -7262,6 +7262,55 @@ pub unsafe extern "C" fn wallet_send_transaction(
     }
 }
 
+/// Sends a TariPendingOutboundTransaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `destination` - The TariWalletAddress pointer of the peer
+/// `fee_per_gram` - The transaction fee
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn scrape_wallet(
+    wallet: *mut TariWallet,
+    destination: *mut TariWalletAddress,
+    fee_per_gram: c_ulonglong,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    if destination.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("dest_public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .scrape_wallet((*destination).clone(), MicroMinotari::from(fee_per_gram)),
+    ) {
+        Ok(tx_id) => tx_id.as_u64(),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
+
 /// Gets a fee estimate for an amount
 ///
 /// ## Arguments

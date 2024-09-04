@@ -165,6 +165,10 @@ pub enum TransactionServiceRequest {
         message: String,
         payment_id: PaymentId,
     },
+    ScrapeWallet {
+        destination: TariAddress,
+        fee_per_gram: MicroMinotari,
+    },
     SendShaAtomicSwapTransaction(TariAddress, MicroMinotari, UtxoSelectionCriteria, MicroMinotari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
@@ -205,6 +209,16 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => write!(f, "GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({})", t),
+            Self::ScrapeWallet {
+                destination,
+                fee_per_gram,
+            } => {
+                write!(
+                    f,
+                    "ScrapeWallet (destination: {}, fee_per_gram: {})",
+                    destination, fee_per_gram
+                )
+            },
             Self::SendTransaction {
                 destination,
                 amount,
@@ -588,6 +602,24 @@ impl TransactionServiceHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn scrape_wallet(
+        &mut self,
+        destination: TariAddress,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ScrapeWallet {
+                destination,
+                fee_per_gram,
             })
             .await??
         {

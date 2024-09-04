@@ -7,8 +7,6 @@ All notable changes to this project will be documented in this file. See [standa
 
 * remove sub repo
 
-## [1.3.0-pre.0](https://github.com/tari-project/tari/compare/v1.2.0-pre.0...v1.3.0-pre.0) (2024-08-22)
-
 ## [1.3.1-pre.0](https://github.com/tari-project/tari/compare/v1.3.0-pre.0...v1.3.1-pre.0) (2024-08-30)
 
 
