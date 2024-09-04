@@ -39,6 +39,8 @@ mod error;
 use tari_common::exit_codes::ExitCode;
 mod json_rpc;
 use json_rpc::Request;
+mod shared_dataset;
+mod stats_store;
 
 mod config;
 

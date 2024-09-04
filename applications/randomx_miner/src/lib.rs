@@ -28,6 +28,9 @@ pub use error::{ConfigError, Error};
 mod json_rpc;
 pub use json_rpc::Request;
 mod run_miner;
+mod shared_dataset;
+mod stats_store;
+
 use run_miner::start_miner;
 use tari_common::exit_codes::{ExitCode, ExitError};
 

@@ -21,14 +21,15 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
 
 use dialoguer::Input as InputPrompt;
-use log::{debug, info, warn};
+use log::{debug, info};
 use minotari_app_utilities::parse_miner_input::process_quit;
-use randomx_rs::{RandomXCache, RandomXDataset, RandomXFlag};
+use randomx_rs::RandomXFlag;
 use reqwest::Client as ReqwestClient;
 use tari_common::{load_configuration, DefaultConfigLoader};
 use tari_core::proof_of_work::{
@@ -41,8 +42,10 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     cli::Cli,
     config::RandomXMinerConfig,
-    error::{ConfigError, DatasetError, Error, MiningError, MiningError::TokioRuntime},
+    error::{ConfigError, Error, MiningError, MiningError::TokioRuntime},
     json_rpc::{get_block_count::get_block_count, get_block_template::get_block_template, submit_block::submit_block},
+    shared_dataset::SharedDataset,
+    stats_store::StatsStore,
 };
 
 pub const LOG_TARGET: &str = "minotari::randomx_miner::main";
@@ -64,6 +67,8 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
 
     let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
     let randomx_factory = RandomXFactory::new_with_flags(num_threads, flags);
+    let shared_dataset = Arc::new(SharedDataset::default());
+    let stats_store = Arc::new(StatsStore::new());
 
     info!(target: LOG_TARGET, "Starting {} threads", num_threads);
     let mut threads = vec![];
@@ -73,8 +78,19 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
         let node_address = node_address.clone();
         let monero_wallet_address = monero_wallet_address.clone();
         let randomx_factory = randomx_factory.clone();
+        let dataset = shared_dataset.clone();
+        let ss = stats_store.clone();
         threads.push(thread::spawn(move || {
-            thread_work(&rclient, &node_address, &monero_wallet_address, &randomx_factory)
+            thread_work(
+                num_threads,
+                i,
+                &rclient,
+                &node_address,
+                &monero_wallet_address,
+                &randomx_factory,
+                dataset,
+                ss,
+            )
         }));
     }
 
@@ -88,10 +104,14 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
 }
 
 fn thread_work<'a>(
+    num_threads: usize,
+    thread_number: usize,
     client: &ReqwestClient,
     node_address: &'a str,
     monero_wallet_address: &'a str,
     randomx_factory: &RandomXFactory,
+    shared_dataset: Arc<SharedDataset>,
+    stats_store: Arc<StatsStore>,
 ) -> Result<(), MiningError> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| TokioRuntime(e.to_string()))?;
     let flags = randomx_factory.get_flags()?;
@@ -102,47 +122,27 @@ fn thread_work<'a>(
 
         let key = hex::decode(&block_template.seed_hash)?;
 
-        debug!(target: LOG_TARGET, "Initializing cache");
-        let (flags, cache) = match RandomXCache::new(flags, &key) {
-            Ok(cache) => (flags, cache),
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Error initializing RandomX cache with flags {:?}. {:?}. Fallback to default flags", flags, err
-                );
-                // This is informed by how RandomX falls back on any cache allocation failure
-                // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
-                let flags = RandomXFlag::FLAG_DEFAULT;
-                let cache = RandomXCache::new(flags, &key)?;
-                (flags, cache)
-            },
-        };
-
-        debug!(target: LOG_TARGET, "Initializing dataset");
-        let dataset = RandomXDataset::new(flags, cache.clone(), 0)?;
+        debug!(target: LOG_TARGET, "Initializing dataset and cache");
+        let (dataset, cache) = shared_dataset.fetch_or_create_dataset(hex::encode(&key), flags)?;
 
         let vm = randomx_factory.create(&key, Some(cache), Some(dataset))?;
-        let mut count = 0u32;
-        let start_time = Instant::now();
-        let mut last_check_time = start_time;
+        let mut nonce = thread_number;
+        let mut last_check_time = Instant::now();
         let mut max_difficulty_reached = 0;
         debug!(target: LOG_TARGET, "Mining now");
         loop {
-            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), count, vm.clone())?;
+            stats_store.start();
+            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), nonce as u32, vm.clone())?;
+            stats_store.inc_hashed_count();
 
-            let now = Instant::now();
-            let elapsed_since_last_check = now.duration_since(last_check_time);
-
+            let elapsed_since_last_check = Instant::now().duration_since(last_check_time);
             if elapsed_since_last_check >= Duration::from_secs(2) {
-                let total_elapsed_time = now.duration_since(start_time).as_secs_f64();
-                let hash_rate = count as f64 / total_elapsed_time;
-
                 info!(
                     "Hash Rate: {:.2} H/s | Max difficulty reached: {}",
-                    hash_rate, max_difficulty_reached
+                    stats_store.hashes_per_second(),
+                    max_difficulty_reached
                 );
-
-                last_check_time = now;
+                last_check_time = Instant::now();
             }
 
             if difficulty.as_u64() > max_difficulty_reached {
@@ -162,18 +162,18 @@ fn thread_work<'a>(
 
                 break;
             }
-            count += 1;
+            nonce += num_threads;
         }
     }
 }
 
 fn mining_cycle(
     mut blockhashing_bytes: Vec<u8>,
-    count: u32,
+    nonce: u32,
     vm: RandomXVMInstance,
 ) -> Result<(Difficulty, Vec<u8>), MiningError> {
     let nonce_position = 38;
-    blockhashing_bytes[nonce_position..nonce_position + 4].copy_from_slice(&count.to_le_bytes());
+    blockhashing_bytes[nonce_position..nonce_position + 4].copy_from_slice(&nonce.to_le_bytes());
 
     let timestamp_position = 8;
     let timestamp_bytes: [u8; 4] = (EpochTime::now().as_u64() as u32).to_le_bytes();
