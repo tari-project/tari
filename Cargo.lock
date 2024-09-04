@@ -3399,7 +3399,6 @@ dependencies = [
  "hyper",
  "jsonrpc",
  "log",
- "log4rs",
  "markup5ever",
  "minotari_app_grpc",
  "minotari_app_utilities",
