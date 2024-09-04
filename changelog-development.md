@@ -1,6 +1,18 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+## [1.4.0-per.0](https://github.com/tari-project/tari/compare/v1.3.1-pre.1...v1.4.0-per.0) (2024-09-04)
+
+
+### Features
+
+* add grpc specific log file ([#6524](https://github.com/tari-project/tari/issues/6524)) ([be9e32e](https://github.com/tari-project/tari/commit/be9e32edce774e31d79907450ed531e560befbd4))
+* add network wire byte ([#6518](https://github.com/tari-project/tari/issues/6518)) ([78a4803](https://github.com/tari-project/tari/commit/78a4803ca9364d472525fd94a5f36b33379268a5))
+* **p2pool-randomx-support:** added pow algo to GetNewBlockRequest in p2pool proto ([#6509](https://github.com/tari-project/tari/issues/6509)) ([125b49c](https://github.com/tari-project/tari/commit/125b49ca7792db2a200ef2fdc5b323564a1667ab))
+* **p2pool-randomx-support:** merge mining proxy update ([#6521](https://github.com/tari-project/tari/issues/6521)) ([3f4a3e8](https://github.com/tari-project/tari/commit/3f4a3e853d9404925fd941479b0adddc6209cb13))
+* paper wallet cli ([#6522](https://github.com/tari-project/tari/issues/6522)) ([31a953c](https://github.com/tari-project/tari/commit/31a953c66bac3810d0369fb675af3622657c6b16))
+
 ## [1.3.1-pre.1](https://github.com/tari-project/tari/compare/v1.3.1-pre.0...v1.3.1-pre.1) (2024-09-02)
 
 ### Bug Fixes
