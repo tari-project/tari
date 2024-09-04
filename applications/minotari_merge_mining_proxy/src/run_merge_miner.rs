@@ -192,7 +192,7 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
     // TODO: Merge this code in the sha miner
-    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
+    let socketaddr = base_node_socket_address(config.p2pool_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
         "{}{}",
         protocol_string(config.base_node_grpc_tls_domain_name.is_some()),

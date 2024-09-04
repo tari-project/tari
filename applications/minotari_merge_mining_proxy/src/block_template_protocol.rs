@@ -24,7 +24,7 @@
 use std::{cmp, convert::TryFrom, sync::Arc};
 
 use log::*;
-use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate};
+use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
@@ -130,7 +130,13 @@ impl BlockTemplateProtocol<'_> {
             } else {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
-                        let block_result = client.get_new_block(GetNewBlockRequest::default()).await?.into_inner();
+                        let pow_algo = PowAlgo {
+                            pow_algo: PowAlgos::Randomx.into(),
+                        };
+                        let block_result = client
+                            .get_new_block(GetNewBlockRequest { pow: Some(pow_algo) })
+                            .await?
+                            .into_inner();
                         block_result
                             .block
                             .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?
