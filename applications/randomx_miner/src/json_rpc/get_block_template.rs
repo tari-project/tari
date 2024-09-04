@@ -50,10 +50,10 @@ pub struct BlockTemplate {
     pub status: String,
 }
 
-pub async fn get_block_template<'a>(
+pub async fn get_block_template(
     client: &Client,
-    node_address: &'a str,
-    monero_wallet_address: &'a str,
+    node_address: &str,
+    monero_wallet_address: &str,
 ) -> Result<BlockTemplate, RequestError> {
     let response = client
         .post(format!("{}/json_rpc", node_address))

@@ -43,7 +43,7 @@ use crate::{
     cli::Cli,
     config::RandomXMinerConfig,
     error::{ConfigError, Error, MiningError, MiningError::TokioRuntime},
-    json_rpc::{get_block_count::get_block_count, get_block_template::get_block_template, submit_block::submit_block},
+    json_rpc::{get_block_template::get_block_template, submit_block::submit_block},
     shared_dataset::SharedDataset,
     stats_store::StatsStore,
 };

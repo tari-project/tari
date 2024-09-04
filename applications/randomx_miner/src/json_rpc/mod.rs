@@ -22,7 +22,6 @@
 
 use serde::Serialize;
 
-pub mod get_block_count;
 pub mod get_block_template;
 pub mod submit_block;
 

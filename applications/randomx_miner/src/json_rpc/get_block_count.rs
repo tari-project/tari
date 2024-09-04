@@ -42,7 +42,7 @@ pub struct BlockCount {
     pub status: String,
 }
 
-pub async fn get_block_count(client: &Client, node_address: &String) -> Result<u64, RequestError> {
+pub async fn get_block_count(client: &Client, node_address: &str) -> Result<u64, RequestError> {
     let response = client
         .post(format!("{}/json_rpc", &node_address.to_string()))
         .json(&Request::new("get_block_count", serde_json::Value::Null))
@@ -61,7 +61,6 @@ pub async fn get_block_count(client: &Client, node_address: &String) -> Result<u
     debug!(target: LOG_TARGET, "`get_block_count` Response: {:?}", response);
 
     if response.result.status == "OK" {
-        debug!(target: LOG_TARGET, "`get_block_count` Blockchain tip (block height): {}", response.result.count);
         Ok(response.result.count)
     } else {
         debug!(target: LOG_TARGET, "Failed to get the block count. Status: {}", response.result.status);
