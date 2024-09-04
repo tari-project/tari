@@ -53,7 +53,6 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
 
-
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
     kind: rolling_file
@@ -70,6 +69,23 @@ appenders:
         pattern: "{{log_dir}}/log/base_node/base_layer.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [{X(node-public-key)},{X(node-id)}] {l:5} {m} // {f}:{L}{n}"
+
+  # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  grpc:
+    kind: rolling_file
+    path: "{{log_dir}}/log/base_node/grpc.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_dir}}/log/base_node/grpc.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {l:5} {m} // {f}:{L}{n}"
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
@@ -103,6 +119,11 @@ loggers:
       - network
       - other
     additive: false
+
+  minotari::base_node::grpc:
+    level: debug
+    appenders:
+      - grpc
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
