@@ -81,7 +81,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
                        `--enable-grpc` or enable it in the config.";
             println!("{}", msg);
             return Err(e.into());
-        },
+        }
     };
 
     let p2pool_client = if config.p2pool_enabled {
@@ -127,7 +127,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("Listening on {}...", listen_addr);
             builder.serve(service).await?;
             Ok(())
-        },
+        }
         Err(err) => {
             error!(target: LOG_TARGET, "Fatal: Cannot bind to '{}'.", listen_addr);
             println!("Fatal: Cannot bind to '{}'.", listen_addr);
@@ -137,7 +137,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!("'<xmrig folder>/config.json'.");
             println!();
             Err(err.into())
-        },
+        }
     }
 }
 
@@ -148,7 +148,7 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
         }),
         max_weight: 0,
     })
-    .await
+        .await
     {
         return Err(MmProxyError::BaseNodeNotResponding(e));
     }
@@ -192,7 +192,7 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
     // TODO: Merge this code in the sha miner
-    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
+    let socketaddr = base_node_socket_address(config.p2pool_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
         "{}{}",
         protocol_string(config.base_node_grpc_tls_domain_name.is_some()),

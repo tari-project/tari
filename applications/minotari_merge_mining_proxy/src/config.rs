@@ -58,6 +58,8 @@ pub struct MergeMiningProxyConfig {
     pub monerod_use_auth: bool,
     /// The Minotari base node's GRPC address
     pub base_node_grpc_address: Option<Multiaddr>,
+    /// P2Pool node's gRPC address
+    pub p2pool_node_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for node TLS validation
@@ -107,6 +109,7 @@ impl Default for MergeMiningProxyConfig {
             monerod_password: String::new(),
             monerod_use_auth: false,
             base_node_grpc_address: None,
+            p2pool_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
