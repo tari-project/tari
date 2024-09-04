@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct RandomXMinerConfig {
     /// The address for the monero node, or merge mining proxy
@@ -43,9 +43,11 @@ pub struct RandomXMinerConfig {
     pub config_dir: PathBuf,
     /// Number of mining threads
     pub num_mining_threads: usize,
+    /// How long to wait before checking for a new template in milliseconds
+    pub template_refresh_interval_ms: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub enum MiningMode {
     #[default]
     Eco,
@@ -68,6 +70,7 @@ impl Default for RandomXMinerConfig {
             network: Default::default(),
             config_dir: PathBuf::from("config/randomx_miner"),
             num_mining_threads: num_cpus::get(),
+            template_refresh_interval_ms: 500,
         }
     }
 }

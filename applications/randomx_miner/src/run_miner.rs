@@ -68,28 +68,30 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
     let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
     let randomx_factory = RandomXFactory::new_with_flags(num_threads, flags);
     let shared_dataset = Arc::new(SharedDataset::default());
-    let stats_store = Arc::new(StatsStore::new());
+    let stats_store = Arc::new(StatsStore::new(num_threads));
 
     info!(target: LOG_TARGET, "Starting {} threads", num_threads);
     let mut threads = vec![];
 
-    for i in 0..num_threads {
+    for thread_index in 0..num_threads {
         let rclient = client.clone();
         let node_address = node_address.clone();
         let monero_wallet_address = monero_wallet_address.clone();
         let randomx_factory = randomx_factory.clone();
         let dataset = shared_dataset.clone();
-        let ss = stats_store.clone();
+        let stats = stats_store.clone();
+        let config = config.clone();
         threads.push(thread::spawn(move || {
             thread_work(
                 num_threads,
-                i,
+                thread_index,
                 &rclient,
                 &node_address,
                 &monero_wallet_address,
                 &randomx_factory,
                 dataset,
-                ss,
+                stats,
+                config,
             )
         }));
     }
@@ -112,6 +114,7 @@ fn thread_work<'a>(
     randomx_factory: &RandomXFactory,
     shared_dataset: Arc<SharedDataset>,
     stats_store: Arc<StatsStore>,
+    config: RandomXMinerConfig,
 ) -> Result<(), MiningError> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| TokioRuntime(e.to_string()))?;
     let flags = randomx_factory.get_flags()?;
@@ -122,35 +125,43 @@ fn thread_work<'a>(
 
         let key = hex::decode(&block_template.seed_hash)?;
 
-        debug!(target: LOG_TARGET, "Initializing dataset and cache");
-        let (dataset, cache) = shared_dataset.fetch_or_create_dataset(hex::encode(&key), flags)?;
+        let (dataset, cache) = shared_dataset.fetch_or_create_dataset(hex::encode(&key), flags, thread_number)?;
 
         let vm = randomx_factory.create(&key, Some(cache), Some(dataset))?;
         let mut nonce = thread_number;
-        let mut last_check_time = Instant::now();
+        let mut stats_last_check_time = Instant::now();
         let mut max_difficulty_reached = 0;
-        debug!(target: LOG_TARGET, "Mining now");
+        debug!(target: LOG_TARGET, "Thread {} ⛏️ Mining now", thread_number);
+        stats_store.start();
+        let start = Instant::now();
         loop {
-            stats_store.start();
+            if start.elapsed().as_secs() >= config.template_refresh_interval_ms {
+                debug!(
+                    target: LOG_TARGET,
+                    "Thread {} had {}ms pass. Fetching new template to compare",
+                    thread_number, config.template_refresh_interval_ms
+                );
+                let new_block_template =
+                    runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
+
+                if new_block_template.blocktemplate_blob != block_template.blocktemplate_blob {
+                    info!(
+                        target: LOG_TARGET,
+                        "Thead {} found detected template change. Restarting mining cycle",
+                        thread_number
+                    );
+                    break;
+                }
+            }
             let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), nonce as u32, vm.clone())?;
             stats_store.inc_hashed_count();
-
-            let elapsed_since_last_check = Instant::now().duration_since(last_check_time);
-            if elapsed_since_last_check >= Duration::from_secs(2) {
-                info!(
-                    "Hash Rate: {:.2} H/s | Max difficulty reached: {}",
-                    stats_store.hashes_per_second(),
-                    max_difficulty_reached
-                );
-                last_check_time = Instant::now();
-            }
 
             if difficulty.as_u64() > max_difficulty_reached {
                 max_difficulty_reached = difficulty.as_u64();
             }
 
             if difficulty.as_u64() >= block_template.difficulty {
-                info!("Valid block found!");
+                info!(target: LOG_TARGET, "Thread {} found a block! 🎉", thread_number);
                 let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
                 block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
 
