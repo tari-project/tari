@@ -350,11 +350,23 @@ where
         const CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
         trace!(
             target: LOG_TARGET,
-            "Starting noise protocol upgrade for peer at address '{}'", peer_addr
+            "Listen - starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
 
         let timer = Instant::now();
-        let mut noise_socket = noise_config.upgrade_socket(socket, CONNECTION_DIRECTION).await?;
+        let mut noise_socket = noise_config
+            .upgrade_socket(socket, CONNECTION_DIRECTION)
+            .await
+            .map_err(|err| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Listen - failed to upgrade noise: {} on address: {} ({})",
+                    node_identity.node_id(),
+                    peer_addr,
+                    err
+                );
+                err
+            })?;
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
@@ -363,7 +375,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Noise socket upgrade completed in {:.2?} with public key '{}'",
+            "Listen - noise socket upgrade completed in {:.2?} with public key '{}'",
             latency,
             authenticated_public_key
         );
@@ -371,9 +383,10 @@ where
         // Check if we know the peer and if it is banned
         let known_peer = common::find_unbanned_peer(peer_manager, &authenticated_public_key).await?;
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
+            "Listen - starting peer identity exchange for peer with public key '{}'",
+            authenticated_public_key
         );
 
         let peer_identity_result = common::perform_identity_exchange(

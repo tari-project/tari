@@ -27,6 +27,7 @@ use crate::{
     connection_manager::PeerConnectionRequest,
     multiplexing::YamuxControlError,
     noise,
+    noise::NoiseError,
     peer_manager::PeerManagerError,
     peer_validator::PeerValidatorError,
     protocol::{IdentityProtocolError, ProtocolError},
@@ -65,10 +66,14 @@ pub enum ConnectionManagerError {
     },
     #[error("The noise transport failed to provide a valid static public key for the peer")]
     InvalidStaticPublicKey,
-    // This is a String because we need this error to be clonable so that we can
+    // This is a String because we need this error to be clone-able so that we can
     // send the same response to multiple requesters
-    #[error("Noise error: {0}")]
-    NoiseError(String),
+    #[error("Noise snow error: {0}")]
+    NoiseSnowError(String),
+    // This is a String because we need this error to be clone-able so that we can
+    // send the same response to multiple requesters
+    #[error("Noise handshake error: {0}")]
+    NoiseHandshakeError(String),
     #[error("Peer is banned, denying connection")]
     PeerBanned,
     #[error("Identity protocol failed: {0}")]
@@ -97,7 +102,10 @@ impl From<yamux::ConnectionError> for ConnectionManagerError {
 
 impl From<noise::NoiseError> for ConnectionManagerError {
     fn from(err: noise::NoiseError) -> Self {
-        ConnectionManagerError::NoiseError(err.to_string())
+        match err {
+            NoiseError::SnowError(e) => ConnectionManagerError::NoiseSnowError(e.to_string()),
+            NoiseError::HandshakeFailed(e) => ConnectionManagerError::NoiseHandshakeError(e.to_string()),
+        }
     }
 }
 
