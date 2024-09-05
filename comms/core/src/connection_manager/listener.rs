@@ -354,19 +354,19 @@ where
         );
 
         let timer = Instant::now();
-        let mut noise_socket = match noise_config.upgrade_socket(socket, CONNECTION_DIRECTION).await {
-            Ok(val) => val,
-            Err(e) => {
+        let mut noise_socket = noise_config
+            .upgrade_socket(socket, CONNECTION_DIRECTION)
+            .await
+            .map_err(|err| {
                 warn!(
                     target: LOG_TARGET,
                     "Listen - failed to upgrade noise: {} on address: {} ({})",
                     node_identity.node_id(),
                     peer_addr,
-                    e
+                    err
                 );
-                return Err(ConnectionManagerError::from(e));
-            },
-        };
+                err
+            })?;
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()

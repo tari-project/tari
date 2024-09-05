@@ -606,23 +606,24 @@ where
                 );
                 timer = Instant::now();
 
-                if socket.write(&[network_byte]).await.is_err() {
-                    return Err(ConnectionManagerError::WireFormatSendFailed);
-                }
+                socket
+                    .write(&[network_byte])
+                    .await
+                    .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
-                let noise_socket = match noise_config.upgrade_socket(socket, ConnectionDirection::Outbound).await {
-                    Ok(val) => val,
-                    Err(e) => {
+                let noise_socket = noise_config
+                    .upgrade_socket(socket, ConnectionDirection::Outbound)
+                    .await
+                    .map_err(|err| {
                         warn!(
                             target: LOG_TARGET,
                             "Dial - failed to upgrade noise: {} on address: {} ({})",
                             node_id,
                             moved_address,
-                            e
+                            err
                         );
-                        return Err(ConnectionManagerError::from(e));
-                    },
-                };
+                        err
+                    })?;
 
                 let noise_upgrade_time = timer.elapsed();
                 trace!(
