@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -155,7 +156,7 @@ fn thread_work<'a>(
             }
 
             stats_store.inc_hashed_count();
-            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), nonce as u32, vm.clone())?;
+            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), u32::try_from(nonce)?, vm.clone())?;
 
             if difficulty.as_u64() > max_difficulty_reached {
                 max_difficulty_reached = difficulty.as_u64();
@@ -193,7 +194,7 @@ fn mining_cycle(
     blockhashing_bytes[nonce_position..nonce_position + 4].copy_from_slice(&nonce.to_le_bytes());
 
     let timestamp_position = 8;
-    let timestamp_bytes: [u8; 4] = (EpochTime::now().as_u64() as u32).to_le_bytes();
+    let timestamp_bytes: [u8; 4] = u32::try_from(EpochTime::now().as_u64())?.to_le_bytes();
     blockhashing_bytes[timestamp_position..timestamp_position + 4].copy_from_slice(&timestamp_bytes);
 
     let hash = vm.calculate_hash(&blockhashing_bytes)?;
@@ -210,15 +211,15 @@ fn monero_base_node_address(cli: &Cli, config: &RandomXMinerConfig) -> Result<St
         .cloned()
         .or_else(|| config.monero_base_node_address.as_ref().cloned())
         .or_else(|| {
-            if !cli.non_interactive_mode {
+            if cli.non_interactive_mode {
+                None
+            } else {
                 let base_node = InputPrompt::<String>::new()
                     .with_prompt("Please enter the 'monero-base-node-address' ('quit' or 'exit' to quit) ")
                     .interact()
                     .unwrap();
                 process_quit(&base_node);
                 Some(base_node.trim().to_string())
-            } else {
-                None
             }
         })
         .ok_or(ConfigError::MissingBaseNode)?;
@@ -235,15 +236,15 @@ fn monero_wallet_address(cli: &Cli, config: &RandomXMinerConfig) -> Result<Strin
         .cloned()
         .or_else(|| config.monero_wallet_address.as_ref().cloned())
         .or_else(|| {
-            if !cli.non_interactive_mode {
+            if cli.non_interactive_mode {
+                None
+            } else {
                 let address = InputPrompt::<String>::new()
                     .with_prompt("Please enter the 'monero-wallet-address' ('quit' or 'exit' to quit) ")
                     .interact()
                     .unwrap();
                 process_quit(&address);
                 Some(address.trim().to_string())
-            } else {
-                None
             }
         })
         .ok_or(ConfigError::MissingMoneroWalletAddress)?;

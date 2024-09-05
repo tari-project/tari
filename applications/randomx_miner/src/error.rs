@@ -74,6 +74,8 @@ pub enum MiningError {
     TokioRuntime(String),
     #[error("Dataset error: {0}")]
     Dataset(#[from] DatasetError),
+    #[error("TryFrom int error: {0}")]
+    TryFromInt(#[from] std::num::TryFromIntError),
 }
 
 #[derive(Debug, thiserror::Error)]
