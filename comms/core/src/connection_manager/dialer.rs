@@ -662,6 +662,11 @@ where
                         .peer_mut()
                         .addresses
                         .mark_failed_connection_attempt(&address, err.to_string());
+
+                    // Handshake errors are not retryable
+                    if let ConnectionManagerError::NoiseHandshakeError(msg) = err {
+                        return (dial_state, Err(ConnectionManagerError::NoiseHandshakeError(msg)));
+                    }
                     // Try the next address
                     continue;
                 },
