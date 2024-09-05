@@ -502,7 +502,7 @@ mod test {
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
         check_block(network, &block, 164, 1);
-		remove_network_env_var();
+        remove_network_env_var();
     }
 
     #[test]
