@@ -124,18 +124,18 @@ fn thread_work<'a>(
         let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
         let key = hex::decode(&block_template.seed_hash)?;
-
         let (dataset, cache) = shared_dataset.fetch_or_create_dataset(hex::encode(&key), flags, thread_number)?;
-
         let vm = randomx_factory.create(&key, Some(cache), Some(dataset))?;
+
         let mut nonce = thread_number;
         let mut stats_last_check_time = Instant::now();
         let mut max_difficulty_reached = 0;
+
         debug!(target: LOG_TARGET, "Thread {} ⛏️ Mining now", thread_number);
         stats_store.start();
-        let start = Instant::now();
+        let template_refresh_time = Instant::now();
         loop {
-            if start.elapsed().as_secs() >= config.template_refresh_interval_ms {
+            if template_refresh_time.elapsed().as_secs() >= config.template_refresh_interval_ms {
                 debug!(
                     target: LOG_TARGET,
                     "Thread {} had {}ms pass. Fetching new template to compare",
@@ -153,15 +153,16 @@ fn thread_work<'a>(
                     break;
                 }
             }
-            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), nonce as u32, vm.clone())?;
+
             stats_store.inc_hashed_count();
+            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), nonce as u32, vm.clone())?;
 
             if difficulty.as_u64() > max_difficulty_reached {
                 max_difficulty_reached = difficulty.as_u64();
             }
             let elapsed_since_last_check = Instant::now().duration_since(stats_last_check_time);
             if elapsed_since_last_check >= Duration::from_secs(2) {
-                info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, start.elapsed().as_secs(), max_difficulty_reached));
+                info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, template_refresh_time.elapsed().as_secs(), max_difficulty_reached));
                 stats_last_check_time = Instant::now();
             }
 
