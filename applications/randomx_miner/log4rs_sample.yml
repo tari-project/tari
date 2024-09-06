@@ -18,7 +18,7 @@ appenders:
       pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
     filters:
       - kind: threshold
-        level: debug
+        level: info
 
   randomx_miner:
     kind: rolling_file
