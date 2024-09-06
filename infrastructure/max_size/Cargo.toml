@@ -1,6 +1,6 @@
 [package]
 name = "tari_max_size"
-version = "1.4.1-pre.0"
+version = "1.4.1-rc.0"
 edition = "2021"
 description = "Tari max size library"
 authors = ["The Tari Development Community"]
