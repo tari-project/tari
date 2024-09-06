@@ -4993,7 +4993,7 @@ dependencies = [
 
 [[package]]
 name = "randomx_miner"
-version = "1.3.0-pre.0"
+version = "1.4.0-pre.0"
 dependencies = [
  "clap 3.2.25",
  "config",

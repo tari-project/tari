@@ -22,7 +22,7 @@
 
 use std::{
     convert::TryFrom,
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     thread,
     time::{Duration, Instant},
 };
@@ -38,7 +38,6 @@ use tari_core::proof_of_work::{
     Difficulty,
 };
 use tari_shutdown::Shutdown;
-use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     cli::Cli,
@@ -118,9 +117,19 @@ fn thread_work<'a>(
     let runtime = tokio::runtime::Runtime::new().map_err(|e| TokioRuntime(e.to_string()))?;
     let flags = randomx_factory.get_flags()?;
 
+    let stop_flag = Arc::new(AtomicBool::new(false));
+
+    runtime.spawn(check_template(
+        client.clone(),
+        node_address.to_string(),
+        monero_wallet_address.to_string(),
+        config.template_refresh_interval_ms,
+        stop_flag.clone(),
+    ));
+
     // dataset control loop
     loop {
-        let mut block_template = runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
+        let block_template = runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
         let seed_hash = block_template.seed_hash;
         let vm_key = hex::decode(&seed_hash)?
             .clone()
@@ -142,7 +151,7 @@ fn thread_work<'a>(
                 break 'template;
             }
 
-            let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
+            let mut blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
             let mut nonce = thread_number;
             let mut stats_last_check_time = Instant::now();
@@ -152,37 +161,39 @@ fn thread_work<'a>(
             stats_store.start();
             let mut template_refresh_time = Instant::now();
             let cycle_start = Instant::now();
+            let mut hash_count = 0u64;
             'mining: loop {
-                if template_refresh_time.elapsed().as_millis() >= config.template_refresh_interval_ms as u128 {
+                if template_refresh_time.elapsed().as_millis() >= 500 {
                     template_refresh_time = Instant::now();
-                    debug!(
-                        target: LOG_TARGET,
-                        "Thread {} had {}ms pass. Fetching new template to compare",
-                        thread_number, config.template_refresh_interval_ms
-                    );
-                    let new_block_template =
-                        runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
 
-                    if new_block_template.blocktemplate_blob != block_template.blocktemplate_blob {
+                    if stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                         info!(
                             target: LOG_TARGET,
                             "Thead {} detected template change. Restarting mining cycle",
                             thread_number
                         );
+                        stop_flag.store(false, std::sync::atomic::Ordering::Relaxed);
                         break 'mining;
                     }
                 }
 
-                stats_store.inc_hashed_count();
-                let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), u32::try_from(nonce)?, vm.clone())?;
+                let (difficulty, hash) = mining_cycle(&mut blockhashing_bytes, u32::try_from(nonce)?, vm.clone())?;
+                hash_count += 1;
 
                 if difficulty.as_u64() > max_difficulty_reached {
                     max_difficulty_reached = difficulty.as_u64();
                 }
+
                 let elapsed_since_last_check = Instant::now().duration_since(stats_last_check_time);
-                if elapsed_since_last_check >= Duration::from_secs(2) {
+                // Add a little entropy on the check time to try and lower the frequency of threads attempting to update
+                // the AtomicU64
+                let check_time =
+                    Duration::from_secs(5) + Duration::from_millis((num_threads * 100 / thread_number) as u64);
+                if elapsed_since_last_check >= check_time {
                     info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, cycle_start.elapsed().as_secs(), max_difficulty_reached, block_template.difficulty));
                     stats_last_check_time = Instant::now();
+                    stats_store.inc_hashed_count_by(hash_count);
+                    hash_count = 0;
                 }
 
                 if difficulty.as_u64() >= block_template.difficulty {
@@ -213,22 +224,44 @@ fn thread_work<'a>(
 }
 
 fn mining_cycle(
-    mut blockhashing_bytes: Vec<u8>,
+    blockhashing_bytes: &mut Vec<u8>,
     nonce: u32,
     vm: RandomXVMInstance,
-) -> Result<(Difficulty, Vec<u8>), MiningError> {
+) -> Result<(Difficulty, &Vec<u8>), MiningError> {
     let nonce_position = 38;
     blockhashing_bytes[nonce_position..nonce_position + 4].copy_from_slice(&nonce.to_le_bytes());
 
-    let timestamp_position = 8;
-    let timestamp_bytes: [u8; 4] = u32::try_from(EpochTime::now().as_u64())?.to_le_bytes();
-    blockhashing_bytes[timestamp_position..timestamp_position + 4].copy_from_slice(&timestamp_bytes);
+    // We could but we won't
+    // let timestamp_position = 8;
+    // let timestamp_bytes: [u8; 4] = u32::try_from(EpochTime::now().as_u64())?.to_le_bytes();
+    // blockhashing_bytes[timestamp_position..timestamp_position + 4].copy_from_slice(&timestamp_bytes);
 
-    let hash = vm.calculate_hash(&blockhashing_bytes)?;
+    let hash = vm.calculate_hash(blockhashing_bytes)?;
     // Check last byte of hash and see if it's over difficulty
     let difficulty = Difficulty::little_endian_difficulty(&hash)?;
 
     Ok((difficulty, blockhashing_bytes))
+}
+
+async fn check_template(
+    client: ReqwestClient,
+    node_address: String,
+    monero_wallet_address: String,
+    template_refresh_interval_ms: u64,
+    stop_flag: Arc<AtomicBool>,
+) -> Result<(), Error> {
+    let mut block_template = get_block_template(&client, &node_address, &monero_wallet_address).await?;
+
+    loop {
+        let new_block_template = get_block_template(&client, &node_address, &monero_wallet_address).await?;
+
+        if block_template.blocktemplate_blob != new_block_template.blocktemplate_blob {
+            stop_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            block_template = new_block_template;
+        }
+
+        tokio::time::sleep(Duration::from_millis(template_refresh_interval_ms)).await;
+    }
 }
 
 fn monero_base_node_address(cli: &Cli, config: &RandomXMinerConfig) -> Result<String, ConfigError> {

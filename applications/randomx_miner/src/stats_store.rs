@@ -54,6 +54,10 @@ impl StatsStore {
         self.hashed_count.fetch_add(1, Ordering::SeqCst);
     }
 
+    pub fn inc_hashed_count_by(&self, count: u64) {
+        self.hashed_count.fetch_add(count, Ordering::SeqCst);
+    }
+
     pub fn start_time(&self) -> u64 {
         self.start_time.load(Ordering::SeqCst)
     }
