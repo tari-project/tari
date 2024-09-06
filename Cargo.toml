@@ -32,7 +32,6 @@ members = [
     "applications/minotari_miner",
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
-    "applications/randomx_miner",
     "integration_tests",
     "hashing"
 ]
