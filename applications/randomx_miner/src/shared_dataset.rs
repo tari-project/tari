@@ -64,7 +64,7 @@ impl SharedDataset {
             let read_guard = self.inner.read().map_err(|e| DatasetError::ReadLock(e.to_string()))?;
             if let Some(existing_dataset) = read_guard.as_ref() {
                 if existing_dataset.identifier == key {
-                    debug!(target: LOG_TARGET, "Thread {} found existing dataset", thread_number);
+                    debug!(target: LOG_TARGET, "Thread {} found existing dataset with seed {}", thread_number, &key);
                     return Ok((existing_dataset.dataset.clone(), existing_dataset.cache.clone()));
                 }
             }
@@ -76,7 +76,7 @@ impl SharedDataset {
             // Double-check the condition after acquiring the write lock to avoid race conditions.
             if let Some(existing_dataset) = &*write_guard {
                 if existing_dataset.identifier == key {
-                    debug!(target: LOG_TARGET, "Thread {} found existing dataset found after waiting for write lock", thread_number);
+                    debug!(target: LOG_TARGET, "Thread {} found existing dataset with seed {} found after waiting for write lock", thread_number, &key);
                     return Ok((existing_dataset.dataset.clone(), existing_dataset.cache.clone()));
                 }
             }
@@ -84,8 +84,8 @@ impl SharedDataset {
             let cache = RandomXCache::new(flags, &hex::decode(key.clone())?)?;
             let new_dataset = RandomXDataset::new(flags, cache.clone(), 0)?;
 
-            *write_guard = Some(Dataset::new(key, new_dataset, cache));
-            debug!(target: LOG_TARGET, "Thread {} created new dataset", thread_number);
+            *write_guard = Some(Dataset::new(key.clone(), new_dataset, cache));
+            debug!(target: LOG_TARGET, "Thread {} created new dataset with seed {}", thread_number, key);
         }
 
         // Return the updated or created dataset

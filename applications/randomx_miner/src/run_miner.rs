@@ -118,84 +118,96 @@ fn thread_work<'a>(
     let runtime = tokio::runtime::Runtime::new().map_err(|e| TokioRuntime(e.to_string()))?;
     let flags = randomx_factory.get_flags()?;
 
+    // dataset control loop
     loop {
-        let block_template = runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
-        let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
-
-        let key = hex::decode(&block_template.seed_hash)?;
-        let vm_key = key
+        let mut block_template = runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
+        let seed_hash = block_template.seed_hash;
+        let vm_key = hex::decode(&seed_hash)?
             .clone()
             .into_iter()
             .chain(thread_number.to_le_bytes())
             .collect::<Vec<u8>>(); // RandomXFactory uses the key for caching the VM, and it should be unique, but also the key for the cache and
                                    // dataset can be shared
-        let (dataset, cache) =
-            shared_dataset.fetch_or_create_dataset(block_template.seed_hash, flags, thread_number)?;
+        let (dataset, cache) = shared_dataset.fetch_or_create_dataset(seed_hash.clone(), flags, thread_number)?;
         let vm = randomx_factory.create(&vm_key, Some(cache), Some(dataset))?;
 
-        let mut nonce = thread_number;
-        let mut stats_last_check_time = Instant::now();
-        let mut max_difficulty_reached = 0;
+        // block template loop
+        'template: loop {
+            // Fetch the block template again because dataset initialization takes a minute and the template could
+            // change in that time.
+            let block_template = runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
 
-        debug!(target: LOG_TARGET, "Thread {} ⛏️ Mining now", thread_number);
-        stats_store.start();
-        let mut template_refresh_time = Instant::now();
-        let cycle_start = Instant::now();
-        loop {
-            if template_refresh_time.elapsed().as_millis() >= config.template_refresh_interval_ms as u128 {
-                template_refresh_time = Instant::now();
-                debug!(
-                    target: LOG_TARGET,
-                    "Thread {} had {}ms pass. Fetching new template to compare",
-                    thread_number, config.template_refresh_interval_ms
-                );
-                let new_block_template =
-                    runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
+            if seed_hash != block_template.seed_hash {
+                info!(target: LOG_TARGET, "Thread {} detected seed hash change. Reinitializing dataset", thread_number);
+                break 'template;
+            }
 
-                if new_block_template.blocktemplate_blob != block_template.blocktemplate_blob {
-                    info!(
+            let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
+
+            let mut nonce = thread_number;
+            let mut stats_last_check_time = Instant::now();
+            let mut max_difficulty_reached = 0;
+
+            debug!(target: LOG_TARGET, "Thread {} ⛏️ Mining now", thread_number);
+            stats_store.start();
+            let mut template_refresh_time = Instant::now();
+            let cycle_start = Instant::now();
+            'mining: loop {
+                if template_refresh_time.elapsed().as_millis() >= config.template_refresh_interval_ms as u128 {
+                    template_refresh_time = Instant::now();
+                    debug!(
                         target: LOG_TARGET,
-                        "Thead {} detected template change. Restarting mining cycle",
-                        thread_number
+                        "Thread {} had {}ms pass. Fetching new template to compare",
+                        thread_number, config.template_refresh_interval_ms
                     );
-                    break;
-                }
-            }
+                    let new_block_template =
+                        runtime.block_on(get_block_template(client, node_address, monero_wallet_address))?;
 
-            stats_store.inc_hashed_count();
-            let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), u32::try_from(nonce)?, vm.clone())?;
-
-            if difficulty.as_u64() > max_difficulty_reached {
-                max_difficulty_reached = difficulty.as_u64();
-            }
-            let elapsed_since_last_check = Instant::now().duration_since(stats_last_check_time);
-            if elapsed_since_last_check >= Duration::from_secs(2) {
-                info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, cycle_start.elapsed().as_secs(), max_difficulty_reached, block_template.difficulty));
-                stats_last_check_time = Instant::now();
-            }
-
-            if difficulty.as_u64() >= block_template.difficulty {
-                let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
-                block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
-
-                let block_hex = hex::encode(block_template_bytes.clone());
-
-                match runtime
-                    .block_on(submit_block(client, node_address, block_hex))
-                    .map_err(MiningError::Request)
-                {
-                    Ok(_) => {
-                        debug!(target: LOG_TARGET, "Thread {} submitted block with hash: {} successfully", thread_number, hex::encode(&hash));
-                        info!(target: LOG_TARGET, "Thread {} found a block! 🎉", thread_number);
-                    },
-                    Err(e) => {
-                        debug!(target: LOG_TARGET, "Thread {} failed to submit block: {}", thread_number, e);
-                    },
+                    if new_block_template.blocktemplate_blob != block_template.blocktemplate_blob {
+                        info!(
+                            target: LOG_TARGET,
+                            "Thead {} detected template change. Restarting mining cycle",
+                            thread_number
+                        );
+                        break 'mining;
+                    }
                 }
 
-                break;
+                stats_store.inc_hashed_count();
+                let (difficulty, hash) = mining_cycle(blockhashing_bytes.clone(), u32::try_from(nonce)?, vm.clone())?;
+
+                if difficulty.as_u64() > max_difficulty_reached {
+                    max_difficulty_reached = difficulty.as_u64();
+                }
+                let elapsed_since_last_check = Instant::now().duration_since(stats_last_check_time);
+                if elapsed_since_last_check >= Duration::from_secs(2) {
+                    info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, cycle_start.elapsed().as_secs(), max_difficulty_reached, block_template.difficulty));
+                    stats_last_check_time = Instant::now();
+                }
+
+                if difficulty.as_u64() >= block_template.difficulty {
+                    let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
+                    block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
+
+                    let block_hex = hex::encode(block_template_bytes.clone());
+
+                    match runtime
+                        .block_on(submit_block(client, node_address, block_hex))
+                        .map_err(MiningError::Request)
+                    {
+                        Ok(_) => {
+                            debug!(target: LOG_TARGET, "Thread {} submitted block with hash: {} with difficulty: {} successfully", thread_number, hex::encode(&hash[0..42]), difficulty);
+                            info!(target: LOG_TARGET, "Thread {} found a block! 🎉", thread_number);
+                        },
+                        Err(e) => {
+                            debug!(target: LOG_TARGET, "Thread {} failed to submit block: {}", thread_number, e);
+                        },
+                    }
+
+                    break 'mining;
+                }
+                nonce += num_threads;
             }
-            nonce += num_threads;
         }
     }
 }
