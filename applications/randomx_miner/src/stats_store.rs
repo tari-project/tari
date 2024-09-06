@@ -68,13 +68,16 @@ impl StatsStore {
         nonce: usize,
         cycle_start: u64,
         max_difficulty_reached: u64,
+        difficulty: u64,
     ) -> String {
         format!(
-            "Thread {} Hash Rate: {:.2} H/s or Total Hash Rate: {:.2} H/s | Thread max difficulty reached: {}",
+            "Thread {} Hash Rate: {:.2} H/s of Total Hash Rate: {:.2} H/s | Thread max difficulty reached: {} | \
+             Difficulty goal: {}",
             thread_number,
-            (nonce / self.num_threads) as u64 / cycle_start,
+            (nonce / self.num_threads) as u64 / cycle_start + 1,
             self.hashes_per_second(),
-            max_difficulty_reached
+            max_difficulty_reached,
+            difficulty
         )
     }
 }

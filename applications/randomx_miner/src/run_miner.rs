@@ -72,34 +72,32 @@ pub async fn start_miner(cli: Cli) -> Result<(), Error> {
     let stats_store = Arc::new(StatsStore::new(num_threads));
 
     info!(target: LOG_TARGET, "Starting {} threads", num_threads);
-    let mut threads = vec![];
 
-    for thread_index in 0..num_threads {
-        let rclient = client.clone();
-        let node_address = node_address.clone();
-        let monero_wallet_address = monero_wallet_address.clone();
-        let randomx_factory = randomx_factory.clone();
-        let dataset = shared_dataset.clone();
-        let stats = stats_store.clone();
-        let config = config.clone();
-        threads.push(thread::spawn(move || {
-            thread_work(
-                num_threads,
-                thread_index,
-                &rclient,
-                &node_address,
-                &monero_wallet_address,
-                &randomx_factory,
-                dataset,
-                stats,
-                config,
-            )
-        }));
-    }
+    thread::scope(|s| {
+        for thread_index in 0..num_threads {
+            let client = &client;
+            let node_address = &node_address;
+            let monero_wallet_address = &monero_wallet_address;
+            let randomx_factory = &randomx_factory;
+            let dataset = shared_dataset.clone();
+            let stats = stats_store.clone();
+            let config = &config;
 
-    for t in threads {
-        t.join().unwrap()?;
-    }
+            s.spawn(move || {
+                thread_work(
+                    num_threads,
+                    thread_index,
+                    client,
+                    node_address,
+                    monero_wallet_address,
+                    randomx_factory,
+                    dataset,
+                    stats,
+                    config,
+                )
+            });
+        }
+    });
 
     shutdown.trigger();
 
@@ -115,7 +113,7 @@ fn thread_work<'a>(
     randomx_factory: &RandomXFactory,
     shared_dataset: Arc<SharedDataset>,
     stats_store: Arc<StatsStore>,
-    config: RandomXMinerConfig,
+    config: &RandomXMinerConfig,
 ) -> Result<(), MiningError> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| TokioRuntime(e.to_string()))?;
     let flags = randomx_factory.get_flags()?;
