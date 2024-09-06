@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## [1.4.0-per.0](https://github.com/tari-project/tari/compare/v1.3.1-pre.1...v1.4.0-per.0) (2024-09-04)
+## [1.4.1-pre.0](https://github.com/tari-project/tari/compare/v1.4.0-pre.0...v1.4.1-pre.0) (2024-09-06)
+
+
+### Features
+
+* add console wallet detail ([#6531](https://github.com/tari-project/tari/issues/6531)) ([594e984](https://github.com/tari-project/tari/commit/594e98477e2f68ff9c4a92334f198b2be5f97c84))
+* clear handshake error when connections go stale ([#6528](https://github.com/tari-project/tari/issues/6528)) ([b5f5e03](https://github.com/tari-project/tari/commit/b5f5e03817e5d43f1d2f3168307d7e9bc6cd77d6))
+* improve universe comms ([#6533](https://github.com/tari-project/tari/issues/6533)) ([3b2c88e](https://github.com/tari-project/tari/commit/3b2c88ec0b6a89d3864e39f0fccff5f59ad5c33f))
+* propagate handshake error ([#6530](https://github.com/tari-project/tari/issues/6530)) ([e29c909](https://github.com/tari-project/tari/commit/e29c9096d0b1b2d4cc6c3686f414e5d954d7c8ad))
+
+## [1.4.0-pre.0](https://github.com/tari-project/tari/compare/v1.3.1-pre.1...v1.4.0-pre.0) (2024-09-04)
 
 
 ### Features
