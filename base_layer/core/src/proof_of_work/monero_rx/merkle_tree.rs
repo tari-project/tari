@@ -423,7 +423,7 @@ mod test {
         fn randomx_hash(input: &[u8], key: &str) -> String {
             let key = from_hex(key).unwrap();
             RandomXFactory::default()
-                .create(&key)
+                .create(&key, None, None)
                 .unwrap()
                 .calculate_hash(input)
                 .unwrap()

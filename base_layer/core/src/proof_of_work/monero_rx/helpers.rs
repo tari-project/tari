@@ -65,7 +65,7 @@ pub fn randomx_difficulty(
     let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
     trace!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
-    let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
+    let vm = randomx_factory.create(monero_pow_data.randomx_key(), None, None)?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
 }
 
@@ -1245,7 +1245,7 @@ mod test {
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
         let rx = RandomXFactory::default();
 
-        let (difficulty, hash) = get_random_x_difficulty(&input, &rx.create(&key).unwrap()).unwrap();
+        let (difficulty, hash) = get_random_x_difficulty(&input, &rx.create(&key, None, None).unwrap()).unwrap();
         assert_eq!(
             hash.to_hex(),
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
