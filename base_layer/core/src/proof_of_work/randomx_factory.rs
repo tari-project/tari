@@ -42,19 +42,14 @@ impl RandomXVMInstance {
         dataset: Option<RandomXDataset>,
     ) -> Result<Self, RandomXVMFactoryError> {
         // Note: Memory required per VM in light mode is 256MB
+
+        // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
+        // light mode. These are not set by RandomX automatically even in fast mode.
         let cache = match cache {
             Some(c) => c,
             None => RandomXCache::new(flags, key)?,
         };
         let vm = RandomXVM::new(flags, Some(cache), dataset)?;
-
-        // Note: No dataset is initialized here because we want to run in light mode. Only a cache
-        // is required by the VM for verification, giving it a dataset will only make the VM
-        // consume more memory than necessary. Dataset is currently an optional value as it may be
-        // useful at some point in future.
-
-        // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
-        // light mode. These are not set by RandomX automatically even in fast mode.
 
         Ok(Self {
             #[allow(clippy::arc_with_non_send_sync)]
@@ -189,16 +184,8 @@ impl RandomXFactoryInner {
         }
 
         if self.vms.len() >= self.max_vms {
-            let mut oldest_value = Instant::now();
-            let mut oldest_key = None;
-            for (k, v) in &self.vms {
-                if v.0 < oldest_value {
-                    oldest_key = Some(k.clone());
-                    oldest_value = v.0;
-                }
-            }
-            if let Some(k) = oldest_key {
-                self.vms.remove(&k);
+            if let Some(oldest_key) = self.vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone()) {
+                self.vms.remove(&oldest_key);
             }
         }
 

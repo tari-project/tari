@@ -123,8 +123,15 @@ fn thread_work<'a>(
         let blockhashing_bytes = hex::decode(block_template.blockhashing_blob.clone())?;
 
         let key = hex::decode(&block_template.seed_hash)?;
-        let (dataset, cache) = shared_dataset.fetch_or_create_dataset(hex::encode(&key), flags, thread_number)?;
-        let vm = randomx_factory.create(&key, Some(cache), Some(dataset))?;
+        let vm_key = key
+            .clone()
+            .into_iter()
+            .chain(thread_number.to_le_bytes())
+            .collect::<Vec<u8>>(); // RandomXFactory uses the key for caching the VM, and it should be unique, but also the key for the cache and
+                                   // dataset can be shared
+        let (dataset, cache) =
+            shared_dataset.fetch_or_create_dataset(block_template.seed_hash, flags, thread_number)?;
+        let vm = randomx_factory.create(&vm_key, Some(cache), Some(dataset))?;
 
         let mut nonce = thread_number;
         let mut stats_last_check_time = Instant::now();
