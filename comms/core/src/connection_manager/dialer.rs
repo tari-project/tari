@@ -558,7 +558,18 @@ where
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
-        let addresses = dial_state.peer().addresses.clone().into_vec();
+        let addresses = dial_state
+            .peer()
+            .addresses
+            .clone()
+            .into_vec()
+            .iter()
+            .filter(|&a| {
+                a == &"/memory/0".parse::<Multiaddr>().expect("will not fail") || // Used for tests, allowed
+                    a != &ConnectionManagerConfig::default().listener_address // Not allowed to dial the default
+            })
+            .cloned()
+            .collect::<Vec<_>>();
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
             trace!(
