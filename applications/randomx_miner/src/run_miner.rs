@@ -134,9 +134,11 @@ fn thread_work<'a>(
 
         debug!(target: LOG_TARGET, "Thread {} ⛏️ Mining now", thread_number);
         stats_store.start();
-        let template_refresh_time = Instant::now();
+        let mut template_refresh_time = Instant::now();
+        let cycle_start = Instant::now();
         loop {
-            if template_refresh_time.elapsed().as_secs() >= config.template_refresh_interval_ms {
+            if template_refresh_time.elapsed().as_millis() >= config.template_refresh_interval_ms as u128 {
+                template_refresh_time = Instant::now();
                 debug!(
                     target: LOG_TARGET,
                     "Thread {} had {}ms pass. Fetching new template to compare",
@@ -148,7 +150,7 @@ fn thread_work<'a>(
                 if new_block_template.blocktemplate_blob != block_template.blocktemplate_blob {
                     info!(
                         target: LOG_TARGET,
-                        "Thead {} found detected template change. Restarting mining cycle",
+                        "Thead {} detected template change. Restarting mining cycle",
                         thread_number
                     );
                     break;
@@ -163,7 +165,7 @@ fn thread_work<'a>(
             }
             let elapsed_since_last_check = Instant::now().duration_since(stats_last_check_time);
             if elapsed_since_last_check >= Duration::from_secs(2) {
-                info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, template_refresh_time.elapsed().as_secs(), max_difficulty_reached));
+                info!(target: LOG_TARGET, "{}", stats_store.pretty_print(thread_number, nonce, cycle_start.elapsed().as_secs(), max_difficulty_reached, block_template.difficulty));
                 stats_last_check_time = Instant::now();
             }
 

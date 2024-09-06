@@ -70,7 +70,7 @@ impl Default for RandomXMinerConfig {
             network: Default::default(),
             config_dir: PathBuf::from("config/randomx_miner"),
             num_mining_threads: num_cpus::get(),
-            template_refresh_interval_ms: 500,
+            template_refresh_interval_ms: 15000,
         }
     }
 }
