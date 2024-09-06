@@ -175,15 +175,23 @@ fn thread_work<'a>(
             }
 
             if difficulty.as_u64() >= block_template.difficulty {
-                info!(target: LOG_TARGET, "Thread {} found a block! 🎉", thread_number);
                 let mut block_template_bytes = hex::decode(&block_template.blocktemplate_blob)?;
                 block_template_bytes[0..42].copy_from_slice(&hash[0..42]);
 
                 let block_hex = hex::encode(block_template_bytes.clone());
 
-                runtime
+                match runtime
                     .block_on(submit_block(client, node_address, block_hex))
-                    .map_err(MiningError::Request)?;
+                    .map_err(MiningError::Request)
+                {
+                    Ok(_) => {
+                        debug!(target: LOG_TARGET, "Thread {} submitted block with hash: {} successfully", thread_number, hex::encode(&hash));
+                        info!(target: LOG_TARGET, "Thread {} found a block! 🎉", thread_number);
+                    },
+                    Err(e) => {
+                        debug!(target: LOG_TARGET, "Thread {} failed to submit block: {}", thread_number, e);
+                    },
+                }
 
                 break;
             }
