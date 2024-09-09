@@ -187,7 +187,7 @@ where
                 })
                 .await;
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Base node {} Tip: {} ({}) Latency: {} ms",
                 base_node_id,

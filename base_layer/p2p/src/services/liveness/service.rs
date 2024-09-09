@@ -323,7 +323,7 @@ where
             .collect::<Vec<_>>();
 
         if selected_peers.is_empty() {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Cannot broadcast pings because there are no broadcast peers available"
             )

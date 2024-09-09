@@ -374,7 +374,7 @@ impl DhtConnectivity {
             .await?;
 
         if new_neighbours.is_empty() {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Unable to refresh neighbouring peer pool because there are insufficient known/online peers",
             );

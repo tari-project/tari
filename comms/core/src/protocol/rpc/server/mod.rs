@@ -589,7 +589,7 @@ where
                         return Err(err);
                     }
                     let elapsed = start.elapsed();
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "({}) RPC request completed in {:.0?}{}",
                         self.logging_context_string,
@@ -671,7 +671,7 @@ where
             return Ok(());
         }
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "({}) Request: {}, Method: {}",
             self.logging_context_string,
