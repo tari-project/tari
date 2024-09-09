@@ -146,17 +146,18 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
         let num_confirmations = tip_height.saturating_sub(mined_height);
-        debug!(
-            target: LOG_TARGET,
+
+        let log_msg = format!(
             "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \
              output_status({}), is_valid({})",
-            tx.tx_id,
-            mined_height,
-            must_be_confirmed,
-            num_confirmations,
-            output_status,
-            is_valid,
+            tx.tx_id, mined_height, must_be_confirmed, num_confirmations, output_status, is_valid
         );
+        if num_confirmations <= 5 {
+            debug!(target: LOG_TARGET, "{}", log_msg);
+        } else {
+            trace!(target: LOG_TARGET, "{}", log_msg);
+        }
+
         let result = db.set_transaction_mined_height(
             tx.tx_id,
             mined_height,
