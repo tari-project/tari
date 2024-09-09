@@ -83,13 +83,13 @@ impl MergeMiningProxyProcess {
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
             .expect("wallet grpc client");
-        let wallet_public_key = &wallet_client
+        let wallet_address = &wallet_client
             .get_address(grpc::Empty {})
             .await
             .unwrap()
             .into_inner()
-            .address;
-        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
+            .one_sided_address;
+        let wallet_payment_address = TariAddress::from_bytes(wallet_address).unwrap();
         thread::spawn(move || {
             let cli = Cli {
                 common: CommonCliArgs {
