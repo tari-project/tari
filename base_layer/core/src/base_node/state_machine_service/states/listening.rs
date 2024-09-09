@@ -135,12 +135,6 @@ impl Listening {
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
-            if !self.is_synced {
-                shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                    self.is_synced,
-                    self.initial_delay,
-                )));
-            }
             let metadata_event = shared.metadata_event_stream.recv().await;
             log_mdc::extend(mdc.clone());
             match metadata_event.as_ref().map(|v| v.deref()) {
@@ -154,6 +148,14 @@ impl Listening {
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                    // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
+                    // updated info
+                    if !self.is_synced {
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                            self.is_synced,
+                            self.initial_delay,
+                        )));
+                    }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {

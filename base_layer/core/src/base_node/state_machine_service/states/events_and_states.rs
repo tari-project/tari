@@ -216,7 +216,7 @@ impl StateInfo {
                     "Listening".to_string()
                 } else {
                     format!(
-                        "Waiting for initial connections: {}/{}",
+                        "Waiting for peer data: {}/{}",
                         info.initial_delay(),
                         INITIAL_SYNC_PEER_COUNT
                     )
