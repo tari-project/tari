@@ -39,6 +39,7 @@ name: Build docker images - workflow_call/on-demand
 env:
   LAUNCHPAD_REPO: tari-project/tari-launchpad
   LAUNCHPAD_BRANCH: main
+  DAYS_to_EXPIRE: 30
 
 permissions: {}
 
@@ -127,6 +128,12 @@ jobs:
           echo ${TARI_TARGET_NETWORK}
           echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_ENV
 
+      - name: Setup expiration for none releases
+        if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          echo "EXPIRATION=${{ env.DAYS_to_EXPIRE }}d" >> $GITHUB_ENV
+
       - name: environment setup
         shell: bash
         run: |
@@ -198,6 +205,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
+          labels: |
+            quay.expires-after=${{ env.EXPIRATION }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
