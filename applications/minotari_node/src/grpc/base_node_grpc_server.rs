@@ -2012,24 +2012,28 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 local_height: 0,
                 state: tari_rpc::SyncState::HeaderStarting.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             StateInfo::HeaderSync(Some(info)) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Header.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             StateInfo::Connecting(_) => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
                 state: tari_rpc::SyncState::BlockStarting.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             StateInfo::BlockSync(info) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Block.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             _ => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
@@ -2040,6 +2044,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     tari_rpc::SyncState::Startup.into()
                 },
                 short_desc,
+                initial_connected_peers: state.get_initial_connected_peers(),
             },
         };
         Ok(Response::new(response))

@@ -55,7 +55,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
-pub const INITIAL_SYNC_PEER_COUNT: usize = 5;
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
@@ -78,7 +77,8 @@ impl PeerMetadata {
 /// This struct contains info that is use full for external viewing of state info
 pub struct ListeningInfo {
     synced: bool,
-    initial_delay: usize,
+    initial_delay: u64,
+    initial_sync_peer_count: u64,
 }
 
 impl Display for ListeningInfo {
@@ -89,10 +89,11 @@ impl Display for ListeningInfo {
 
 impl ListeningInfo {
     /// Creates a new ListeningInfo
-    pub const fn new(is_synced: bool, initial_delay: usize) -> Self {
+    pub const fn new(is_synced: bool, initial_delay: u64, initial_sync_peer_count: u64) -> Self {
         Self {
             synced: is_synced,
             initial_delay,
+            initial_sync_peer_count,
         }
     }
 
@@ -100,8 +101,12 @@ impl ListeningInfo {
         self.synced
     }
 
-    pub fn initial_delay(&self) -> usize {
+    pub fn initial_delay(&self) -> u64 {
         self.initial_delay
+    }
+
+    pub fn initial_sync_peer_count(&self) -> u64 {
+        self.initial_sync_peer_count
     }
 }
 
@@ -111,7 +116,7 @@ impl ListeningInfo {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Listening {
     is_synced: bool,
-    initial_delay: usize,
+    initial_delay: u64,
 }
 
 impl Listening {
@@ -128,6 +133,7 @@ impl Listening {
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
             self.is_synced,
             self.initial_delay,
+            shared.config.initial_sync_peer_count,
         )));
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
@@ -143,7 +149,11 @@ impl Listening {
                     if !self.is_synced {
                         self.is_synced = true;
                         self.initial_delay = 0;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true, 0)));
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                            true,
+                            0,
+                            shared.config.initial_sync_peer_count,
+                        )));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
                 },
@@ -154,6 +164,7 @@ impl Listening {
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
                             self.is_synced,
                             self.initial_delay,
+                            shared.config.initial_sync_peer_count,
                         )));
                     }
                     // We already ban the peer based on some previous logic, but this message was already in the
@@ -246,7 +257,11 @@ impl Listening {
                     if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
                         self.initial_delay = 0;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true, 0)));
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                            true,
+                            0,
+                            shared.config.initial_sync_peer_count,
+                        )));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
 
@@ -286,7 +301,7 @@ impl Listening {
                         }
                         // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
                         // peers
-                        if initial_sync_counter >= INITIAL_SYNC_PEER_COUNT {
+                        if initial_sync_counter >= shared.config.initial_sync_peer_count {
                             // lets return now that we have enough peers to chose from
                             return StateEvent::FallenBehind(SyncStatus::Lagging {
                                 local,
