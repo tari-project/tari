@@ -27,6 +27,7 @@ use tari_common_types::chain_metadata::ChainMetadata;
 
 use crate::base_node::{
     state_machine_service::states::{
+        listening::INITIAL_SYNC_PEER_COUNT,
         BlockSync,
         DecideNextSync,
         HeaderSyncState,
@@ -210,7 +211,17 @@ impl StateInfo {
             HorizonSync(info) => info.to_progress_string(),
 
             BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string_blocks()),
-            Listening(_) => "Listening".to_string(),
+            Listening(info) => {
+                if info.is_synced() {
+                    "Listening".to_string()
+                } else {
+                    format!(
+                        "Waiting for initial connections: {}/{}",
+                        info.initial_delay(),
+                        INITIAL_SYNC_PEER_COUNT
+                    )
+                }
+            },
             SyncFailed(details) => format!("Sync failed: {}", details),
         }
     }
