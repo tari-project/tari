@@ -26,7 +26,7 @@ use rand::rngs::OsRng;
 use tari_common::configuration::{MultiaddrList, Network, StringList};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
@@ -96,6 +96,10 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
         listener_self_liveness_check_interval: None,
+        excluded_dial_addresses: vec![
+            "/ip4/172.2.3.4/tcp/18188".parse::<Multiaddr>().expect("will not fail"),
+            "/ip4/172.2.3.4/tcp/18189".parse::<Multiaddr>().expect("will not fail"),
+        ],
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();

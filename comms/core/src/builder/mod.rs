@@ -242,6 +242,11 @@ impl CommsBuilder {
         self
     }
 
+    pub fn with_excluded_dial_addresses(mut self, excluded_addresses: Vec<Multiaddr>) -> Self {
+        self.connection_manager_config.excluded_dial_addresses = excluded_addresses;
+        self
+    }
+
     /// Restrict liveness sessions to certain address ranges (CIDR format).
     pub fn with_listener_liveness_allowlist_cidrs(mut self, cidrs: Vec<cidr::AnyIpCidr>) -> Self {
         self.connection_manager_config.liveness_cidr_allowlist = cidrs;

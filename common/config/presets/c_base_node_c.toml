@@ -162,6 +162,8 @@ listener_self_liveness_check_interval = 15
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
 #rpc_max_sessions_per_peer = 10
+# Addresses that should never be dialed (default value = ["/ip4/172.2.3.4/tcp/18188", "/ip4/172.2.3.4/tcp/18189"])
+#excluded_dial_addresses = ["/ip4/172.2.3.4/tcp/18188", "/ip4/172.2.3.4/tcp/18189"]
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------

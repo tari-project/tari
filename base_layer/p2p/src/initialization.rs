@@ -331,7 +331,8 @@ async fn configure_comms_and_dht(
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, Some(file_lock));
+        .with_peer_storage(peer_database, Some(file_lock))
+        .with_excluded_dial_addresses(config.excluded_dial_addresses.clone());
 
     let mut comms = match config.auxiliary_tcp_listener_address {
         Some(ref addr) => builder.with_auxiliary_tcp_listener_address(addr.clone()).build()?,

@@ -90,6 +90,8 @@ pub enum ConnectionManagerError {
     PeerValidationError(#[from] PeerValidatorError),
     #[error("No contactable addresses for peer {0} left")]
     NoContactableAddressesForPeer(String),
+    #[error("All peer addresses are excluded for peer {0}")]
+    AllPeerAddressesAreExcluded(String),
     #[error("Yamux error: {0}")]
     YamuxControlError(#[from] YamuxControlError),
 }

@@ -168,7 +168,7 @@ event_channel_size = 3500
 # peers can find you.
 # _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
 # automatically configured
-#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
+#public_addresses = ["/ip4/172.2.3.4/tcp/18188",]
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
@@ -208,6 +208,8 @@ event_channel_size = 3500
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
 #rpc_max_sessions_per_peer = 10
+# Addresses that should never be dialed (default value = ["/ip4/172.2.3.4/tcp/18188", "/ip4/172.2.3.4/tcp/18189"])
+#excluded_dial_addresses = ["/ip4/172.2.3.4/tcp/18188", "/ip4/172.2.3.4/tcp/18189"]
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
