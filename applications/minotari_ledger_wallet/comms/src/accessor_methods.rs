@@ -98,14 +98,14 @@ fn verify() -> Result<(), LedgerDeviceError> {
                 Version::parse(&version).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?;
             if ledger_version < req {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "'Minotari Wallet' application version mismatch: expected '{}', running '{}'.",
+                    "'Minotari Wallet' application version check failed: min version '{}', running '{}'.",
                     MIN_LEDGER_APP_VERSION, version
                 )));
             }
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "'Minotari Wallet' application version mismatch ({})",
+                "'Minotari Wallet' application version check ({})",
                 e
             )))
         },
