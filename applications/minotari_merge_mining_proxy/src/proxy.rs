@@ -51,7 +51,7 @@ use tari_core::{
 };
 use tari_utilities::hex::Hex;
 use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -82,7 +82,7 @@ impl MergeMiningProxyService {
         randomx_factory: RandomXFactory,
         wallet_payment_address: TariAddress,
     ) -> Result<Self, MmProxyError> {
-        debug!(target: LOG_TARGET, "Config: {:?}", config);
+        trace!(target: LOG_TARGET, "Config: {:?}", config);
         let consensus_manager = ConsensusManager::builder(config.network).build()?;
         Ok(Self {
             inner: InnerService {
@@ -173,20 +173,19 @@ struct InnerService {
 }
 
 impl InnerService {
-    #[instrument(level = "trace")]
     #[allow(clippy::cast_possible_wrap)]
     async fn handle_get_height(&self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
         let (parts, mut json) = monerod_resp.into_parts();
         if json["height"].is_null() {
-            error!(target: LOG_TARGET, r#"Monerod response was invalid: "height" is null"#);
-            debug!(target: LOG_TARGET, "Invalid monerod response: {}", json);
+            warn!(target: LOG_TARGET, r#"Monerod response was invalid: "height" is null"#);
+            warn!(target: LOG_TARGET, "Invalid monerod response: {}", json);
             return Err(MmProxyError::InvalidMonerodResponse(
                 "`height` field was missing from /get_height response".to_string(),
             ));
         }
 
         let mut base_node_client = self.base_node_client.clone();
-        info!(target: LOG_TARGET, "Successful connection to base node GRPC");
+        trace!(target: LOG_TARGET, "Successful connection to base node GRPC");
 
         let result =
             base_node_client
@@ -230,7 +229,7 @@ impl InnerService {
         let request = request.body();
         let (parts, mut json_resp) = monerod_resp.into_parts();
 
-        debug!(target: LOG_TARGET, "handle_submit_block: submit request #{}", request);
+        info!(target: LOG_TARGET, "Block submited: submit request #{}", request);
         let params = match request["params"].as_array() {
             Some(v) => v,
             None => {
@@ -306,9 +305,9 @@ impl InnerService {
                     self.consensus_manager.get_genesis_block().hash(),
                     &self.consensus_manager,
                 )?;
-                trace!(
+                info!(
                     target: LOG_TARGET,
-                    "Finished calculate achieved Tari difficultly - achieved {} vs. target {}",
+                    "Difficulty achieved Tari difficultly - achieved {} vs. target {}",
                     diff,
                     block_data.template.tari_difficulty
                 );
@@ -371,7 +370,7 @@ impl InnerService {
                         self.block_templates.remove_final_block_template(&hash).await;
                     },
                     Err(err) => {
-                        debug!(
+                        warn!(
                             target: LOG_TARGET,
                             "Problem submitting block #{} to Tari node, responded in  {:.0?} (SubmitBlock): {}",
                             height,
