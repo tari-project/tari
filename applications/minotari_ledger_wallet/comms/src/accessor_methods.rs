@@ -26,6 +26,7 @@ use log::debug;
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction};
 use once_cell::sync::Lazy;
 use rand::{rngs::OsRng, RngCore};
+use semver::Version;
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -38,7 +39,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     error::LedgerDeviceError,
-    ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_VERSION},
+    ledger_wallet::{Command, EXPECTED_NAME, MIN_LEDGER_APP_VERSION},
 };
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
@@ -91,16 +92,20 @@ fn verify() -> Result<(), LedgerDeviceError> {
 
     match ledger_get_version() {
         Ok(version) => {
-            if version != EXPECTED_VERSION {
+            let req = Version::parse(MIN_LEDGER_APP_VERSION)
+                .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?;
+            let ledger_version =
+                Version::parse(&version).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?;
+            if ledger_version < req {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "'Minotari Wallet' application version mismatch: expected '{}', running '{}'.",
-                    EXPECTED_VERSION, version
+                    "'Minotari Wallet' application version check failed: min version '{}', running '{}'.",
+                    MIN_LEDGER_APP_VERSION, version
                 )));
             }
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "'Minotari Wallet' application version mismatch ({})",
+                "'Minotari Wallet' application version check ({})",
                 e
             )))
         },
@@ -601,15 +606,15 @@ pub fn ledger_get_one_sided_metadata_signature(
             let data = result.data();
             Ok(ComAndPubSignature::new(
                 Commitment::from_canonical_bytes(&data[1..33])
-                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
                 PublicKey::from_canonical_bytes(&data[33..65])
-                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
                 PrivateKey::from_canonical_bytes(&data[65..97])
-                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
                 PrivateKey::from_canonical_bytes(&data[97..129])
-                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
                 PrivateKey::from_canonical_bytes(&data[129..161])
-                    .map_err(|e| LedgerDeviceError::ByteArrayError(e.to_string()))?,
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
             ))
         },
         Err(e) => Err(LedgerDeviceError::Instruction(format!(

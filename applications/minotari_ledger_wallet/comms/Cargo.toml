@@ -13,7 +13,7 @@ tari_common_types = { path = "../../../base_layer/common_types" }
 tari_script = { path = "../../../infrastructure/tari_script" }
 
 minotari_ledger_wallet_common = { path = "../common" }
-
+semver = "1.0"
 borsh = "1.2"
 dialoguer = { version = "0.11" }
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }

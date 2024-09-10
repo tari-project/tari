@@ -93,13 +93,13 @@ impl MinerProcess {
             .await
             .expect("wallet grpc client");
 
-        let wallet_public_key = &wallet_client
+        let wallet_adress = &wallet_client
             .get_address(grpc::Empty {})
             .await
             .unwrap()
             .into_inner()
-            .address;
-        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
+            .interactive_address;
+        let wallet_payment_address = TariAddress::from_bytes(wallet_adress).unwrap();
 
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
         let temp_dir = world

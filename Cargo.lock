@@ -3373,6 +3373,7 @@ dependencies = [
  "minotari_ledger_wallet_common",
  "once_cell",
  "rand",
+ "semver",
  "serde",
  "tari_common",
  "tari_common_types",

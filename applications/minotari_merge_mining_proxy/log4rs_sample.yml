@@ -26,7 +26,7 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 200mb
+        limit: 10mb
       roller:
         kind: fixed_window
         base: 1
