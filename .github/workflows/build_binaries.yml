@@ -519,6 +519,24 @@ jobs:
           name: ${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}*.pkg*"
 
+      - name: Sign files with Trusted Signing (windows binaries)
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        uses: azure/trusted-signing-action@v0.4.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: Tari
+          certificate-profile-name: Tarilabs
+          files-folder: ${{ github.workspace }}${{ env.TS_DIST }}/
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Build the Windows installer
         if: startsWith(runner.os,'Windows')
         shell: cmd
@@ -532,6 +550,24 @@ jobs:
           cat "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Checksum verification archive is "
           ${{ env.SHARUN }} --check "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+
+      - name: Sign files with Trusted Signing (windows installer)
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        uses: azure/trusted-signing-action@v0.4.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: Tari
+          certificate-profile-name: Tarilabs
+          files-folder: ${{ github.workspace }}/buildtools/Output/
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - name: Artifact upload for Windows installer
         if: startsWith(runner.os,'Windows')
