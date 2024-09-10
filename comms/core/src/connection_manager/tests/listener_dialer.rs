@@ -317,7 +317,10 @@ async fn excluded_yes() {
 
     // Check that the dial failed. We're checking that the dial attempt was never made.
     let res = reply_rx.await.unwrap();
-    assert_eq!(format!("{:?}", res), format!("Err(AllPeerAddressesAreExcluded(\"{}\"))", node_identity1.node_id()));
+    assert_eq!(
+        format!("{:?}", res),
+        format!("Err(AllPeerAddressesAreExcluded(\"{}\"))", node_identity1.node_id())
+    );
 
     shutdown.trigger();
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
