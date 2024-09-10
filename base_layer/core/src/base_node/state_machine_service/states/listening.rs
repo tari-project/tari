@@ -77,8 +77,8 @@ impl PeerMetadata {
 /// This struct contains info that is use full for external viewing of state info
 pub struct ListeningInfo {
     synced: bool,
-    initial_delay: u64,
-    initial_sync_peer_count: u64,
+    initial_delay_connected_count: u64,
+    initial_sync_peer_wait_count: u64,
 }
 
 impl Display for ListeningInfo {
@@ -89,11 +89,11 @@ impl Display for ListeningInfo {
 
 impl ListeningInfo {
     /// Creates a new ListeningInfo
-    pub const fn new(is_synced: bool, initial_delay: u64, initial_sync_peer_count: u64) -> Self {
+    pub const fn new(is_synced: bool, initial_delay_connected_count: u64, initial_sync_peer_wait_count: u64) -> Self {
         Self {
             synced: is_synced,
-            initial_delay,
-            initial_sync_peer_count,
+            initial_delay_connected_count,
+            initial_sync_peer_wait_count,
         }
     }
 
@@ -101,12 +101,12 @@ impl ListeningInfo {
         self.synced
     }
 
-    pub fn initial_delay(&self) -> u64 {
-        self.initial_delay
+    pub fn initial_delay_connected_count(&self) -> u64 {
+        self.initial_delay_connected_count
     }
 
-    pub fn initial_sync_peer_count(&self) -> u64 {
-        self.initial_sync_peer_count
+    pub fn initial_sync_peer_wait_count(&self) -> u64 {
+        self.initial_sync_peer_wait_count
     }
 }
 
@@ -116,7 +116,7 @@ impl ListeningInfo {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Listening {
     is_synced: bool,
-    initial_delay: u64,
+    initial_delay_count: u64,
 }
 
 impl Listening {
@@ -132,7 +132,7 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
             self.is_synced,
-            self.initial_delay,
+            self.initial_delay_count,
             shared.config.initial_sync_peer_count,
         )));
         let mut time_since_better_block = None;
@@ -148,7 +148,7 @@ impl Listening {
                     debug!("NetworkSilence event received");
                     if !self.is_synced {
                         self.is_synced = true;
-                        self.initial_delay = 0;
+                        self.initial_delay_count = 0;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
                             true,
                             0,
@@ -163,7 +163,7 @@ impl Listening {
                     if !self.is_synced {
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
                             self.is_synced,
-                            self.initial_delay,
+                            self.initial_delay_count,
                             shared.config.initial_sync_peer_count,
                         )));
                     }
@@ -256,7 +256,7 @@ impl Listening {
 
                     if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
-                        self.initial_delay = 0;
+                        self.initial_delay_count = 0;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
                             true,
                             0,
@@ -280,7 +280,7 @@ impl Listening {
                     } = sync_mode
                     {
                         initial_sync_counter += 1;
-                        self.initial_delay = initial_sync_counter;
+                        self.initial_delay_count = initial_sync_counter;
                         for peer in sync_peers {
                             let mut found = false;
                             // lets search the list list to ensure we only have unique peers in the list with the latest
@@ -333,7 +333,7 @@ impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
         Self {
             is_synced: false,
-            initial_delay: 0,
+            initial_delay_count: 0,
         }
     }
 }
@@ -342,7 +342,7 @@ impl From<HeaderSyncState> for Listening {
     fn from(sync: HeaderSyncState) -> Self {
         Self {
             is_synced: sync.is_synced(),
-            initial_delay: 0,
+            initial_delay_count: 0,
         }
     }
 }
@@ -351,7 +351,7 @@ impl From<BlockSync> for Listening {
     fn from(sync: BlockSync) -> Self {
         Self {
             is_synced: sync.is_synced(),
-            initial_delay: 0,
+            initial_delay_count: 0,
         }
     }
 }
@@ -360,7 +360,7 @@ impl From<DecideNextSync> for Listening {
     fn from(sync: DecideNextSync) -> Self {
         Self {
             is_synced: sync.is_synced(),
-            initial_delay: 0,
+            initial_delay_count: 0,
         }
     }
 }

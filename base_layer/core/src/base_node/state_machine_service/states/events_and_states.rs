@@ -216,8 +216,8 @@ impl StateInfo {
                 } else {
                     format!(
                         "Waiting for peer data: {}/{}",
-                        info.initial_delay(),
-                        info.initial_sync_peer_count()
+                        info.initial_delay_connected_count(),
+                        info.initial_sync_peer_wait_count()
                     )
                 }
             },
@@ -243,7 +243,7 @@ impl StateInfo {
 
     pub fn get_initial_connected_peers(&self) -> u64 {
         match self {
-            StateInfo::Listening(info) => info.initial_delay(),
+            StateInfo::Listening(info) => info.initial_delay_connected_count(),
             _ => 0,
         }
     }
