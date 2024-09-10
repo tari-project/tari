@@ -98,7 +98,7 @@ impl MinerProcess {
             .await
             .unwrap()
             .into_inner()
-            .one_sided_address;
+            .interactive_address;
         let wallet_payment_address = TariAddress::from_bytes(wallet_adress).unwrap();
 
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;

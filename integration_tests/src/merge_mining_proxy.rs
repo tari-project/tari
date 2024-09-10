@@ -88,7 +88,7 @@ impl MergeMiningProxyProcess {
             .await
             .unwrap()
             .into_inner()
-            .one_sided_address;
+            .interactive_address;
         let wallet_payment_address = TariAddress::from_bytes(wallet_address).unwrap();
         thread::spawn(move || {
             let cli = Cli {

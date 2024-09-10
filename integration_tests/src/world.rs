@@ -210,7 +210,7 @@ impl TariWorld {
                     .await
                     .unwrap()
                     .into_inner()
-                    .one_sided_address
+                    .interactive_address
             },
             Err(_) => {
                 let ffi_wallet = self.get_ffi_wallet(name).unwrap();
