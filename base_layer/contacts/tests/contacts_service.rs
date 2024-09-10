@@ -26,7 +26,7 @@ use rand::rngs::OsRng;
 use tari_common::configuration::{MultiaddrList, Network, StringList};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
