@@ -90,7 +90,8 @@ message GetVersionResponse {
 }
 
 message GetAddressResponse {
-  bytes address = 1;
+  bytes interactive_address = 1;
+  bytes one_sided_address = 2;
 }
 
 message TransferRequest {
