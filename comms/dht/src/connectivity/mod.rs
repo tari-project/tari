@@ -872,7 +872,7 @@ impl DhtConnectivity {
                 let addresses = self.peer_manager.get_peer_multi_addresses(peer).await?;
                 if !addresses
                     .iter()
-                    .any(|addr| self.config.excluded_dial_addresses.contains(addr.address()))
+                    .all(|addr| self.config.excluded_dial_addresses.contains(addr.address()))
                 {
                     neighbours.push(peer.clone());
                 }
@@ -884,7 +884,7 @@ impl DhtConnectivity {
                 let addresses = self.peer_manager.get_peer_multi_addresses(peer).await?;
                 if !addresses
                     .iter()
-                    .any(|addr| self.config.excluded_dial_addresses.contains(addr.address()))
+                    .all(|addr| self.config.excluded_dial_addresses.contains(addr.address()))
                 {
                     random_pool.push(peer.clone());
                 }
