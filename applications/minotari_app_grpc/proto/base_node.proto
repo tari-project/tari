@@ -357,6 +357,7 @@ message SyncProgressResponse {
     uint64 local_height = 2;
     SyncState state = 3;
     string short_desc = 4;
+    uint64 initial_connected_peers = 5;
 }
 
 enum SyncState {

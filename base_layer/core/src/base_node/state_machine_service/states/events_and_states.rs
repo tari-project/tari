@@ -210,7 +210,17 @@ impl StateInfo {
             HorizonSync(info) => info.to_progress_string(),
 
             BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string_blocks()),
-            Listening(_) => "Listening".to_string(),
+            Listening(info) => {
+                if info.is_synced() {
+                    "Listening".to_string()
+                } else {
+                    format!(
+                        "Waiting for peer data: {}/{}",
+                        info.initial_delay_connected_count(),
+                        info.initial_sync_peer_wait_count()
+                    )
+                }
+            },
             SyncFailed(details) => format!("Sync failed: {}", details),
         }
     }
@@ -228,6 +238,13 @@ impl StateInfo {
         match self {
             StartUp | Connecting(_) | HeaderSync(_) | HorizonSync(_) | BlockSync(_) | SyncFailed(_) => false,
             Listening(info) => info.is_synced(),
+        }
+    }
+
+    pub fn get_initial_connected_peers(&self) -> u64 {
+        match self {
+            StateInfo::Listening(info) => info.initial_delay_connected_count(),
+            _ => 0,
         }
     }
 }

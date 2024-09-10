@@ -55,7 +55,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
-const INITIAL_SYNC_PEER_COUNT: usize = 5;
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
@@ -78,6 +77,8 @@ impl PeerMetadata {
 /// This struct contains info that is use full for external viewing of state info
 pub struct ListeningInfo {
     synced: bool,
+    initial_delay_connected_count: u64,
+    initial_sync_peer_wait_count: u64,
 }
 
 impl Display for ListeningInfo {
@@ -88,12 +89,24 @@ impl Display for ListeningInfo {
 
 impl ListeningInfo {
     /// Creates a new ListeningInfo
-    pub const fn new(is_synced: bool) -> Self {
-        Self { synced: is_synced }
+    pub const fn new(is_synced: bool, initial_delay_connected_count: u64, initial_sync_peer_wait_count: u64) -> Self {
+        Self {
+            synced: is_synced,
+            initial_delay_connected_count,
+            initial_sync_peer_wait_count,
+        }
     }
 
     pub fn is_synced(&self) -> bool {
         self.synced
+    }
+
+    pub fn initial_delay_connected_count(&self) -> u64 {
+        self.initial_delay_connected_count
+    }
+
+    pub fn initial_sync_peer_wait_count(&self) -> u64 {
+        self.initial_sync_peer_wait_count
     }
 }
 
@@ -103,6 +116,7 @@ impl ListeningInfo {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Listening {
     is_synced: bool,
+    initial_delay_count: u64,
 }
 
 impl Listening {
@@ -116,7 +130,11 @@ impl Listening {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
+        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+            self.is_synced,
+            self.initial_delay_count,
+            shared.config.initial_sync_peer_count,
+        )));
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
@@ -130,11 +148,25 @@ impl Listening {
                     debug!("NetworkSilence event received");
                     if !self.is_synced {
                         self.is_synced = true;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
+                        self.initial_delay_count = 0;
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                            true,
+                            0,
+                            shared.config.initial_sync_peer_count,
+                        )));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                    // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
+                    // updated info
+                    if !self.is_synced {
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                            self.is_synced,
+                            self.initial_delay_count,
+                            shared.config.initial_sync_peer_count,
+                        )));
+                    }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
@@ -224,7 +256,12 @@ impl Listening {
 
                     if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
+                        self.initial_delay_count = 0;
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                            true,
+                            0,
+                            shared.config.initial_sync_peer_count,
+                        )));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
 
@@ -243,6 +280,7 @@ impl Listening {
                     } = sync_mode
                     {
                         initial_sync_counter += 1;
+                        self.initial_delay_count = initial_sync_counter;
                         for peer in sync_peers {
                             let mut found = false;
                             // lets search the list list to ensure we only have unique peers in the list with the latest
@@ -263,7 +301,7 @@ impl Listening {
                         }
                         // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
                         // peers
-                        if initial_sync_counter >= INITIAL_SYNC_PEER_COUNT {
+                        if initial_sync_counter >= shared.config.initial_sync_peer_count {
                             // lets return now that we have enough peers to chose from
                             return StateEvent::FallenBehind(SyncStatus::Lagging {
                                 local,
@@ -293,7 +331,10 @@ impl Listening {
 
 impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
-        Self { is_synced: false }
+        Self {
+            is_synced: false,
+            initial_delay_count: 0,
+        }
     }
 }
 
@@ -301,6 +342,7 @@ impl From<HeaderSyncState> for Listening {
     fn from(sync: HeaderSyncState) -> Self {
         Self {
             is_synced: sync.is_synced(),
+            initial_delay_count: 0,
         }
     }
 }
@@ -309,6 +351,7 @@ impl From<BlockSync> for Listening {
     fn from(sync: BlockSync) -> Self {
         Self {
             is_synced: sync.is_synced(),
+            initial_delay_count: 0,
         }
     }
 }
@@ -317,6 +360,7 @@ impl From<DecideNextSync> for Listening {
     fn from(sync: DecideNextSync) -> Self {
         Self {
             is_synced: sync.is_synced(),
+            initial_delay_count: 0,
         }
     }
 }

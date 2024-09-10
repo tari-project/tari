@@ -99,7 +99,7 @@ async fn setup() -> (
         .await;
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });

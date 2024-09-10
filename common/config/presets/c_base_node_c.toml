@@ -117,6 +117,8 @@ blockchain_sync_config.rpc_deadline = 240
 # intensive. Be careful of setting this higher than the block time, which would potentially cause it
 # to always be behind the network (default = 10) (in seconds)
 #time_before_considered_lagging = 10
+#This is the amount of metadata events that a node will wait for before decide to start syncing for a peer, choosing the best peer out of the list
+#initial_sync_peer_count = 5,
 
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
