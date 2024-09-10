@@ -174,6 +174,7 @@ where
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
         use DialerRequest::{CancelPendingDial, Dial, NotifyNewInboundConnection};
         debug!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
+
         match request {
             Dial(peer, reply_tx) => {
                 self.handle_dial_peer_request(pending_dials, peer, reply_tx);
@@ -515,7 +516,7 @@ where
             tokio::select! {
                 _ = delay => {
                     debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
-                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_wire_byte).await {
+                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_wire_byte, config.excluded_dial_addresses.clone()).await {
                         (state, Ok((socket, addr))) => {
                             debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer().node_id.short_str(), state.num_attempts());
                             break (state, Ok((socket, addr)));
@@ -524,6 +525,8 @@ where
                         (state, Err(ConnectionManagerError::NoiseHandshakeError(e))) => break (state, Err(ConnectionManagerError::NoiseHandshakeError(e))),
                         // Inflight dial was cancelled
                         (state, Err(ConnectionManagerError::DialCancelled)) => break (state, Err(ConnectionManagerError::DialCancelled)),
+                        // All public addresses for this peer are excluded
+                        (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))) => break (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))),
                         (state, Err(err)) => {
                             debug!(target: LOG_TARGET, "Failed to dial peer {} | Attempt {} | Error: {}", state.peer().node_id.short_str(), state.num_attempts(), err);
                             if state.num_attempts() >= config.max_dial_attempts {
@@ -554,6 +557,7 @@ where
         noise_config: &NoiseConfig,
         transport: &TTransport,
         network_byte: u8,
+        excluded_dial_addresses: Vec<Multiaddr>,
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
@@ -564,10 +568,7 @@ where
             .clone()
             .into_vec()
             .iter()
-            .filter(|&a| {
-                a == &"/memory/0".parse::<Multiaddr>().expect("will not fail") || // Used for tests, allowed
-                    a != &ConnectionManagerConfig::default().listener_address // Not allowed to dial the default
-            })
+            .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| a == excluded))
             .cloned()
             .collect::<Vec<_>>();
         if addresses.is_empty() {
@@ -577,10 +578,17 @@ where
                 "Dial - No more contactable addresses for peer '{}'",
                 node_id_hex
             );
-            return (
-                dial_state,
-                Err(ConnectionManagerError::NoContactableAddressesForPeer(node_id_hex)),
-            );
+            return if dial_state.peer().addresses.is_empty() {
+                (
+                    dial_state,
+                    Err(ConnectionManagerError::NoContactableAddressesForPeer(node_id_hex)),
+                )
+            } else {
+                (
+                    dial_state,
+                    Err(ConnectionManagerError::AllPeerAddressesAreExcluded(node_id_hex)),
+                )
+            };
         }
         let cancel_signal = dial_state.get_cancel_signal();
         for address in addresses {

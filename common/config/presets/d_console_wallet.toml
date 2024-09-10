@@ -168,7 +168,7 @@ event_channel_size = 3500
 # peers can find you.
 # _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
 # automatically configured
-#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
+#public_addresses = ["/ip4/172.2.3.4/tcp/18188",]
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
@@ -360,3 +360,5 @@ network_discovery.initial_peer_sync_delay = 25
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
 # peers that were previously tried. Default: 2 hours
 #offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = [])
+#excluded_dial_addresses = ["/ip4/x.x.x.x/tcp/xxxx", "/ip4/x.y.x.y/tcp/xyxy"]

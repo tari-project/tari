@@ -659,6 +659,15 @@ impl ConnectivityManagerActor {
         let (node_id, mut new_status, connection) = match event {
             PeerDisconnected(_, node_id, minimized) => (node_id, ConnectionStatus::Disconnected(*minimized), None),
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),
+            PeerConnectFailed(node_id, ConnectionManagerError::AllPeerAddressesAreExcluded(msg)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' contains only excluded addresses ({})",
+                    node_id,
+                    msg
+                );
+                (node_id, ConnectionStatus::Failed, None)
+            },
             PeerConnectFailed(node_id, ConnectionManagerError::NoiseHandshakeError(msg)) => {
                 if let Some(conn) = self.pool.get_connection(node_id) {
                     warn!(
