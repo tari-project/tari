@@ -125,8 +125,6 @@ pub struct P2pConfig {
     /// The maximum allowed RPC sessions per peer.
     /// Default: 10
     pub rpc_max_sessions_per_peer: usize,
-    /// Addresses that should never be dialed
-    pub excluded_dial_addresses: Vec<Multiaddr>,
 }
 
 impl Default for P2pConfig {
@@ -151,10 +149,6 @@ impl Default for P2pConfig {
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,
-            excluded_dial_addresses: vec![
-                "/ip4/172.2.3.4/tcp/18188".parse::<Multiaddr>().expect("will not fail"),
-                "/ip4/172.2.3.4/tcp/18189".parse::<Multiaddr>().expect("will not fail"),
-            ],
         }
     }
 }

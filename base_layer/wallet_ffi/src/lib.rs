@@ -5327,6 +5327,7 @@ pub unsafe extern "C" fn comms_config_create(
                         minimum_desired_tcpv4_node_ratio: 0.0,
                         ..Default::default()
                     },
+                    excluded_dial_addresses: vec![],
                     ..Default::default()
                 },
                 allow_test_addresses: true,
@@ -5335,10 +5336,6 @@ pub unsafe extern "C" fn comms_config_create(
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
                 listener_self_liveness_check_interval: None,
-                excluded_dial_addresses: vec![
-                    "/ip4/172.2.3.4/tcp/18188".parse::<Multiaddr>().expect("will not fail"),
-                    "/ip4/172.2.3.4/tcp/18189".parse::<Multiaddr>().expect("will not fail"),
-                ],
             };
 
             Box::into_raw(Box::new(config))

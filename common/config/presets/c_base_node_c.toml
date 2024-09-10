@@ -162,8 +162,6 @@ listener_self_liveness_check_interval = 15
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
 #rpc_max_sessions_per_peer = 10
-# Addresses that should never be dialed (default value = ["/ip4/172.2.3.4/tcp/18188", "/ip4/172.2.3.4/tcp/18189"])
-#excluded_dial_addresses = ["/ip4/172.2.3.4/tcp/18188", "/ip4/172.2.3.4/tcp/18189"]
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -318,3 +316,5 @@ database_url = "data/base_node/dht.db"
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
 # peers that were previously tried. Default: 2 hours
 #offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = [])
+#excluded_dial_addresses = ["/ip4/x.x.x.x/tcp/xxxx", "/ip4/x.y.x.y/tcp/xyxy"]
