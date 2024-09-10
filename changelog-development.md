@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.4.2-pre.0](https://github.com/tari-project/tari/compare/v1.4.1-pre.0...v1.4.2-pre.0) (2024-09-10)
+
+
+### Features
+
+* add one-sided addresses to grpc ([#6542](https://github.com/tari-project/tari/issues/6542)) ([0a5d20b](https://github.com/tari-project/tari/commit/0a5d20b55ce51a1134369cd9825ba8a13f0fbb7d))
+* changes for the randomx miner ([#6537](https://github.com/tari-project/tari/issues/6537)) ([825ca06](https://github.com/tari-project/tari/commit/825ca06fa29fda0e66c34fe94640797e4deb0776))
+* display waiting for intial peer data ([#6545](https://github.com/tari-project/tari/issues/6545)) ([39aed8e](https://github.com/tari-project/tari/commit/39aed8ea1c521f7cab7c155480e59075c5c1ab26))
+* ledger version check ([#6541](https://github.com/tari-project/tari/issues/6541)) ([611f226](https://github.com/tari-project/tari/commit/611f22692024d260fd05a7453fd39d9e5e47bf29))
+* reduce universe spam logs ([#6540](https://github.com/tari-project/tari/issues/6540)) ([4c246b8](https://github.com/tari-project/tari/commit/4c246b80f93c18f752cf96f83f61cbef637c7d48))
+* stop interactive only address from being used in mining ([#6544](https://github.com/tari-project/tari/issues/6544)) ([1f18e7d](https://github.com/tari-project/tari/commit/1f18e7db8e94b6d3961f7e5e563420d622a36f75))
+
 ## [1.4.1-pre.0](https://github.com/tari-project/tari/compare/v1.4.0-pre.0...v1.4.1-pre.0) (2024-09-06)
 
 
