@@ -24,9 +24,24 @@ The recommended running versions of each network are:
 |-----------|----------------|
 | Stagenet  | 1.0.0-alpha.0a |
 | Nextnet   | 1.0.0-rc.8     |
-| Esmeralda | 1.1.0-pre.2    |
+| Esmeralda | 1.4.1-pre.0    |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
+
+### Running test
+Tests can be run by install Nextest with the following command:
+
+```bash
+cargo install cargo-nextest
+```
+
+Then run the tests with:
+
+```bash
+cargo ci-test
+```
+
+
 
 ### Download
 
