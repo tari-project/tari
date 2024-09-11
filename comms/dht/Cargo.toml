@@ -25,8 +25,8 @@ blake2 = "0.10"
 chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false }
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "numeric"] }
-diesel_migrations = "2.0.0"
+diesel = { version = "2.2.4", features = ["sqlite", "serde_json", "chrono", "numeric"] }
+diesel_migrations = "2.2.0"
 digest = "0.10"
 futures = "^0.3.1"
 log = "0.4.8"
