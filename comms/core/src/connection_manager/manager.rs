@@ -49,6 +49,7 @@ use crate::{
     backoff::Backoff,
     connection_manager::ConnectionId,
     multiplexing::Substream,
+    net_address::MultiaddrRange,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
     peer_validator::PeerValidatorConfig,
@@ -134,7 +135,7 @@ pub struct ConnectionManagerConfig {
     /// Peer validation configuration. See [PeerValidatorConfig]
     pub peer_validation_config: PeerValidatorConfig,
     /// Addresses that should never be dialed
-    pub excluded_dial_addresses: Vec<Multiaddr>,
+    pub excluded_dial_addresses: Vec<MultiaddrRange>,
 }
 
 impl Default for ConnectionManagerConfig {

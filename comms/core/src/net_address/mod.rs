@@ -27,3 +27,6 @@ pub use multiaddr_with_stats::{MultiaddrWithStats, PeerAddressSource};
 
 mod mutliaddresses_with_stats;
 pub use mutliaddresses_with_stats::MultiaddressesWithStats;
+
+mod multiaddr_range;
+pub use multiaddr_range::{MultiaddrRange, IP4_TCP_TEST_ADDR_RANGE};

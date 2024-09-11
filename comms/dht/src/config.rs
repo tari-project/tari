@@ -24,7 +24,7 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{multiaddr::Multiaddr, peer_validator::PeerValidatorConfig};
+use tari_comms::{net_address::MultiaddrRange, peer_validator::PeerValidatorConfig};
 
 use crate::{
     actor::OffenceSeverity,
@@ -116,7 +116,7 @@ pub struct DhtConfig {
     /// See [PeerValidatorConfig]
     pub peer_validator_config: PeerValidatorConfig,
     /// Addresses that should never be dialed
-    pub excluded_dial_addresses: Vec<Multiaddr>,
+    pub excluded_dial_addresses: Vec<MultiaddrRange>,
 }
 
 impl DhtConfig {

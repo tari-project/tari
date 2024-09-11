@@ -45,6 +45,7 @@ use crate::{
     connection_manager::{ConnectionManagerConfig, ConnectionManagerRequester},
     connectivity::{ConnectivityConfig, ConnectivityRequester},
     multiaddr::Multiaddr,
+    net_address::MultiaddrRange,
     peer_manager::{NodeIdentity, PeerManager},
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolExtensions},
@@ -242,7 +243,7 @@ impl CommsBuilder {
         self
     }
 
-    pub fn with_excluded_dial_addresses(mut self, excluded_addresses: Vec<Multiaddr>) -> Self {
+    pub fn with_excluded_dial_addresses(mut self, excluded_addresses: Vec<MultiaddrRange>) -> Self {
         self.connection_manager_config.excluded_dial_addresses = excluded_addresses;
         self
     }
