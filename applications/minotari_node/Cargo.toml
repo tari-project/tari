@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.4.2-pre.2"
+version = "1.4.2-rc.1"
 edition = "2018"
 
 [dependencies]
@@ -24,7 +24,7 @@ tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.7" }
 tari_key_manager = { path = "../../base_layer/key_manager", features = [
     "key_manager_service",
-], version = "1.4.2-pre.2" }
+], version = "1.4.2-rc.1" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"
@@ -61,7 +61,7 @@ safe = []
 libtor = ["tari_libtor"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.4.2-pre.2" }
+tari_features = { path = "../../common/tari_features", version = "1.4.2-rc.1" }
 
 [package.metadata.cargo-machete]
 ignored = [

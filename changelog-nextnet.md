@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+### [1.4.2-rc.1](https://github.com/tari-project/tari/compare/v1.4.2-rc.0...v1.4.2-rc.1) (2024-09-11)
 
+
+### Bug Fixes
+
+* Fixed Windows installer checksum
 
 ### [1.4.2-rc.0](https://github.com/tari-project/tari/compare/v1.4.1-rc.0...v1.4.2-rc.0) (2024-09-11)
 
