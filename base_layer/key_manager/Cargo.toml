@@ -23,8 +23,8 @@ chacha20poly1305 = "0.10.1"
 tokio = { version = "1.36", features = ["sync", "macros"] }
 futures = { version = "^0.3.1", features = ["compat", "std"] }
 log = { version = "0.4.6" }
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
-diesel_migrations = { version = "2.0.0" }
+diesel = { version = "2.2.4", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
+diesel_migrations = { version = "2.2" }
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.10"
 chacha20 = "0.7.1"

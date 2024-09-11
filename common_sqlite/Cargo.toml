@@ -11,8 +11,8 @@ edition = "2018"
 [dependencies]
 tari_utilities = { version = "0.7" }
 
-diesel = { version = "2.0.3", features = ["sqlite", "r2d2", "serde_json", "chrono", "64-column-tables"] }
-diesel_migrations = "2.0.0"
+diesel = { version = "2.2.4", features = ["sqlite", "r2d2", "serde_json", "chrono", "64-column-tables"] }
+diesel_migrations = "2.2"
 log = "0.4.6"
 serde = "1.0.90"
 thiserror = "1.0.26"

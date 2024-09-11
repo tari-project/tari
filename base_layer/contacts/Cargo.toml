@@ -20,8 +20,8 @@ tari_shutdown = {  path = "../../infrastructure/shutdown", version = "1.4.2-pre.
 tari_utilities = { version = "0.7" }
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
-diesel_migrations = "2.0.0"
+diesel = { version = "2.2.4", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
+diesel_migrations = "2.2"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
 log = "0.4.6"
 num-derive = "0.4.2"
