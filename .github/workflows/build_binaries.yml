@@ -543,13 +543,6 @@ jobs:
         run: |
           cd buildtools
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TS_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TS_DIST }}" "windows_inno_installer.iss"
-          cd Output
-          echo "Compute archive shasum"
-          ${{ env.SHARUN }} "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
-          echo "Show the shasum"
-          cat "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
-          echo "Checksum verification archive is "
-          ${{ env.SHARUN }} --check "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Sign files with Trusted Signing (windows installer)
         if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
@@ -568,6 +561,18 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+
+      - name: Windows installer Compute archive checksum
+        if: startsWith(runner.os,'Windows')
+        shell: cmd
+        run: |
+          cd buildtools\Output
+          echo "Compute archive checksum"
+          ${{ env.SHARUN }} "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          echo "Show the shasum"
+          cat "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          echo "Checksum verification archive is "
+          ${{ env.SHARUN }} --check "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Artifact upload for Windows installer
         if: startsWith(runner.os,'Windows')
