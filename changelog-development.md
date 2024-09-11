@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.4.2-pre.1](https://github.com/tari-project/tari/compare/v1.4.2-pre.0...v1.4.2-pre.1) (2024-09-11)
+
+
+### Features
+
+* add configurable exclude dialer addresses for universe ([#6543](https://github.com/tari-project/tari/issues/6543)) ([e113a0e](https://github.com/tari-project/tari/commit/e113a0e4a464a2ed4ec72d2da6f4a3c3c80a6fcf))
+
 ### [1.4.2-pre.0](https://github.com/tari-project/tari/compare/v1.4.1-pre.0...v1.4.2-pre.0) (2024-09-10)
 
 

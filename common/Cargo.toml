@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.4.2-pre.0"
+version = "1.4.2-pre.1"
 edition = "2018"
 
 [features]
@@ -14,7 +14,7 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_features = { path = "./tari_features", version = "1.4.2-pre.0"}
+tari_features = { path = "./tari_features", version = "1.4.2-pre.1"}
 
 anyhow = "1.0.53"
 config = { version = "0.14.0", default-features = false, features = ["toml"] }
@@ -39,7 +39,7 @@ tari_test_utils = { path = "../infrastructure/test_utils" }
 toml = "0.5.8"
 
 [build-dependencies]
-tari_features = { path = "./tari_features", version = "1.4.2-pre.0" }
+tari_features = { path = "./tari_features", version = "1.4.2-pre.1" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tari_target_network_mainnet)', 'cfg(tari_target_network_nextnet)'] }
