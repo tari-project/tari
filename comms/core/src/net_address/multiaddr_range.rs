@@ -1,10 +1,16 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{fmt, net::Ipv4Addr, str::FromStr};
+use std::{fmt, net::Ipv4Addr, ops::Deref, slice, str::FromStr};
 
 use multiaddr::{Multiaddr, Protocol};
-use serde_derive::{Deserialize, Serialize};
+use serde::{
+    de,
+    de::{Error, SeqAccess, Visitor},
+    Deserialize,
+    Deserializer,
+    Serialize,
+};
 
 /// A MultiaddrRange for testing purposes that matches any IPv4 address and any port
 pub const IP4_TCP_TEST_ADDR_RANGE: &str = "/ip4/127.*.*.*/tcp/*";
@@ -12,7 +18,7 @@ pub const IP4_TCP_TEST_ADDR_RANGE: &str = "/ip4/127.*.*.*/tcp/*";
 /// ----------------- MultiaddrRange -----------------
 /// A struct containing either an Ipv4AddrRange or a Multiaddr. If a range of IP addresses and/or ports needs to be
 /// specified, the MultiaddrRange can be used, but it only supports IPv4 addresses with the TCP protocol.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct MultiaddrRange {
     ipv4_addr_range: Option<Ipv4AddrRange>,
     multiaddr: Option<Multiaddr>,
@@ -65,7 +71,7 @@ impl MultiaddrRange {
 
 // ----------------- Ipv4AddrRange -----------------
 // A struct containing an Ipv4Range and a PortRange
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 struct Ipv4AddrRange {
     ip_range: Ipv4Range,
     port_range: PortRange,
@@ -123,7 +129,7 @@ impl fmt::Display for Ipv4AddrRange {
 
 // ----------------- Ipv4Range -----------------
 // A struct containing the start and end Ipv4Addr
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 struct Ipv4Range {
     start: Ipv4Addr,
     end: Ipv4Addr,
@@ -141,7 +147,7 @@ impl Ipv4Range {
 
         for (i, part) in parts.iter().enumerate() {
             if i == 0 {
-                start_octets[i] = part.parse().map_err(|_| "Invalid first octet".to_string())?;
+                start_octets[i] = part.parse().map_err(|_| "Invalid first IPv4 octet".to_string())?;
                 end_octets[i] = start_octets[i];
             } else if part == &"*" {
                 start_octets[i] = 0;
@@ -149,12 +155,16 @@ impl Ipv4Range {
             } else if part.contains(':') {
                 let range_parts: Vec<&str> = part.split(':').collect();
                 if range_parts.len() != 2 {
-                    return Err("Invalid range format".to_string());
+                    return Err(format!("Invalid range format for IPv4 octet {}", i));
                 }
-                start_octets[i] = range_parts[0].parse().map_err(|_| "Invalid range start".to_string())?;
-                end_octets[i] = range_parts[1].parse().map_err(|_| "Invalid range end".to_string())?;
+                start_octets[i] = range_parts[0]
+                    .parse()
+                    .map_err(|_| format!("Invalid range start for IPv4 octet {}", i))?;
+                end_octets[i] = range_parts[1]
+                    .parse()
+                    .map_err(|_| format!("Invalid range end for IPv4 octet {}", i))?;
             } else {
-                start_octets[i] = part.parse().map_err(|_| "Invalid octet".to_string())?;
+                start_octets[i] = part.parse().map_err(|_| format!("Invalid IPv4 octet {}", i))?;
                 end_octets[i] = start_octets[i];
             }
         }
@@ -214,7 +224,7 @@ impl fmt::Display for Ipv4Range {
 
 // ----------------- PortRange -----------------
 // A struct containing the start and end port
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 struct PortRange {
     start: u16,
     end: u16,
@@ -234,8 +244,18 @@ impl PortRange {
             if parts.len() != 2 {
                 return Err("Invalid port range format".to_string());
             }
-            let start = parts[0].parse().map_err(|_| "Invalid port range start".to_string())?;
-            let end = parts[1].parse().map_err(|_| "Invalid port range end".to_string())?;
+            let start = parts[0]
+                .parse()
+                .map_err(|_| format!("Invalid port range start '{}'", parts[0]))?;
+            let end = parts[1]
+                .parse()
+                .map_err(|_| format!("Invalid port range end '{}'", parts[1]))?;
+            if end < start {
+                return Err(format!(
+                    "Invalid port range '{}', end `{}` is less than start `{}`",
+                    range_str, end, start
+                ));
+            }
             return Ok(PortRange { start, end });
         }
 
@@ -250,7 +270,7 @@ impl PortRange {
 
 impl fmt::Display for PortRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.start == 0 && self.end == u16::MAX {
+        if self.start <= 1 && self.end == u16::MAX {
             write!(f, "*")
         } else if self.start == self.end {
             write!(f, "{}", self.start)
@@ -260,14 +280,201 @@ impl fmt::Display for PortRange {
     }
 }
 
+/// Supports deserialization from a sequence of strings or comma-delimited strings
+#[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
+pub struct MultiaddrRangeList(Vec<MultiaddrRange>);
+
+impl MultiaddrRangeList {
+    pub fn new() -> Self {
+        Self(vec![])
+    }
+
+    pub fn with_capacity(size: usize) -> Self {
+        Self(Vec::with_capacity(size))
+    }
+
+    pub fn into_vec(self) -> Vec<MultiaddrRange> {
+        self.0
+    }
+
+    pub fn as_slice(&self) -> &[MultiaddrRange] {
+        self.0.as_slice()
+    }
+}
+
+impl Deref for MultiaddrRangeList {
+    type Target = [MultiaddrRange];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<[MultiaddrRange]> for MultiaddrRangeList {
+    fn as_ref(&self) -> &[MultiaddrRange] {
+        self.0.as_ref()
+    }
+}
+
+impl From<Vec<MultiaddrRange>> for MultiaddrRangeList {
+    fn from(v: Vec<MultiaddrRange>) -> Self {
+        Self(v)
+    }
+}
+
+impl IntoIterator for MultiaddrRangeList {
+    type IntoIter = <Vec<MultiaddrRange> as IntoIterator>::IntoIter;
+    type Item = <Vec<MultiaddrRange> as IntoIterator>::Item;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a MultiaddrRangeList {
+    type IntoIter = slice::Iter<'a, MultiaddrRange>;
+    type Item = <Self::IntoIter as Iterator>::Item;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<'de> Deserialize<'de> for MultiaddrRangeList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        struct MultiaddrRangeListVisitor;
+
+        impl<'de> Visitor<'de> for MultiaddrRangeListVisitor {
+            type Value = MultiaddrRangeList;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a comma delimited string or multiple string elements")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where E: de::Error {
+                let strings = v
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>();
+                let multiaddr_ranges: Result<Vec<_>, _> = strings
+                    .into_iter()
+                    .map(|item| MultiaddrRange::from_str(item).map_err(E::custom))
+                    .collect();
+                Ok(MultiaddrRangeList(multiaddr_ranges.map_err(E::custom)?))
+            }
+
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where D: Deserializer<'de> {
+                deserializer.deserialize_seq(MultiaddrRangeListVisitor)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where A: SeqAccess<'de> {
+                let mut buf = seq.size_hint().map(Vec::with_capacity).unwrap_or_default();
+                while let Some(v) = seq.next_element::<MultiaddrRange>()? {
+                    buf.push(v)
+                }
+                Ok(MultiaddrRangeList(buf))
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_seq(MultiaddrRangeListVisitor)
+        } else {
+            deserializer.deserialize_newtype_struct("MultiaddrRangeList", MultiaddrRangeListVisitor)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MultiaddrRange {
+    fn deserialize<D>(deserializer: D) -> Result<MultiaddrRange, D::Error>
+    where D: Deserializer<'de> {
+        let s = String::deserialize(deserializer)?;
+        MultiaddrRange::from_str(&s).map_err(D::Error::custom)
+    }
+}
+
+pub mod serde_multiaddr_range {
+    use std::str::FromStr;
+
+    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+
+    use crate::net_address::MultiaddrRange;
+
+    pub fn serialize<S>(value: &[MultiaddrRange], serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        let strings: Vec<String> = value.iter().map(|v| v.to_string()).collect();
+        serializer.serialize_str(&strings.join(","))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<MultiaddrRange>, D::Error>
+    where D: Deserializer<'de> {
+        let strings: Vec<String> = Vec::deserialize(deserializer)?;
+        strings
+            .into_iter()
+            .map(|item| MultiaddrRange::from_str(&item).map_err(D::Error::custom))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use std::net::{IpAddr, Ipv6Addr};
+    use std::{
+        net::{IpAddr, Ipv6Addr},
+        str::FromStr,
+    };
+
+    use serde::Deserialize;
 
     use crate::{
         multiaddr::Multiaddr,
-        net_address::{multiaddr_range::IP4_TCP_TEST_ADDR_RANGE, MultiaddrRange},
+        net_address::{multiaddr_range::IP4_TCP_TEST_ADDR_RANGE, MultiaddrRange, MultiaddrRangeList},
     };
+
+    #[derive(Deserialize)]
+    struct Test {
+        something: MultiaddrRangeList,
+    }
+
+    #[test]
+    fn it_parses_with_serde() {
+        // Random tests
+        let config_str = r#"something = [
+            "/ip4/127.*.100:200.*/tcp/18000:19000",
+            "/ip4/127.0.150.1/tcp/18500",
+            "/ip4/127.0.0.1/udt/sctp/5678",
+            "/ip4/127.*.*.*/tcp/*"
+        ]"#;
+        let item_vec = toml::from_str::<Test>(config_str).unwrap().something.into_vec();
+        assert_eq!(item_vec, vec![
+            MultiaddrRange::from_str("/ip4/127.*.100:200.*/tcp/18000:19000").unwrap(),
+            MultiaddrRange::from_str("/ip4/127.0.150.1/tcp/18500").unwrap(),
+            MultiaddrRange::from_str("/ip4/127.0.0.1/udt/sctp/5678").unwrap(),
+            MultiaddrRange::from_str(IP4_TCP_TEST_ADDR_RANGE).unwrap()
+        ]);
+
+        // Allowing only '/ip4/127.0.0.1/tcp/0:18189'
+        let config_str = r#"something = [
+            "/ip4/127.*.*.*/tcp/0:18188",
+            "/ip4/127.*.*.*/tcp/18190:65535",
+            "/ip4/127.0.0.0/tcp/18189",
+            "/ip4/127.1:255.1:255.2:255/tcp/18189"
+        ]"#;
+        let item_vec = toml::from_str::<Test>(config_str).unwrap().something.into_vec();
+        assert_eq!(item_vec, vec![
+            MultiaddrRange::from_str("/ip4/127.*.*.*/tcp/0:18188").unwrap(),
+            MultiaddrRange::from_str("/ip4/127.*.*.*/tcp/18190:65535").unwrap(),
+            MultiaddrRange::from_str("/ip4/127.0.0.0/tcp/18189").unwrap(),
+            MultiaddrRange::from_str("/ip4/127.1:255.1:255.2:255/tcp/18189").unwrap(),
+        ]);
+
+        for item in item_vec {
+            assert!(!item.contains(&Multiaddr::from_str("/ip4/127.0.0.1/tcp/18189").unwrap()));
+        }
+    }
 
     #[test]
     fn it_parses_properly_and_verify_inclusion() {

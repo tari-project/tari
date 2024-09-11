@@ -24,7 +24,7 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{net_address::MultiaddrRange, peer_validator::PeerValidatorConfig};
+use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
 use crate::{
     actor::OffenceSeverity,
@@ -94,7 +94,6 @@ pub struct DhtConfig {
     /// Default: 10 mins
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
-
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
     /// `ban_duration_short`) Default: 100_000 messages
     pub flood_ban_max_msg_count: usize,
@@ -115,8 +114,12 @@ pub struct DhtConfig {
     /// Configuration for peer validation
     /// See [PeerValidatorConfig]
     pub peer_validator_config: PeerValidatorConfig,
-    /// Addresses that should never be dialed
-    pub excluded_dial_addresses: Vec<MultiaddrRange>,
+    /// Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP
+    /// range. Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other
+    /// range)   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
+    ///                or
+    ///   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
+    pub excluded_dial_addresses: MultiaddrRangeList,
 }
 
 impl DhtConfig {
@@ -195,7 +198,7 @@ impl Default for DhtConfig {
             max_permitted_peer_claims: 5,
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
             peer_validator_config: Default::default(),
-            excluded_dial_addresses: vec![],
+            excluded_dial_addresses: vec![].into(),
         }
     }
 }

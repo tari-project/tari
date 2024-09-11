@@ -347,8 +347,6 @@ network_discovery.initial_peer_sync_delay = 25
 #ban_duration = 21_600 # 6 * 60 * 60
 # Length of time to ban a peer for a "short" duration. Default: 60 mins
 #ban_duration_short = 3_600 # 60 * 60
-# This allows the use of test addresses in the network like 127.0.0.1. Default: false
-#allow_test_addresses = false
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
 # Default: 100_000 messages
 #flood_ban_max_msg_count = 100_000
@@ -360,5 +358,9 @@ network_discovery.initial_peer_sync_delay = 25
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
 # peers that were previously tried. Default: 2 hours
 #offline_peer_cooldown = 7_200 # 2 * 60 * 60
-# Addresses that should never be dialed (default value = [])
-#excluded_dial_addresses = ["/ip4/x.x.x.x/tcp/xxxx", "/ip4/x.y.x.y/tcp/xyxy"]
+# Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP range.
+# Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other range)
+#   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
+#                or
+#   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
+#excluded_dial_addresses = []

@@ -419,7 +419,7 @@ impl DhtActor {
                 Box::pin(Self::broadcast_join(
                     node_identity,
                     peer_manager,
-                    excluded_dial_addresses,
+                    excluded_dial_addresses.into_vec(),
                     outbound_requester,
                 ))
             },
@@ -502,7 +502,7 @@ impl DhtActor {
 
                 Box::pin(async move {
                     DhtActor::check_if_addresses_excluded(
-                        excluded_dial_addresses,
+                        excluded_dial_addresses.into_vec(),
                         &peer_manager,
                         node_identity.node_id().clone(),
                     )
