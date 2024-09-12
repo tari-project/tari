@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+
+### [1.4.2-rc.2](https://github.com/tari-project/tari/compare/v1.4.2-rc.1...v1.4.2-rc.2) (2024-09-12)
+
+
+### Bug Fixes
+
+* Fixes randomX on OSX x86 machines
+
+
 ### [1.4.2-rc.1](https://github.com/tari-project/tari/compare/v1.4.2-rc.0...v1.4.2-rc.1) (2024-09-11)
 
 
