@@ -42,12 +42,24 @@ impl RandomXVMInstance {
         dataset: Option<RandomXDataset>,
     ) -> Result<Self, RandomXVMFactoryError> {
         // Note: Memory required per VM in light mode is 256MB
-
         // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
         // light mode. These are not set by RandomX automatically even in fast mode.
-        let cache = match cache {
-            Some(c) => c,
-            None => RandomXCache::new(flags, key)?,
+        let (flags, cache) = match cache {
+            Some(c) => (flags, c),
+            None => match RandomXCache::new(flags, key) {
+                Ok(cache) => (flags, cache),
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error initializing RandomX cache with flags {:?}. {:?}. Fallback to default flags", flags, err
+                    );
+                    // This is informed by how RandomX falls back on any cache allocation failure
+                    // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
+                    let flags = RandomXFlag::FLAG_DEFAULT;
+                    let cache = RandomXCache::new(flags, key)?;
+                    (flags, cache)
+                },
+            },
         };
         let vm = RandomXVM::new(flags, Some(cache), dataset)?;
 
