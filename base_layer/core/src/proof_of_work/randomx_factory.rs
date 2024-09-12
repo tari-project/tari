@@ -42,11 +42,6 @@ impl RandomXVMInstance {
         dataset: Option<RandomXDataset>,
     ) -> Result<Self, RandomXVMFactoryError> {
         // Note: Memory required per VM in light mode is 256MB
-
-        debug!(
-            target: LOG_TARGET,
-            "flags: {:?}, cache: {}, dataset: {}", flags, cache.is_some(), dataset.is_some()
-        );
         // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
         // light mode. These are not set by RandomX automatically even in fast mode.
         let (flags, cache) = match cache {
