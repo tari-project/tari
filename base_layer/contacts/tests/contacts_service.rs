@@ -88,6 +88,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
                 auto_request: true,
                 ..Default::default()
             },
+            excluded_dial_addresses: vec![],
             ..Default::default()
         },
         allow_test_addresses: true,

@@ -331,7 +331,8 @@ async fn configure_comms_and_dht(
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, Some(file_lock));
+        .with_peer_storage(peer_database, Some(file_lock))
+        .with_excluded_dial_addresses(config.dht.excluded_dial_addresses.clone());
 
     let mut comms = match config.auxiliary_tcp_listener_address {
         Some(ref addr) => builder.with_auxiliary_tcp_listener_address(addr.clone()).build()?,
@@ -559,7 +560,7 @@ impl ServiceInitializer for P2pInitializer {
             .with_node_info(NodeNetworkInfo {
                 major_version: MAJOR_NETWORK_VERSION,
                 minor_version: MINOR_NETWORK_VERSION,
-                network_byte: self.network.as_byte(),
+                network_wire_byte: self.network.as_wire_byte(),
                 user_agent: self.user_agent.clone(),
             })
             .with_minimize_connections(if self.config.dht.minimize_connections {
@@ -600,5 +601,16 @@ impl ServiceInitializer for P2pInitializer {
         context.register_handle(dht);
         debug!(target: LOG_TARGET, "P2P Initialized");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_comms::connection_manager::WireMode;
+    #[test]
+    fn self_liveness_network_wire_byte_is_consistent() {
+        let wire_mode = WireMode::Liveness;
+        assert_eq!(wire_mode.as_byte(), Network::RESERVED_WIRE_BYTE);
     }
 }

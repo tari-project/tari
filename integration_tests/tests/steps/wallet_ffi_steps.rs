@@ -439,7 +439,7 @@ async fn ffi_detects_transaction(
         if found_count >= count {
             break;
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
     println!("Counters {:?}", ffi_wallet.get_counters());
     match comparison.as_str() {

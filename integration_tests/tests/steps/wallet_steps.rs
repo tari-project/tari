@@ -266,7 +266,7 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
@@ -347,7 +347,7 @@ async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name:
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
@@ -400,7 +400,7 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
     let tx_id = tx_ids.last().unwrap(); // get last transaction
@@ -446,7 +446,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
     let tx_id = tx_ids.last().unwrap(); // get last transaction
@@ -536,6 +536,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 
     let num_retries = 100;
     let mut current_status = 0;
+    let mut total_found = 0;
 
     for _ in 0..num_retries {
         let mut txs = client
@@ -554,12 +555,13 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         if found_tx >= num_txs {
             return;
         }
+        total_found += found_tx;
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     panic!(
-        "Wallet {} failed to have at least num {} txs with status {}, current status is {}",
-        wallet, num_txs, transaction_status, current_status
+        "Wallet {} failed to have at least num {} txs with status {}, current status is {}, scanned txs {}",
+        wallet, num_txs, transaction_status, current_status, total_found
     );
 }
 
@@ -1114,7 +1116,7 @@ async fn stop_wallet(world: &mut TariWorld, wallet: String) {
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     world.wallet_addresses.insert(wallet.clone(), wallet_address);
@@ -2114,7 +2116,7 @@ async fn send_one_sided_stealth_transaction(
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
 
     let mut receiver_client = create_wallet_client(world, receiver.clone()).await.unwrap();
@@ -2123,7 +2125,7 @@ async fn send_one_sided_stealth_transaction(
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
 
     let payment_recipient = PaymentRecipient {
@@ -2602,7 +2604,7 @@ async fn multi_send_txs_from_wallet(
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
 
     let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
@@ -2611,7 +2613,7 @@ async fn multi_send_txs_from_wallet(
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
 
     let mut transfer_res = vec![];
@@ -2764,7 +2766,7 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
         .await
         .unwrap()
         .into_inner()
-        .address
+        .interactive_address
         .to_hex();
 
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();

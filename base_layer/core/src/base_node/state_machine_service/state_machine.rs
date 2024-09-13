@@ -62,6 +62,9 @@ pub struct BaseNodeStateMachineConfig {
     /// to always be behind the network
     #[serde(with = "serializers::seconds")]
     pub time_before_considered_lagging: Duration,
+    /// This is the amount of metadata events that a node will wait for before decide to start syncing for a peer,
+    /// choosing the best peer out of the list
+    pub initial_sync_peer_count: u64,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -71,6 +74,7 @@ impl Default for BaseNodeStateMachineConfig {
             blockchain_sync_config: Default::default(),
             blocks_behind_before_considered_lagging: 1,
             time_before_considered_lagging: Duration::from_secs(10),
+            initial_sync_peer_count: 5,
         }
     }
 }

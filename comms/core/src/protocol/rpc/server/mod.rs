@@ -374,7 +374,10 @@ where
             Some(max) if max > 0 => {
                 debug_assert!(*count <= max);
                 if *count >= max {
-                    return Err(RpcServerError::MaxSessionsPerClientReached { node_id });
+                    return Err(RpcServerError::MaxSessionsPerClientReached {
+                        node_id,
+                        max_sessions: max,
+                    });
                 }
             },
             Some(_) | None => {},
@@ -403,16 +406,19 @@ where
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
         if !self.executor.can_spawn() {
+            let msg = format!("Used all {} sessions", self.executor.max_available());
             debug!(
                 target: LOG_TARGET,
                 "Rejecting RPC session request for peer `{}` because {}",
                 node_id,
-                HandshakeRejectReason::NoSessionsAvailable
+                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
             );
             handshake
-                .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
+                    "Cannot spawn more sessions",
+                ))
                 .await?;
-            return Err(RpcServerError::MaximumSessionsReached);
+            return Err(RpcServerError::MaximumSessionsReached(msg));
         }
 
         let service = match self.service.make_service(protocol.clone()).await {
@@ -441,7 +447,9 @@ where
 
             Err(err) => {
                 handshake
-                    .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                    .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
+                        "Maximum sessions for client",
+                    ))
                     .await?;
                 return Err(err);
             },
@@ -477,7 +485,7 @@ where
 
                 node_id
             })
-            .map_err(|_| RpcServerError::MaximumSessionsReached)?;
+            .map_err(|e| RpcServerError::MaximumSessionsReached(format!("{:?}", e)))?;
 
         self.tasks.push(handle);
 
@@ -581,7 +589,7 @@ where
                         return Err(err);
                     }
                     let elapsed = start.elapsed();
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "({}) RPC request completed in {:.0?}{}",
                         self.logging_context_string,
@@ -663,7 +671,7 @@ where
             return Ok(());
         }
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "({}) Request: {}, Method: {}",
             self.logging_context_string,
@@ -789,7 +797,7 @@ where
                          Some(msg) => {
                             #[cfg(feature = "metrics")]
                             metrics::outbound_response_bytes(&self.node_id, &self.protocol).observe(msg.len() as f64);
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
                                 "({}) Sending body len = {}",
                                 self.logging_context_string,
@@ -799,7 +807,7 @@ where
                             self.framed.send(msg).await?;
                         },
                         None => {
-                            debug!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
+                            trace!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
                             break;
                         },
                     }

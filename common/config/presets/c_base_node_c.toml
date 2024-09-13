@@ -117,6 +117,8 @@ blockchain_sync_config.rpc_deadline = 240
 # intensive. Be careful of setting this higher than the block time, which would potentially cause it
 # to always be behind the network (default = 10) (in seconds)
 #time_before_considered_lagging = 10
+#This is the amount of metadata events that a node will wait for before decide to start syncing for a peer, choosing the best peer out of the list
+#initial_sync_peer_count = 5,
 
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
@@ -191,9 +193,9 @@ listener_self_liveness_check_interval = 15
 # When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
 # made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
 #tor.proxy_bypass_addresses = []
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
-# better privacy
-#tor.proxy_bypass_for_outbound_tcp = false
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to 'true' for
+# better network performance for TCP nodes; set it to 'false' for better privacy.
+#tor.proxy_bypass_for_outbound_tcp = true
 # If set, instructs tor to forward traffic the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
 #tor.forward_address =
 # If set, the listener will bind to this address instead of the forward_address. You need to make sure that this listener is connectable from the forward_address.
@@ -314,3 +316,5 @@ database_url = "data/base_node/dht.db"
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
 # peers that were previously tried. Default: 2 hours
 #offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = [])
+#excluded_dial_addresses = ["/ip4/x.x.x.x/tcp/xxxx", "/ip4/x.y.x.y/tcp/xyxy"]

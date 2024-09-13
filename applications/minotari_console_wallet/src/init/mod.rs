@@ -76,7 +76,7 @@ use tari_key_manager::{
     key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInterface},
     mnemonic::MnemonicLanguage,
 };
-use tari_p2p::{peer_seeds::SeedPeer, TransportType};
+use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{encoding::Base58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
@@ -262,7 +262,9 @@ pub async fn change_password(
     non_interactive_mode: bool,
 ) -> Result<(), ExitError> {
     let mut wallet = init_wallet(
-        config,
+        &config.wallet,
+        config.auto_update.clone(),
+        config.peer_seeds.clone(),
         existing.clone(),
         None,
         None,
@@ -290,13 +292,13 @@ pub async fn change_password(
 /// 3. The detected local base node if any
 /// 4. The service peers defined in config they exist
 /// 5. The peer seeds defined in config
-pub async fn get_base_node_peer_config(
-    config: &ApplicationConfig,
+pub async fn set_peer_and_get_base_node_peer_config(
+    config: &WalletConfig,
     wallet: &mut WalletSqlite,
     non_interactive_mode: bool,
 ) -> Result<PeerConfig, ExitError> {
     let mut use_custom_base_node_peer = false;
-    let mut selected_base_node = match config.wallet.custom_base_node {
+    let mut selected_base_node = match config.custom_base_node {
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
             .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
@@ -311,8 +313,8 @@ pub async fn get_base_node_peer_config(
     };
 
     // If the user has not explicitly set a base node in the config, we try detect one
-    if !non_interactive_mode && config.wallet.custom_base_node.is_none() && !use_custom_base_node_peer {
-        if let Some(detected_node) = detect_local_base_node(config.wallet.network).await {
+    if !non_interactive_mode && config.custom_base_node.is_none() && !use_custom_base_node_peer {
+        if let Some(detected_node) = detect_local_base_node(config.network).await {
             match selected_base_node {
                 Some(ref base_node) if base_node.public_key == detected_node.public_key => {
                     // Skip asking because it's already set
@@ -349,10 +351,8 @@ pub async fn get_base_node_peer_config(
             format!("Could net get seed peers from peer manager: {}", err),
         )
     })?;
-
     // config
     let base_node_peers = config
-        .wallet
         .base_node_service_peers
         .iter()
         .map(|s| SeedPeer::from_str(s))
@@ -394,7 +394,9 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 /// Set up the app environment and state for use by the UI
 #[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
-    config: &ApplicationConfig,
+    config: &WalletConfig,
+    auto_update: AutoUpdateConfig,
+    peer_seeds: PeerSeedsConfig,
     arg_password: SafePassword,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
@@ -404,47 +406,46 @@ pub async fn init_wallet(
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         config
-            .wallet
             .db_file
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
-    fs::create_dir_all(&config.wallet.p2p.datastore_path)
+    fs::create_dir_all(&config.p2p.datastore_path)
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
-    let db_path = &config.wallet.db_file;
+    let db_path = &config.db_file;
 
     // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
-        initialize_sqlite_database_backends(db_path, arg_password, config.wallet.db_connection_pool_size)?;
+        initialize_sqlite_database_backends(db_path, arg_password, config.db_connection_pool_size)?;
 
     let wallet_db = WalletDatabase::new(wallet_backend);
     let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
-    let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
+    let node_addresses = if config.p2p.public_addresses.is_empty() {
         match wallet_db.get_node_address()? {
             Some(addr) => MultiaddrList::from(vec![addr]),
             None => MultiaddrList::default(),
         }
     } else {
-        config.wallet.p2p.public_addresses.clone()
+        config.p2p.public_addresses.clone()
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
 
     let node_identity = setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?;
 
-    let mut wallet_config = config.wallet.clone();
-    if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
+    let mut wallet_config = config.clone();
+    if let TransportType::Tor = config.p2p.transport.transport_type {
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
-    let consensus_manager = ConsensusManager::builder(config.wallet.network)
+    let consensus_manager = ConsensusManager::builder(config.network)
         .build()
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {}", e)))?;
     let factories = CryptoFactories::default();
@@ -453,8 +454,8 @@ pub async fn init_wallet(
     let user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
     let mut wallet = Wallet::start(
         wallet_config,
-        config.peer_seeds.clone(),
-        config.auto_update.clone(),
+        peer_seeds,
+        auto_update,
         node_identity,
         consensus_manager,
         factories,
@@ -572,33 +573,6 @@ pub async fn start_wallet(
     base_node: &Peer,
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
-    // Verify ledger build if wallet type is Ledger
-    if let WalletType::Ledger(_) = *wallet.key_manager_service.get_wallet_type().await {
-        #[cfg(not(feature = "ledger"))]
-        {
-            return Err(ExitError::new(
-                ExitCode::WalletError,
-                format!("{}", LEDGER_NOT_SUPPORTED),
-            ));
-        }
-
-        #[cfg(feature = "ledger")]
-        {
-            let key_id = TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::RandomKey.get_branch_key(),
-                index: 0,
-            };
-            match wallet.key_manager_service.get_public_key_at_key_id(&key_id).await {
-                Ok(public_key) => {},
-                Err(e) => {
-                    if e.to_string().contains(LEDGER_NOT_SUPPORTED) {
-                        return Err(ExitError::new(ExitCode::WalletError, format!(" {}", e)));
-                    }
-                },
-            }
-        }
-    }
-
     debug!(target: LOG_TARGET, "Setting base node peer");
 
     let net_address = base_node

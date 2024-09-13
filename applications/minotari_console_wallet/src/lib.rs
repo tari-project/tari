@@ -46,7 +46,14 @@ pub use cli::{
     SetBaseNodeArgs,
     WhoisArgs,
 };
-use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
+use init::{
+    change_password,
+    init_wallet,
+    set_peer_and_get_base_node_peer_config,
+    start_wallet,
+    tari_splash_screen,
+    WalletBoot,
+};
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -173,7 +180,9 @@ pub fn run_wallet_with_cli(
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
-        config,
+        &config.wallet,
+        config.auto_update.clone(),
+        config.peer_seeds.clone(),
         password,
         seed_words_file_name,
         recovery_seed,
@@ -215,8 +224,11 @@ pub fn run_wallet_with_cli(
     }
 
     // get base node/s
-    let base_node_config =
-        runtime.block_on(get_base_node_peer_config(config, &mut wallet, cli.non_interactive_mode))?;
+    let base_node_config = runtime.block_on(set_peer_and_get_base_node_peer_config(
+        &config.wallet,
+        &mut wallet,
+        cli.non_interactive_mode,
+    ))?;
     let base_node_selected = base_node_config.get_base_node_peer()?;
 
     let wallet_mode = wallet_mode(&cli, boot_mode);

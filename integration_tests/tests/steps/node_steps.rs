@@ -122,21 +122,21 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
 #[when(expr = "I wait for {word} to have {int} connections")]
 async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
     let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
-
+    let mut connected_peers = 0;
     for _i in 0..100 {
         let res = match node_client {
             NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
             NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
         };
         let res = res.into_inner();
-
+        connected_peers = res.connected_peers.len();
         if res.connected_peers.len() >= num_connections {
             return;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
-    panic!("Peer was not connected in time");
+    panic!("Peer was not connected in time, connected to {} peers", connected_peers);
 }
 
 #[then(expr = "all nodes are on the same chain at height {int}")]

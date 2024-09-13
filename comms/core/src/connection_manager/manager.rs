@@ -133,6 +133,8 @@ pub struct ConnectionManagerConfig {
     pub auxiliary_tcp_listener_address: Option<Multiaddr>,
     /// Peer validation configuration. See [PeerValidatorConfig]
     pub peer_validation_config: PeerValidatorConfig,
+    /// Addresses that should never be dialed
+    pub excluded_dial_addresses: Vec<Multiaddr>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -154,6 +156,7 @@ impl Default for ConnectionManagerConfig {
             auxiliary_tcp_listener_address: None,
             peer_validation_config: PeerValidatorConfig::default(),
             noise_handshake_recv_timeout: Duration::from_secs(6),
+            excluded_dial_addresses: vec![],
         }
     }
 }

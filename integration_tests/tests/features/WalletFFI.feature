@@ -176,7 +176,7 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1
-        And I have a ffi wallet FFI_WALLET connected to base node SEED
+        And I have a ffi wallet FFI_WALLET connected to base node BASE1
         When I have wallet RECEIVER connected to base node BASE1
 
         # Force some P2P discovery with contact liveness

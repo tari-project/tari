@@ -174,7 +174,7 @@ impl CommsBuilder {
 
     /// Set a network byte as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
     pub fn with_network_byte(mut self, network_byte: u8) -> Self {
-        self.connection_manager_config.network_info.network_byte = network_byte;
+        self.connection_manager_config.network_info.network_wire_byte = network_byte;
         self
     }
 
@@ -239,6 +239,11 @@ impl CommsBuilder {
     /// detect that the node is live. Defaults to 0 (disabled)
     pub fn with_listener_liveness_max_sessions(mut self, max_sessions: usize) -> Self {
         self.connection_manager_config.liveness_max_sessions = max_sessions;
+        self
+    }
+
+    pub fn with_excluded_dial_addresses(mut self, excluded_addresses: Vec<Multiaddr>) -> Self {
+        self.connection_manager_config.excluded_dial_addresses = excluded_addresses;
         self
     }
 

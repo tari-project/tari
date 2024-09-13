@@ -28,9 +28,11 @@ use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
         base_node_client::BaseNodeClient,
+        pow_algo::PowAlgos,
         sha_p2_pool_client::ShaP2PoolClient,
         Block,
         GetNewBlockRequest,
+        PowAlgo,
         SubmitBlockRequest,
         SubmitBlockResponse,
         TransactionOutput as GrpcTransactionOutput,
@@ -455,8 +457,11 @@ async fn get_new_block_base_node(
 async fn get_new_block_p2pool_node(
     sha_p2pool_client: &mut ShaP2PoolGrpcClient,
 ) -> Result<GetNewBlockResponse, MinerError> {
+    let pow_algo = PowAlgo {
+        pow_algo: PowAlgos::Sha3x.into(),
+    };
     let block_result = sha_p2pool_client
-        .get_new_block(GetNewBlockRequest::default())
+        .get_new_block(GetNewBlockRequest { pow: Some(pow_algo) })
         .await?
         .into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;

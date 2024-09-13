@@ -1,4 +1,4 @@
-// Copyright 2024. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,28 +19,36 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
 
-package tari.rpc;
+use futures::channel::oneshot::Canceled;
+use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
+use yamux::ConnectionError;
 
-import "base_node.proto";
-import "block.proto";
-
-service ShaP2Pool {
-  rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
-  rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
+/// Error type for PeerConnection
+#[derive(Debug, Error, Clone)]
+pub enum YamuxControlError {
+    #[error("Yamux connection error: {0}")]
+    ConnectionError(String),
+    #[error("Yamux connection closed")]
+    ConnectionClosed,
+    #[error("Yamux request send error: {0}")]
+    RequestSendError(String),
+    #[error("Yamux request send error: {0}")]
+    RequestCanceled(#[from] Canceled),
 }
 
-message GetNewBlockRequest {
-  tari.rpc.PowAlgo pow = 1;
+impl From<ConnectionError> for YamuxControlError {
+    fn from(err: ConnectionError) -> Self {
+        match err {
+            ConnectionError::Closed => Self::ConnectionClosed,
+            _ => Self::ConnectionError(err.to_string()),
+        }
+    }
 }
 
-message GetNewBlockResponse {
-  tari.rpc.GetNewBlockResult block = 1;
-  uint64 target_difficulty = 2;
-}
-
-message SubmitBlockRequest {
-  tari.rpc.Block block = 1;
-  string wallet_payment_address = 2;
+impl<T> From<SendError<T>> for YamuxControlError {
+    fn from(err: SendError<T>) -> Self {
+        Self::RequestSendError(err.to_string())
+    }
 }

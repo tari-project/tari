@@ -24,7 +24,7 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::peer_validator::PeerValidatorConfig;
+use tari_comms::{multiaddr::Multiaddr, peer_validator::PeerValidatorConfig};
 
 use crate::{
     actor::OffenceSeverity,
@@ -115,6 +115,8 @@ pub struct DhtConfig {
     /// Configuration for peer validation
     /// See [PeerValidatorConfig]
     pub peer_validator_config: PeerValidatorConfig,
+    /// Addresses that should never be dialed
+    pub excluded_dial_addresses: Vec<Multiaddr>,
 }
 
 impl DhtConfig {
@@ -193,6 +195,7 @@ impl Default for DhtConfig {
             max_permitted_peer_claims: 5,
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
             peer_validator_config: Default::default(),
+            excluded_dial_addresses: vec![],
         }
     }
 }

@@ -27,7 +27,7 @@ use tari_script::TariScript;
 
 use crate::{
     covenants::{
-        arguments::CovenantArg,
+        arguments::{BytesArg, CovenantArg},
         decoder::{CovenantDecodeError, CovenantReadExt},
         fields::OutputField,
         filters::{
@@ -218,7 +218,7 @@ impl CovenantToken {
 
     #[allow(dead_code)]
     /// Helper for creating a new instance wrapping an `BytesFilter`.
-    pub fn bytes(bytes: Vec<u8>) -> Self {
+    pub fn bytes(bytes: BytesArg) -> Self {
         CovenantArg::Bytes(bytes).into()
     }
 }

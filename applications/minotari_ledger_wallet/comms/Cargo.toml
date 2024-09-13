@@ -1,6 +1,6 @@
 [package]
 name = "minotari_ledger_wallet_comms"
-version = "1.3.0-pre.0"
+version = "1.4.2-pre.2"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"
@@ -13,7 +13,7 @@ tari_common_types = { path = "../../../base_layer/common_types" }
 tari_script = { path = "../../../infrastructure/tari_script" }
 
 minotari_ledger_wallet_common = { path = "../common" }
-
+semver = "1.0"
 borsh = "1.2"
 dialoguer = { version = "0.11" }
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }

@@ -61,11 +61,11 @@ async fn it_rejects_the_handshake() {
     let mut server_framed = framing::canonical(server, 1024);
     let mut handshake_server = Handshake::new(&mut server_framed);
     handshake_server
-        .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+        .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable("some reason"))
         .await
         .unwrap();
 
     let err = handshake_client.perform_client_handshake().await.unwrap_err();
     unpack_enum!(RpcHandshakeError::Rejected(reason) = err);
-    unpack_enum!(HandshakeRejectReason::NoSessionsAvailable = reason);
+    unpack_enum!(HandshakeRejectReason::NoServerSessionsAvailable("session limit reached") = reason);
 }

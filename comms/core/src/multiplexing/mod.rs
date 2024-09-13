@@ -25,5 +25,9 @@
 #[cfg(feature = "metrics")]
 mod metrics;
 
+mod error;
 mod yamux;
-pub use self::yamux::{Control, IncomingSubstreams, Substream, Yamux};
+pub use self::{
+    error::YamuxControlError,
+    yamux::{Control, IncomingSubstreams, Substream, Yamux},
+};

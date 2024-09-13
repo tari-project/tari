@@ -2127,7 +2127,7 @@ mod malleability {
         fn test_covenant() {
             check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
-                let mod_covenant = covenant!(absolute_height(@uint(42)));
+                let mod_covenant = covenant!(absolute_height(@uint(42))).unwrap();
                 output.covenant = mod_covenant;
             });
         }

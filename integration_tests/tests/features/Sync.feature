@@ -136,7 +136,8 @@ Feature: Block Sync
     When mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 2
     Then node SYNCER is at the same height as node SEED
 
-    @critical
+    # works locally but fails on CI, fails on the step to start a node
+    @critical @broken
     Examples:
        | X1  | Y1 |
        | 101 | 10 |

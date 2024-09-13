@@ -61,7 +61,7 @@ impl ReceiveTab {
 
         const ITEM_01: &str = "Tari Address interactive:   ";
         const ITEM_02: &str = "Tari Address one-sided:     ";
-        const ITEM_03: &str = "Node ID:                    ";
+        const ITEM_03: &str = "Node ID / Public key:       ";
         const ITEM_04: &str = "Network Address:            ";
         const ITEM_05: &str = "Interactive emoji address:  ";
         const ITEM_06: &str = "One-sided emoji address:    ";
@@ -92,6 +92,11 @@ impl ReceiveTab {
             Span::styled(ITEM_03, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().node_id.clone(),
+                Style::default().fg(Color::White),
+            ),
+            Span::styled(" / ", Style::default().fg(Color::White)),
+            Span::styled(
+                app_state.get_identity().public_key.clone(),
                 Style::default().fg(Color::White),
             ),
         ]);

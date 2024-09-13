@@ -188,11 +188,9 @@ impl ConnectivityManagerActor {
                     self.handle_request(req).await;
                 },
 
-                event = connection_manager_events.recv() => {
-                    if let Ok(event) = event {
-                        if let Err(err) = self.handle_connection_manager_event(&event).await {
-                            error!(target:LOG_TARGET, "Error handling connection manager event: {:?}", err);
-                        }
+                Ok(event) = connection_manager_events.recv() => {
+                    if let Err(err) = self.handle_connection_manager_event(&event).await {
+                        error!(target:LOG_TARGET, "Error handling connection manager event: {:?}", err);
                     }
                 },
 
@@ -525,7 +523,7 @@ impl ConnectivityManagerActor {
         selection: ConnectivitySelection,
     ) -> Result<Vec<PeerConnection>, ConnectivityError> {
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Selecting from {} connected node peers",
             self.pool.count_connected_nodes()
@@ -661,7 +659,28 @@ impl ConnectivityManagerActor {
         let (node_id, mut new_status, connection) = match event {
             PeerDisconnected(_, node_id, minimized) => (node_id, ConnectionStatus::Disconnected(*minimized), None),
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),
-
+            PeerConnectFailed(node_id, ConnectionManagerError::AllPeerAddressesAreExcluded(msg)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' contains only excluded addresses ({})",
+                    node_id,
+                    msg
+                );
+                (node_id, ConnectionStatus::Failed, None)
+            },
+            PeerConnectFailed(node_id, ConnectionManagerError::NoiseHandshakeError(msg)) => {
+                if let Some(conn) = self.pool.get_connection(node_id) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Handshake error to peer '{}', disconnecting for a fresh retry ({})",
+                        node_id,
+                        msg
+                    );
+                    let mut conn = conn.clone();
+                    conn.disconnect(Minimized::No).await?;
+                }
+                (node_id, ConnectionStatus::Failed, None)
+            },
             PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
                 if let Some(conn) = self.pool.get_connection(node_id) {
                     if conn.is_connected() && conn.direction().is_inbound() {
@@ -738,24 +757,37 @@ impl ConnectivityManagerActor {
     }
 
     async fn on_new_connection(&mut self, new_conn: &PeerConnection) -> TieBreak {
-        match self.pool.get_connection(new_conn.peer_node_id()).cloned() {
-            Some(existing_conn) if !existing_conn.is_connected() => {
+        match self.pool.get(new_conn.peer_node_id()).cloned() {
+            Some(existing_state) if !existing_state.is_connected() => {
                 debug!(
                     target: LOG_TARGET,
                     "Tie break: Existing connection (id: {}, peer: {}, direction: {}) was not connected, resolving \
                      tie break by using the new connection. (New: id: {}, peer: {}, direction: {})",
-                    existing_conn.id(),
-                    existing_conn.peer_node_id(),
-                    existing_conn.direction(),
+                    existing_state.connection().map(|c| c.id()).unwrap_or_default(),
+                    existing_state.node_id(),
+                    existing_state.connection().map(|c| c.direction().as_str()).unwrap_or("--"),
                     new_conn.id(),
                     new_conn.peer_node_id(),
                     new_conn.direction(),
                 );
-                self.pool.remove(existing_conn.peer_node_id());
+                self.pool.remove(existing_state.node_id());
                 TieBreak::UseNew
             },
-            Some(mut existing_conn) => {
-                if self.tie_break_existing_connection(&existing_conn, new_conn) {
+            Some(mut existing_state) => {
+                let Some(existing_conn) = existing_state.connection_mut() else {
+                    error!(
+                        target: LOG_TARGET,
+                        "INVARIANT ERROR in Tie break: PeerConnection is None but state is CONNECTED: Existing connection (id: {}, peer: {}, direction: {}), new connection. (id: {}, peer: {}, direction: {})",
+                        existing_state.connection().map(|c| c.id()).unwrap_or_default(),
+                        existing_state.node_id(),
+                        existing_state.connection().map(|c| c.direction().as_str()).unwrap_or("--"),
+                        new_conn.id(),
+                        new_conn.peer_node_id(),
+                        new_conn.direction(),
+                    );
+                    return TieBreak::UseNew;
+                };
+                if self.tie_break_existing_connection(existing_conn, new_conn) {
                     warn!(
                         target: LOG_TARGET,
                         "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect existing \

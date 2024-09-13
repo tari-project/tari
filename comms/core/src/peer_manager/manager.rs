@@ -347,6 +347,17 @@ impl PeerManager {
         Ok(peer.features)
     }
 
+    pub async fn get_peer_multi_addresses(
+        &self,
+        node_id: &NodeId,
+    ) -> Result<MultiaddressesWithStats, PeerManagerError> {
+        let peer = self
+            .find_by_node_id(node_id)
+            .await?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        Ok(peer.addresses)
+    }
+
     /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
     /// It will return None if the value was empty and the old value if the value was updated
     pub async fn set_peer_metadata(

@@ -367,7 +367,7 @@ pub fn tui_mode(
     let base_node_selected;
     if let Some(peer) = base_node_config.base_node_custom.clone() {
         base_node_selected = peer;
-    } else if let Some(peer) = get_custom_base_node_peer_from_db(&mut wallet) {
+    } else if let Some(peer) = get_custom_base_node_peer_from_db(&wallet) {
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
@@ -616,6 +616,7 @@ mod test {
                 CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
+                CliCommands::ImportPaperWallet(_) => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true

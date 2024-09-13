@@ -3414,6 +3414,27 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            int *error_out);
 
 /**
+ * Sends a TariPendingOutboundTransaction
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `destination` - The TariWalletAddress pointer of the peer
+ * `fee_per_gram` - The transaction fee
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
+ *
+ * # Safety
+ * None
+ */
+unsigned long long scrape_wallet(struct TariWallet *wallet,
+                                 TariWalletAddress *destination,
+                                 unsigned long long fee_per_gram,
+                                 int *error_out);
+
+/**
  * Gets a fee estimate for an amount
  *
  * ## Arguments

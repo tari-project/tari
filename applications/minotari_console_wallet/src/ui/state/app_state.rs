@@ -942,6 +942,7 @@ impl AppStateInner {
                 .join(", "),
             qr_code: image,
             node_id: wallet_id.node_identity.node_id().to_string(),
+            public_key: wallet_id.node_identity.public_key().to_string(),
         };
         self.data.my_identity = identity;
         self.updated = true;
@@ -1301,6 +1302,7 @@ impl AppStateData {
                 .join(", "),
             qr_code: image,
             node_id: wallet_identity.node_identity.node_id().to_string(),
+            public_key: wallet_identity.node_identity.public_key().to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 
@@ -1354,6 +1356,7 @@ pub struct MyIdentity {
     pub network_address: String,
     pub qr_code: String,
     pub node_id: String,
+    pub public_key: String,
 }
 
 #[derive(Clone, Debug)]
