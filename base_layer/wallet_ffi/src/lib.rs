@@ -126,7 +126,6 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
-    net_address::IP4_TCP_TEST_ADDR_RANGE,
     peer_manager::{NodeIdentity, PeerQuery},
     transports::MemoryTransport,
     types::CommsPublicKey,
@@ -5327,7 +5326,8 @@ pub unsafe extern "C" fn comms_config_create(
                         minimum_desired_tcpv4_node_ratio: 0.0,
                         ..Default::default()
                     },
-                    excluded_dial_addresses: vec![IP4_TCP_TEST_ADDR_RANGE.parse().expect("valid address range")].into(),
+                    // FIXME: This should be set to 'IP4_TCP_TEST_ADDR_RANGE', but cucumber tests need to use that range
+                    excluded_dial_addresses: vec![].into(),
                     ..Default::default()
                 },
                 allow_test_addresses: true,
