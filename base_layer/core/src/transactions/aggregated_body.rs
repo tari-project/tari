@@ -265,6 +265,16 @@ impl AggregateBody {
         Ok(fee)
     }
 
+    pub fn get_coinbase_outputs(&self) -> Vec<&TransactionOutput> {
+        let mut outputs = vec![];
+        for utxo in self.outputs() {
+            if utxo.features.output_type == OutputType::Coinbase {
+                outputs.push(utxo);
+            }
+        }
+        outputs
+    }
+
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
     /// 1. The coinbase output's maturity is correctly set
