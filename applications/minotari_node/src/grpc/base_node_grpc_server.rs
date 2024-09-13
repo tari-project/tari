@@ -341,10 +341,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),
                         num_coinbases: coinbases.len() as u64,
-                        first_coinbase_extra: coinbases
-                            .first()
-                            .map(|c| c.features.coinbase_extra.to_vec())
-                            .unwrap_or_default(),
+                        coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
