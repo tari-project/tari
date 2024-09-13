@@ -44,7 +44,7 @@ use crate::{
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerInterface,
         },
-        tari_amount::MicroMinotari,
+        tari_amount::{MicroMinotari, T},
         transaction_components::{
             encrypted_data::PaymentId,
             CoinBaseExtra,
@@ -204,6 +204,7 @@ pub fn get_pre_mine_value(network: Network) -> Result<MicroMinotari, String> {
 /// Create a list of (token value, maturity in blocks) according to the amounts in the unlock schedule, based on the
 /// apportionment and release cadence where 1 day equals 24 * 60 / 2 blocks.
 pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<PreMineItem>, String> {
+    let test_count = 5;
     let mut values_with_maturity = Vec::new();
     let days_per_month = 365.25 / 12f64;
     #[allow(clippy::cast_possible_truncation)]
@@ -273,6 +274,14 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                 beneficiary: apportionment.beneficiary.clone(),
             });
         }
+    }
+    for _ in 0..test_count {
+        values_with_maturity.push(PreMineItem {
+            value: 1 * T,
+            maturity: 0,
+            fail_safe_height: 720 * 30,
+            beneficiary: "test".to_string(),
+        });
     }
     Ok(values_with_maturity)
 }
@@ -501,7 +510,9 @@ mod test {
     #[ignore]
     #[tokio::test]
     async fn print_pre_mine() {
-        let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::MainNet);
+        let network = Network::Esmeralda;
+        set_network_by_env_var_or_force_set(network);
+        let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
         let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
         let (outputs, kernel, _, _) = genesis_block_test_info(&pre_mine_items).await;
         let base_dir = dirs_next::document_dir().unwrap();
@@ -524,6 +535,8 @@ mod test {
             "\nOutputs written to: '{}'\n",
             fs::canonicalize(&file_path).unwrap().display()
         );
+
+        remove_network_env_var();
     }
 
     #[test]
@@ -790,5 +803,25 @@ mod test {
         assert_eq!(get_signature_threshold(18).unwrap(), 10);
         assert_eq!(get_signature_threshold(19).unwrap(), 10);
         assert_eq!(get_signature_threshold(20).unwrap(), 11);
+    }
+
+    fn set_network_by_env_var_or_force_set(network: Network) {
+        set_network_by_env_var(network);
+        if Network::get_current_or_user_setting_or_default() != network {
+            let _ = Network::set_current(network);
+        }
+    }
+
+    // Targeted network compilations will override inferred network hashes; this has effect only if
+    // `Network::set_current(<NETWORK>)` has not been called.
+    fn set_network_by_env_var(network: Network) {
+        // Do not override the env_var if network is already set; another test may fail
+        if std::env::var("TARI_NETWORK").is_err() {
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+        }
+    }
+
+    fn remove_network_env_var() {
+        std::env::remove_var("TARI_NETWORK");
     }
 }
