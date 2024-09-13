@@ -244,15 +244,16 @@ mod test {
     mod dns_software_update {
         use std::time::Duration;
 
+        use tari_common::configuration::name_server::DEFAULT_DNS_NAME_SERVER;
+
         use super::*;
-        use crate::DEFAULT_DNS_NAME_SERVER;
 
         impl AutoUpdateConfig {
             fn get_test_defaults() -> Self {
                 Self {
                     override_from: None,
                     name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-                    update_uris: vec!["test.local".to_string()],
+                    update_uris: vec!["test.local".to_string()].into(),
                     use_dnssec: true,
                     download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
                     hashes_url: "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt"

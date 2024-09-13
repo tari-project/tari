@@ -29,6 +29,9 @@ use std::{
 use anyhow::anyhow;
 use serde::Deserialize;
 
+/// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver
+pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:853/cloudflare-dns.com";
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DnsNameServer {
     pub addr: SocketAddr,
@@ -38,6 +41,12 @@ pub struct DnsNameServer {
 impl DnsNameServer {
     pub fn new(addr: SocketAddr, dns_name: String) -> Self {
         Self { addr, dns_name }
+    }
+}
+
+impl Default for DnsNameServer {
+    fn default() -> Self {
+        Self::from_str(DEFAULT_DNS_NAME_SERVER).expect("is valid")
     }
 }
 
@@ -52,8 +61,12 @@ impl FromStr for DnsNameServer {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.splitn(2, '/');
-        let addr = split.next().ok_or_else(|| anyhow!("failed to parse DNS name server"))?;
-        let dns_name = split.next().ok_or_else(|| anyhow!("failed to parse name server"))?;
+        let addr = split
+            .next()
+            .ok_or_else(|| anyhow!("failed to parse DNS name server 'addr'"))?;
+        let dns_name = split
+            .next()
+            .ok_or_else(|| anyhow!("failed to parse DNS name server 'dns_name'"))?;
         Ok(Self {
             addr: addr.parse()?,
             dns_name: dns_name.to_string(),
@@ -81,5 +94,11 @@ mod test {
         // from str
         let new_dns = DnsNameServer::from_str("127.0.0.1:8080/my_dns").unwrap();
         assert_eq!(new_dns, dns);
+
+        // default
+        assert_eq!(
+            DnsNameServer::default(),
+            DnsNameServer::from_str(DEFAULT_DNS_NAME_SERVER).unwrap()
+        );
     }
 }

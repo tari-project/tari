@@ -54,7 +54,7 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli)?;
+    let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
     if config.use_dynamic_fail_data {

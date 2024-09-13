@@ -96,23 +96,36 @@ pub struct Cli {
 }
 
 impl ConfigOverrideProvider for Cli {
-    fn get_config_property_overrides(&self, network: &mut Network) -> Vec<(String, String)> {
-        let mut overrides = self.common.get_config_property_overrides(network);
-        *network = self.common.network.unwrap_or(*network);
-        overrides.push(("wallet.network".to_string(), network.to_string()));
+    /// Get the configuration property overrides for the given network. In case of duplicates, the final override
+    /// added to the list will have preference.
+    fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
+        // Config file overrides
+        let mut overrides = vec![("wallet.network".to_string(), network.to_string())];
         overrides.push(("wallet.override_from".to_string(), network.to_string()));
         overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
-        // Either of these configs enable grpc
+        // Command-line overrides
+        let command_line_overrides = self.common.get_config_property_overrides(network);
+        command_line_overrides.iter().for_each(|(k, v)| {
+            replace_or_add_override(&mut overrides, k, v);
+        });
+        // Logical overrides based on command-line flags - Either of these configs enable grpc
         if let Some(ref addr) = self.grpc_address {
-            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
-            overrides.push(("wallet.grpc_address".to_string(), addr.clone()));
+            replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
+            replace_or_add_override(&mut overrides, "wallet.grpc_address", addr);
         } else if self.grpc_enabled {
-            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
+            replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
         } else {
             // GRPC is disabled
         }
         overrides
     }
+}
+
+fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
+        overrides.remove(index);
+    }
+    overrides.push((key.to_string(), value.to_string()));
 }
 
 #[allow(clippy::large_enum_variant)]
