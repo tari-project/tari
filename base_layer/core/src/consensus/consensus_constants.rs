@@ -556,7 +556,7 @@ impl ConsensusConstants {
     pub fn stagenet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -607,7 +607,7 @@ impl ConsensusConstants {
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -660,7 +660,7 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -672,7 +672,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_min_maturity: 360,
+            coinbase_min_maturity: 720,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
