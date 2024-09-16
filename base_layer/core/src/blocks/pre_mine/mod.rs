@@ -113,6 +113,8 @@ pub struct UpfrontRelease {
     pub percentage: u64,
     /// The number of tokens it has to be divided into
     pub number_of_tokens: u64,
+    /// This is a tuple of custom valued upfront tokens (Tari value, block_height)
+    pub custom_upfront_tokens: Vec<(u64, u64)>,
 }
 
 fn get_expected_payout_period_blocks(network: Network) -> u64 {
@@ -145,6 +147,8 @@ pub fn get_tokenomics_pre_mine_unlock_schedule(network: Network) -> UnlockSchedu
                 upfront_release: Some(UpfrontRelease {
                     percentage: 40,
                     number_of_tokens: 20,
+                    // 129,600 = 720 (blocks per day) * 30 (days per month) * 6 (months)
+                    custom_upfront_tokens: vec![(1, 0), (1, 0), (1, 129_600), (1, 129_600)],
                 }),
                 expected_payout_period_blocks: get_expected_payout_period_blocks(network),
             }),
@@ -248,6 +252,16 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                 values_with_maturity.push(PreMineItem {
                     value: MicroMinotari::from(upfront_tokens - assigned_tokens),
                     maturity: 0,
+                    fail_safe_height: schedule.expected_payout_period_blocks,
+                    beneficiary: apportionment.beneficiary.clone(),
+                });
+            }
+            for (value, maturity) in upfront_release.custom_upfront_tokens.iter() {
+                let utxo_value = value * 1_000_000;
+                tokens_value -= utxo_value;
+                values_with_maturity.push(PreMineItem {
+                    value: MicroMinotari::from(utxo_value),
+                    maturity: *maturity,
                     fail_safe_height: schedule.expected_payout_period_blocks,
                     beneficiary: apportionment.beneficiary.clone(),
                 });
@@ -560,7 +574,8 @@ mod test {
                     monthly_fraction_denominator: 48,
                     upfront_release: Some(UpfrontRelease {
                         percentage: 40,
-                        number_of_tokens: 20
+                        number_of_tokens: 20,
+                        custom_upfront_tokens: vec![(1, 0), (1, 0), (1, 129_600), (1, 129_600)],
                     }),
                     expected_payout_period_blocks,
                 }),
@@ -671,13 +686,13 @@ mod test {
             .filter(|item| item.beneficiary == "protocol" && item.maturity == 0)
             .map(|item| item.value)
             .sum::<MicroMinotari>();
-        assert_eq!(protocol_tokens_at_start, MicroMinotari::from(756_000_000 * 1_000_000));
+        assert_eq!(protocol_tokens_at_start, MicroMinotari::from(756_000_002 * 1_000_000));
         let all_tokens_at_start = pre_mine_items
             .iter()
             .filter(|item| item.maturity == 0)
             .map(|item| item.value)
             .sum::<MicroMinotari>();
-        assert_eq!(all_tokens_at_start, MicroMinotari::from(756_000_000 * 1_000_000));
+        assert_eq!(all_tokens_at_start, MicroMinotari::from(756_000_002 * 1_000_000));
         let community_tokens = pre_mine_items
             .iter()
             .filter(|item| item.beneficiary == "community")
