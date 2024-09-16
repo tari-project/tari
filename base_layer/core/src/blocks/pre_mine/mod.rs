@@ -256,12 +256,12 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                     beneficiary: apportionment.beneficiary.clone(),
                 });
             }
-            for (value, maturity) in upfront_release.custom_upfront_tokens.iter() {
+            for (value, maturity) in upfront_release.custom_upfront_tokens {
                 let utxo_value = value * 1_000_000;
                 tokens_value -= utxo_value;
                 values_with_maturity.push(PreMineItem {
                     value: MicroMinotari::from(utxo_value),
-                    maturity: *maturity,
+                    maturity,
                     fail_safe_height: schedule.expected_payout_period_blocks,
                     beneficiary: apportionment.beneficiary.clone(),
                 });
