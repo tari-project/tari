@@ -232,9 +232,9 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("439e53c0eac3bd64f8ab946b5e2d474f6cb15ec6fecd13804e68f0f1a801b30d").unwrap();
+            FixedHash::from_hex("c4bceeddf911e29f651fe00ae198d4dcdf3b8d27fab7754400e3b66d18d9be95").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("1b422532f3be9001ae8f9bc716f61f473d6d7ba20e9df5fe08a09cf3ed4228b5").unwrap();
+            FixedHash::from_hex("084348f0081f9086cb88bc51063bba54bbf76541d56451327393614d89045249").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -531,7 +531,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
-        check_block(network, &block, 164, 1);
+        check_block(network, &block, 168, 1);
         remove_network_env_var();
     }
 
