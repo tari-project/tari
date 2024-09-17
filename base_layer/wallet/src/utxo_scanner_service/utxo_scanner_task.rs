@@ -567,7 +567,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_for_recoverable_outputs(outputs.clone())
+                .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
@@ -593,7 +593,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone())
+                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {

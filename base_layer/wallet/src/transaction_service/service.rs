@@ -2993,7 +2993,79 @@ where
                             Some(s) => s,
                         }
                     },
-                    Err(_) => return Err(TransactionServiceError::TransactionDoesNotExistError),
+                    Err(_) => {
+                        // we dont currently know of this transaction, so lets see if we can recover funds from this
+                        // transaction, and if so, lets add it to our pool of transactions.
+                        let outputs = transaction.body.outputs();
+                        let mut recovered = self
+                            .resources
+                            .output_manager_service
+                            .scan_for_recoverable_outputs(outputs.iter().map(|o| (o.clone(), Some(tx_id))).collect())
+                            .await?
+                            .into_iter()
+                            .map(|ro| -> Result<_, TransactionServiceError> {
+                                let status = ImportStatus::Imported;
+                                let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
+                                    TransactionServiceError::ServiceError(format!("Output '{}' not found", ro.hash))
+                                })?;
+                                Ok((ro, status, output.clone()))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        recovered.append(
+                            &mut self
+                                .resources
+                                .output_manager_service
+                                .scan_outputs_for_one_sided_payments(
+                                    outputs.iter().map(|o| (o.clone(), Some(tx_id))).collect(),
+                                )
+                                .await?
+                                .into_iter()
+                                .map(|ro| -> Result<_, TransactionServiceError> {
+                                    let status = ImportStatus::OneSidedUnconfirmed;
+                                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
+                                        TransactionServiceError::ServiceError(format!("Output '{}' not found", ro.hash))
+                                    })?;
+                                    Ok((ro, status, output.clone()))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?,
+                        );
+                        if recovered.is_empty() {
+                            return Err(TransactionServiceError::TransactionDoesNotExistError);
+                        };
+                        // we should only be able to recover 1 output per tx, but we use the vec here to be safe
+                        let mut source_address = None;
+                        for (ro, status, output) in recovered {
+                            match &ro.output.payment_id {
+                                PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => {
+                                    if source_address.is_none() {
+                                        source_address = Some(address.clone());
+                                    }
+                                },
+                                _ => {},
+                            };
+                            self.add_utxo_import_transaction_with_status(
+                                ro.output.value,
+                                source_address.clone().unwrap_or_default(),
+                                format!("finalized_transaction received from {}", source_pubkey),
+                                status,
+                                Some(tx_id),
+                                None,
+                                None,
+                                output,
+                                ro.output.payment_id,
+                            )
+                            .await?;
+                        }
+                        self.restart_receive_transaction_protocol(
+                            tx_id,
+                            source_address.unwrap_or_default(),
+                            join_handles,
+                        );
+                        match self.finalized_transaction_senders.get_mut(&tx_id) {
+                            None => return Err(TransactionServiceError::TransactionDoesNotExistError),
+                            Some(s) => s,
+                        }
+                    },
                 }
             },
             Some(s) => s,
