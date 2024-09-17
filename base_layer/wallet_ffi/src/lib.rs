@@ -114,7 +114,7 @@ use minotari_wallet::{
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
 use tari_common::{
-    configuration::{MultiaddrList, StringList},
+    configuration::{name_server::DEFAULT_DNS_NAME_SERVER, MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
 };
 use tari_common_types::{
@@ -171,7 +171,6 @@ use tari_p2p::{
     TorTransportConfig,
     TransportConfig,
     TransportType,
-    DEFAULT_DNS_NAME_SERVER,
 };
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;

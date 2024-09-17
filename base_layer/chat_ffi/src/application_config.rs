@@ -27,8 +27,8 @@ use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     networking::Multiaddr,
 };
-use tari_common::configuration::{MultiaddrList, Network, StringList};
-use tari_p2p::{PeerSeedsConfig, TransportConfig, TransportType, DEFAULT_DNS_NAME_SERVER};
+use tari_common::configuration::{name_server::DEFAULT_DNS_NAME_SERVER, MultiaddrList, Network, StringList};
+use tari_p2p::{PeerSeedsConfig, TransportConfig, TransportType};
 
 use crate::error::{InterfaceError, LibChatError};
 

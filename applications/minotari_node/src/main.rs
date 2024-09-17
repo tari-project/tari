@@ -103,24 +103,25 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
-    let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path, true, cli.non_interactive_mode, &cli)?;
-
-    if cli.profile_with_tokio_console {
-        console_subscriber::init();
-    }
-
     let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("base_node"),
         cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
     )?;
+
     info!(
         target: LOG_TARGET,
         "Starting Minotari Base Node version: {}",
         consts::APP_VERSION
     );
+
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
+
+    if cli.profile_with_tokio_console {
+        console_subscriber::init();
+    }
 
     #[cfg(all(unix, feature = "libtor"))]
     let mut config = ApplicationConfig::load_from(&cfg)?;

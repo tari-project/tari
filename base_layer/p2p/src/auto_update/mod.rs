@@ -47,6 +47,7 @@ use tari_common::{
         bootstrap::ApplicationType,
         serializers::optional_seconds,
         utils::{deserialize_string_or_struct, serialize_string},
+        StringList,
     },
     DnsNameServer,
     SubConfigPath,
@@ -67,7 +68,7 @@ pub struct AutoUpdateConfig {
         serialize_with = "serialize_string"
     )]
     pub name_server: DnsNameServer,
-    pub update_uris: Vec<String>,
+    pub update_uris: StringList,
     pub use_dnssec: bool,
     pub download_base_url: String,
     pub hashes_url: String,
@@ -81,7 +82,7 @@ impl Default for AutoUpdateConfig {
         Self {
             override_from: None,
             name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
-            update_uris: vec![],
+            update_uris: vec![].into(),
             use_dnssec: false,
             download_base_url: String::new(),
             hashes_url: String::new(),
@@ -267,7 +268,7 @@ download_base_url ="http://test.com"
             config.name_server,
             DnsNameServer::from_str("127.0.0.1:80/localtest").unwrap(),
         );
-        assert_eq!(config.update_uris, Vec::<String>::new());
+        assert_eq!(config.update_uris.into_vec(), Vec::<String>::new());
         assert_eq!(config.download_base_url, "http://test.com");
         // update_uris =
         // pub update_uris: Vec<String>,
@@ -287,7 +288,7 @@ download_base_url ="http://test.com"
             config.name_server,
             DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
         );
-        assert_eq!(config.update_uris, vec!["http://none", "http://local"]);
+        assert_eq!(config.update_uris.into_vec(), vec!["http://none", "http://local"]);
         assert!(config.use_dnssec);
     }
     #[test]
@@ -299,7 +300,7 @@ download_base_url ="http://test.com"
             config.name_server,
             DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
         );
-        assert_eq!(config.update_uris, vec!["http://none", "http://local"]);
+        assert_eq!(config.update_uris.into_vec(), vec!["http://none", "http://local"]);
         assert!(config.use_dnssec);
     }
 

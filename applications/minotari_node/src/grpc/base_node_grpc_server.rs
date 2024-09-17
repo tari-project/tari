@@ -76,12 +76,12 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     builder::BaseNodeContext,
-    config::GrpcMethod,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
+    grpc_method::GrpcMethod,
     BaseNodeConfig,
 };
 
@@ -170,7 +170,7 @@ impl BaseNodeGrpcServer {
         if self.config.second_layer_grpc_enabled && second_layer_methods.contains(&grpc_method) {
             return true;
         }
-        self.config.grpc_server_allow_methods.contains(&grpc_method)
+        self.config.grpc_server_allow_methods.to_vec().contains(&grpc_method)
     }
 
     fn check_method_enabled(&self, method: GrpcMethod) -> Result<(), Status> {

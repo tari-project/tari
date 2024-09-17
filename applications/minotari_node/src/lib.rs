@@ -32,15 +32,16 @@ pub mod cli;
 mod commands;
 pub mod config;
 mod grpc;
+mod grpc_method;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod recovery;
 mod utils;
-
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
+pub use grpc_method::GrpcMethod;
 use log::*;
 use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
 use minotari_app_utilities::common_cli_args::CommonCliArgs;

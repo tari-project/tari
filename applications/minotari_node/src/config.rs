@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fmt,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -29,7 +28,7 @@ use std::{
 use config::Config;
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{serializers, CommonConfig, Network, StringList},
+    configuration::{serializers, CommonConfig, ConfigList, Network, StringList},
     ConfigurationError,
     DefaultConfigLoader,
     SubConfigPath,
@@ -44,6 +43,7 @@ use tari_core::{
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 
+use crate::grpc_method::GrpcMethod;
 #[cfg(feature = "metrics")]
 use crate::metrics::MetricsConfig;
 
@@ -88,8 +88,8 @@ pub struct BaseNodeConfig {
     pub grpc_enabled: bool,
     /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
-    /// GRPC server config - which methods are active and which not
-    pub grpc_server_allow_methods: Vec<GrpcMethod>,
+    /// GRPC server config - which methods are active and which not, only active when `grpc_enabled = true`.
+    pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
@@ -155,7 +155,7 @@ impl Default for BaseNodeConfig {
             network: Network::default(),
             grpc_enabled: true,
             grpc_address: None,
-            grpc_server_allow_methods: vec![GrpcMethod::GetVersion],
+            grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             mining_enabled: false,
@@ -215,94 +215,4 @@ impl BaseNodeConfig {
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseType {
     Lmdb,
-}
-
-/// A list of all the GRPC methods that can be enabled/disabled
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum GrpcMethod {
-    ListHeaders,
-    GetHeaderByHash,
-    GetBlocks,
-    GetBlockTiming,
-    GetConstants,
-    GetBlockSize,
-    GetBlockFees,
-    GetVersion,
-    CheckForUpdates,
-    GetTokensInCirculation,
-    GetNetworkDifficulty,
-    GetNewBlockTemplate,
-    GetNewBlock,
-    GetNewBlockWithCoinbases,
-    GetNewBlockTemplateWithCoinbases,
-    GetNewBlockBlob,
-    SubmitBlock,
-    SubmitBlockBlob,
-    SubmitTransaction,
-    GetSyncInfo,
-    GetSyncProgress,
-    GetTipInfo,
-    SearchKernels,
-    SearchUtxos,
-    FetchMatchingUtxos,
-    GetPeers,
-    GetMempoolTransactions,
-    TransactionState,
-    Identify,
-    GetNetworkStatus,
-    ListConnectedPeers,
-    GetMempoolStats,
-    GetActiveValidatorNodes,
-    GetShardKey,
-    GetTemplateRegistrations,
-    GetSideChainUtxos,
-}
-
-impl fmt::Display for GrpcMethod {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use serde::{Deserialize, Serialize};
-
-    use crate::config::GrpcMethod;
-
-    #[derive(Clone, Serialize, Deserialize, Debug)]
-    #[allow(clippy::struct_excessive_bools)]
-    struct TestConfig {
-        name: String,
-        inner_config: TestInnerConfig,
-    }
-
-    #[derive(Clone, Serialize, Deserialize, Debug)]
-    #[allow(clippy::struct_excessive_bools)]
-    struct TestInnerConfig {
-        allow_methods: Vec<GrpcMethod>,
-    }
-
-    #[test]
-    fn it_deserializes_enums() {
-        let config_str = r#"
-            name = "blockchain champion"
-            inner_config.allow_methods = [
-                "list_headers",
-                "get_constants",
-            #    "get_blocks"
-                "identify",
-            #    "get_shard_key"
-            ]
-        "#;
-        let config = toml::from_str::<TestConfig>(config_str).unwrap();
-
-        // Enums in the config
-        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::ListHeaders));
-        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::GetConstants));
-        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
-        assert!(config.inner_config.allow_methods.contains(&GrpcMethod::Identify));
-        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
-    }
 }
