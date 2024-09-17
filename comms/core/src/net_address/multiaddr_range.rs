@@ -19,9 +19,9 @@ pub const IP4_TCP_TEST_ADDR_RANGE: &str = "/ip4/127.*.*.*/tcp/*";
 /// A struct containing either an Ipv4AddrRange or a Multiaddr. If a range of IP addresses and/or ports needs to be
 /// specified, the MultiaddrRange can be used, but it only supports IPv4 addresses with the TCP protocol.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct MultiaddrRange {
-    ipv4_addr_range: Option<Ipv4AddrRange>,
-    multiaddr: Option<Multiaddr>,
+pub enum MultiaddrRange {
+    Ipv4AddrRange(Ipv4AddrRange),
+    Multiaddr(Multiaddr),
 }
 
 impl FromStr for MultiaddrRange {
@@ -29,15 +29,9 @@ impl FromStr for MultiaddrRange {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Ok(multiaddr) = Multiaddr::from_str(s) {
-            Ok(MultiaddrRange {
-                ipv4_addr_range: None,
-                multiaddr: Some(multiaddr),
-            })
+            Ok(MultiaddrRange::Multiaddr(multiaddr))
         } else if let Ok(ipv4_addr_range) = Ipv4AddrRange::from_str(s) {
-            Ok(MultiaddrRange {
-                ipv4_addr_range: Some(ipv4_addr_range),
-                multiaddr: None,
-            })
+            Ok(MultiaddrRange::Ipv4AddrRange(ipv4_addr_range))
         } else {
             Err("Invalid format for both Multiaddr and Ipv4AddrRange".to_string())
         }
@@ -46,12 +40,9 @@ impl FromStr for MultiaddrRange {
 
 impl fmt::Display for MultiaddrRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ipv4_addr_range) = &self.ipv4_addr_range {
-            write!(f, "{}", ipv4_addr_range)
-        } else if let Some(multiaddr) = &self.multiaddr {
-            write!(f, "{}", multiaddr)
-        } else {
-            write!(f, "None")
+        match self {
+            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => write!(f, "{}", ipv4_addr_range),
+            MultiaddrRange::Multiaddr(multiaddr) => write!(f, "{}", multiaddr),
         }
     }
 }
@@ -59,20 +50,17 @@ impl fmt::Display for MultiaddrRange {
 impl MultiaddrRange {
     /// Check if the given Multiaddr is contained within the MultiaddrRange range
     pub fn contains(&self, addr: &Multiaddr) -> bool {
-        if let Some(ipv4_addr_range) = &self.ipv4_addr_range {
-            return ipv4_addr_range.contains(addr);
+        match self {
+            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => ipv4_addr_range.contains(addr),
+            MultiaddrRange::Multiaddr(multiaddr) => multiaddr == addr,
         }
-        if let Some(multiaddr) = &self.multiaddr {
-            return multiaddr == addr;
-        }
-        false
     }
 }
 
-// ----------------- Ipv4AddrRange -----------------
-// A struct containing an Ipv4Range and a PortRange
+/// ----------------- Ipv4AddrRange -----------------
+/// A struct containing an Ipv4Range and a PortRange
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-struct Ipv4AddrRange {
+pub struct Ipv4AddrRange {
     ip_range: Ipv4Range,
     port_range: PortRange,
 }
@@ -280,6 +268,7 @@ impl fmt::Display for PortRange {
     }
 }
 
+/// ----------------- MultiaddrRangeList -----------------
 /// Supports deserialization from a sequence of strings or comma-delimited strings
 #[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
 pub struct MultiaddrRangeList(Vec<MultiaddrRange>);
@@ -394,29 +383,6 @@ impl<'de> Deserialize<'de> for MultiaddrRange {
     where D: Deserializer<'de> {
         let s = String::deserialize(deserializer)?;
         MultiaddrRange::from_str(&s).map_err(D::Error::custom)
-    }
-}
-
-pub mod serde_multiaddr_range {
-    use std::str::FromStr;
-
-    use serde::{de::Error, Deserialize, Deserializer, Serializer};
-
-    use crate::net_address::MultiaddrRange;
-
-    pub fn serialize<S>(value: &[MultiaddrRange], serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        let strings: Vec<String> = value.iter().map(|v| v.to_string()).collect();
-        serializer.serialize_str(&strings.join(","))
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<MultiaddrRange>, D::Error>
-    where D: Deserializer<'de> {
-        let strings: Vec<String> = Vec::deserialize(deserializer)?;
-        strings
-            .into_iter()
-            .map(|item| MultiaddrRange::from_str(&item).map_err(D::Error::custom))
-            .collect()
     }
 }
 

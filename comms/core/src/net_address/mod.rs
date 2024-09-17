@@ -29,4 +29,4 @@ mod mutliaddresses_with_stats;
 pub use mutliaddresses_with_stats::MultiaddressesWithStats;
 
 mod multiaddr_range;
-pub use multiaddr_range::{serde_multiaddr_range, MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE};
+pub use multiaddr_range::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE};
