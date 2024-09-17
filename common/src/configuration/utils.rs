@@ -49,6 +49,8 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         );
         write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
+    } else {
+        // Nothing here
     }
 
     load_configuration_with_overrides(config_path, overrides, cli_network)

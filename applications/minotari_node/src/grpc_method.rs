@@ -25,7 +25,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 /// A list of all the GRPC methods that can be enabled/disabled
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum GrpcMethod {
     ListHeaders,
@@ -35,6 +35,7 @@ pub enum GrpcMethod {
     GetConstants,
     GetBlockSize,
     GetBlockFees,
+    #[default]
     GetVersion,
     CheckForUpdates,
     GetTokensInCirculation,
@@ -64,12 +65,6 @@ pub enum GrpcMethod {
     GetShardKey,
     GetTemplateRegistrations,
     GetSideChainUtxos,
-}
-
-impl Default for GrpcMethod {
-    fn default() -> Self {
-        GrpcMethod::GetVersion
-    }
 }
 
 impl GrpcMethod {
@@ -223,7 +218,7 @@ mod tests {
     #[test]
     fn grpc_method_into_iter_is_exhaustive() {
         let mut count = 0;
-        for method in GrpcMethod::ALL_VARIANTS.iter() {
+        for method in &GrpcMethod::ALL_VARIANTS {
             match method {
                 GrpcMethod::ListHeaders => count += 1,
                 GrpcMethod::GetHeaderByHash => count += 1,
@@ -269,7 +264,7 @@ mod tests {
     #[test]
     fn it_converts_from_serde_json_str_to_enum() {
         // Iterate over all the enum variants and convert them to a string
-        for method in GrpcMethod::ALL_VARIANTS.iter() {
+        for method in &GrpcMethod::ALL_VARIANTS {
             let method_str = serde_json::to_string(&method).unwrap();
             let method_from_str = GrpcMethod::from_str(&method_str).unwrap();
             assert_eq!(method, &method_from_str);
