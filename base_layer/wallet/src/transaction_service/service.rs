@@ -1855,7 +1855,7 @@ where
             CompletedTransaction::new(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                dest_address,
+                dest_address.clone(),
                 amount,
                 fee,
                 tx.clone(),
@@ -1869,6 +1869,15 @@ where
             )?,
         )
         .await?;
+
+        tokio::spawn(send_finalized_transaction_message(
+            tx_id,
+            tx.clone(),
+            dest_address.comms_public_key().clone(),
+            self.resources.outbound_message_service.clone(),
+            self.resources.config.direct_send_timeout,
+            self.resources.config.transaction_routing_mechanism,
+        ));
 
         Ok(tx_id)
     }
