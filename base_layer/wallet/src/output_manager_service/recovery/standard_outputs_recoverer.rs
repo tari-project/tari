@@ -145,7 +145,7 @@ where
             )
             .await?;
             let tx_id = match tx_id {
-                Some(id) => id.clone(),
+                Some(id) => *id,
                 None => TxId::new_random(),
             };
             let output_hex = db_output.commitment.to_hex();

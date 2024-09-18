@@ -3250,7 +3250,7 @@ where
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source, tx_id) in scanned_outputs {
-            let tx_id = tx_id.unwrap_or_else(|| TxId::new_random());
+            let tx_id = tx_id.unwrap_or(TxId::new_random());
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.resources.key_manager,

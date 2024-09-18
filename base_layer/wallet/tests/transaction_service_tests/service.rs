@@ -1795,7 +1795,7 @@ async fn recover_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.clone())
+        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -1803,7 +1803,10 @@ async fn recover_one_sided_transaction() {
     assert_eq!(value, recovered_outputs_1[0].output.value);
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+    let recovered_outputs_2 = bob_oms
+        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
+        .await
+        .unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
@@ -1919,7 +1922,7 @@ async fn recover_stealth_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.clone())
+        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -1927,7 +1930,10 @@ async fn recover_stealth_one_sided_transaction() {
     assert_eq!(value, recovered_outputs_1[0].output.value);
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+    let recovered_outputs_2 = bob_oms
+        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
+        .await
+        .unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 

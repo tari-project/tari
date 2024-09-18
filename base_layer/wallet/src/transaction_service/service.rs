@@ -2939,6 +2939,7 @@ where
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_finalized_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
