@@ -1836,8 +1836,13 @@ pub async fn command_runner(
                 {
                     let seed_words = SeedWords::from_str(args.seed_words.as_str())
                         .map_err(|e| CommandError::General(e.to_string()))?;
-                    let seed =
-                        get_seed_from_seed_words(&seed_words).map_err(|e| CommandError::General(e.to_string()))?;
+                    let passphrase = if args.passphrase == "" {
+                        None
+                    } else {
+                        Some(SafePassword::from(args.passphrase))
+                    };
+                    let seed = get_seed_from_seed_words(&seed_words, passphrase)
+                        .map_err(|e| CommandError::General(e.to_string()))?;
                     let wallet_type = WalletType::DerivedKeys;
                     let password = SafePassword::from("password".to_string());
                     let shutdown = Shutdown::new();

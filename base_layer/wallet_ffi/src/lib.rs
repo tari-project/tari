@@ -2956,6 +2956,7 @@ pub unsafe extern "C" fn seed_words_get_at(
 pub unsafe extern "C" fn seed_words_push_word(
     seed_words: *mut TariSeedWords,
     word: *const c_char,
+    passphrase: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
     use tari_key_manager::mnemonic::Mnemonic;
@@ -2984,6 +2985,17 @@ pub unsafe extern "C" fn seed_words_push_word(
             },
         }
     }
+    let passphrase = match passphrase.is_null() {
+        true => None,
+        false => match CStr::from_ptr(passphrase).to_str() {
+            Ok(v) => Some(SafePassword::from(v.to_owned())),
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return SeedWordPushResult::InvalidObject as u8;
+            },
+        },
+    };
 
     // Check word is from a word list
     match MnemonicLanguage::from(&word_string) {
@@ -3019,7 +3031,7 @@ pub unsafe extern "C" fn seed_words_push_word(
         // depending on word added
         if MnemonicLanguage::detect_language(&(*seed_words).0).is_ok() {
             if (*seed_words).0.len() >= 24 {
-                if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+                if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, passphrase) {
                     log::error!(
                         target: LOG_TARGET,
                         "Problem building valid private seed from seed phrase: {:?}",
@@ -5749,6 +5761,7 @@ pub unsafe extern "C" fn wallet_create(
     num_rolling_log_files: c_uint,
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
+    seed_passphrase: *const c_char,
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
     peer_seed_str: *const c_char,
@@ -5828,10 +5841,21 @@ pub unsafe extern "C" fn wallet_create(
         peer_seed
     };
 
+    let seed_passphrase = match seed_passphrase.is_null() {
+        true => None,
+        false => {
+            let seed_passphrase = CStr::from_ptr(seed_passphrase)
+                .to_str()
+                .expect("A non-null seed passphrase should be able to be converted to string")
+                .to_owned();
+            Some(SafePassword::from(seed_passphrase))
+        },
+    };
+
     let recovery_seed = if seed_words.is_null() {
         None
     } else {
-        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+        match CipherSeed::from_mnemonic(&(*seed_words).0, seed_passphrase) {
             Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);

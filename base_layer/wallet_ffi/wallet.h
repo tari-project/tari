@@ -1575,6 +1575,7 @@ char *seed_words_get_at(struct TariSeedWords *seed_words,
  */
 unsigned char seed_words_push_word(struct TariSeedWords *seed_words,
                                    const char *word,
+                                   const char *passphrase,
                                    int *error_out);
 
 /**
@@ -2950,6 +2951,7 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  unsigned int num_rolling_log_files,
                                  unsigned int size_per_log_file_bytes,
                                  const char *passphrase,
+                                 const char *seed_passphrase,
                                  const struct TariSeedWords *seed_words,
                                  const char *network_str,
                                  const char *peer_seed_str,
