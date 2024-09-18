@@ -3014,11 +3014,10 @@ where
                             .await?
                             .into_iter()
                             .map(|ro| -> Result<_, TransactionServiceError> {
-                                let status = ImportStatus::Imported;
                                 let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                                     TransactionServiceError::ServiceError(format!("Output '{}' not found", ro.hash))
                                 })?;
-                                Ok((ro, status, output.clone()))
+                                Ok((ro, output.clone()))
                             })
                             .collect::<Result<Vec<_>, _>>()?;
                         recovered.append(
@@ -3031,11 +3030,10 @@ where
                                 .await?
                                 .into_iter()
                                 .map(|ro| -> Result<_, TransactionServiceError> {
-                                    let status = ImportStatus::OneSidedUnconfirmed;
                                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                                         TransactionServiceError::ServiceError(format!("Output '{}' not found", ro.hash))
                                     })?;
-                                    Ok((ro, status, output.clone()))
+                                    Ok((ro, output.clone()))
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
                         );
@@ -3044,7 +3042,7 @@ where
                         };
                         // we should only be able to recover 1 output per tx, but we use the vec here to be safe
                         let mut source_address = None;
-                        for (ro, status, output) in recovered {
+                        for (ro, output) in recovered {
                             match &ro.output.payment_id {
                                 PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => {
                                     if source_address.is_none() {
@@ -3057,7 +3055,7 @@ where
                                 ro.output.value,
                                 source_address.clone().unwrap_or_default(),
                                 format!("finalized_transaction received from {}", source_pubkey),
-                                status,
+                                ImportStatus::Broadcast,
                                 Some(tx_id),
                                 None,
                                 None,
@@ -3521,6 +3519,9 @@ where
             payment_id,
         )?;
         let transaction_event = match import_status {
+            ImportStatus::Broadcast => TransactionEvent::TransactionBroadcast (
+                tx_id
+            ),
             ImportStatus::Imported => TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations: 0,
