@@ -3519,9 +3519,7 @@ where
             payment_id,
         )?;
         let transaction_event = match import_status {
-            ImportStatus::Broadcast => TransactionEvent::TransactionBroadcast (
-                tx_id
-            ),
+            ImportStatus::Broadcast => TransactionEvent::TransactionBroadcast(tx_id),
             ImportStatus::Imported => TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations: 0,
