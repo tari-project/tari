@@ -3011,15 +3011,7 @@ where
                             .resources
                             .output_manager_service
                             .scan_for_recoverable_outputs(outputs.iter().map(|o| (o.clone(), Some(tx_id))).collect())
-                            .await?
-                            .into_iter()
-                            .map(|ro| -> Result<_, TransactionServiceError> {
-                                let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                                    TransactionServiceError::ServiceError(format!("Output '{}' not found", ro.hash))
-                                })?;
-                                Ok((ro, output.clone()))
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
+                            .await?;
                         recovered.append(
                             &mut self
                                 .resources
@@ -3027,43 +3019,44 @@ where
                                 .scan_outputs_for_one_sided_payments(
                                     outputs.iter().map(|o| (o.clone(), Some(tx_id))).collect(),
                                 )
-                                .await?
-                                .into_iter()
-                                .map(|ro| -> Result<_, TransactionServiceError> {
-                                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                                        TransactionServiceError::ServiceError(format!("Output '{}' not found", ro.hash))
-                                    })?;
-                                    Ok((ro, output.clone()))
-                                })
-                                .collect::<Result<Vec<_>, _>>()?,
+                                .await?,
                         );
                         if recovered.is_empty() {
                             return Err(TransactionServiceError::TransactionDoesNotExistError);
                         };
                         // we should only be able to recover 1 output per tx, but we use the vec here to be safe
                         let mut source_address = None;
-                        for (ro, output) in recovered {
+                        let mut payment_id = None;
+                        let mut amount = None;
+                        for ro in recovered {
                             match &ro.output.payment_id {
                                 PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => {
                                     if source_address.is_none() {
                                         source_address = Some(address.clone());
+                                        payment_id = Some(ro.output.payment_id.clone());
+                                        amount = Some(ro.output.value);
                                     }
                                 },
                                 _ => {},
                             };
-                            self.add_utxo_import_transaction_with_status(
-                                ro.output.value,
-                                source_address.clone().unwrap_or_default(),
-                                format!("finalized_transaction received from {}", source_pubkey),
-                                ImportStatus::Broadcast,
-                                Some(tx_id),
-                                None,
-                                None,
-                                output,
-                                ro.output.payment_id,
-                            )
-                            .await?;
                         }
+                        let completed_transaction = CompletedTransaction::new(
+                            tx_id,
+                            source_address.clone().unwrap_or_default(),
+                            self.resources.one_sided_tari_address.clone(),
+                            amount.unwrap_or_default(),
+                            transaction.body.get_total_fee()?,
+                            transaction.clone(),
+                            TransactionStatus::Completed,
+                            "".to_string(),
+                            Utc::now().naive_utc(),
+                            TransactionDirection::Inbound,
+                            None,
+                            None,
+                            payment_id,
+                        )?;
+                        self.db
+                            .insert_completed_transaction(tx_id, completed_transaction.clone())?;
                         self.restart_receive_transaction_protocol(
                             tx_id,
                             source_address.unwrap_or_default(),
