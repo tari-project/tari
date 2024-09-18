@@ -35,7 +35,7 @@ use log::*;
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
-    multiaddr::Multiaddr,
+    net_address::MultiaddrRange,
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
     types::CommsPublicKey,
     PeerConnection,
@@ -386,7 +386,7 @@ impl DhtActor {
 
     // Helper function to check if all peer addresses are excluded
     async fn check_if_addresses_excluded(
-        excluded_dial_addresses: Vec<Multiaddr>,
+        excluded_dial_addresses: Vec<MultiaddrRange>,
         peer_manager: &PeerManager,
         node_id: NodeId,
     ) -> Result<(), DhtActorError> {
@@ -394,7 +394,7 @@ impl DhtActor {
             let addresses = peer_manager.get_peer_multi_addresses(&node_id).await?;
             if addresses
                 .iter()
-                .all(|addr| excluded_dial_addresses.contains(addr.address()))
+                .all(|addr| excluded_dial_addresses.iter().any(|v| v.contains(addr.address())))
             {
                 warn!(
                     target: LOG_TARGET,
@@ -419,7 +419,7 @@ impl DhtActor {
                 Box::pin(Self::broadcast_join(
                     node_identity,
                     peer_manager,
-                    excluded_dial_addresses,
+                    excluded_dial_addresses.into_vec(),
                     outbound_requester,
                 ))
             },
@@ -502,7 +502,7 @@ impl DhtActor {
 
                 Box::pin(async move {
                     DhtActor::check_if_addresses_excluded(
-                        excluded_dial_addresses,
+                        excluded_dial_addresses.into_vec(),
                         &peer_manager,
                         node_identity.node_id().clone(),
                     )
@@ -533,7 +533,7 @@ impl DhtActor {
     async fn broadcast_join(
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        excluded_dial_addresses: Vec<Multiaddr>,
+        excluded_dial_addresses: Vec<MultiaddrRange>,
         mut outbound_requester: OutboundMessageRequester,
     ) -> Result<(), DhtActorError> {
         DhtActor::check_if_addresses_excluded(
@@ -748,10 +748,12 @@ impl DhtActor {
         let mut filtered_peers = Vec::with_capacity(peers.len());
         for id in &peers {
             let addresses = peer_manager.get_peer_multi_addresses(id).await?;
-            if addresses
-                .iter()
-                .all(|addr| config.excluded_dial_addresses.contains(addr.address()))
-            {
+            if addresses.iter().all(|addr| {
+                config
+                    .excluded_dial_addresses
+                    .iter()
+                    .any(|v| v.contains(addr.address()))
+            }) {
                 trace!(target: LOG_TARGET, "Peer '{}' has only excluded addresses. Skipping.", id);
             } else {
                 filtered_peers.push(id.clone());

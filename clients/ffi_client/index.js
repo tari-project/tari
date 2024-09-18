@@ -39,6 +39,7 @@ try {
     "./wallet",
     30,
     600,
+    false,
     err
   );
 

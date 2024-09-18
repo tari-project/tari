@@ -55,7 +55,7 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
-    net_address::PeerAddressSource,
+    net_address::{MultiaddrRange, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
@@ -557,7 +557,7 @@ where
         noise_config: &NoiseConfig,
         transport: &TTransport,
         network_byte: u8,
-        excluded_dial_addresses: Vec<Multiaddr>,
+        excluded_dial_addresses: Vec<MultiaddrRange>,
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
@@ -568,7 +568,7 @@ where
             .clone()
             .into_vec()
             .iter()
-            .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| a == excluded))
+            .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)))
             .cloned()
             .collect::<Vec<_>>();
         if addresses.is_empty() {

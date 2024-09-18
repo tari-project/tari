@@ -126,6 +126,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
+    net_address::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE},
     peer_manager::{NodeIdentity, PeerQuery},
     transports::MemoryTransport,
     types::CommsPublicKey,
@@ -5199,6 +5200,7 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 /// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
 /// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
+/// `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -5217,6 +5219,7 @@ pub unsafe extern "C" fn comms_config_create(
     datastore_path: *const c_char,
     discovery_timeout_in_secs: c_ulonglong,
     saf_message_duration_in_secs: c_ulonglong,
+    exclude_dial_test_addresses: bool,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
     let mut error = 0;
@@ -5294,6 +5297,20 @@ pub unsafe extern "C" fn comms_config_create(
                 MultiaddrList::from(vec![public_address])
             };
 
+            let excluded_dial_addresses = if exclude_dial_test_addresses {
+                let multi_addr_range = match MultiaddrRange::from_str(IP4_TCP_TEST_ADDR_RANGE) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        error = LibWalletError::from(InterfaceError::InternalError(e)).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                };
+                MultiaddrRangeList::from(vec![multi_addr_range])
+            } else {
+                MultiaddrRangeList::from(vec![])
+            };
+
             let config = TariCommsConfig {
                 override_from: None,
                 public_addresses: addresses,
@@ -5326,7 +5343,7 @@ pub unsafe extern "C" fn comms_config_create(
                         minimum_desired_tcpv4_node_ratio: 0.0,
                         ..Default::default()
                     },
-                    excluded_dial_addresses: vec![],
+                    excluded_dial_addresses,
                     ..Default::default()
                 },
                 allow_test_addresses: true,
@@ -10237,6 +10254,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -10401,6 +10419,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -10628,6 +10647,7 @@ mod test {
                 db_path_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -10691,6 +10711,7 @@ mod test {
                 db_path_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -10774,6 +10795,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -10951,6 +10973,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -11089,6 +11112,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -11308,6 +11332,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -11534,6 +11559,7 @@ mod test {
                 db_path_alice_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
 
@@ -11795,6 +11821,7 @@ mod test {
                 db_path_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
@@ -12175,6 +12202,7 @@ mod test {
                 alice_db_path_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
@@ -12239,6 +12267,7 @@ mod test {
                 bob_db_path_str,
                 20,
                 10800,
+                false,
                 error_ptr,
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;

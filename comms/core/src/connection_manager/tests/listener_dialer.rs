@@ -287,7 +287,7 @@ async fn excluded_yes() {
     let (request_tx, request_rx) = mpsc::channel(1);
     let peer_manager2 = build_peer_manager();
     let connection_manager_config = ConnectionManagerConfig {
-        excluded_dial_addresses: vec![address.clone()],
+        excluded_dial_addresses: vec![address.to_string().parse().unwrap()],
         ..Default::default()
     };
     let mut dialer = Dialer::new(
