@@ -19,7 +19,7 @@ critical-section = { version = "1.1.1" }
 digest = { version = "0.10", default-features = false }
 embedded-alloc = "0.5.0"
 include_gif = "1.0.1"
-ledger_device_sdk = "1.7"
+ledger_device_sdk = "1.15"
 rand_core = { version = "0.6", default_features = false }
 zeroize = { version = "1", default-features = false }
 

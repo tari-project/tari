@@ -6,10 +6,11 @@ use core::ops::Deref;
 
 use blake2::Blake2b;
 use digest::{consts::U64, Digest};
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::gadgets::{MessageScroller, SingleMessage};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     random::LedgerRng,
-    ui::gadgets::{MessageScroller, SingleMessage},
 };
 use rand_core::RngCore;
 use tari_crypto::{

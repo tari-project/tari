@@ -25,10 +25,7 @@ mod handlers {
     pub mod get_view_key;
 }
 
-use core::mem::MaybeUninit;
-
 use app_ui::menu::ui_menu_main;
-use critical_section::RawRestoreState;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
     get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
@@ -40,12 +37,9 @@ use handlers::{
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
+use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-use ledger_device_sdk::{
-    io::{ApduHeader, Comm, Event, Reply, StatusWords},
-    ui::gadgets::SingleMessage,
-};
 use minotari_ledger_wallet_common::common_types::{
     AppSW as AppSWMapping,
     Branch as BranchMapping,
@@ -57,41 +51,6 @@ ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 static BIP32_COIN_TYPE: u32 = 535348;
 static CLA: u8 = 0x80;
 static RESPONSE_VERSION: u8 = 1;
-
-/// Allocator heap size
-const HEAP_SIZE: usize = 1024 * 26;
-
-/// Statically allocated heap memory
-static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-
-/// Bind global allocator
-#[global_allocator]
-static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
-
-/// Error handler for allocation
-#[alloc_error_handler]
-fn alloc_error(_: core::alloc::Layout) -> ! {
-    SingleMessage::new("allocation error!").show_and_wait();
-    ledger_device_sdk::exit_app(250)
-}
-
-/// Initialise allocator
-pub fn init() {
-    unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
-}
-
-struct MyCriticalSection;
-critical_section::set_impl!(MyCriticalSection);
-
-unsafe impl critical_section::Impl for MyCriticalSection {
-    unsafe fn acquire() -> RawRestoreState {
-        // nothing, it's all good, don't worry bout it
-    }
-
-    unsafe fn release(_token: RawRestoreState) {
-        // nothing, it's all good, don't worry bout it
-    }
-}
 
 // Application status words.
 #[repr(u16)]
@@ -215,30 +174,59 @@ impl TryFrom<ApduHeader> for Instruction {
     }
 }
 
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+fn show_status_if_needed(ins: &Instruction, tx_ctx: &ScriptOffsetCtx, status: &AppSW) {
+    // let (show_status, status_type) = match (ins, status) {
+    //     (Instruction::GetPubkey { display: true }, AppSW::Deny | AppSW::Ok) => {
+    //         (true, StatusType::Address)
+    //     }
+    //     (Instruction::SignTx { .. }, AppSW::Deny | AppSW::Ok) if tx_ctx.finished() => {
+    //         (true, StatusType::Transaction)
+    //     }
+    //     (_, _) => (false, StatusType::Transaction),
+    // };
+
+    //if show_status {
+    if true{
+        let success = *status == AppSW::Ok;
+        NbglReviewStatus::new()
+            .status_type(status_type)
+            .show(success);
+    }
+}
+
 #[no_mangle]
 extern "C" fn sample_main() {
-    init();
     // Create the communication manager, and configure it to accept only APDU from the 0x80 class.
     // If any APDU with a wrong class value is received, comm will respond automatically with
     // BadCla status word.
     let mut comm = Comm::new().set_expected_cla(CLA);
 
-    // Developer mode / pending review popup
-    // must be cleared with user interaction
-    #[cfg(feature = "pending_review_screen")]
-    display_pending_review(&mut comm);
+    // Initialize reference to Comm instance for NBGL
+    // API calls.
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    init_comm(&mut comm);
 
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
-
     loop {
         // Wait for either a specific button push to exit the app
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins, &mut offset_ctx) {
-                Ok(()) => comm.reply_ok(),
-                Err(sw) => comm.reply(sw),
-            }
+            let result = handle_apdu(&mut comm, ins, &mut offset_ctx);
+            let _status: AppSW = match result {
+                Ok(()) => {
+                    comm.reply_ok();
+                    AppSW::Ok
+                }
+                Err(sw) => {
+                    comm.reply(sw);
+                    sw
+                }
+            };
+
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            show_status_if_needed(&ins, &tx_ctx, &_status);
         }
     }
 }
@@ -264,3 +252,4 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
     }
 }
+

@@ -3,7 +3,9 @@
 
 use alloc::format;
 
-use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::io::Comm;
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_crypto::{
     hash_domain,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},

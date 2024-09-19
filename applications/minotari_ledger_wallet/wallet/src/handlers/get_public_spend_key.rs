@@ -1,7 +1,9 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::io::Comm;
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 
 use crate::{utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION, STATIC_SPEND_INDEX};

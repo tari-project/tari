@@ -9,12 +9,11 @@ use digest::{
     consts::{U32, U64},
     Digest,
 };
-use ledger_device_sdk::{
-    io::Comm,
-    ui::{
-        bitmaps::{CROSSMARK, EYE, VALIDATE_14},
-        gadgets::{Field, MultiFieldReview, SingleMessage},
-    },
+use ledger_device_sdk::io::Comm;
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::{
+    bitmaps::{CROSSMARK, EYE, VALIDATE_14},
+    gadgets::{Field, MultiFieldReview, SingleMessage},
 };
 use minotari_ledger_wallet_common::{
     get_public_spend_key_bytes_from_tari_dual_address,

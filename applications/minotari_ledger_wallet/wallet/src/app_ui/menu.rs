@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use include_gif::include_gif;
-use ledger_device_sdk::{
-    io::{Comm, Event},
-    ui::{
-        bitmaps::{Glyph, BACK, CERTIFICATE, DASHBOARD_X},
-        gadgets::{EventOrPageIndex, MultiPageMenu, Page},
-    },
+use ledger_device_sdk::io::{Comm, Event};
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::{
+    bitmaps::{Glyph, BACK, CERTIFICATE, DASHBOARD_X},
+    gadgets::{EventOrPageIndex, MultiPageMenu, Page},
 };
 
 use crate::Instruction;
