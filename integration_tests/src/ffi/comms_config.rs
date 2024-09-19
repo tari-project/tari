@@ -49,6 +49,7 @@ impl CommsConfig {
                 CString::new(base_dir).unwrap().into_raw(),
                 30,
                 600,
+                false, // This needs to be 'false' for the tests to pass
                 &mut error,
             );
             if error > 0 {

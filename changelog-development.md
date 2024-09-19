@@ -1,13 +1,59 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+### [1.4.2-pre.2](https://github.com/tari-project/tari/compare/v1.4.2-pre.1...v1.4.2-pre.2) (2024-09-11)
+
+
+### Bug Fixes
+
+* Fixed Windows installer checksum
+
+### [1.4.2-pre.1](https://github.com/tari-project/tari/compare/v1.4.2-pre.0...v1.4.2-pre.1) (2024-09-11)
+
+
+### Features
+
+* add configurable exclude dialer addresses for universe ([#6543](https://github.com/tari-project/tari/issues/6543)) ([e113a0e](https://github.com/tari-project/tari/commit/e113a0e4a464a2ed4ec72d2da6f4a3c3c80a6fcf))
+
+### [1.4.2-pre.0](https://github.com/tari-project/tari/compare/v1.4.1-pre.0...v1.4.2-pre.0) (2024-09-10)
+
+
+### Features
+
+* add one-sided addresses to grpc ([#6542](https://github.com/tari-project/tari/issues/6542)) ([0a5d20b](https://github.com/tari-project/tari/commit/0a5d20b55ce51a1134369cd9825ba8a13f0fbb7d))
+* changes for the randomx miner ([#6537](https://github.com/tari-project/tari/issues/6537)) ([825ca06](https://github.com/tari-project/tari/commit/825ca06fa29fda0e66c34fe94640797e4deb0776))
+* display waiting for intial peer data ([#6545](https://github.com/tari-project/tari/issues/6545)) ([39aed8e](https://github.com/tari-project/tari/commit/39aed8ea1c521f7cab7c155480e59075c5c1ab26))
+* ledger version check ([#6541](https://github.com/tari-project/tari/issues/6541)) ([611f226](https://github.com/tari-project/tari/commit/611f22692024d260fd05a7453fd39d9e5e47bf29))
+* reduce universe spam logs ([#6540](https://github.com/tari-project/tari/issues/6540)) ([4c246b8](https://github.com/tari-project/tari/commit/4c246b80f93c18f752cf96f83f61cbef637c7d48))
+* stop interactive only address from being used in mining ([#6544](https://github.com/tari-project/tari/issues/6544)) ([1f18e7d](https://github.com/tari-project/tari/commit/1f18e7db8e94b6d3961f7e5e563420d622a36f75))
+
+## [1.4.1-pre.0](https://github.com/tari-project/tari/compare/v1.4.0-pre.0...v1.4.1-pre.0) (2024-09-06)
+
+
+### Features
+
+* add console wallet detail ([#6531](https://github.com/tari-project/tari/issues/6531)) ([594e984](https://github.com/tari-project/tari/commit/594e98477e2f68ff9c4a92334f198b2be5f97c84))
+* clear handshake error when connections go stale ([#6528](https://github.com/tari-project/tari/issues/6528)) ([b5f5e03](https://github.com/tari-project/tari/commit/b5f5e03817e5d43f1d2f3168307d7e9bc6cd77d6))
+* improve universe comms ([#6533](https://github.com/tari-project/tari/issues/6533)) ([3b2c88e](https://github.com/tari-project/tari/commit/3b2c88ec0b6a89d3864e39f0fccff5f59ad5c33f))
+* propagate handshake error ([#6530](https://github.com/tari-project/tari/issues/6530)) ([e29c909](https://github.com/tari-project/tari/commit/e29c9096d0b1b2d4cc6c3686f414e5d954d7c8ad))
+
+## [1.4.0-pre.0](https://github.com/tari-project/tari/compare/v1.3.1-pre.1...v1.4.0-pre.0) (2024-09-04)
+
+
+### Features
+
+* add grpc specific log file ([#6524](https://github.com/tari-project/tari/issues/6524)) ([be9e32e](https://github.com/tari-project/tari/commit/be9e32edce774e31d79907450ed531e560befbd4))
+* add network wire byte ([#6518](https://github.com/tari-project/tari/issues/6518)) ([78a4803](https://github.com/tari-project/tari/commit/78a4803ca9364d472525fd94a5f36b33379268a5))
+* **p2pool-randomx-support:** added pow algo to GetNewBlockRequest in p2pool proto ([#6509](https://github.com/tari-project/tari/issues/6509)) ([125b49c](https://github.com/tari-project/tari/commit/125b49ca7792db2a200ef2fdc5b323564a1667ab))
+* **p2pool-randomx-support:** merge mining proxy update ([#6521](https://github.com/tari-project/tari/issues/6521)) ([3f4a3e8](https://github.com/tari-project/tari/commit/3f4a3e853d9404925fd941479b0adddc6209cb13))
+* paper wallet cli ([#6522](https://github.com/tari-project/tari/issues/6522)) ([31a953c](https://github.com/tari-project/tari/commit/31a953c66bac3810d0369fb675af3622657c6b16))
+
 ## [1.3.1-pre.1](https://github.com/tari-project/tari/compare/v1.3.1-pre.0...v1.3.1-pre.1) (2024-09-02)
 
 ### Bug Fixes
 
 * remove sub repo
-
-## [1.3.0-pre.0](https://github.com/tari-project/tari/compare/v1.2.0-pre.0...v1.3.0-pre.0) (2024-08-22)
 
 ## [1.3.1-pre.0](https://github.com/tari-project/tari/compare/v1.3.0-pre.0...v1.3.1-pre.0) (2024-08-30)
 

@@ -57,6 +57,8 @@ pub enum InterfaceError {
     InvalidEmojiId,
     #[error("An error has occurred due to an invalid argument: `{0}`")]
     InvalidArgument(String),
+    #[error("An internal error has occurred: `{0}`")]
+    InternalError(String),
     #[error("Balance Unavailable")]
     BalanceError,
 }
@@ -105,6 +107,10 @@ impl From<InterfaceError> for LibWalletError {
             InterfaceError::PointerError(ref p) => Self {
                 code: 9,
                 message: format!("Pointer error on {}:{:?}", p, v),
+            },
+            InterfaceError::InternalError(_) => Self {
+                code: 10,
+                message: format!("{:?}", v),
             },
         }
     }

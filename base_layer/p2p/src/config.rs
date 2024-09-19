@@ -28,9 +28,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
+        name_server::DEFAULT_DNS_NAME_SERVER,
         serializers,
         utils::{deserialize_string_or_struct, serialize_string},
         MultiaddrList,
+        Network,
         StringList,
     },
     DnsNameServer,
@@ -39,7 +41,7 @@ use tari_common::{
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 
-use crate::{transport::TransportConfig, DEFAULT_DNS_NAME_SERVER};
+use crate::transport::TransportConfig;
 
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -47,17 +49,21 @@ use crate::{transport::TransportConfig, DEFAULT_DNS_NAME_SERVER};
 pub struct PeerSeedsConfig {
     pub override_from: Option<String>,
     /// Custom specified peer seed nodes
+    #[serde(default)]
     pub peer_seeds: StringList,
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
     /// peer list.
+    #[serde(default)]
     pub dns_seeds: StringList,
     #[serde(
+        default,
         deserialize_with = "deserialize_string_or_struct",
         serialize_with = "serialize_string"
     )]
     /// DNS name server to use for DNS seeds.
     pub dns_seeds_name_server: DnsNameServer,
     /// All DNS seed records must pass DNSSEC validation
+    #[serde(default)]
     pub dns_seeds_use_dnssec: bool,
 }
 
@@ -66,7 +72,11 @@ impl Default for PeerSeedsConfig {
         Self {
             override_from: None,
             peer_seeds: StringList::default(),
-            dns_seeds: StringList::default(),
+            dns_seeds: vec![format!(
+                "seeds.{}.tari.com",
+                Network::get_current_or_user_setting_or_default().as_key_str()
+            )]
+            .into(),
             dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
             dns_seeds_use_dnssec: false,
         }
@@ -166,5 +176,79 @@ impl P2pConfig {
             self.datastore_path = base_path.as_ref().join(self.datastore_path.as_path());
         }
         self.dht.set_base_path(base_path)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::PeerSeedsConfig;
+
+    #[test]
+    fn it_deserializes_from_toml() {
+        // No empty fields, no omitted fields
+        let config_str = r#"
+            dns_seeds = ["seeds.esmeralda.tari.com"]
+            peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
+            dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+            dns_seeds_use_dnssec = false
+         "#;
+        let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
+        assert_eq!(config.dns_seeds.into_vec(), vec!["seeds.esmeralda.tari.com"]);
+        assert_eq!(config.peer_seeds.into_vec(), vec![
+            "20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/\
+             e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"
+        ]);
+        assert_eq!(
+            config.dns_seeds_name_server.to_string(),
+            "1.1.1.1:853/cloudflare-dns.com".to_string()
+        );
+        assert!(!config.dns_seeds_use_dnssec);
+
+        // 'dns_seeds_name_server' parse error handled
+        let config_str = r#"
+            dns_seeds = ["seeds.esmeralda.tari.com"]
+            peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
+            dns_seeds_name_server = ""
+            #dns_seeds_use_dnssec = false
+         "#;
+        match toml::from_str::<PeerSeedsConfig>(config_str) {
+            Ok(_) => panic!("Should fail"),
+            Err(e) => assert_eq!(
+                e.to_string(),
+                "failed to parse DNS name server 'dns_name' for key `dns_seeds_name_server` at line 4 column 37"
+            ),
+        }
+
+        // Empty config list fields
+        let config_str = r#"
+            dns_seeds = []
+            peer_seeds = []
+            dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+            dns_seeds_use_dnssec = false
+         "#;
+        let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
+        assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
+        assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
+        assert_eq!(
+            config.dns_seeds_name_server.to_string(),
+            "1.1.1.1:853/cloudflare-dns.com".to_string()
+        );
+        assert!(!config.dns_seeds_use_dnssec);
+
+        // Omitted config fields
+        let config_str = r#"
+            #dns_seeds = []
+            #peer_seeds = []
+            #dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+            #dns_seeds_use_dnssec = false
+         "#;
+        let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
+        assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
+        assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
+        assert_eq!(
+            config.dns_seeds_name_server.to_string(),
+            "1.1.1.1:853/cloudflare-dns.com".to_string()
+        );
+        assert!(!config.dns_seeds_use_dnssec);
     }
 }

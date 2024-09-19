@@ -117,6 +117,8 @@ blockchain_sync_config.rpc_deadline = 240
 # intensive. Be careful of setting this higher than the block time, which would potentially cause it
 # to always be behind the network (default = 10) (in seconds)
 #time_before_considered_lagging = 10
+#This is the amount of metadata events that a node will wait for before decide to start syncing for a peer, choosing the best peer out of the list
+#initial_sync_peer_count = 5,
 
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
@@ -191,9 +193,9 @@ listener_self_liveness_check_interval = 15
 # When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
 # made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
 #tor.proxy_bypass_addresses = []
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
-# better privacy
-#tor.proxy_bypass_for_outbound_tcp = false
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to 'true' for
+# better network performance for TCP nodes; set it to 'false' for better privacy.
+#tor.proxy_bypass_for_outbound_tcp = true
 # If set, instructs tor to forward traffic the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
 #tor.forward_address =
 # If set, the listener will bind to this address instead of the forward_address. You need to make sure that this listener is connectable from the forward_address.
@@ -301,8 +303,6 @@ database_url = "data/base_node/dht.db"
 #ban_duration = 21_600 # 6 * 60 * 60
 # Length of time to ban a peer for a "short" duration. Default: 60 mins
 #ban_duration_short = 3_600 # 60 * 60
-# This allows the use of test addresses in the network like 127.0.0.1. Default: false
-#allow_test_addresses = false
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
 # Default: 100_000 messages
 #flood_ban_max_msg_count = 100_000
@@ -314,3 +314,9 @@ database_url = "data/base_node/dht.db"
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
 # peers that were previously tried. Default: 2 hours
 #offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP range.
+# Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other range)
+#   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
+#                or
+#   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
+#excluded_dial_addresses = []

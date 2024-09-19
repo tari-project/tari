@@ -1067,19 +1067,19 @@ async fn receive_and_propagate_transaction() {
 
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
@@ -1738,7 +1738,7 @@ async fn block_event_and_reorg_event_handling() {
 
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
-        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        state_info: StateInfo::Listening(ListeningInfo::new(true, 0, 0)),
         randomx_vm_cnt: 0,
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });

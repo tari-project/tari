@@ -47,7 +47,7 @@ use crate::{
     proof_of_work::monero_rx::helpers::create_block_hashing_blob,
 };
 
-/// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
+/// This is a struct to deserialize the data from the pow field into data required for the randomX Monero merged mine
 /// pow.
 #[derive(Clone, Debug)]
 pub struct MoneroPowData {

@@ -129,7 +129,7 @@ loggers:
     additive: false
   # network
   comms:
-    level: info
+    level: debug
     appenders:
       - network
     additive: false
@@ -144,7 +144,7 @@ loggers:
       - network
     additive: false
   p2p:
-    level: info
+    level: debug
     appenders:
       - network
   # Route log events sent to the "mio" logger to the "other" appender

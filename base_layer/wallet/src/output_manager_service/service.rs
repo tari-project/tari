@@ -399,6 +399,11 @@ where
                         .await?,
                 ))
             },
+            OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
+                .scrape_wallet(tx_id, fee_per_gram)
+                .await
+                .map(OutputManagerResponse::TransactionToSend),
+
             OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
                     self.preview_coin_split_with_commitments_no_amount(commitments, number_of_splits, fee_per_gram)
@@ -2783,6 +2788,79 @@ where
         stp.finalize(&self.resources.key_manager).await?;
 
         Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
+    }
+
+    pub async fn scrape_wallet(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
+        let default_features_and_scripts_size = self
+            .default_features_and_scripts_size()
+            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
+
+        let src_outputs = self.resources.db.fetch_all_unspent_outputs()?;
+
+        let accumulated_amount_with_fee = src_outputs
+            .iter()
+            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
+
+        let fee =
+            self.get_fee_calc()
+                .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_features_and_scripts_size);
+
+        let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
+
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
+        let tx_meta = TransactionMetadata::default();
+        builder
+            .with_fee_per_gram(fee_per_gram)
+            .with_recipient_data(
+                // TMS will fix the script later with correct spend key
+                push_pubkey_script(&Default::default()),
+                Default::default(),
+                Default::default(),
+                MicroMinotari::zero(),
+                accumulated_amount,
+            )
+            .await?
+            .with_sender_address(self.resources.interactive_tari_address.clone())
+            .with_message("".to_string())
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_lock_height(tx_meta.lock_height)
+            .with_kernel_features(tx_meta.kernel_features)
+            .with_tx_id(tx_id);
+
+        for uo in &src_outputs {
+            builder.with_input(uo.wallet_output.clone()).await?;
+        }
+
+        let (change_commitment_mask_key, change_script_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
+        // builder needs change data, but this should be 0
+        builder.with_change_data(
+            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
+            ExecutionStack::default(),
+            change_script_key.key_id,
+            change_commitment_mask_key.key_id,
+            Covenant::default(),
+            self.resources.interactive_tari_address.clone(),
+        );
+
+        let stp = builder
+            .build()
+            .await
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // encumbering transaction
+        self.resources.db.encumber_outputs(tx_id, src_outputs.clone(), vec![])?;
+        Ok(stp)
     }
 
     async fn fetch_unspent_outputs_from_node(

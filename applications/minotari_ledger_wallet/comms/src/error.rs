@@ -50,7 +50,7 @@ pub enum LedgerDeviceError {
     Processing(String),
     /// Conversion error to or from ledger
     #[error("Conversion failed: {0}")]
-    ByteArrayError(String),
+    ConversionError(String),
     /// Not yet supported
     #[error("Ledger is not fully supported")]
     NotSupported,
@@ -60,7 +60,7 @@ pub enum LedgerDeviceError {
 
 impl From<ByteArrayError> for LedgerDeviceError {
     fn from(e: ByteArrayError) -> Self {
-        LedgerDeviceError::ByteArrayError(e.to_string())
+        LedgerDeviceError::ConversionError(e.to_string())
     }
 }
 

@@ -23,15 +23,8 @@
 //! Methods for seting up a new block.
 use std::{cmp, convert::TryFrom, sync::Arc};
 
-use crate::{
-    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
-    common::merge_mining,
-    config::MergeMiningProxyConfig,
-    error::MmProxyError,
-};
 use log::*;
-use minotari_app_grpc::tari_rpc::pow_algo::PowAlgos;
-use minotari_app_grpc::tari_rpc::{GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo};
+use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, GetNewBlockRequest, MinerData, NewBlockTemplate, PowAlgo};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
@@ -47,6 +40,13 @@ use tari_core::{
 };
 use tari_max_size::MaxSizeBytes;
 use tari_utilities::{hex::Hex, ByteArray};
+
+use crate::{
+    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
+    common::merge_mining,
+    config::MergeMiningProxyConfig,
+    error::MmProxyError,
+};
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy::block_template_protocol";
 
@@ -131,17 +131,17 @@ impl BlockTemplateProtocol<'_> {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
                         let pow_algo = PowAlgo {
-                            pow_algo: i32::from(PowAlgos::Randomx),
+                            pow_algo: PowAlgos::Randomx.into(),
                         };
                         let coinbase_extra = if self.config.coinbase_extra.trim().is_empty() {
                             None
                         } else {
                             Some(self.config.coinbase_extra.clone())
                         };
-                        let block_result = client.get_new_block(GetNewBlockRequest {
-                            pow: Some(pow_algo),
-                            coinbase_extra,
-                        }).await?.into_inner();
+                        let block_result = client
+                            .get_new_block(GetNewBlockRequest { pow: Some(pow_algo), coinbase_extra })
+                            .await?
+                            .into_inner();
                         block_result
                             .block
                             .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?

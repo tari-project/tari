@@ -24,7 +24,7 @@
 use log::*;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     types::{Commitment, PrivateKey},
 };
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
@@ -435,6 +435,14 @@ pub async fn generate_coinbase_with_wallet_output(
     range_proof_type: RangeProofType,
     payment_id: PaymentId,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
+    if !wallet_payment_address
+        .features()
+        .contains(TariAddressFeatures::create_one_sided_only())
+    {
+        return Err(CoinbaseBuildError::BuildError(
+            "Invalid address, address must be one-sided enabled".to_string(),
+        ));
+    }
     let sender_offset = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await?;

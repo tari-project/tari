@@ -67,5 +67,10 @@ async fn main_inner() -> Result<(), ExitError> {
         &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
+    info!(
+        target: LOG_TARGET,
+        "Starting Minotari Miner version: {}",
+        consts::APP_VERSION
+    );
     start_miner(cli).await
 }

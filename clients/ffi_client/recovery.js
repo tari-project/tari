@@ -53,6 +53,7 @@ try {
     "./recovery",
     30,
     600,
+    false,
     err
   );
 

@@ -2758,6 +2758,7 @@ void transport_config_destroy(TariTransportConfig *transport);
  * `database_path` - The database path char array pointer which. This is the folder path where the
  * database files will be created and the application has write access to
  * `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
+ * `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -2774,6 +2775,7 @@ TariCommsConfig *comms_config_create(const char *public_address,
                                      const char *datastore_path,
                                      unsigned long long discovery_timeout_in_secs,
                                      unsigned long long saf_message_duration_in_secs,
+                                     bool exclude_dial_test_addresses,
                                      int *error_out);
 
 /**
@@ -3412,6 +3414,27 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            bool one_sided,
                                            const char *payment_id_string,
                                            int *error_out);
+
+/**
+ * Sends a TariPendingOutboundTransaction
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `destination` - The TariWalletAddress pointer of the peer
+ * `fee_per_gram` - The transaction fee
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
+ *
+ * # Safety
+ * None
+ */
+unsigned long long scrape_wallet(struct TariWallet *wallet,
+                                 TariWalletAddress *destination,
+                                 unsigned long long fee_per_gram,
+                                 int *error_out);
 
 /**
  * Gets a fee estimate for an amount

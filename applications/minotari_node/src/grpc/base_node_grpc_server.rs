@@ -76,12 +76,12 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     builder::BaseNodeContext,
-    config::GrpcMethod,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
+    grpc_method::GrpcMethod,
     BaseNodeConfig,
 };
 
@@ -170,7 +170,7 @@ impl BaseNodeGrpcServer {
         if self.config.second_layer_grpc_enabled && second_layer_methods.contains(&grpc_method) {
             return true;
         }
-        self.config.grpc_server_allow_methods.contains(&grpc_method)
+        self.config.grpc_server_allow_methods.to_vec().contains(&grpc_method)
     }
 
     fn check_method_enabled(&self, method: GrpcMethod) -> Result<(), Status> {
@@ -269,6 +269,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
+
+        debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {} to {}", start_height, end_height);
         task::spawn(async move {
             for (start, end) in page_iter {
                 // headers are returned by height
@@ -311,6 +313,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let randomx_estimated_hash_rate = randomx_hash_rate_moving_average.average();
                     let estimated_hash_rate = sha3x_estimated_hash_rate.saturating_add(randomx_estimated_hash_rate);
 
+                    let block = match handler.get_block(current_height, true).await {
+                        Ok(block) => block,
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Base node service error: {:?}", err,);
+                            let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal(format!("Error fetching block at height {}", current_height)),
+                            )));
+                            return;
+                        },
+                    };
+                    if block.is_none() {
+                        let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Block not found at height {}", current_height)),
+                        )));
+                        return;
+                    }
+                    let block = block.unwrap();
+                    let coinbases = block.block().body.get_coinbase_outputs();
+
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
@@ -319,6 +342,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         height: current_height,
                         timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),
+                        num_coinbases: coinbases.len() as u64,
+                        coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
@@ -2010,24 +2035,28 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 local_height: 0,
                 state: tari_rpc::SyncState::HeaderStarting.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             StateInfo::HeaderSync(Some(info)) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Header.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             StateInfo::Connecting(_) => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
                 state: tari_rpc::SyncState::BlockStarting.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             StateInfo::BlockSync(info) => tari_rpc::SyncProgressResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
                 state: tari_rpc::SyncState::Block.into(),
                 short_desc,
+                initial_connected_peers: 0,
             },
             _ => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
@@ -2038,6 +2067,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     tari_rpc::SyncState::Startup.into()
                 },
                 short_desc,
+                initial_connected_peers: state.get_initial_connected_peers(),
             },
         };
         Ok(Response::new(response))

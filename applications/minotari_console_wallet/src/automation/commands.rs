@@ -28,6 +28,7 @@ use std::{
     io,
     io::{LineWriter, Write},
     path::{Path, PathBuf},
+    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -66,6 +67,7 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
+    peer_manager::{Peer, PeerQuery},
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
@@ -89,9 +91,14 @@ use tari_core::{
     },
 };
 use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+use tari_key_manager::{
+    key_manager_service::{KeyId, KeyManagerInterface},
+    SeedWords,
+};
+use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{script, CheckSigSchnorrSignature};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_shutdown::Shutdown;
+use tari_utilities::{hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -119,7 +126,10 @@ use crate::{
         PreMineSpendStep4OutputsForLeader,
     },
     cli::{CliCommands, MakeItRainTransactionType},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    init::init_wallet,
+    recovery::{get_seed_from_seed_words, wallet_recovery},
+    utils::db::{get_custom_base_node_peer_from_db, CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    wallet_modes::PeerConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -1815,6 +1825,152 @@ pub async fn command_runner(
                     println!("View key: {}", private_view_key_hex);
                     println!("Spend key: {}", spend_key_hex);
                 }
+            },
+            ImportPaperWallet(args) => {
+                let temp_path = config
+                    .db_file
+                    .parent()
+                    .ok_or(CommandError::General("No parent".to_string()))?
+                    .join("temp");
+                println!("saving temp wallet in: {:?}", temp_path);
+                {
+                    let seed_words = SeedWords::from_str(args.seed_words.as_str())
+                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    let seed =
+                        get_seed_from_seed_words(&seed_words).map_err(|e| CommandError::General(e.to_string()))?;
+                    let wallet_type = WalletType::DerivedKeys;
+                    let password = SafePassword::from("password".to_string());
+                    let shutdown = Shutdown::new();
+                    let shutdown_signal = shutdown.to_signal();
+                    let mut new_config = config.clone();
+                    new_config.set_base_path(temp_path.clone());
+
+                    let peer_config = PeerSeedsConfig::default();
+                    let mut new_wallet = init_wallet(
+                        &new_config,
+                        AutoUpdateConfig::default(),
+                        peer_config,
+                        password,
+                        None,
+                        Some(seed),
+                        shutdown_signal,
+                        true,
+                        Some(wallet_type),
+                    )
+                    .await
+                    .map_err(|e| CommandError::General(e.to_string()))?;
+                    // config
+
+                    let query = PeerQuery::new().select_where(|p| p.is_seed());
+                    let peer_seeds = wallet
+                        .comms
+                        .peer_manager()
+                        .perform_query(query)
+                        .await
+                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    // config
+                    let base_node_peers = config
+                        .base_node_service_peers
+                        .iter()
+                        .map(|s| SeedPeer::from_str(s))
+                        .map(|r| r.map(Peer::from))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    let selected_base_node = match config.custom_base_node {
+                        Some(ref custom) => SeedPeer::from_str(custom)
+                            .map(|node| Some(Peer::from(node)))
+                            .map_err(|e| CommandError::General(e.to_string()))?,
+                        None => get_custom_base_node_peer_from_db(&wallet),
+                    };
+
+                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
+
+                    let base_node = peer_config
+                        .get_base_node_peer()
+                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    new_wallet
+                        .set_base_node_peer(
+                            base_node.public_key.clone(),
+                            Some(
+                                base_node
+                                    .last_address_used()
+                                    .ok_or(CommandError::General("No address found".to_string()))?,
+                            ),
+                        )
+                        .await
+                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    wallet_recovery(&new_wallet, &peer_config, new_config.recovery_retry_limit)
+                        .await
+                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    print!("Wallet recovery completed");
+                    let mut oms = new_wallet.output_manager_service.clone();
+                    oms.validate_txos().await?;
+                    let mut event = oms.get_event_stream();
+                    loop {
+                        match event.recv().await {
+                            Ok(event) => match *event {
+                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                    println!("Validation succeeded");
+                                    break;
+                                },
+                                OutputManagerEvent::TxoValidationAlreadyBusy(_) => {
+                                    println!("Validation already busy");
+                                },
+                                _ => {
+                                    println!("Validation failed");
+                                    break;
+                                },
+                            },
+                            Err(e) => {
+                                eprintln!("Sync error! {}", e);
+                                break;
+                            },
+                        }
+                    }
+                    println!("balance as of scanning height");
+                    match oms.clone().get_balance().await {
+                        Ok(balance) => {
+                            println!("{}", balance);
+                        },
+                        Err(e) => eprintln!("GetBalance error! {}", e),
+                    }
+                    let mut tms = new_wallet.transaction_service.clone();
+                    match tms
+                        .scrape_wallet(
+                            wallet
+                                .get_wallet_one_sided_address()
+                                .await
+                                .map_err(|e| CommandError::General(e.to_string()))?,
+                            config.fee_per_gram * uT,
+                        )
+                        .await
+                        .map_err(CommandError::TransactionServiceError)
+                    {
+                        Ok(tx_id) => {
+                            debug!(target: LOG_TARGET, "send-minotari concluded with tx_id {}", tx_id);
+                            let duration = config.command_send_wait_timeout;
+                            match timeout(duration, monitor_transactions(tms.clone(), vec![tx_id], wait_stage)).await {
+                                Ok(txs) => {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "monitor_transactions done to stage {:?} with tx_ids: {:?}", wait_stage, txs
+                                    );
+                                    println!("Done! All transactions monitored to {:?} stage.", wait_stage);
+                                },
+                                Err(_e) => {
+                                    println!(
+                                        "The configured timeout ({:#?}) was reached before all transactions reached \
+                                         the {:?} stage. See the logs for more info.",
+                                        duration, wait_stage
+                                    );
+                                },
+                            }
+                        },
+                        Err(e) => eprintln!("SendMinotari error! {}", e),
+                    }
+                }
+                println!("removing temp wallet in: {:?}", temp_path);
+                fs::remove_dir_all(temp_path)?;
             },
         }
     }

@@ -81,7 +81,13 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::main";
 #[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, cli.non_interactive_mode, &cli)?;
+    let cfg = load_configuration(
+        config_path.as_path(),
+        true,
+        cli.non_interactive_mode,
+        &cli,
+        cli.common.network,
+    )?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
 
@@ -458,8 +464,9 @@ async fn get_new_block_p2pool_node(
     config: &MinerConfig,
     sha_p2pool_client: &mut ShaP2PoolGrpcClient,
 ) -> Result<GetNewBlockResponse, MinerError> {
-    let mut pow_algo = PowAlgo::default();
-    pow_algo.set_pow_algo(PowAlgos::Sha3x);
+    let pow_algo = PowAlgo {
+        pow_algo: PowAlgos::Sha3x.into(),
+    };
     let coinbase_extra = if config.coinbase_extra.trim().is_empty() {
         None
     } else {

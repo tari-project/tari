@@ -20,129 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, ops::Deref, slice, str::FromStr, vec};
-
 use multiaddr::Multiaddr;
-use serde::{
-    de,
-    de::{SeqAccess, Visitor},
-    Deserialize,
-    Deserializer,
-    Serialize,
-};
+
+use crate::configuration::ConfigList;
 
 /// Supports deserialization from a sequence of strings or comma-delimited strings
-#[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
-pub struct MultiaddrList(Vec<Multiaddr>);
-
-impl MultiaddrList {
-    pub fn new() -> Self {
-        Self(vec![])
-    }
-
-    pub fn with_capacity(size: usize) -> Self {
-        Self(Vec::with_capacity(size))
-    }
-
-    pub fn into_vec(self) -> Vec<Multiaddr> {
-        self.0
-    }
-
-    pub fn as_slice(&self) -> &[Multiaddr] {
-        self.0.as_slice()
-    }
-}
-
-impl Deref for MultiaddrList {
-    type Target = [Multiaddr];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<[Multiaddr]> for MultiaddrList {
-    fn as_ref(&self) -> &[Multiaddr] {
-        self.0.as_ref()
-    }
-}
-
-impl From<Vec<Multiaddr>> for MultiaddrList {
-    fn from(v: Vec<Multiaddr>) -> Self {
-        Self(v)
-    }
-}
-
-impl IntoIterator for MultiaddrList {
-    type IntoIter = <Vec<Multiaddr> as IntoIterator>::IntoIter;
-    type Item = <Vec<Multiaddr> as IntoIterator>::Item;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a MultiaddrList {
-    type IntoIter = slice::Iter<'a, Multiaddr>;
-    type Item = <Self::IntoIter as Iterator>::Item;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-impl<'de> Deserialize<'de> for MultiaddrList {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
-        struct MultiaddrListVisitor;
-
-        impl<'de> Visitor<'de> for MultiaddrListVisitor {
-            type Value = MultiaddrList;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "a comma delimited multiaddr or multiple multiaddr elements")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where E: de::Error {
-                Ok(MultiaddrList(
-                    v.split(',')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .map(Multiaddr::from_str)
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| E::invalid_value(de::Unexpected::Str(e.to_string().as_str()), &self))?,
-                ))
-            }
-
-            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-            where D: Deserializer<'de> {
-                deserializer.deserialize_seq(MultiaddrListVisitor)
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where A: SeqAccess<'de> {
-                let mut buf = seq.size_hint().map(Vec::with_capacity).unwrap_or_default();
-                while let Some(v) = seq.next_element::<Multiaddr>()? {
-                    buf.push(v)
-                }
-                Ok(MultiaddrList(buf))
-            }
-        }
-
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_seq(MultiaddrListVisitor)
-        } else {
-            deserializer.deserialize_newtype_struct("MultiaddrList", MultiaddrListVisitor)
-        }
-    }
-}
+pub type MultiaddrList = ConfigList<Multiaddr>;
 
 #[cfg(test)]
 mod tests {
-    use config::Config;
+    use std::{str::FromStr, vec};
 
-    use super::*;
+    use config::Config;
+    use multiaddr::Multiaddr;
+    use serde::Deserialize;
+
+    use crate::configuration::MultiaddrList;
 
     #[derive(Deserialize)]
     struct Test {
@@ -203,7 +96,7 @@ mod tests {
         let config_str =
             r#"something = ["/ip4/127.0.0.1/tcp/1234","/ip4/192.168.0.1/tcp/1234","/ip4/10.0.0.1/tcp/1234"]"#;
         let test = toml::from_str::<Test>(config_str).unwrap();
-        assert_eq!(test.something.0, vec![
+        assert_eq!(test.something.into_vec(), vec![
             Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap(),
             Multiaddr::from_str("/ip4/192.168.0.1/tcp/1234").unwrap(),
             Multiaddr::from_str("/ip4/10.0.0.1/tcp/1234").unwrap()
@@ -227,7 +120,7 @@ mod tests {
             .build()
             .unwrap();
         let test = config.try_deserialize::<Test>().unwrap();
-        assert_eq!(test.something.0, vec![
+        assert_eq!(test.something.into_vec(), vec![
             Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap(),
             Multiaddr::from_str("/ip4/192.168.0.1/tcp/1234").unwrap(),
             Multiaddr::from_str("/ip4/10.0.0.1/tcp/1234").unwrap()

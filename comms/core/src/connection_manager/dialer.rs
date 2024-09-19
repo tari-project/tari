@@ -55,7 +55,7 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing::Yamux,
-    net_address::PeerAddressSource,
+    net_address::{MultiaddrRange, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
@@ -174,6 +174,7 @@ where
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
         use DialerRequest::{CancelPendingDial, Dial, NotifyNewInboundConnection};
         debug!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
+
         match request {
             Dial(peer, reply_tx) => {
                 self.handle_dial_peer_request(pending_dials, peer, reply_tx);
@@ -515,13 +516,17 @@ where
             tokio::select! {
                 _ = delay => {
                     debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
-                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_wire_byte).await {
+                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_wire_byte, config.excluded_dial_addresses.clone()).await {
                         (state, Ok((socket, addr))) => {
                             debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer().node_id.short_str(), state.num_attempts());
                             break (state, Ok((socket, addr)));
                         },
+                        // Connection went stale, propagate error to enable starting a fresh connection
+                        (state, Err(ConnectionManagerError::NoiseHandshakeError(e))) => break (state, Err(ConnectionManagerError::NoiseHandshakeError(e))),
                         // Inflight dial was cancelled
                         (state, Err(ConnectionManagerError::DialCancelled)) => break (state, Err(ConnectionManagerError::DialCancelled)),
+                        // All public addresses for this peer are excluded
+                        (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))) => break (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))),
                         (state, Err(err)) => {
                             debug!(target: LOG_TARGET, "Failed to dial peer {} | Attempt {} | Error: {}", state.peer().node_id.short_str(), state.num_attempts(), err);
                             if state.num_attempts() >= config.max_dial_attempts {
@@ -546,33 +551,50 @@ where
     /// Attempts to dial a peer sequentially on all addresses; if connections are to be minimized only.
     /// Returns ownership of the given `DialState` and a success or failure result for the dial,
     /// or None if the dial was cancelled inflight
+    #[allow(clippy::too_many_lines)]
     async fn dial_peer(
         mut dial_state: DialState,
         noise_config: &NoiseConfig,
         transport: &TTransport,
         network_byte: u8,
+        excluded_dial_addresses: Vec<MultiaddrRange>,
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
-        let addresses = dial_state.peer().addresses.clone().into_vec();
+        let addresses = dial_state
+            .peer()
+            .addresses
+            .clone()
+            .into_vec()
+            .iter()
+            .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)))
+            .cloned()
+            .collect::<Vec<_>>();
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "No more contactable addresses for peer '{}'",
+                "Dial - No more contactable addresses for peer '{}'",
                 node_id_hex
             );
-            return (
-                dial_state,
-                Err(ConnectionManagerError::NoContactableAddressesForPeer(node_id_hex)),
-            );
+            return if dial_state.peer().addresses.is_empty() {
+                (
+                    dial_state,
+                    Err(ConnectionManagerError::NoContactableAddressesForPeer(node_id_hex)),
+                )
+            } else {
+                (
+                    dial_state,
+                    Err(ConnectionManagerError::AllPeerAddressesAreExcluded(node_id_hex)),
+                )
+            };
         }
         let cancel_signal = dial_state.get_cancel_signal();
         for address in addresses {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "Attempting address '{}' for peer '{}'",
+                "Dial - Attempting address '{}' for peer '{}'",
                 address,
                 dial_state.peer().node_id.short_str()
             );
@@ -589,17 +611,17 @@ where
                             address: moved_address.to_string(),
                             details: err.to_string(),
                         })?;
-                debug!(
-                    target: LOG_TARGET,
-                    "Socket established on '{}'. Performing noise upgrade protocol", moved_address
-                );
                 let initial_dial_time = timer.elapsed();
 
-                debug!(
-                    "Dialed peer: {} on address: {} on tcp after: {}",
+                trace!(
+                    "Dial - Dialed peer: {} on address: {} on tcp after: {}",
                     node_id.short_str(),
                     moved_address,
                     timer.elapsed().as_millis()
+                );
+                trace!(
+                    target: LOG_TARGET,
+                    "Dial - Socket established on '{}'. Performing noise upgrade protocol", moved_address
                 );
                 timer = Instant::now();
 
@@ -610,10 +632,20 @@ where
 
                 let noise_socket = noise_config
                     .upgrade_socket(socket, ConnectionDirection::Outbound)
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Dial - failed to upgrade noise: {} on address: {} ({})",
+                            node_id,
+                            moved_address,
+                            err
+                        );
+                        err
+                    })?;
 
                 let noise_upgrade_time = timer.elapsed();
-                debug!(
+                trace!(
                     "Dial - upgraded noise: {} on address: {} on tcp after: {} ms",
                     node_id.short_str(),
                     moved_address,
@@ -638,7 +670,7 @@ where
                 Either::Left((Err(err), _)) => {
                     debug!(
                         target: LOG_TARGET,
-                        "(Attempt {}) Dial failed on address '{}' for peer '{}' because '{}'",
+                        "Dial - (Attempt {}) Dial failed on address '{}' for peer '{}' because '{}'",
                         dial_state.num_attempts(),
                         address,
                         dial_state.peer().node_id.short_str(),
@@ -649,6 +681,11 @@ where
                         .peer_mut()
                         .addresses
                         .mark_failed_connection_attempt(&address, err.to_string());
+
+                    // Handshake errors are not retryable
+                    if let ConnectionManagerError::NoiseHandshakeError(msg) = err {
+                        return (dial_state, Err(ConnectionManagerError::NoiseHandshakeError(msg)));
+                    }
                     // Try the next address
                     continue;
                 },
@@ -656,7 +693,7 @@ where
                 Either::Right(_) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Dial for peer '{}' cancelled",
+                        "Dial - for peer '{}' cancelled",
                         dial_state.peer().node_id.short_str()
                     );
                     return (dial_state, Err(ConnectionManagerError::DialCancelled));

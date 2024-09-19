@@ -59,6 +59,11 @@ async fn main() -> Result<(), anyhow::Error> {
         cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
     )?;
+    info!(
+        target: LOG_TARGET,
+        "Starting Minotari Merge Mining Proxy version: {}",
+        consts::APP_VERSION
+    );
     match run_merge_miner::start_merge_miner(cli).await {
         Ok(_) => Ok(()),
         Err(err) => {

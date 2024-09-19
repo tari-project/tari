@@ -225,6 +225,7 @@ mod test {
     }
 
     mod peer_seed_resolver {
+        use tari_common::configuration::name_server::DEFAULT_DNS_NAME_SERVER;
         use trust_dns_client::{
             proto::{
                 op::Query,
@@ -235,7 +236,7 @@ mod test {
         };
 
         use super::*;
-        use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
+        use crate::dns::mock;
 
         #[tokio::test]
         #[ignore = "Useful for developer testing but will fail unless the DNS has TXT records setup correctly."]

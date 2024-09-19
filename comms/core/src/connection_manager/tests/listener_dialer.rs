@@ -256,3 +256,138 @@ async fn banned() {
 
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn excluded_yes() {
+    let (event_tx, _event_rx) = mpsc::channel(10);
+    let mut shutdown = Shutdown::new();
+
+    let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config1 = NoiseConfig::new(node_identity1.clone());
+    let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
+    let supported_protocols = vec![expected_proto.clone()];
+    let peer_manager1 = build_peer_manager();
+    let mut listener = PeerListener::new(
+        Default::default(),
+        "/memory/0".parse().unwrap(),
+        MemoryTransport,
+        noise_config1.clone(),
+        event_tx.clone(),
+        peer_manager1.clone(),
+        node_identity1.clone(),
+        shutdown.to_signal(),
+    );
+    listener.set_supported_protocols(supported_protocols.clone());
+
+    // Get the listener address of the peer
+    let address = listener.listen().await.unwrap();
+
+    let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config2 = NoiseConfig::new(node_identity2.clone());
+    let (request_tx, request_rx) = mpsc::channel(1);
+    let peer_manager2 = build_peer_manager();
+    let connection_manager_config = ConnectionManagerConfig {
+        excluded_dial_addresses: vec![address.to_string().parse().unwrap()],
+        ..Default::default()
+    };
+    let mut dialer = Dialer::new(
+        connection_manager_config,
+        node_identity2.clone(),
+        peer_manager2.clone(),
+        MemoryTransport,
+        noise_config2.clone(),
+        ConstantBackoff::new(Duration::from_millis(100)),
+        request_rx,
+        event_tx.clone(),
+        shutdown.to_signal(),
+    );
+    dialer.set_supported_protocols(supported_protocols.clone());
+
+    let dialer_fut = tokio::spawn(dialer.run());
+
+    let mut peer = node_identity1.to_peer();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
+    peer.set_id_for_test(1);
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    request_tx
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
+        .await
+        .unwrap();
+
+    // Check that the dial failed. We're checking that the dial attempt was never made.
+    let res = reply_rx.await.unwrap();
+    assert_eq!(
+        format!("{:?}", res),
+        format!("Err(AllPeerAddressesAreExcluded(\"{}\"))", node_identity1.node_id())
+    );
+
+    shutdown.trigger();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn excluded_no() {
+    let (event_tx, _event_rx) = mpsc::channel(10);
+    let mut shutdown = Shutdown::new();
+
+    let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config1 = NoiseConfig::new(node_identity1.clone());
+    let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
+    let supported_protocols = vec![expected_proto.clone()];
+    let peer_manager1 = build_peer_manager();
+    let mut listener = PeerListener::new(
+        Default::default(),
+        "/memory/0".parse().unwrap(),
+        MemoryTransport,
+        noise_config1.clone(),
+        event_tx.clone(),
+        peer_manager1.clone(),
+        node_identity1.clone(),
+        shutdown.to_signal(),
+    );
+    listener.set_supported_protocols(supported_protocols.clone());
+
+    // Get the listener address of the peer
+    let address = listener.listen().await.unwrap();
+
+    let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config2 = NoiseConfig::new(node_identity2.clone());
+    let (request_tx, request_rx) = mpsc::channel(1);
+    let peer_manager2 = build_peer_manager();
+    let connection_manager_config = ConnectionManagerConfig {
+        excluded_dial_addresses: vec![],
+        ..Default::default()
+    };
+    let mut dialer = Dialer::new(
+        connection_manager_config,
+        node_identity2.clone(),
+        peer_manager2.clone(),
+        MemoryTransport,
+        noise_config2.clone(),
+        ConstantBackoff::new(Duration::from_millis(100)),
+        request_rx,
+        event_tx.clone(),
+        shutdown.to_signal(),
+    );
+    dialer.set_supported_protocols(supported_protocols.clone());
+
+    let dialer_fut = tokio::spawn(dialer.run());
+
+    let mut peer = node_identity1.to_peer();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
+    peer.set_id_for_test(1);
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    request_tx
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
+        .await
+        .unwrap();
+
+    // Check that the dial failed. We're checking that the dial attempt was never made.
+    let res = reply_rx.await.unwrap();
+    assert!(res.is_ok());
+
+    shutdown.trigger();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}

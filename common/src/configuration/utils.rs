@@ -4,7 +4,7 @@
 use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path::Path, str::FromStr};
 
 use config::Config;
-use log::{debug, info};
+use log::{debug, info, trace};
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize,
@@ -28,29 +28,39 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     create_if_not_exists: bool,
     non_interactive: bool,
     overrides: &TOverride,
+    cli_network: Option<Network>,
 ) -> Result<Config, ConfigError> {
-    debug!(
-        target: LOG_TARGET,
-        "Loading configuration file from  {}",
-        config_path.as_ref().display()
-    );
-    if !config_path.as_ref().exists() && create_if_not_exists {
+    if config_path.as_ref().exists() {
+        debug!(
+            target: LOG_TARGET,
+            "Using existing configuration file  {}",
+            config_path.as_ref().display()
+        );
+    } else if create_if_not_exists {
         let sources = if non_interactive {
             get_default_config(false)
         } else {
             prompt_default_config()
         };
+        debug!(
+            target: LOG_TARGET,
+            "Created new configuration file {}",
+            config_path.as_ref().display()
+        );
         write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
+    } else {
+        // Nothing here
     }
 
-    load_configuration_with_overrides(config_path, overrides)
+    load_configuration_with_overrides(config_path, overrides, cli_network)
 }
 
 /// Loads the config at the given path applying all overrides.
 pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     overrides: &TOverride,
+    cli_network: Option<Network>,
 ) -> Result<Config, ConfigError> {
     let filename = config_path
         .as_ref()
@@ -66,24 +76,29 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         .build()
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
-    let mut network = match cfg.get_string("network") {
-        Ok(network) => {
-            Network::from_str(&network).map_err(|e| ConfigError::new("Invalid network", Some(e.to_string())))?
-        },
-        Err(config::ConfigError::NotFound(_)) => {
-            debug!(target: LOG_TARGET, "No network configuration found. Using default.");
-            Network::default()
-        },
-        Err(e) => {
-            return Err(ConfigError::new(
-                "Could not get network configuration",
-                Some(e.to_string()),
-            ));
+    let network = match cli_network {
+        Some(val) => val,
+        None => match cfg.get_string("network") {
+            Ok(network) => {
+                Network::from_str(&network).map_err(|e| ConfigError::new("Invalid network", Some(e.to_string())))?
+            },
+            Err(config::ConfigError::NotFound(_)) => {
+                debug!(target: LOG_TARGET, "No network configuration found. Using default.");
+                Network::default()
+            },
+            Err(e) => {
+                return Err(ConfigError::new(
+                    "Could not get network configuration",
+                    Some(e.to_string()),
+                ));
+            },
         },
     };
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
-    let overrides = overrides.get_config_property_overrides(&mut network);
+    let overrides = overrides.get_config_property_overrides(&network);
+    trace!(target: LOG_TARGET, "Config property overrides: {:?}", overrides);
+
     // Set the static network variable according to the user chosen network (for use with
     // `get_current_or_user_setting_or_default()`) -
     set_network_if_choice_valid(network)?;
@@ -94,6 +109,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     let mut cfg = Config::builder().add_source(cfg);
     for (key, value) in overrides {
+        trace!(target: LOG_TARGET, "Set override: ({}, {})", key, value);
         cfg = cfg
             .set_override(key.as_str(), value.as_str())
             .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
@@ -182,7 +198,10 @@ where
 
         fn visit_str<E>(self, value: &str) -> Result<T, E>
         where E: de::Error {
-            Ok(FromStr::from_str(value).unwrap())
+            match FromStr::from_str(value) {
+                Ok(val) => Ok(val),
+                Err(e) => Err(de::Error::custom(e)),
+            }
         }
 
         fn visit_map<M>(self, map: M) -> Result<T, M::Error>

@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.3.1-pre.1"
+version = "1.4.2-pre.2"
 edition = "2021"
 
 [lib]
@@ -13,9 +13,9 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 tari_crypto = { version = "0.20.3" }
 tari_utilities = { version = "0.7" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.3.1-pre.1" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.3.1-pre.1" }
-tari_service_framework = { path = "../service_framework", version = "1.3.1-pre.1" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.4.2-pre.2" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.4.2-pre.2" }
+tari_service_framework = { path = "../service_framework", version = "1.4.2-pre.2" }
 
 async-trait = { version = "0.1.50" }
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
@@ -23,8 +23,8 @@ chacha20poly1305 = "0.10.1"
 tokio = { version = "1.36", features = ["sync", "macros"] }
 futures = { version = "^0.3.1", features = ["compat", "std"] }
 log = { version = "0.4.6" }
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
-diesel_migrations = { version = "2.0.0" }
+diesel = { version = "2.2.4", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
+diesel_migrations = { version = "2.2" }
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.10"
 chacha20 = "0.7.1"
