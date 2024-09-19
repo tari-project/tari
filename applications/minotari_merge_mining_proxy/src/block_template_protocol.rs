@@ -139,13 +139,16 @@ impl BlockTemplateProtocol<'_> {
                             Some(self.config.coinbase_extra.clone())
                         };
                         let block_result = client
-                            .get_new_block(GetNewBlockRequest { pow: Some(pow_algo), coinbase_extra })
+                            .get_new_block(GetNewBlockRequest {
+                                pow: Some(pow_algo),
+                                coinbase_extra,
+                            })
                             .await?
                             .into_inner();
                         block_result
                             .block
                             .ok_or_else(|| MmProxyError::FailedToGetBlockTemplate("block result".to_string()))?
-                    }
+                    },
                     None => {
                         let (block_template_with_coinbase, height) = self
                             .get_block_template_from_cache_or_new(block_templates, best_block_hash, &mut loop_count)
@@ -163,20 +166,20 @@ impl BlockTemplateProtocol<'_> {
                                     },
                                 );
                                 b
-                            }
+                            },
                             Err(MmProxyError::FailedPreconditionBlockLostRetry) => {
                                 debug!(
                                     target: LOG_TARGET,
                                     "Block lost, retrying to get new block template (try {})", loop_count
                                 );
                                 continue;
-                            }
+                            },
                             Err(err) => {
                                 error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
                                 return Err(err);
-                            }
+                            },
                         }
-                    }
+                    },
                 };
 
                 let height = block
@@ -250,7 +253,7 @@ impl BlockTemplateProtocol<'_> {
                     Err(err) => {
                         error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
                         return Err(err);
-                    }
+                    },
                 };
                 let height = new_template
                     .template
@@ -274,7 +277,7 @@ impl BlockTemplateProtocol<'_> {
                     .await;
 
                 (template_with_coinbase, height)
-            }
+            },
             Some((new_template, template_with_coinbase)) => {
                 let height = new_template
                     .template
@@ -284,7 +287,7 @@ impl BlockTemplateProtocol<'_> {
                     .unwrap_or_default();
                 debug!(target: LOG_TARGET, "Used existing new block template at height: #{} (try {})", height, loop_count);
                 (template_with_coinbase, height)
-            }
+            },
         };
         Ok((block_template_with_coinbase, height))
     }
@@ -303,7 +306,7 @@ impl BlockTemplateProtocol<'_> {
                     return Err(MmProxyError::FailedPreconditionBlockLostRetry);
                 }
                 Err(status.into())
-            }
+            },
         }
     }
 
@@ -377,7 +380,7 @@ impl BlockTemplateProtocol<'_> {
             self.config.range_proof_type,
             PaymentId::Empty,
         )
-            .await?;
+        .await?;
         Ok((coinbase_output, coinbase_kernel))
     }
 
