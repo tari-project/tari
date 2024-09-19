@@ -3,24 +3,32 @@ name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "1.4.2-pre.2"
+version = "1.4.2-pre.3"
 edition = "2018"
 
 [dependencies]
-tari_common = { path = "../../common", version = "1.4.2-pre.2" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.4.2-pre.2" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.4.2-pre.2" }
-tari_comms = { path = "../../comms/core", version = "1.4.2-pre.2" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.4.2-pre.2" }
-tari_contacts = { path = "../../base_layer/contacts", version = "1.4.2-pre.2" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto"], version = "1.4.2-pre.2" }
+tari_common = { path = "../../common", version = "1.4.2-pre.3" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.4.2-pre.3" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.4.2-pre.3" }
+tari_comms = { path = "../../comms/core", version = "1.4.2-pre.3" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.4.2-pre.3" }
+tari_contacts = { path = "../../base_layer/contacts", version = "1.4.2-pre.3" }
+tari_core = { path = "../../base_layer/core", default-features = false, features = [
+    "transactions",
+    "mempool_proto",
+    "base_node_proto",
+], version = "1.4.2-pre.3" }
 tari_crypto = { version = "0.20.3" }
 tari_max_size = { path = "../../infrastructure/max_size" }
-tari_key_manager = { path = "../key_manager", features = ["key_manager_service"], version = "1.4.2-pre.2" }
-tari_p2p = { path = "../p2p", features = ["auto-update"], version = "1.4.2-pre.2" }
-tari_script = { path = "../../infrastructure/tari_script", version = "1.4.2-pre.2" }
-tari_service_framework = { path = "../service_framework", version = "1.4.2-pre.2" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.4.2-pre.2" }
+tari_key_manager = { path = "../key_manager", features = [
+    "key_manager_service",
+], version = "1.4.2-pre.3" }
+tari_p2p = { path = "../p2p", features = [
+    "auto-update",
+], version = "1.4.2-pre.3" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.4.2-pre.3" }
+tari_service_framework = { path = "../service_framework", version = "1.4.2-pre.3" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.4.2-pre.3" }
 tari_utilities = { version = "0.7" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
@@ -37,7 +45,12 @@ borsh = "1.2"
 sha2 = "0.10"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
-diesel = { version = "2.2.4", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
+diesel = { version = "2.2.4", features = [
+    "sqlite",
+    "serde_json",
+    "chrono",
+    "64-column-tables",
+] }
 diesel_migrations = "2.2"
 digest = "0.10"
 fs2 = "0.4.0"
@@ -58,13 +71,21 @@ chacha20poly1305 = "0.10.1"
 zeroize = "1"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = ["build", "static-application-info"], version = "1.4.2-pre.2" }
+tari_common = { path = "../../common", features = [
+    "build",
+    "static-application-info",
+], version = "1.4.2-pre.3" }
 
 [dev-dependencies]
 tari_p2p = { path = "../p2p", features = ["test-mocks"] }
 tari_comms_dht = { path = "../../comms/dht", features = ["test-mocks"] }
 tari_test_utils = { path = "../../infrastructure/test_utils" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto", "base_node"] }
+tari_core = { path = "../../base_layer/core", default-features = false, features = [
+    "transactions",
+    "mempool_proto",
+    "base_node_proto",
+    "base_node",
+] }
 env_logger = "0.7.1"
 prost = "0.11.9"
 
@@ -75,4 +96,6 @@ bundled_sqlite = ["libsqlite3-sys"]
 ledger = ["tari_core/ledger"]
 
 [package.metadata.cargo-machete]
-ignored = ["libsqlite3-sys"] # this is so we can run cargo machete without getting false positive about macro dependancies
+ignored = [
+    "libsqlite3-sys",
+] # this is so we can run cargo machete without getting false positive about macro dependancies

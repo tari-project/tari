@@ -1,13 +1,15 @@
 [package]
 name = "minotari_ledger_wallet"
-version = "1.4.2-pre.2"
+version = "1.4.2-pre.3"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.3", default-features = false, features = ["borsh"]}
-tari_hashing = { path = "../../../hashing", version = "1.4.2-pre.2" }
+tari_crypto = { version = "0.20.3", default-features = false, features = [
+    "borsh",
+] }
+tari_hashing = { path = "../../../hashing", version = "1.4.2-pre.3" }
 
 minotari_ledger_wallet_common = { path = "../common" }
 
@@ -31,7 +33,7 @@ ignored = ["once_cell"]
 
 [profile.release]
 opt-level = 's'
-lto = "fat" # same as `true`
+lto = "fat"     # same as `true`
 panic = "abort"
 
 [features]

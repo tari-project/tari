@@ -3,13 +3,13 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "1.4.2-pre.2"
+version = "1.4.2-pre.3"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.20.3" }
 tari_utilities = { version = "0.7" }
-tari_common = { path = "../../common", version = "1.4.2-pre.2" }
+tari_common = { path = "../../common", version = "1.4.2-pre.3" }
 minotari_ledger_wallet_common = { path = "../../applications/minotari_ledger_wallet/common" }
 chacha20poly1305 = "0.10.1"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -31,4 +31,7 @@ primitive-types = { version = "0.12", features = ["serde"] }
 default = []
 
 [package.metadata.cargo-machete]
-ignored = ["strum", "strum_macros"] # this is so we can run cargo machete without getting false positive about macro dependancies
+ignored = [
+    "strum",
+    "strum_macros",
+] # this is so we can run cargo machete without getting false positive about macro dependancies

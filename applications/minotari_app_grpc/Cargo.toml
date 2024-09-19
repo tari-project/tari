@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.4.2-pre.2"
+version = "1.4.2-pre.3"
 edition = "2018"
 
 [dependencies]
@@ -32,8 +32,10 @@ tonic = { version = "0.8.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.4.2-pre.2" }
+tari_features = { path = "../../common/tari_features", version = "1.4.2-pre.3" }
 tonic-build = "0.8.4"
 
 [package.metadata.cargo-machete]
-ignored = ["prost"] # this is so we can run cargo machete without getting false positive about macro dependancies
+ignored = [
+    "prost",
+] # this is so we can run cargo machete without getting false positive about macro dependancies

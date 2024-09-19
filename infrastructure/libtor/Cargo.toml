@@ -1,6 +1,6 @@
 [package]
 name = "tari_libtor"
-version = "1.4.2-pre.2"
+version = "1.4.2-pre.3"
 edition = "2021"
 license = "BSD-3-Clause"
 
@@ -18,4 +18,6 @@ tor-hash-passwd = "1.0.1"
 libtor = { version = "47.13.0", features = ["vendored-openssl"] }
 
 [package.metadata.cargo-machete]
-ignored = ["openssl"] # this is so we can run cargo machete without getting false positive about macro dependancies
+ignored = [
+    "openssl",
+] # this is so we can run cargo machete without getting false positive about macro dependancies
