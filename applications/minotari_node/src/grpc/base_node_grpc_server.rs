@@ -769,9 +769,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 "`GetNewBlockTemplateWithCoinbases` method not made available",
             ));
         }
-        trace!(target: LOG_TARGET, "Incoming GRPC request for get new block template with coinbases");
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
+        let shares = request
+            .coinbases
+            .iter()
+            .map(|c| c.value.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template with coinbases: {}", shares);
         let algo = request
             .algo
             .map(|algo| u64::try_from(algo.pow_algo))
@@ -849,7 +855,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal("Single coinbase fees exceeded u64".to_string()),
                 )
             })?;
-            prev_coinbase_value = u128::from(coinbase.value);
+            prev_coinbase_value += u128::from(coinbase.value);
         }
 
         let key_manager = create_memory_db_key_manager().map_err(|e| {
