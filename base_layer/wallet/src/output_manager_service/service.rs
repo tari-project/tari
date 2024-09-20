@@ -3109,7 +3109,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut known_keys = Vec::new();
         let known_scripts = self.resources.db.get_all_known_one_sided_payment_scripts()?;
@@ -3127,7 +3127,7 @@ where
 
         let mut scanned_outputs = vec![];
 
-        for output in outputs {
+        for (output, tx_id) in outputs {
             if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                 if let Some(matched_key) = known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
                     let shared_secret = self
@@ -3166,7 +3166,7 @@ where
                                 payment_id,
                             );
 
-                            scanned_outputs.push((rewound_output, OutputSource::OneSided));
+                            scanned_outputs.push((rewound_output, OutputSource::OneSided, tx_id));
                         }
                     }
                 }
@@ -3232,7 +3232,7 @@ where
                                 payment_id,
                             );
 
-                            scanned_outputs.push((rewound_output, OutputSource::StealthOneSided));
+                            scanned_outputs.push((rewound_output, OutputSource::StealthOneSided, tx_id));
                         }
                     }
                 }
@@ -3245,12 +3245,12 @@ where
     // Import scanned outputs into the wallet
     async fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(WalletOutput, OutputSource)>,
+        scanned_outputs: Vec<(WalletOutput, OutputSource, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, output_source) in scanned_outputs {
-            let tx_id = TxId::new_random();
+        for (output, output_source, tx_id) in scanned_outputs {
+            let tx_id = tx_id.unwrap_or(TxId::new_random());
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.resources.key_manager,

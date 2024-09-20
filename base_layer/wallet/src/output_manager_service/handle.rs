@@ -131,8 +131,8 @@ pub enum OutputManagerRequest {
         num_outputs: usize,
     },
 
-    ScanForRecoverableOutputs(Vec<TransactionOutput>),
-    ScanOutputs(Vec<TransactionOutput>),
+    ScanForRecoverableOutputs(Vec<(TransactionOutput, Option<TxId>)>),
+    ScanOutputs(Vec<(TransactionOutput, Option<TxId>)>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroMinotari,
@@ -747,7 +747,7 @@ impl OutputManagerHandle {
 
     pub async fn scan_for_recoverable_outputs(
         &mut self,
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
@@ -761,7 +761,7 @@ impl OutputManagerHandle {
 
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),

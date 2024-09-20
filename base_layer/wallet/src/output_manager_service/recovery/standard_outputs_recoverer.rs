@@ -73,16 +73,16 @@ where
     /// them to the database and increment the key manager index
     pub async fn scan_and_recover_outputs(
         &mut self,
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
+        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash, Option<TxId>)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
-        for output in outputs {
+        for (output, tx_id) in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop)? &&
                 known_script_index.is_none() &&
@@ -122,7 +122,7 @@ where
                 payment_id,
             );
 
-            rewound_outputs.push((uo, known_script_index.is_some(), hash));
+            rewound_outputs.push((uo, known_script_index.is_some(), hash, tx_id));
         }
 
         let rewind_time = start.elapsed();
@@ -134,7 +134,7 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, has_known_script, hash) in &mut rewound_outputs {
+        for (output, has_known_script, hash, tx_id) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.master_key_manager,
@@ -144,7 +144,10 @@ where
                 None,
             )
             .await?;
-            let tx_id = TxId::new_random();
+            let tx_id = match tx_id {
+                Some(id) => *id,
+                None => TxId::new_random(),
+            };
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                 match e {

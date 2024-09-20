@@ -202,10 +202,10 @@ Feature: Wallet FFI
         Then ffi wallet FFI_WALLET detects AT_LEAST 3 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 2 blocks
         Then all nodes are at height 22
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_UNCONFIRMED and not cancelled
         When mining node MINER mines 5 blocks
         Then all nodes are at height 27
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_CONFIRMED and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I stop ffi wallet FFI_WALLET
 
     @critical

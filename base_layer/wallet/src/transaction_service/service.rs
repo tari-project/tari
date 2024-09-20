@@ -1855,7 +1855,7 @@ where
             CompletedTransaction::new(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
-                dest_address,
+                dest_address.clone(),
                 amount,
                 fee,
                 tx.clone(),
@@ -1869,6 +1869,15 @@ where
             )?,
         )
         .await?;
+
+        tokio::spawn(send_finalized_transaction_message(
+            tx_id,
+            tx.clone(),
+            dest_address.comms_public_key().clone(),
+            self.resources.outbound_message_service.clone(),
+            self.resources.config.direct_send_timeout,
+            self.resources.config.transaction_routing_mechanism,
+        ));
 
         Ok(tx_id)
     }
@@ -2930,6 +2939,7 @@ where
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_finalized_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -2993,7 +3003,70 @@ where
                             Some(s) => s,
                         }
                     },
-                    Err(_) => return Err(TransactionServiceError::TransactionDoesNotExistError),
+                    Err(_) => {
+                        // we dont currently know of this transaction, so lets see if we can recover funds from this
+                        // transaction, and if so, lets add it to our pool of transactions.
+                        let outputs = transaction.body.outputs();
+                        let mut recovered = self
+                            .resources
+                            .output_manager_service
+                            .scan_for_recoverable_outputs(outputs.iter().map(|o| (o.clone(), Some(tx_id))).collect())
+                            .await?;
+                        recovered.append(
+                            &mut self
+                                .resources
+                                .output_manager_service
+                                .scan_outputs_for_one_sided_payments(
+                                    outputs.iter().map(|o| (o.clone(), Some(tx_id))).collect(),
+                                )
+                                .await?,
+                        );
+                        if recovered.is_empty() {
+                            return Err(TransactionServiceError::TransactionDoesNotExistError);
+                        };
+                        // we should only be able to recover 1 output per tx, but we use the vec here to be safe
+                        let mut source_address = None;
+                        let mut payment_id = None;
+                        let mut amount = None;
+                        for ro in recovered {
+                            match &ro.output.payment_id {
+                                PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => {
+                                    if source_address.is_none() {
+                                        source_address = Some(address.clone());
+                                        payment_id = Some(ro.output.payment_id.clone());
+                                        amount = Some(ro.output.value);
+                                    }
+                                },
+                                _ => {},
+                            };
+                        }
+                        let completed_transaction = CompletedTransaction::new(
+                            tx_id,
+                            source_address.clone().unwrap_or_default(),
+                            self.resources.one_sided_tari_address.clone(),
+                            amount.unwrap_or_default(),
+                            transaction.body.get_total_fee()?,
+                            transaction.clone(),
+                            TransactionStatus::Completed,
+                            "".to_string(),
+                            Utc::now().naive_utc(),
+                            TransactionDirection::Inbound,
+                            None,
+                            None,
+                            payment_id,
+                        )?;
+                        self.db
+                            .insert_completed_transaction(tx_id, completed_transaction.clone())?;
+                        self.restart_receive_transaction_protocol(
+                            tx_id,
+                            source_address.unwrap_or_default(),
+                            join_handles,
+                        );
+                        match self.finalized_transaction_senders.get_mut(&tx_id) {
+                            None => return Err(TransactionServiceError::TransactionDoesNotExistError),
+                            Some(s) => s,
+                        }
+                    },
                 }
             },
             Some(s) => s,
@@ -3439,6 +3512,7 @@ where
             payment_id,
         )?;
         let transaction_event = match import_status {
+            ImportStatus::Broadcast => TransactionEvent::TransactionBroadcast(tx_id),
             ImportStatus::Imported => TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations: 0,
