@@ -85,7 +85,12 @@ use tari_utilities::{hex::Hex, ByteArray};
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::WalletConfig,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
+    connectivity_service::{
+        BaseNodePeerManager,
+        WalletConnectivityHandle,
+        WalletConnectivityInitializer,
+        WalletConnectivityInterface,
+    },
     consts,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -381,13 +386,14 @@ where
         &mut self,
         public_key: CommsPublicKey,
         address: Option<Multiaddr>,
+        backup_peers: Option<Vec<Peer>>,
     ) -> Result<(), WalletError> {
         info!(
             "Wallet setting base node peer, public key: {}, net address: {:?}.",
             public_key, address
         );
 
-        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
             self.comms
                 .connectivity()
                 .remove_peer_from_allow_list(current_node)
@@ -396,6 +402,7 @@ where
 
         let peer_manager = self.comms.peer_manager();
         let mut connectivity = self.comms.connectivity();
+        let mut backup_peers = backup_peers.unwrap_or_default();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
             if address.is_some() {
@@ -415,7 +422,13 @@ where
             connectivity
                 .add_peer_to_allow_list(current_peer.node_id.clone())
                 .await?;
-            self.wallet_connectivity.set_base_node(current_peer);
+            let mut peer_list = vec![current_peer];
+            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
+                backup_peers.remove(pos);
+            }
+            peer_list.append(&mut backup_peers);
+            self.wallet_connectivity
+                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         } else {
             let node_id = NodeId::from_key(&public_key);
             if address.is_none() {
@@ -430,7 +443,7 @@ where
                 });
             }
             let peer = Peer::new(
-                public_key,
+                public_key.clone(),
                 node_id,
                 MultiaddressesWithStats::from_addresses_with_source(vec![address.unwrap()], &PeerAddressSource::Config),
                 PeerFlags::empty(),
@@ -440,7 +453,13 @@ where
             );
             peer_manager.add_peer(peer.clone()).await?;
             connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-            self.wallet_connectivity.set_base_node(peer);
+            let mut peer_list = vec![peer];
+            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
+                backup_peers.remove(pos);
+            }
+            peer_list.append(&mut backup_peers);
+            self.wallet_connectivity
+                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         }
 
         Ok(())

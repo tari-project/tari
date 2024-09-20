@@ -24,7 +24,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    connectivity_service::{create_wallet_connectivity_mock, BaseNodePeerManager, WalletConnectivityMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -135,7 +135,8 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
-    wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity_mock
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     wallet_connectivity_mock.base_node_changed().await;
 
     let service = BaseNodeWalletRpcMockService::new();

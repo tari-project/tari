@@ -89,24 +89,15 @@ impl PeerConfig {
 
     /// Get the prioritised base node peer from the PeerConfig.
     /// 1. Custom Base Node
-    /// 2. First configured Base Node Peer
-    /// 3. Random configured Peer Seed
-    pub fn get_base_node_peer(&self) -> Result<Peer, ExitError> {
+    /// 2. All configured Base Node Peers (a random node will be prioritised)
+    /// 3. All configured Peer Seeds (a random node will be prioritised)
+    pub fn get_base_node_peers(&self) -> Result<Vec<Peer>, ExitError> {
         if let Some(base_node) = self.base_node_custom.clone() {
-            Ok(base_node)
+            Ok(vec![base_node])
         } else if !self.base_node_peers.is_empty() {
-            Ok(self
-                .base_node_peers
-                .first()
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node peer has no address!"))?
-                .clone())
+            Ok(self.base_node_peers.clone())
         } else if !self.peer_seeds.is_empty() {
-            // pick a random peer seed
-            Ok(self
-                .peer_seeds
-                .choose(&mut OsRng)
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Peer seeds was empty."))?
-                .clone())
+            Ok(self.peer_seeds.clone())
         } else {
             Err(ExitError::new(
                 ExitCode::ConfigError,

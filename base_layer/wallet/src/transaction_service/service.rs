@@ -3241,7 +3241,7 @@ where
         let current_base_node = self
             .resources
             .connectivity
-            .get_current_base_node_id()
+            .get_current_base_node_peer_node_id()
             .ok_or(TransactionServiceError::NoBaseNodeKeysProvided)?;
 
         trace!(target: LOG_TARGET, "Starting transaction validation protocol");
@@ -3273,8 +3273,8 @@ where
                        return result;
                     },
                     _ = base_node_watch.changed() => {
-                         if let Some(peer) = base_node_watch.borrow().as_ref() {
-                            if peer.node_id != current_base_node {
+                         if let Some(selected_peer) = base_node_watch.borrow().as_ref() {
+                            if selected_peer.get_current_peer().node_id != current_base_node {
                                 debug!(target: LOG_TARGET, "Base node changed, exiting transaction validation protocol");
                                 return Err(TransactionServiceProtocolError::new(id, TransactionServiceError::BaseNodeChanged {
                                     task_name: "transaction validation_protocol",

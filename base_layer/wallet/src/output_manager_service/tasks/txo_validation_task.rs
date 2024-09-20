@@ -28,7 +28,7 @@ use std::{
 use chrono::{Duration, Utc};
 use log::*;
 use tari_common_types::types::{BlockHash, FixedHash};
-use tari_comms::{peer_manager::Peer, protocol::rpc::RpcError::RequestFailed};
+use tari_comms::protocol::rpc::RpcError::RequestFailed;
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -38,7 +38,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::watch;
 
 use crate::{
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
@@ -56,7 +56,7 @@ const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
     operation_id: u64,
     db: OutputManagerDatabase<TBackend>,
-    base_node_watch: watch::Receiver<Option<Peer>>,
+    base_node_watch: watch::Receiver<Option<BaseNodePeerManager>>,
     connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
@@ -103,7 +103,7 @@ where
             .base_node_watch
             .borrow()
             .as_ref()
-            .map(|p| p.node_id.clone())
+            .map(|p| p.get_current_peer().node_id.clone())
             .ok_or_else(|| OutputManagerProtocolError::new(self.operation_id, OutputManagerError::BaseNodeChanged))?;
         debug!(
             target: LOG_TARGET,

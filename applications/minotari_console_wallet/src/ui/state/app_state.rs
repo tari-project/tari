@@ -1036,6 +1036,7 @@ impl AppStateInner {
             .set_base_node_peer(
                 peer.public_key.clone(),
                 Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                None,
             )
             .await?;
 
@@ -1061,6 +1062,7 @@ impl AppStateInner {
             .set_base_node_peer(
                 peer.public_key.clone(),
                 Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                None,
             )
             .await?;
 
@@ -1099,6 +1101,7 @@ impl AppStateInner {
             .set_base_node_peer(
                 previous.public_key.clone(),
                 Some(previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                None,
             )
             .await?;
 

@@ -136,7 +136,7 @@ where
                 timer.elapsed().as_millis()
             );
 
-            let base_node_id = match self.wallet_connectivity.get_current_base_node_id() {
+            let base_node_id = match self.wallet_connectivity.get_current_base_node_peer_node_id() {
                 Some(n) => n,
                 None => continue,
             };

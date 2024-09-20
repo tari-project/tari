@@ -41,6 +41,7 @@ use minotari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
         create_wallet_connectivity_mock,
+        BaseNodePeerManager,
         WalletConnectivityHandle,
         WalletConnectivityInitializer,
         WalletConnectivityInterface,
@@ -361,7 +362,7 @@ async fn setup_transaction_service_no_comms(
 
     wallet_connectivity_service_mock
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut rpc_server_connection).await);
-    wallet_connectivity_service_mock.set_base_node(node_identity.to_peer());
+    wallet_connectivity_service_mock.set_base_node(BaseNodePeerManager::new(0, vec![node_identity.to_peer()]).unwrap());
     wallet_connectivity_service_mock.base_node_changed().await;
 
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -3072,11 +3073,13 @@ async fn test_power_mode_updates() {
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_ts_interface.base_node_identity.to_peer()]).unwrap());
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .notify_base_node_set(alice_ts_interface.base_node_identity.to_peer());
+        .notify_base_node_set(
+            BaseNodePeerManager::new(0, vec![alice_ts_interface.base_node_identity.to_peer()]).unwrap(),
+        );
 
     alice_ts_interface
         .base_node_rpc_mock_state
@@ -4293,7 +4296,7 @@ async fn test_restarting_transaction_protocols() {
 
     bob_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![base_node_identity.to_peer()]).unwrap());
     assert!(bob_ts_interface
         .transaction_service_handle
         .restart_transaction_protocols()
@@ -4333,7 +4336,7 @@ async fn test_restarting_transaction_protocols() {
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![base_node_identity.to_peer()]).unwrap());
 
     assert!(alice_ts_interface
         .transaction_service_handle
@@ -4691,7 +4694,7 @@ async fn test_resend_on_startup() {
     // Need to set something for alices base node, doesn't matter what
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(alice_ts_interface
         .transaction_service_handle
@@ -4741,7 +4744,7 @@ async fn test_resend_on_startup() {
     // Need to set something for alices base node, doesn't matter what
     alice2_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(alice2_ts_interface
         .transaction_service_handle
@@ -4825,7 +4828,7 @@ async fn test_resend_on_startup() {
     // Need to set something for bobs base node, doesn't matter what
     bob_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(bob_ts_interface
         .transaction_service_handle
@@ -4872,7 +4875,7 @@ async fn test_resend_on_startup() {
     // Need to set something for bobs base node, doesn't matter what
     bob2_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(bob2_ts_interface
         .transaction_service_handle
@@ -5224,7 +5227,7 @@ async fn test_transaction_timeout_cancellation() {
     // Need to set something for bobs base node, doesn't matter what
     bob_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(bob_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![bob_node_identity.to_peer()]).unwrap());
     assert!(bob_ts_interface
         .transaction_service_handle
         .restart_broadcast_protocols()
@@ -5330,7 +5333,7 @@ async fn transaction_service_tx_broadcast() {
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_ts_interface.base_node_identity.to_peer()]).unwrap());
 
     let connection2 = make_wallet_database_memory_connection();
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection2, None).await;
