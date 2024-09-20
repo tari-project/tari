@@ -710,6 +710,7 @@ where
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
+                original_maturity,
             } => self
                 .encumber_aggregate_tx(
                     fee_per_gram,
@@ -721,6 +722,7 @@ where
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
                     recipient_address,
+                    original_maturity,
                 )
                 .await
                 .map(
@@ -1205,6 +1207,7 @@ where
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
+        original_maturity: u64,
     ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1222,6 +1225,7 @@ where
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address.clone(),
+                original_maturity,
             )
             .await
         {

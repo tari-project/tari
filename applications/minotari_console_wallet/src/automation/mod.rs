@@ -44,10 +44,13 @@ use tari_script::{CheckSigSchnorrSignature, ExecutionStack, TariScript};
 struct PreMineSpendStep1SessionInfo {
     session_id: String,
     fee_per_gram: MicroMinotari,
-    commitment_to_spend: String,
-    output_hash: String,
+    recipient_info: Vec<RecipientInfo>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct RecipientInfo {
+    output_to_be_spend: usize,
     recipient_address: TariAddress,
-    output_index: usize,
 }
 
 impl SessionId for PreMineSpendStep1SessionInfo {
@@ -59,8 +62,14 @@ impl SessionId for PreMineSpendStep1SessionInfo {
 // Step 2 outputs for self with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep2OutputsForSelf {
+    outputs_for_self: Vec<Step2OutputsForSelf>,
     alias: String,
-    wallet_spend_key_id: TariKeyId,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Step2OutputsForSelf {
+    output_index: usize,
+    recipient_address: TariAddress,
     script_nonce_key_id: TariKeyId,
     sender_offset_key_id: TariKeyId,
     sender_offset_nonce_key_id: TariKeyId,
@@ -70,6 +79,14 @@ struct PreMineSpendStep2OutputsForSelf {
 // Step 2 outputs for leader with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep2OutputsForLeader {
+    outputs_for_leader: Vec<Step2OutputsForLeader>,
+    alias: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Step2OutputsForLeader {
+    output_index: usize,
+    recipient_address: TariAddress,
     script_input_signature: CheckSigSchnorrSignature,
     public_script_nonce_key: PublicKey,
     public_sender_offset_key: PublicKey,
@@ -81,12 +98,24 @@ struct PreMineSpendStep2OutputsForLeader {
 // Step 3 outputs for self with `PreMineSpendEncumberAggregateUtxo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep3OutputsForSelf {
+    outputs_for_self: Vec<Step3OutputsForSelf>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct Step3OutputsForSelf {
+    output_index: usize,
     tx_id: TxId,
 }
 
 // Step 3 outputs for parties with `PreMineSpendEncumberAggregateUtxo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep3OutputsForParties {
+    outputs_for_parties: Vec<Step3OutputsForParties>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct Step3OutputsForParties {
+    output_index: usize,
     input_stack: ExecutionStack,
     input_script: TariScript,
     total_script_key: PublicKey,
@@ -103,6 +132,13 @@ struct PreMineSpendStep3OutputsForParties {
 // Step 4 outputs for leader with `PreMineSpendInputOutputSigs`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep4OutputsForLeader {
+    outputs_for_leader: Vec<Step4OutputsForLeader>,
+    alias: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct Step4OutputsForLeader {
+    output_index: usize,
     script_signature: Signature,
     metadata_signature: Signature,
     script_offset: PrivateKey,

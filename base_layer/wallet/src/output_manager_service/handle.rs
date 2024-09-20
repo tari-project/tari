@@ -72,6 +72,7 @@ pub enum OutputManagerRequest {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
+        original_maturity: u64,
     },
     SpendBackupPreMineUtxo {
         tx_id: TxId,
@@ -173,13 +174,15 @@ impl fmt::Display for OutputManagerRequest {
                 tx_id,
                 output_hash,
                 expected_commitment,
+                original_maturity,
                 ..
             } => write!(
                 f,
-                "Encumber aggregate utxo with tx_id: {} and output: ({},{})",
+                "Encumber aggregate utxo with tx_id: {} and output: ({},{}) with original maturity: {}",
                 tx_id,
                 expected_commitment.to_hex(),
-                output_hash
+                output_hash,
+                original_maturity,
             ),
             SpendBackupPreMineUtxo {
                 tx_id,
@@ -813,6 +816,7 @@ impl OutputManagerHandle {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
+        original_maturity: u64,
     ) -> Result<
         (
             Transaction,
@@ -837,6 +841,7 @@ impl OutputManagerHandle {
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
+                original_maturity,
             })
             .await??
         {

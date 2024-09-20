@@ -44,7 +44,7 @@ use crate::{
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerInterface,
         },
-        tari_amount::MicroMinotari,
+        tari_amount::{MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
             CoinBaseExtra,
@@ -88,7 +88,7 @@ pub struct Apportionment {
     /// Percentage of total tokens
     pub percentage: u64,
     /// Total tokens for this apportionment
-    pub tokens_amount: u64,
+    pub tokens_amount: Minotari,
     /// Token release cadence schedule
     pub schedule: Option<ReleaseCadence>,
 }
@@ -101,23 +101,59 @@ pub struct ReleaseCadence {
     /// Monthly fraction release factor
     pub monthly_fraction_denominator: u64,
     /// Upfront release percentage
-    pub upfront_release: Option<UpfrontRelease>,
+    pub upfront_release: Vec<ReleaseStrategy>,
     /// Expected payout period in blocks from after the initial lockup
     pub expected_payout_period_blocks: u64,
 }
 
-/// The upfront percentage of the total tokens to be released
+/// The upfront release of tokens
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReleaseStrategy {
+    /// Proportional upfront release
+    Proportional(ProportionalRelease),
+    /// Custom specified upfront release
+    Custom(Vec<CustomRelease>),
+    /// Upfront release taken from the regular cadence
+    FromCadence(Vec<CadenceRelease>),
+}
+
+impl Default for ReleaseStrategy {
+    fn default() -> Self {
+        Self::Proportional(ProportionalRelease::default())
+    }
+}
+
+/// The upfront tokens to be released on a proportional basis
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct UpfrontRelease {
+pub struct ProportionalRelease {
     /// The fraction of the total tokens to be released upfront
     pub percentage: u64,
     /// The number of tokens it has to be divided into
     pub number_of_tokens: u64,
-    /// This is a tuple of custom valued upfront tokens (Tari value, block_height)
-    pub custom_upfront_tokens: Vec<(u64, u64)>,
 }
 
-fn get_expected_payout_period_blocks(network: Network) -> u64 {
+/// The upfront tokens to be released on a custom schedule
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CustomRelease {
+    /// The value of the token
+    pub value: Minotari,
+    /// The maturity of the token
+    pub maturity: u64,
+}
+
+/// The upfront tokens to be released on a cadence basis, where the token value is removed from a specific period in the
+/// parent schedule
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CadenceRelease {
+    /// The value of the token
+    pub value: Minotari,
+    /// The period in the release cadence the token is taken from
+    pub taken_from_period: u64,
+    /// The maturity of the token
+    pub maturity: u64,
+}
+
+fn get_expected_payout_grace_period_blocks(network: Network) -> u64 {
     match network {
         Network::MainNet => {
             BLOCKS_PER_DAY * 30 * 6 // 6 months
@@ -134,67 +170,473 @@ pub fn get_tokenomics_pre_mine_unlock_schedule(network: Network) -> UnlockSchedu
         network_rewards: Apportionment {
             beneficiary: "network_rewards".to_string(),
             percentage: 70,
-            tokens_amount: 14_700_000_000,
+            tokens_amount: 14_700_000_000.into(),
             schedule: None,
         },
         protocol: Apportionment {
             beneficiary: "protocol".to_string(),
             percentage: 9,
-            tokens_amount: 1_890_000_000,
+            tokens_amount: 1_890_000_000.into(),
             schedule: Some(ReleaseCadence {
                 initial_lockup_days: 180,
                 monthly_fraction_denominator: 48,
-                upfront_release: Some(UpfrontRelease {
-                    percentage: 40,
-                    number_of_tokens: 20,
-                    // 129,600 = 720 (blocks per day) * 30 (days per month) * 6 (months)
-                    custom_upfront_tokens: vec![(1, 0), (1, 0), (1, 129_600), (1, 129_600)],
-                }),
-                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
+                upfront_release: vec![
+                    ReleaseStrategy::Proportional(ProportionalRelease {
+                        percentage: 40,
+                        number_of_tokens: 20,
+                    }),
+                    ReleaseStrategy::Custom({
+                        // 129,600 = 720 (blocks per day) * 30 (days per month) * 6 (months)
+                        vec![
+                            CustomRelease {
+                                value: 1.into(),
+                                maturity: 0,
+                            },
+                            CustomRelease {
+                                value: 1.into(),
+                                maturity: 0,
+                            },
+                            CustomRelease {
+                                value: 1.into(),
+                                maturity: 129_600,
+                            },
+                            CustomRelease {
+                                value: 1.into(),
+                                maturity: 129_600,
+                            },
+                        ]
+                    }),
+                ],
+                expected_payout_period_blocks: get_expected_payout_grace_period_blocks(network),
             }),
         },
         community: Apportionment {
             beneficiary: "community".to_string(),
             percentage: 5,
-            tokens_amount: 1_050_000_000,
+            tokens_amount: 1_050_000_000.into(),
             schedule: Some(ReleaseCadence {
                 initial_lockup_days: 180,
                 monthly_fraction_denominator: 12,
-                upfront_release: None,
-                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
+                upfront_release: vec![],
+                expected_payout_period_blocks: get_expected_payout_grace_period_blocks(network),
             }),
         },
         contributors: Apportionment {
             beneficiary: "contributors".to_string(),
             percentage: 4,
-            tokens_amount: 840_000_000,
+            tokens_amount: 840_000_000.into(),
             schedule: Some(ReleaseCadence {
                 initial_lockup_days: 365,
                 monthly_fraction_denominator: 60,
-                upfront_release: None,
-                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
+                upfront_release: contributors_upfront_release(),
+                expected_payout_period_blocks: get_expected_payout_grace_period_blocks(network),
             }),
         },
         participants: Apportionment {
             beneficiary: "participants".to_string(),
             percentage: 12,
-            tokens_amount: 2_520_000_000,
+            tokens_amount: 2_520_000_000.into(),
             schedule: Some(ReleaseCadence {
                 initial_lockup_days: 365,
                 monthly_fraction_denominator: 24,
-                upfront_release: None,
-                expected_payout_period_blocks: get_expected_payout_period_blocks(network),
+                upfront_release: vec![],
+                expected_payout_period_blocks: get_expected_payout_grace_period_blocks(network),
             }),
         },
     }
 }
 
+#[allow(clippy::too_many_lines)]
+fn contributors_upfront_release() -> Vec<ReleaseStrategy> {
+    vec![
+        ReleaseStrategy::FromCadence({
+            vec![
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 0,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 1,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 2,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 3,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 4,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 5,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 6,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 7,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 8,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 9,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 10,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 11,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 809_645.into(),
+                    taken_from_period: 12,
+                    maturity: 0,
+                },
+            ]
+        }),
+        ReleaseStrategy::FromCadence({
+            vec![
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 0,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 1,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 2,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 3,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 4,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 5,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 6,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 7,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 8,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 9,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 10,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 11,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 12,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 13,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 14,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 15,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 16,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 17,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 18,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 19,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 20,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 21,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 22,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 23,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 24,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 25,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 26,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 27,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 28,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 29,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 30,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 31,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 32,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 33,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 34,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 35,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 36,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 37,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 38,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 39,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 40,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 41,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 42,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 43,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 44,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 45,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 46,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 47,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 48,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 49,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 50,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 51,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 52,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 53,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 54,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 55,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 56,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 57,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 58,
+                    maturity: 0,
+                },
+                CadenceRelease {
+                    value: 6_300_000.into(),
+                    taken_from_period: 59,
+                    maturity: 0,
+                },
+            ]
+        }),
+    ]
+}
+
 /// Pre-mine values
 #[derive(Debug)]
 pub struct PreMineItem {
+    /// The value of the pre-mine
     pub value: MicroMinotari,
+    /// The maturity of the pre-mine at which it can be spend
     pub maturity: u64,
+    /// The original maturity of the pre-mine taken into account any pre-release strategy
+    pub original_maturity: u64,
+    /// The fail-safe height (absolute height) at which the pre-mine can be spent by a backup or fail-safe wallet
     pub fail_safe_height: u64,
+    /// The beneficiary of the pre-mine
     pub beneficiary: String,
 }
 
@@ -205,8 +647,14 @@ pub fn get_pre_mine_value(network: Network) -> Result<MicroMinotari, String> {
     Ok(pre_mine_items.iter().map(|item| item.value).sum::<MicroMinotari>())
 }
 
+struct CadenceItem {
+    taken_from_period: u64,
+    value: Minotari,
+}
+
 /// Create a list of (token value, maturity in blocks) according to the amounts in the unlock schedule, based on the
 /// apportionment and release cadence where 1 day equals 24 * 60 / 2 blocks.
+#[allow(clippy::too_many_lines)]
 pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<PreMineItem>, String> {
     let mut values_with_maturity = Vec::new();
     let days_per_month = 365.25 / 12f64;
@@ -220,70 +668,161 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
         &schedule.participants,
     ] {
         if let Some(schedule) = apportionment.schedule.as_ref() {
-            let upfront_release = schedule.upfront_release.clone().unwrap_or_default();
-            if upfront_release.percentage > 100 {
-                return Err(format!(
-                    "Upfront percentage must be less than or equal to 100 in {:?}",
-                    apportionment
-                ));
-            }
-            if apportionment
-                .tokens_amount
-                .checked_mul(1_000_000 * upfront_release.percentage)
-                .is_none()
-            {
-                return Err(format!("Minotari calculation overflow in {:?}", apportionment));
-            }
-            let mut tokens_value = apportionment.tokens_amount * 1_000_000;
-            if upfront_release.percentage > 0 {
-                let upfront_tokens = tokens_value * upfront_release.percentage / 100;
-                tokens_value -= upfront_tokens;
-                let value_per_round = upfront_tokens / upfront_release.number_of_tokens;
-                let mut assigned_tokens = 0;
-                for _ in 0..upfront_release.number_of_tokens - 1 {
-                    values_with_maturity.push(PreMineItem {
-                        value: MicroMinotari::from(value_per_round),
-                        maturity: 0,
-                        fail_safe_height: schedule.expected_payout_period_blocks,
-                        beneficiary: apportionment.beneficiary.clone(),
-                    });
-                    assigned_tokens += value_per_round;
+            let mut tokens_value = apportionment.tokens_amount.uT().as_u64();
+            let mut early_payout = Vec::new();
+
+            // Upfront release
+            for item in &schedule.upfront_release {
+                match item {
+                    ReleaseStrategy::Proportional(upfront_release) => {
+                        if upfront_release.percentage > 100 {
+                            return Err(format!(
+                                "Upfront percentage must be less than or equal to 100 in {:?}",
+                                apportionment
+                            ));
+                        }
+                        if apportionment
+                            .tokens_amount
+                            .uT()
+                            .as_u64()
+                            .checked_mul(upfront_release.percentage)
+                            .is_none()
+                        {
+                            return Err(format!("Minotari calculation overflow in {:?}", apportionment));
+                        }
+                        if upfront_release.percentage > 0 {
+                            let upfront_tokens = tokens_value * upfront_release.percentage / 100;
+                            tokens_value -= upfront_tokens;
+                            let value_per_round = upfront_tokens / upfront_release.number_of_tokens;
+                            let mut assigned_tokens = 0;
+                            for _ in 0..upfront_release.number_of_tokens - 1 {
+                                values_with_maturity.push(PreMineItem {
+                                    value: MicroMinotari::from(value_per_round),
+                                    maturity: 0,
+                                    original_maturity: 0,
+                                    fail_safe_height: schedule.expected_payout_period_blocks,
+                                    beneficiary: apportionment.beneficiary.clone(),
+                                });
+                                assigned_tokens += value_per_round;
+                            }
+                            values_with_maturity.push(PreMineItem {
+                                value: MicroMinotari::from(upfront_tokens - assigned_tokens),
+                                maturity: 0,
+                                original_maturity: 0,
+                                fail_safe_height: schedule.expected_payout_period_blocks,
+                                beneficiary: apportionment.beneficiary.clone(),
+                            });
+                        }
+                    },
+                    ReleaseStrategy::Custom(upfront_release) => {
+                        for release in upfront_release {
+                            tokens_value -= release.value.uT().as_u64();
+                            values_with_maturity.push(PreMineItem {
+                                value: release.value.uT(),
+                                maturity: release.maturity,
+                                original_maturity: release.maturity,
+                                fail_safe_height: release.maturity + schedule.expected_payout_period_blocks,
+                                beneficiary: apportionment.beneficiary.clone(),
+                            });
+                        }
+                    },
+                    ReleaseStrategy::FromCadence(upfront_release) => {
+                        for release in upfront_release {
+                            early_payout.push(CadenceItem {
+                                taken_from_period: release.taken_from_period,
+                                value: release.value,
+                            });
+                            let original_maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY +
+                                release.taken_from_period * blocks_per_month;
+                            values_with_maturity.push(PreMineItem {
+                                value: release.value.uT(),
+                                maturity: release.maturity,
+                                original_maturity,
+                                fail_safe_height: original_maturity + schedule.expected_payout_period_blocks,
+                                beneficiary: apportionment.beneficiary.clone(),
+                            });
+                        }
+                    },
                 }
-                values_with_maturity.push(PreMineItem {
-                    value: MicroMinotari::from(upfront_tokens - assigned_tokens),
-                    maturity: 0,
-                    fail_safe_height: schedule.expected_payout_period_blocks,
-                    beneficiary: apportionment.beneficiary.clone(),
+            }
+
+            // Combine all upfront 'ReleaseStrategy::FromCadence' payouts into a single value per period
+            early_payout.sort_by_key(|x| x.taken_from_period);
+            let mut periods = early_payout
+                .iter()
+                .map(|item| item.taken_from_period)
+                .collect::<Vec<_>>();
+            periods.dedup();
+            let mut early_payouts_summed = Vec::with_capacity(periods.len());
+            for period in periods {
+                let period_value: Minotari = MicroMinotari::from(
+                    early_payout
+                        .iter()
+                        .filter(|item| item.taken_from_period == period)
+                        .map(|item| item.value.uT().as_u64())
+                        .sum::<u64>(),
+                )
+                .into();
+                early_payouts_summed.push(CadenceItem {
+                    taken_from_period: period,
+                    value: period_value,
                 });
             }
-            for (value, maturity) in upfront_release.custom_upfront_tokens {
-                let utxo_value = value * 1_000_000;
-                tokens_value -= utxo_value;
-                values_with_maturity.push(PreMineItem {
-                    value: MicroMinotari::from(utxo_value),
-                    maturity,
-                    fail_safe_height: schedule.expected_payout_period_blocks,
-                    beneficiary: apportionment.beneficiary.clone(),
-                });
-            }
+
+            // Monthly release
             let monthly_tokens = tokens_value / schedule.monthly_fraction_denominator;
             let mut total_tokens = 0;
             let mut maturity = 0;
             for i in 0..schedule.monthly_fraction_denominator - 1 {
                 total_tokens += monthly_tokens;
                 maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY + i * blocks_per_month;
+                let adjusted_monthly_tokens =
+                    if let Some(payout) = early_payouts_summed.iter().find(|item| item.taken_from_period == i) {
+                        if payout.value.uT().as_u64() >= monthly_tokens {
+                            return Err(format!(
+                                "upfront 'FromCadence' payout exceeds allocated monthly payout {}, allocated: {}, \
+                                 early payout {}",
+                                i,
+                                MicroMinotari::from(monthly_tokens),
+                                payout.value.uT()
+                            ));
+                        }
+                        monthly_tokens - payout.value.uT().as_u64()
+                    } else {
+                        monthly_tokens
+                    };
                 values_with_maturity.push(PreMineItem {
-                    value: MicroMinotari::from(monthly_tokens),
+                    value: MicroMinotari::from(adjusted_monthly_tokens),
                     maturity,
-                    fail_safe_height: schedule.expected_payout_period_blocks,
+                    original_maturity: maturity,
+                    fail_safe_height: maturity + schedule.expected_payout_period_blocks,
                     beneficiary: apportionment.beneficiary.clone(),
                 });
             }
             let last_tokens = tokens_value - total_tokens;
+            let adjusted_last_tokens = if let Some(payout) = early_payouts_summed
+                .iter()
+                .find(|item| item.taken_from_period == schedule.monthly_fraction_denominator - 1)
+            {
+                if payout.value.uT().as_u64() >= last_tokens {
+                    return Err(format!(
+                        "upfront 'FromCadence' payout exceeds allocated monthly payout {}, allocated: {}, early \
+                         payout {}",
+                        schedule.monthly_fraction_denominator - 1,
+                        MicroMinotari::from(last_tokens),
+                        payout.value.uT()
+                    ));
+                }
+                last_tokens - payout.value.uT().as_u64()
+            } else {
+                last_tokens
+            };
+            maturity += blocks_per_month;
             values_with_maturity.push(PreMineItem {
-                value: MicroMinotari::from(last_tokens),
-                maturity: maturity + blocks_per_month,
-                fail_safe_height: schedule.expected_payout_period_blocks,
+                value: MicroMinotari::from(adjusted_last_tokens),
+                maturity,
+                original_maturity: maturity,
+                fail_safe_height: maturity + schedule.expected_payout_period_blocks,
                 beneficiary: apportionment.beneficiary.clone(),
             });
         }
@@ -386,7 +925,7 @@ pub async fn create_pre_mine_genesis_block_info(
         let mut public_keys = public_keys.clone();
         public_keys.shuffle(&mut thread_rng());
         let script = script!(
-            CheckHeight(item.maturity + item.fail_safe_height) LeZero
+            CheckHeight(item.fail_safe_height) LeZero
             IfThen
             CheckMultiSigVerifyAggregatePubKey(signature_threshold, address_len, public_keys.clone(), Box::new(commitment_bytes))
             Else
@@ -445,17 +984,20 @@ mod test {
 
     use crate::{
         blocks::pre_mine::{
+            contributors_upfront_release,
             create_pre_mine_genesis_block_info,
             create_pre_mine_output_values,
-            get_expected_payout_period_blocks,
+            get_expected_payout_grace_period_blocks,
             get_pre_mine_value,
             get_signature_threshold,
             get_tokenomics_pre_mine_unlock_schedule,
             verify_script_keys_for_index,
             Apportionment,
+            CustomRelease,
             PreMineItem,
+            ProportionalRelease,
             ReleaseCadence,
-            UpfrontRelease,
+            ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
         consensus::consensus_constants::MAINNET_PRE_MINE_VALUE,
@@ -514,7 +1056,7 @@ mod test {
     // Only run this when you want to create a new utxo file
     #[ignore]
     #[tokio::test]
-    async fn print_pre_mine() {
+    async fn print_pre_mine_genesis_block_test_info() {
         let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::MainNet);
         let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
         let (outputs, kernel, _, _) = genesis_block_test_info(&pre_mine_items).await;
@@ -540,7 +1082,43 @@ mod test {
         );
     }
 
+    #[ignore]
+    #[tokio::test]
+    async fn print_pre_mine_list() {
+        let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::MainNet);
+        let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
+        let base_dir = dirs_next::document_dir().unwrap();
+        let file_path = base_dir.join("tari_pre_mine").join("create").join("pre_mine_items.csv");
+        if let Some(path) = file_path.parent() {
+            if !path.exists() {
+                fs::create_dir_all(path).unwrap();
+            }
+        }
+        let mut file_stream = File::create(&file_path).expect("Could not create 'utxos.json'");
+
+        file_stream
+            .write_all("index,value,maturity,original_maturity,fail_safe_height,beneficiary\n".as_bytes())
+            .unwrap();
+        for (index, item) in pre_mine_items.iter().enumerate() {
+            file_stream
+                .write_all(
+                    format!(
+                        "{},{},{},{},{},{}\n",
+                        index,
+                        item.value,
+                        item.maturity,
+                        item.original_maturity,
+                        item.fail_safe_height,
+                        item.beneficiary,
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    }
+
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_get_tokenomics_pre_mine_unlock_schedule() {
         for network in [
             Network::LocalNet,
@@ -562,60 +1140,83 @@ mod test {
             assert_eq!(schedule.network_rewards, Apportionment {
                 beneficiary: "network_rewards".to_string(),
                 percentage: 70,
-                tokens_amount: 14_700_000_000,
+                tokens_amount: 14_700_000_000.into(),
                 schedule: None,
             });
             assert_eq!(schedule.protocol, Apportionment {
                 beneficiary: "protocol".to_string(),
                 percentage: 9,
-                tokens_amount: 1_890_000_000,
+                tokens_amount: 1_890_000_000.into(),
                 schedule: Some(ReleaseCadence {
                     initial_lockup_days: 180,
                     monthly_fraction_denominator: 48,
-                    upfront_release: Some(UpfrontRelease {
-                        percentage: 40,
-                        number_of_tokens: 20,
-                        custom_upfront_tokens: vec![(1, 0), (1, 0), (1, 129_600), (1, 129_600)],
-                    }),
+                    upfront_release: vec![
+                        ReleaseStrategy::Proportional(ProportionalRelease {
+                            percentage: 40,
+                            number_of_tokens: 20,
+                        }),
+                        ReleaseStrategy::Custom({
+                            vec![
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 0,
+                                },
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 0,
+                                },
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 129_600,
+                                },
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 129_600,
+                                },
+                            ]
+                        }),
+                    ],
                     expected_payout_period_blocks,
                 }),
             });
-            assert_eq!(
-                schedule.protocol.tokens_amount *
-                    schedule.protocol.schedule.unwrap().upfront_release.unwrap().percentage /
-                    100,
-                756_000_000
-            );
+            let percentage = if let ReleaseStrategy::Proportional(release) =
+                &schedule.protocol.schedule.unwrap().upfront_release[0]
+            {
+                release.percentage
+            } else {
+                panic!("Expected ReleaseStrategy::Proportional");
+            };
+            assert_eq!(schedule.protocol.tokens_amount * percentage / 100, 756_000_000.into());
             assert_eq!(schedule.community, Apportionment {
                 beneficiary: "community".to_string(),
                 percentage: 5,
-                tokens_amount: 1_050_000_000,
+                tokens_amount: 1_050_000_000.into(),
                 schedule: Some(ReleaseCadence {
                     initial_lockup_days: 180,
                     monthly_fraction_denominator: 12,
-                    upfront_release: None,
+                    upfront_release: vec![],
                     expected_payout_period_blocks,
                 }),
             });
             assert_eq!(schedule.contributors, Apportionment {
                 beneficiary: "contributors".to_string(),
                 percentage: 4,
-                tokens_amount: 840_000_000,
+                tokens_amount: 840_000_000.into(),
                 schedule: Some(ReleaseCadence {
                     initial_lockup_days: 365,
                     monthly_fraction_denominator: 60,
-                    upfront_release: None,
+                    upfront_release: contributors_upfront_release(),
                     expected_payout_period_blocks,
                 }),
             });
             assert_eq!(schedule.participants, Apportionment {
                 beneficiary: "participants".to_string(),
                 percentage: 12,
-                tokens_amount: 2_520_000_000,
+                tokens_amount: 2_520_000_000.into(),
                 schedule: Some(ReleaseCadence {
                     initial_lockup_days: 365,
                     monthly_fraction_denominator: 24,
-                    upfront_release: None,
+                    upfront_release: vec![],
                     expected_payout_period_blocks,
                 }),
             });
@@ -635,7 +1236,7 @@ mod test {
                     schedule.community.tokens_amount +
                     schedule.protocol.tokens_amount +
                     schedule.network_rewards.tokens_amount,
-                21_000_000_000
+                21_000_000_000.into()
             );
         }
     }
@@ -656,6 +1257,27 @@ mod test {
     }
 
     #[test]
+    fn test_pre_mine_fail_safe_height() {
+        for network in [
+            Network::LocalNet,
+            Network::MainNet,
+            Network::Esmeralda,
+            Network::Igor,
+            Network::NextNet,
+            Network::StageNet,
+        ] {
+            let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
+            let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
+            for item in pre_mine_items {
+                assert_eq!(
+                    item.fail_safe_height,
+                    item.original_maturity + get_expected_payout_grace_period_blocks(network)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_create_pre_mine_output_values() {
         let schedule = get_tokenomics_pre_mine_unlock_schedule(Network::default());
         let pre_mine_items = create_pre_mine_output_values(schedule.clone()).unwrap();
@@ -667,9 +1289,9 @@ mod test {
             schedule.community.tokens_amount +
             schedule.contributors.tokens_amount +
             schedule.participants.tokens_amount;
-        let total_value = MicroMinotari::from(total_tokens * 1_000_000);
+        let total_value = MicroMinotari::from(total_tokens);
         assert_eq!(
-            total_pre_mine_value + MicroMinotari::from(schedule.network_rewards.tokens_amount * 1_000_000),
+            total_pre_mine_value + MicroMinotari::from(schedule.network_rewards.tokens_amount),
             total_value
         );
         let protocol_tokens = pre_mine_items
@@ -677,31 +1299,54 @@ mod test {
             .filter(|item| item.beneficiary == "protocol")
             .map(|item| item.value)
             .sum::<MicroMinotari>();
-        assert_eq!(
-            protocol_tokens,
-            MicroMinotari::from(schedule.protocol.tokens_amount * 1_000_000)
-        );
+        assert_eq!(protocol_tokens, MicroMinotari::from(schedule.protocol.tokens_amount));
+
         let protocol_tokens_at_start = pre_mine_items
             .iter()
             .filter(|item| item.beneficiary == "protocol" && item.maturity == 0)
             .map(|item| item.value)
             .sum::<MicroMinotari>();
         assert_eq!(protocol_tokens_at_start, MicroMinotari::from(756_000_002 * 1_000_000));
+        let community_tokens_at_start = pre_mine_items
+            .iter()
+            .filter(|item| item.beneficiary == "community" && item.maturity == 0)
+            .map(|item| item.value)
+            .sum::<MicroMinotari>();
+        assert_eq!(community_tokens_at_start, MicroMinotari::zero());
+        let contributors_tokens_at_start = pre_mine_items
+            .iter()
+            .filter(|item| item.beneficiary == "contributors" && item.maturity == 0)
+            .map(|item| item.value)
+            .sum::<MicroMinotari>();
+        assert_eq!(
+            contributors_tokens_at_start,
+            MicroMinotari::from(388_525_385 * 1_000_000)
+        );
+        let participants_tokens_at_start = pre_mine_items
+            .iter()
+            .filter(|item| item.beneficiary == "participants" && item.maturity == 0)
+            .map(|item| item.value)
+            .sum::<MicroMinotari>();
+        assert_eq!(participants_tokens_at_start, MicroMinotari::zero());
         let all_tokens_at_start = pre_mine_items
             .iter()
             .filter(|item| item.maturity == 0)
             .map(|item| item.value)
             .sum::<MicroMinotari>();
-        assert_eq!(all_tokens_at_start, MicroMinotari::from(756_000_002 * 1_000_000));
+        assert_eq!(
+            all_tokens_at_start,
+            protocol_tokens_at_start +
+                community_tokens_at_start +
+                contributors_tokens_at_start +
+                participants_tokens_at_start
+        );
+
         let community_tokens = pre_mine_items
             .iter()
             .filter(|item| item.beneficiary == "community")
             .map(|item| item.value)
             .sum::<MicroMinotari>();
-        assert_eq!(
-            community_tokens,
-            MicroMinotari::from(schedule.community.tokens_amount * 1_000_000)
-        );
+        assert_eq!(community_tokens, MicroMinotari::from(schedule.community.tokens_amount));
         let contributors_tokens = pre_mine_items
             .iter()
             .filter(|item| item.beneficiary == "contributors")
@@ -709,7 +1354,7 @@ mod test {
             .sum::<MicroMinotari>();
         assert_eq!(
             contributors_tokens,
-            MicroMinotari::from(schedule.contributors.tokens_amount * 1_000_000)
+            MicroMinotari::from(schedule.contributors.tokens_amount)
         );
         let participants_tokens = pre_mine_items
             .iter()
@@ -718,7 +1363,7 @@ mod test {
             .sum::<MicroMinotari>();
         assert_eq!(
             participants_tokens,
-            MicroMinotari::from(schedule.participants.tokens_amount * 1_000_000)
+            MicroMinotari::from(schedule.participants.tokens_amount)
         );
     }
 
@@ -737,7 +1382,7 @@ mod test {
             let (outputs, kernel, threshold_spend_keys, backup_spend_keys) =
                 genesis_block_test_info(&pre_mine_items).await;
             assert!(kernel.verify_signature().is_ok());
-            let fail_safe_height = get_expected_payout_period_blocks(network);
+            let grace_period = get_expected_payout_grace_period_blocks(network);
             for (index, (output, (pre_mine_item, (threshold_keys, backup_key)))) in outputs
                 .iter()
                 .zip(
@@ -768,7 +1413,7 @@ mod test {
                 } else {
                     panic!("Expected PushPubKey opcode in script at index {}", index);
                 };
-                assert_eq!(script_height, pre_mine_item.maturity + fail_safe_height);
+                assert_eq!(script_height, pre_mine_item.original_maturity + grace_period);
                 assert_eq!(output.features.maturity, pre_mine_item.maturity);
                 assert!(verify_script_keys_for_index(
                     index,
