@@ -10296,6 +10296,7 @@ mod test {
                 0,
                 passphrase,
                 ptr::null(),
+                ptr::null(),
                 alice_network_str,
                 dns_string,
                 false,
@@ -10342,6 +10343,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 alice_network_str,
                 dns_string,
@@ -10459,6 +10461,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -10591,9 +10594,9 @@ mod test {
                 // Try to wrongfully add a new seed word onto the mnemonic wordlist seed words object
                 let w = CString::new(mnemonic_wordlist[188]).unwrap();
                 let w_str: *const c_char = CString::into_raw(w) as *const c_char;
-                seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr);
+                seed_words_push_word(mnemonic_wordlist_ffi, w_str, ptr::null(), error_ptr);
                 assert_eq!(
-                    seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr),
+                    seed_words_push_word(mnemonic_wordlist_ffi, w_str, ptr::null(), error_ptr),
                     SeedWordPushResult::InvalidObject as u8
                 );
                 assert_ne!(error, 0);
@@ -10632,7 +10635,7 @@ mod test {
             let w_str: *const c_char = CString::into_raw(w) as *const c_char;
 
             assert_eq!(
-                seed_words_push_word(seed_words, w_str, error_ptr),
+                seed_words_push_word(seed_words, w_str, ptr::null(), error_ptr),
                 SeedWordPushResult::InvalidSeedWord as u8
             );
 
@@ -10642,12 +10645,12 @@ mod test {
 
                 if count + 1 < 24 {
                     assert_eq!(
-                        seed_words_push_word(seed_words, w_str, error_ptr),
+                        seed_words_push_word(seed_words, w_str, ptr::null(), error_ptr),
                         SeedWordPushResult::SuccessfulPush as u8
                     );
                 } else {
                     assert_eq!(
-                        seed_words_push_word(seed_words, w_str, error_ptr),
+                        seed_words_push_word(seed_words, w_str, ptr::null(), error_ptr),
                         SeedWordPushResult::SeedPhraseComplete as u8
                     );
                 }
@@ -10687,6 +10690,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -10755,6 +10759,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 seed_words,
                 network_str,
                 dns_string,
@@ -10835,6 +10840,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11014,6 +11020,7 @@ mod test {
                 0,
                 passphrase,
                 ptr::null(),
+                ptr::null(),
                 network_str,
                 dns_string,
                 false,
@@ -11152,6 +11159,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11371,6 +11379,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11598,6 +11607,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11859,6 +11869,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -12241,6 +12252,7 @@ mod test {
                 0,
                 passphrase,
                 ptr::null(),
+                ptr::null(),
                 alice_network_str,
                 dns_string,
                 false,
@@ -12305,6 +12317,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 bob_network_str,
                 dns_string,
