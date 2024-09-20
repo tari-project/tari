@@ -284,7 +284,7 @@ fn get_recovery_seed(
 ) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(WalletType::Ledger(_))) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
-            get_seed_from_seed_words(seed_words)?
+            get_seed_from_seed_words(seed_words, None)?
         } else {
             prompt_private_key_from_seed_words()?
         };

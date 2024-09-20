@@ -208,7 +208,7 @@ Feature: Wallet FFI
         Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+    @critical @pie
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes

@@ -337,6 +337,8 @@ pub struct ExportViewKeyAndSpendKeyArgs {
 pub struct ImportPaperWalletArgs {
     #[clap(short, long)]
     pub seed_words: String,
+    #[clap(short, long, default_value = "")]
+    pub passphrase: String,
 }
 
 #[derive(Debug, Args, Clone)]

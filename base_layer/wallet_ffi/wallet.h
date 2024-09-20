@@ -1564,6 +1564,7 @@ char *seed_words_get_at(struct TariSeedWords *seed_words,
  * ## Returns
  * 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
  * word, if the push was successful and whether the push was successful and completed the full Seed Phrase.
+ * `passphrase` - Optional passphrase to use when generating the seed phrase
  *  `seed_words` is only modified in the event of a `SuccessfulPush`.
  *     '0' -> InvalidSeedWord
  *     '1' -> SuccessfulPush
@@ -1575,6 +1576,7 @@ char *seed_words_get_at(struct TariSeedWords *seed_words,
  */
 unsigned char seed_words_push_word(struct TariSeedWords *seed_words,
                                    const char *word,
+                                   const char *passphrase,
                                    int *error_out);
 
 /**
@@ -2864,6 +2866,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * `passphrase` - An optional string that represents the passphrase used to
  * encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
  * encrypted then the correct passphrase is required or this function will fail.
+ * `seed_passphrase` - an optional string, if present this will derypt the seed words
  * `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
  * If this is null, then a new master key is created for the wallet.
  * `callback_received_transaction` - The callback function pointer matching the function signature. This will be
@@ -2950,6 +2953,7 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  unsigned int num_rolling_log_files,
                                  unsigned int size_per_log_file_bytes,
                                  const char *passphrase,
+                                 const char *seed_passphrase,
                                  const struct TariSeedWords *seed_words,
                                  const char *network_str,
                                  const char *peer_seed_str,

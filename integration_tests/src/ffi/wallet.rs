@@ -22,6 +22,7 @@
 
 use std::{
     ffi::CString,
+    ptr,
     ptr::null_mut,
     sync::{Arc, Mutex},
 };
@@ -185,6 +186,7 @@ impl Wallet {
                 50,
                 104857600, // 100 MB
                 CString::new("kensentme").unwrap().into_raw(),
+                ptr::null(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
                 CString::new("").unwrap().into_raw(),
