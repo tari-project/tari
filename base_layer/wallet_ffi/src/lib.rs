@@ -2954,6 +2954,7 @@ pub unsafe extern "C" fn seed_words_get_at(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn seed_words_push_word(
     seed_words: *mut TariSeedWords,
     word: *const c_char,
@@ -2986,16 +2987,17 @@ pub unsafe extern "C" fn seed_words_push_word(
             },
         }
     }
-    let passphrase = match passphrase.is_null() {
-        true => None,
-        false => match CStr::from_ptr(passphrase).to_str() {
+    let passphrase = if passphrase.is_null() {
+        None
+    } else {
+        match CStr::from_ptr(passphrase).to_str() {
             Ok(v) => Some(SafePassword::from(v.to_owned())),
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return SeedWordPushResult::InvalidObject as u8;
             },
-        },
+        }
     };
 
     // Check word is from a word list
@@ -5843,15 +5845,14 @@ pub unsafe extern "C" fn wallet_create(
         peer_seed
     };
 
-    let seed_passphrase = match seed_passphrase.is_null() {
-        true => None,
-        false => {
-            let seed_passphrase = CStr::from_ptr(seed_passphrase)
-                .to_str()
-                .expect("A non-null seed passphrase should be able to be converted to string")
-                .to_owned();
-            Some(SafePassword::from(seed_passphrase))
-        },
+    let seed_passphrase = if seed_passphrase.is_null() {
+        None
+    } else {
+        let seed_passphrase = CStr::from_ptr(seed_passphrase)
+            .to_str()
+            .expect("A non-null seed passphrase should be able to be converted to string")
+            .to_owned();
+        Some(SafePassword::from(seed_passphrase))
     };
 
     let recovery_seed = if seed_words.is_null() {

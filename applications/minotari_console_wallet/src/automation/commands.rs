@@ -1836,7 +1836,7 @@ pub async fn command_runner(
                 {
                     let seed_words = SeedWords::from_str(args.seed_words.as_str())
                         .map_err(|e| CommandError::General(e.to_string()))?;
-                    let passphrase = if args.passphrase == "" {
+                    let passphrase = if args.passphrase.is_empty() {
                         None
                     } else {
                         Some(SafePassword::from(args.passphrase))
