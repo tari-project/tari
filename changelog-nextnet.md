@@ -3,6 +3,31 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
 
+## [1.5.0-rc.0](https://github.com/tari-project/tari/compare/v1.4.2-rc.0...v1.5.0-rc.0) (2024-09-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* add ability to encrypt seed words (#6569)
+
+### Features
+
+* add ability to encrypt seed words ([#6569](https://github.com/tari-project/tari/issues/6569)) ([d03d162](https://github.com/tari-project/tari/commit/d03d162f2c041e3618b163b29283bf0747f49bf9))
+* add coinbase extra info to grpc ([#6561](https://github.com/tari-project/tari/issues/6561)) ([d48a15c](https://github.com/tari-project/tari/commit/d48a15cdd7cb4364e15f281543ce4402add876e9))
+* add generic config list type and use throughout all config settings ([#6567](https://github.com/tari-project/tari/issues/6567)) ([13afb6f](https://github.com/tari-project/tari/commit/13afb6fdc9af6fffb36c7a97262790dcc19e75d2))
+* add multiaddr with range checks for use with universe ([#6557](https://github.com/tari-project/tari/issues/6557)) ([aca61f3](https://github.com/tari-project/tari/commit/aca61f39cdb65cccfafa02565b9b13bdf8fc3d99))
+* add resilience to initial wallet connect ([#6527](https://github.com/tari-project/tari/issues/6527)) ([6b5ef7d](https://github.com/tari-project/tari/commit/6b5ef7d1457bf3fe2c165d645af13a55d03dbfab))
+* broadcast one sided ([#6568](https://github.com/tari-project/tari/issues/6568)) ([a954383](https://github.com/tari-project/tari/commit/a9543830dacdef52fcbcfe0bfd9b30ac20209815))
+* update consensus ([#6564](https://github.com/tari-project/tari/issues/6564)) ([fe90e64](https://github.com/tari-project/tari/commit/fe90e64ea9556ea75ec8e91fe9fd690b62807621))
+
+
+### Bug Fixes
+
+* fix coinbase share calculations ([#6571](https://github.com/tari-project/tari/issues/6571)) ([37fbc75](https://github.com/tari-project/tari/commit/37fbc756b48668f03da043508d0eaae78c80868a))
+* randomX on mac x86 ([#6559](https://github.com/tari-project/tari/issues/6559)) ([a22ae35](https://github.com/tari-project/tari/commit/a22ae3537c84c2b1edcce3a8e7cfc8ba0e5e59b8))
+* upgrade diesel version ([#6558](https://github.com/tari-project/tari/issues/6558)) ([d69fd66](https://github.com/tari-project/tari/commit/d69fd666eb8e3b1bce76aa13fca148e2248782a5))
+* add configurable exclude dialer addresses for universe ([#6543](https://github.com/tari-project/tari/issues/6543)) ([e113a0e](https://github.com/tari-project/tari/commit/e113a0e4a464a2ed4ec72d2da6f4a3c3c80a6fcf))
+
 
 ### [1.4.2-rc.0](https://github.com/tari-project/tari/compare/v1.4.1-rc.0...v1.4.2-rc.0) (2024-09-11)
 
