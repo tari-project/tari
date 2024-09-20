@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.5.1-pre.0](https://github.com/tari-project/tari/compare/v1.5.0-pre.0...v1.5.1-pre.0) (2024-09-23)
+
+
+### Bug Fixes
+
+* view wallet key usage ([#6575](https://github.com/tari-project/tari/issues/6575)) ([88b242d](https://github.com/tari-project/tari/commit/88b242d74c61699fdfd6412ffbd112163d8fcd68))
+
 ## [1.5.0-pre.0](https://github.com/tari-project/tari/compare/v1.4.2-pre.2...v1.5.0-pre.0) (2024-09-20)
 
 
