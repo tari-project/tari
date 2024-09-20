@@ -588,17 +588,12 @@ pub async fn start_wallet(
         .addresses
         .best()
         .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
-    let backup_peers = base_nodes
-        .iter()
-        .filter(|&v| v != selected_base_node)
-        .cloned()
-        .collect::<Vec<_>>();
 
     wallet
         .set_base_node_peer(
             selected_base_node.public_key.clone(),
             Some(net_address.address().clone()),
-            Some(backup_peers),
+            Some(base_nodes.to_vec()),
         )
         .await
         .map_err(|e| {
