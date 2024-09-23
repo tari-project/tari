@@ -6108,7 +6108,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "1.5.1-rc.0"
+version = "1.5.1-rc.2"
 dependencies = [
  "base64 0.21.5",
  "bitflags 2.4.1",

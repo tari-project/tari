@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+### [1.5.1-rc.1](https://github.com/tari-project/tari/compare/v1.5.1-rc.1...v1.5.1-rc.2) (2024-09-23)
+
+
+### Bug Fixes
+
+* hot fix difficulty
+
 ### [1.5.1-rc.0](https://github.com/tari-project/tari/compare/v1.5.0-rc.1...v1.5.1-rc.0) (2024-09-23)
 
 

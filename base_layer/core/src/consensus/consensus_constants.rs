@@ -607,7 +607,7 @@ impl ConsensusConstants {
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
