@@ -255,9 +255,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
-            KeyId::Managed {.. } => {
-                self.get_managed_public_key_at_key_id(key_id).await
-            },
+            KeyId::Managed { .. } => self.get_managed_public_key_at_key_id(key_id).await,
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
@@ -314,9 +312,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                             }
                         },
                         TransactionKeyManagerBranch::Spend => {
-                            return Ok(ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
+                            return ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
                                 "Key manager set to use ledger, ledger alpha public key missing".to_string(),
-                            ))?)
+                            ))
                         },
                         TransactionKeyManagerBranch::DataEncryption => {
                             let view_key = ledger
