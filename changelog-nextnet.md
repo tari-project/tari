@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
 
+## [1.5.0-rc.2](https://github.com/tari-project/tari/compare/v1.5.0-rc.1...v1.5.0-rc.2) (2024-09-23)
+
+
+### Bug Fixes
+
+* Fix view key isage
+
+## [1.5.0-rc.1](https://github.com/tari-project/tari/compare/v1.5.0-rc.0...v1.5.0-rc.1) (2024-09-20)
+
+
+### Bug Fixes
+
+* revert sha3 min diffuclty change
+
+
 ## [1.5.0-rc.0](https://github.com/tari-project/tari/compare/v1.4.2-rc.0...v1.5.0-rc.0) (2024-09-20)
 
 
