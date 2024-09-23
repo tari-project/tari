@@ -38,6 +38,7 @@ monerod_url = [ # mainnet
     "https://monero.stackwallet.com:18081",
     "http://xmr.support:18081",
     "http://xmr.nthrow.nyc:18081",
+    "https://xmr-01.tari.com",
 ]
 
 # Username for curl. (default = "")
