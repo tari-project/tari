@@ -142,6 +142,7 @@ impl BlockTemplateProtocol<'_> {
                             .get_new_block(GetNewBlockRequest {
                                 pow: Some(pow_algo),
                                 coinbase_extra,
+                                wallet_payment_address: self.wallet_payment_address.to_base58(),
                             })
                             .await?
                             .into_inner();
