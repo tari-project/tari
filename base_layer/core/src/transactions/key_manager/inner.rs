@@ -255,63 +255,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
-            KeyId::Managed { branch, index } => {
-                if let WalletType::Ledger(ledger) = &*self.wallet_type {
-                    match TransactionKeyManagerBranch::from_key(branch) {
-                        TransactionKeyManagerBranch::OneSidedSenderOffset |
-                        TransactionKeyManagerBranch::RandomKey |
-                        TransactionKeyManagerBranch::PreMine => {
-                            #[cfg(not(feature = "ledger"))]
-                            {
-                                Err(KeyManagerServiceError::LedgerError(format!(
-                                    "{} 'get_public_key_at_key_id' was called.",
-                                    LEDGER_NOT_SUPPORTED
-                                )))
-                            }
-
-                            #[cfg(feature = "ledger")]
-                            {
-                                let public_key = ledger_get_public_key(
-                                    ledger.account,
-                                    *index,
-                                    TransactionKeyManagerBranch::from_key(branch),
-                                )
-                                .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
-                                Ok(public_key)
-                            }
-                        },
-                        TransactionKeyManagerBranch::Spend => {
-                            Ok(ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
-                                "Key manager set to use ledger, ledger alpha public key missing".to_string(),
-                            ))?)
-                        },
-                        TransactionKeyManagerBranch::DataEncryption => {
-                            let view_key = ledger
-                                .view_key
-                                .clone()
-                                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(key_id.to_string()))?;
-                            Ok(PublicKey::from_secret_key(&view_key))
-                        },
-                        _ => {
-                            let km = self
-                                .key_managers
-                                .get(branch)
-                                .ok_or_else(|| self.unknown_key_branch_error("get_public_key_at_key_id", branch))?
-                                .read()
-                                .await;
-                            Ok(km.derive_public_key(*index)?.key)
-                        },
-                    }
-                } else {
-                    let km = self
-                        .key_managers
-                        .get(branch)
-                        .ok_or_else(|| self.unknown_key_branch_error("get_public_key_at_key_id", branch))?
-                        .read()
-                        .await;
-                    Ok(km.derive_public_key(*index)?.key)
-                }
-            },
+            KeyId::Managed { .. } => self.get_managed_public_key_at_key_id(key_id).await,
             KeyId::Derived { key } => {
                 let key = TariKeyId::from_str(key.to_string().as_str())
                     .map_err(|_| KeyManagerServiceError::KeySerializationError)?;
@@ -332,6 +276,77 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PublicKey::default()),
+        }
+    }
+
+    pub async fn get_managed_public_key_at_key_id(
+        &self,
+        key_id: &TariKeyId,
+    ) -> Result<PublicKey, KeyManagerServiceError> {
+        if let KeyId::Managed { branch, index } = key_id {
+            // handle special cases
+            match &*self.wallet_type {
+                WalletType::DerivedKeys => {},
+                WalletType::Ledger(ledger) => {
+                    match TransactionKeyManagerBranch::from_key(branch) {
+                        TransactionKeyManagerBranch::OneSidedSenderOffset |
+                        TransactionKeyManagerBranch::RandomKey |
+                        TransactionKeyManagerBranch::PreMine => {
+                            #[cfg(not(feature = "ledger"))]
+                            {
+                                return Err(KeyManagerServiceError::LedgerError(format!(
+                                    "{} 'get_public_key_at_key_id' was called.",
+                                    LEDGER_NOT_SUPPORTED
+                                )));
+                            }
+
+                            #[cfg(feature = "ledger")]
+                            {
+                                let public_key = ledger_get_public_key(
+                                    ledger.account,
+                                    *index,
+                                    TransactionKeyManagerBranch::from_key(branch),
+                                )
+                                .map_err(|e| KeyManagerServiceError::LedgerError(e.to_string()))?;
+                                return Ok(public_key);
+                            }
+                        },
+                        TransactionKeyManagerBranch::Spend => {
+                            return ledger.public_alpha.clone().ok_or(KeyManagerServiceError::LedgerError(
+                                "Key manager set to use ledger, ledger alpha public key missing".to_string(),
+                            ))
+                        },
+                        TransactionKeyManagerBranch::DataEncryption => {
+                            let view_key = ledger
+                                .view_key
+                                .clone()
+                                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(key_id.to_string()))?;
+                            return Ok(PublicKey::from_secret_key(&view_key));
+                        },
+                        _ => {},
+                    };
+                },
+                WalletType::ProvidedKeys(wallet) => match TransactionKeyManagerBranch::from_key(branch) {
+                    TransactionKeyManagerBranch::Spend => {
+                        return Ok(wallet.public_spend_key.clone());
+                    },
+                    TransactionKeyManagerBranch::DataEncryption => {
+                        return Ok(PublicKey::from_secret_key(&wallet.view_key));
+                    },
+                    _ => {},
+                },
+            };
+            let km = self
+                .key_managers
+                .get(branch)
+                .ok_or_else(|| self.unknown_key_branch_error("get_public_key_at_key_id", branch))?
+                .read()
+                .await;
+            Ok(km.derive_public_key(*index)?.key)
+        } else {
+            Err(KeyManagerServiceError::UnknownError(
+                "should only handle managed key types".to_string(),
+            ))
         }
     }
 
