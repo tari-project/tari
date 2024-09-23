@@ -24,7 +24,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    connectivity_service::{create_wallet_connectivity_mock, BaseNodePeerManager, WalletConnectivityMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -135,7 +135,8 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
-    wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity_mock
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     wallet_connectivity_mock.base_node_changed().await;
 
     let service = BaseNodeWalletRpcMockService::new();
@@ -2236,12 +2237,18 @@ async fn scan_for_recovery_test() {
     }
     let mut recoverable_outputs = Vec::new();
     for output in &recoverable_wallet_outputs {
-        recoverable_outputs.push(output.to_transaction_output(&oms.key_manager_handle).await.unwrap());
+        recoverable_outputs.push((
+            output.to_transaction_output(&oms.key_manager_handle).await.unwrap(),
+            None,
+        ));
     }
 
     let mut non_recoverable_outputs = Vec::new();
     for output in non_recoverable_wallet_outputs {
-        non_recoverable_outputs.push(output.to_transaction_output(&oms.key_manager_handle).await.unwrap());
+        non_recoverable_outputs.push((
+            output.to_transaction_output(&oms.key_manager_handle).await.unwrap(),
+            None,
+        ));
     }
 
     oms.output_manager_handle
@@ -2256,7 +2263,7 @@ async fn scan_for_recovery_test() {
                 .clone()
                 .into_iter()
                 .chain(non_recoverable_outputs.clone().into_iter())
-                .collect::<Vec<TransactionOutput>>(),
+                .collect::<Vec<(TransactionOutput, Option<TxId>)>>(),
         )
         .await
         .unwrap();
@@ -2291,7 +2298,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let result = oms
         .output_manager_handle
-        .scan_for_recoverable_outputs(vec![rewindable_output])
+        .scan_for_recoverable_outputs(vec![(rewindable_output, None)])
         .await;
     assert!(
         matches!(result.as_deref(), Ok([])),

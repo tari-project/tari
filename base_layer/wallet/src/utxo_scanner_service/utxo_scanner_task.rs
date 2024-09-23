@@ -206,7 +206,7 @@ where
 
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
-        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
+        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
         let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
             // Use the wallet connectivity service so that RPC pools are correctly managed
@@ -567,7 +567,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_for_recoverable_outputs(outputs.clone())
+                .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
@@ -593,7 +593,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone())
+                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {

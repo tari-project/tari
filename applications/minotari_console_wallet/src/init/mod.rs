@@ -25,6 +25,7 @@
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
+use digest::crypto_common::rand_core::OsRng;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 #[cfg(feature = "ledger")]
@@ -41,6 +42,7 @@ use minotari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
+use rand::prelude::SliceRandom;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_common::{
@@ -570,18 +572,29 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
 pub async fn start_wallet(
     wallet: &mut WalletSqlite,
-    base_node: &Peer,
+    base_nodes: &[Peer],
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Setting base node peer");
 
-    let net_address = base_node
+    if base_nodes.is_empty() {
+        return Err(ExitError::new(
+            ExitCode::WalletError,
+            "No base nodes configured to connect to",
+        ));
+    }
+    let selected_base_node = base_nodes.choose(&mut OsRng).expect("base_nodes is not empty");
+    let net_address = selected_base_node
         .addresses
         .best()
         .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
 
     wallet
-        .set_base_node_peer(base_node.public_key.clone(), Some(net_address.address().clone()))
+        .set_base_node_peer(
+            selected_base_node.public_key.clone(),
+            Some(net_address.address().clone()),
+            Some(base_nodes.to_vec()),
+        )
         .await
         .map_err(|e| {
             ExitError::new(

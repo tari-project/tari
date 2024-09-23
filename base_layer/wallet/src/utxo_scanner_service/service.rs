@@ -24,7 +24,7 @@ use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
@@ -34,7 +34,7 @@ use tokio::{
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -161,9 +161,9 @@ where
                     }
                     _ = self.resources.current_base_node_watcher.changed() => {
                         debug!(target: LOG_TARGET, "Base node change detected.");
-                        let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                        if let Some(peer) = peer {
-                            self.peer_seeds = vec![peer.public_key];
+                        let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
+                        if let Some(peer) = selected_peer {
+                            self.peer_seeds = vec![peer.get_current_peer().public_key];
                         }
                         local_shutdown.trigger();
                     },
@@ -190,7 +190,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub db: WalletDatabase<TBackend>,
     pub comms_connectivity: ConnectivityRequester,
     pub wallet_connectivity: TWalletConnectivity,
-    pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
+    pub current_base_node_watcher: watch::Receiver<Option<BaseNodePeerManager>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub one_sided_tari_address: TariAddress,

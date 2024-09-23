@@ -166,6 +166,8 @@ impl Display for TransactionStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportStatus {
+    /// Special case where we import a tx received from broadcast
+    Broadcast,
     /// This transaction import status is used when importing a spendable UTXO
     Imported,
     /// This transaction import status is used when a one-sided transaction has been scanned but is unconfirmed
@@ -183,6 +185,7 @@ impl TryFrom<ImportStatus> for TransactionStatus {
 
     fn try_from(value: ImportStatus) -> Result<Self, Self::Error> {
         match value {
+            ImportStatus::Broadcast => Ok(TransactionStatus::Broadcast),
             ImportStatus::Imported => Ok(TransactionStatus::Imported),
             ImportStatus::OneSidedUnconfirmed => Ok(TransactionStatus::OneSidedUnconfirmed),
             ImportStatus::OneSidedConfirmed => Ok(TransactionStatus::OneSidedConfirmed),
@@ -197,6 +200,7 @@ impl TryFrom<TransactionStatus> for ImportStatus {
 
     fn try_from(value: TransactionStatus) -> Result<Self, Self::Error> {
         match value {
+            TransactionStatus::Broadcast => Ok(ImportStatus::Broadcast),
             TransactionStatus::Imported => Ok(ImportStatus::Imported),
             TransactionStatus::OneSidedUnconfirmed => Ok(ImportStatus::OneSidedUnconfirmed),
             TransactionStatus::OneSidedConfirmed => Ok(ImportStatus::OneSidedConfirmed),
@@ -210,6 +214,7 @@ impl TryFrom<TransactionStatus> for ImportStatus {
 impl fmt::Display for ImportStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
+            ImportStatus::Broadcast => write!(f, "Broadcast"),
             ImportStatus::Imported => write!(f, "Imported"),
             ImportStatus::OneSidedUnconfirmed => write!(f, "OneSidedUnconfirmed"),
             ImportStatus::OneSidedConfirmed => write!(f, "OneSidedConfirmed"),

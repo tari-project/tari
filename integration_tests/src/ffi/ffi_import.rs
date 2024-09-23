@@ -385,6 +385,7 @@ extern "C" {
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,
+        seed_passphrase: *const c_char,
         seed_words: *const TariSeedWords,
         network_str: *const c_char,
         peer_seed_str: *const c_char,

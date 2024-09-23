@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.4.2-pre.2"
+version = "1.5.0-pre.0"
 edition = "2018"
 
 [dependencies]
@@ -14,7 +14,9 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
+tari_core = { path = "../../base_layer/core", default-features = false, features = [
+    "transactions",
+] }
 tari_crypto = { version = "0.20.3" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
@@ -24,7 +26,7 @@ tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.7" }
 tari_key_manager = { path = "../../base_layer/key_manager", features = [
     "key_manager_service",
-], version = "1.4.2-pre.2" }
+], version = "1.5.0-pre.0" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"
@@ -37,11 +39,22 @@ config = { version = "0.14.0" }
 crossterm = { version = "0.25.0", features = ["event-stream"] }
 derive_more = "0.99.17"
 either = "1.6.1"
-futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
+futures = { version = "^0.3.16", default-features = false, features = [
+    "alloc",
+] }
 qrcode = { version = "0.12" }
 log = { version = "0.4.8", features = ["std"] }
 log-mdc = "0.1.0"
-log4rs = { version = "1.3.0", default-features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
+log4rs = { version = "1.3.0", default-features = false, features = [
+    "config_parsing",
+    "threshold_filter",
+    "yaml_format",
+    "console_appender",
+    "rolling_file_appender",
+    "compound_policy",
+    "size_trigger",
+    "fixed_window_roller",
+] }
 nom = "7.1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
@@ -53,7 +66,9 @@ tokio = { version = "1.36", features = ["signal"] }
 tonic = { version = "0.8.3", features = ["tls", "tls-roots"] }
 
 # Metrics
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = ["server"] }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = [
+    "server",
+] }
 
 [features]
 default = ["libtor"]
@@ -62,12 +77,12 @@ safe = []
 libtor = ["tari_libtor"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.4.2-pre.2" }
+tari_features = { path = "../../common/tari_features", version = "1.5.0-pre.0" }
 
 [package.metadata.cargo-machete]
 ignored = [
     # We need to specify extra features for log4rs even though it is not used directly in this crate
-    "log4rs"
+    "log4rs",
 ]
 
 [dev-dependencies]

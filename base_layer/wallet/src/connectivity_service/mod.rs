@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
+
 pub use error::WalletConnectivityError;
 
 mod handle;
@@ -40,3 +41,6 @@ pub use mock::{create as create_wallet_connectivity_mock, WalletConnectivityMock
 
 mod interface;
 pub use interface::WalletConnectivityInterface;
+
+mod base_node_peer_manager;
+pub use base_node_peer_manager::BaseNodePeerManager;

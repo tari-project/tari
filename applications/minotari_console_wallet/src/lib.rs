@@ -229,12 +229,12 @@ pub fn run_wallet_with_cli(
         &mut wallet,
         cli.non_interactive_mode,
     ))?;
-    let base_node_selected = base_node_config.get_base_node_peer()?;
+    let base_nodes_peers = base_node_config.get_base_node_peers()?;
 
     let wallet_mode = wallet_mode(&cli, boot_mode);
 
     // start wallet
-    runtime.block_on(start_wallet(&mut wallet, &base_node_selected, &wallet_mode))?;
+    runtime.block_on(start_wallet(&mut wallet, &base_nodes_peers, &wallet_mode))?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
@@ -284,7 +284,7 @@ fn get_recovery_seed(
 ) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) && !matches!(wallet_type, Some(WalletType::Ledger(_))) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
-            get_seed_from_seed_words(seed_words)?
+            get_seed_from_seed_words(seed_words, None)?
         } else {
             prompt_private_key_from_seed_words()?
         };

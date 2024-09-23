@@ -399,7 +399,7 @@ async fn set_base_node_peer(
     println!("Setting base node peer...");
     println!("{}::{}", public_key, address);
     wallet
-        .set_base_node_peer(public_key.clone(), Some(address.clone()))
+        .set_base_node_peer(public_key.clone(), Some(address.clone()), None)
         .await?;
     Ok((public_key, address))
 }
@@ -1836,8 +1836,13 @@ pub async fn command_runner(
                 {
                     let seed_words = SeedWords::from_str(args.seed_words.as_str())
                         .map_err(|e| CommandError::General(e.to_string()))?;
-                    let seed =
-                        get_seed_from_seed_words(&seed_words).map_err(|e| CommandError::General(e.to_string()))?;
+                    let passphrase = if args.passphrase.is_empty() {
+                        None
+                    } else {
+                        Some(SafePassword::from(args.passphrase))
+                    };
+                    let seed = get_seed_from_seed_words(&seed_words, passphrase)
+                        .map_err(|e| CommandError::General(e.to_string()))?;
                     let wallet_type = WalletType::DerivedKeys;
                     let password = SafePassword::from("password".to_string());
                     let shutdown = Shutdown::new();
@@ -1885,17 +1890,18 @@ pub async fn command_runner(
 
                     let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
 
-                    let base_node = peer_config
-                        .get_base_node_peer()
+                    let base_nodes = peer_config
+                        .get_base_node_peers()
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     new_wallet
                         .set_base_node_peer(
-                            base_node.public_key.clone(),
+                            base_nodes[0].public_key.clone(),
                             Some(
-                                base_node
+                                base_nodes[0]
                                     .last_address_used()
                                     .ok_or(CommandError::General("No address found".to_string()))?,
                             ),
+                            Some(base_nodes),
                         )
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;

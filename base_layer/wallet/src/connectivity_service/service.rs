@@ -25,7 +25,7 @@ use std::{mem, time::Duration};
 use log::*;
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester},
-    peer_manager::{NodeId, Peer},
+    peer_manager::NodeId,
     protocol::rpc::{RpcClientLease, RpcClientPool},
     Minimized,
     PeerConnection,
@@ -39,12 +39,12 @@ use tokio::{
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest},
+    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest, BaseNodePeerManager},
     util::watch::Watch,
 };
 
 const LOG_TARGET: &str = "wallet::connectivity";
-const CONNECTIVITY_WAIT: u64 = 5;
+pub(crate) const CONNECTIVITY_WAIT: u64 = 5;
 
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,7 +58,8 @@ pub struct WalletConnectivityService {
     config: BaseNodeServiceConfig,
     request_receiver: mpsc::Receiver<WalletConnectivityRequest>,
     connectivity: ConnectivityRequester,
-    base_node_watch: watch::Receiver<Option<Peer>>,
+    base_node_watch_receiver: watch::Receiver<Option<BaseNodePeerManager>>,
+    base_node_watch: Watch<Option<BaseNodePeerManager>>,
     pools: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
@@ -73,7 +74,7 @@ impl WalletConnectivityService {
     pub(super) fn new(
         config: BaseNodeServiceConfig,
         request_receiver: mpsc::Receiver<WalletConnectivityRequest>,
-        base_node_watch: watch::Receiver<Option<Peer>>,
+        base_node_watch: Watch<Option<BaseNodePeerManager>>,
         online_status_watch: Watch<OnlineStatus>,
         connectivity: ConnectivityRequester,
     ) -> Self {
@@ -81,6 +82,7 @@ impl WalletConnectivityService {
             config,
             request_receiver,
             connectivity,
+            base_node_watch_receiver: base_node_watch.get_receiver(),
             base_node_watch,
             pools: None,
             pending_requests: Vec::new(),
@@ -99,8 +101,8 @@ impl WalletConnectivityService {
                 // BIASED: select branches are in order of priority
                 biased;
 
-                Ok(_) = self.base_node_watch.changed() => {
-                    if self.base_node_watch.borrow().is_some() {
+                Ok(_) = self.base_node_watch_receiver.changed() => {
+                    if self.base_node_watch_receiver.borrow().is_some() {
                         // This will block the rest until the connection is established. This is what we want.
                         self.setup_base_node_connection().await;
                     }
@@ -176,7 +178,7 @@ impl WalletConnectivityService {
             },
             None => {
                 self.pending_requests.push(reply.into());
-                if self.base_node_watch.borrow().is_none() {
+                if self.base_node_watch_receiver.borrow().is_none() {
                     warn!(
                         target: LOG_TARGET,
                         "{} requests are waiting for base node to be set",
@@ -209,7 +211,7 @@ impl WalletConnectivityService {
             },
             None => {
                 self.pending_requests.push(reply.into());
-                if self.base_node_watch.borrow().is_none() {
+                if self.base_node_watch_receiver.borrow().is_none() {
                     warn!(
                         target: LOG_TARGET,
                         "{} requests are waiting for base node to be set",
@@ -221,7 +223,14 @@ impl WalletConnectivityService {
     }
 
     fn current_base_node(&self) -> Option<NodeId> {
-        self.base_node_watch.borrow().as_ref().map(|p| p.node_id.clone())
+        self.base_node_watch_receiver
+            .borrow()
+            .as_ref()
+            .map(|p| p.get_current_peer().node_id.clone())
+    }
+
+    fn get_base_node_peer_manager(&self) -> Option<BaseNodePeerManager> {
+        self.base_node_watch_receiver.borrow().as_ref().map(|p| p.clone())
     }
 
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
@@ -235,20 +244,28 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self) {
+        let mut initial_connect = true;
         self.pools = None;
+        let mut peer_manager = if let Some(val) = self.get_base_node_peer_manager() {
+            val
+        } else {
+            self.set_online_status(OnlineStatus::Offline);
+            return;
+        };
+        self.set_online_status(OnlineStatus::Connecting);
+        trace!(target: LOG_TARGET, "Setup base node connection to: {}", peer_manager);
         loop {
-            let node_id = match self.current_base_node() {
-                Some(n) => n,
-                None => {
-                    self.set_online_status(OnlineStatus::Offline);
-                    return;
-                },
+            let node_id = if initial_connect {
+                initial_connect = false;
+                peer_manager.get_current_peer().node_id
+            } else {
+                peer_manager.get_next_peer().node_id
             };
+
             debug!(
                 target: LOG_TARGET,
                 "Attempting to connect to base node peer {}...", node_id
             );
-            self.set_online_status(OnlineStatus::Connecting);
             match self.try_setup_rpc_pool(node_id.clone()).await {
                 Ok(true) => {
                     self.set_online_status(OnlineStatus::Online);
@@ -271,7 +288,6 @@ impl WalletConnectivityService {
                         "Dial was cancelled. Retrying after {}s ...",
                         self.config.base_node_monitor_max_refresh_interval.as_secs()
                     );
-                    self.set_online_status(OnlineStatus::Offline);
                     time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     continue;
                 },
@@ -279,12 +295,19 @@ impl WalletConnectivityService {
                     warn!(target: LOG_TARGET, "{}", e);
                     if self.current_base_node().as_ref() == Some(&node_id) {
                         self.disconnect_base_node(node_id).await;
-                        self.set_online_status(OnlineStatus::Offline);
                         time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     }
                     continue;
                 },
             }
+        }
+
+        if let Some(val) = self.get_base_node_peer_manager() {
+            if peer_manager.get_current_peer().public_key != val.get_current_peer().public_key {
+                self.base_node_watch.send(Some(peer_manager));
+            }
+        } else {
+            self.base_node_watch.send(Some(peer_manager));
         }
     }
 
@@ -319,7 +342,7 @@ impl WalletConnectivityService {
         tokio::select! {
             biased;
 
-            _ = self.base_node_watch.changed() => {
+            _ = self.base_node_watch_receiver.changed() => {
                 Ok(None)
             }
             result = self.connectivity.dial_peer(peer) => {

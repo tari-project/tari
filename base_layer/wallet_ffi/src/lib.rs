@@ -2944,6 +2944,7 @@ pub unsafe extern "C" fn seed_words_get_at(
 /// ## Returns
 /// 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
 /// word, if the push was successful and whether the push was successful and completed the full Seed Phrase.
+/// `passphrase` - Optional passphrase to use when generating the seed phrase
 ///  `seed_words` is only modified in the event of a `SuccessfulPush`.
 ///     '0' -> InvalidSeedWord
 ///     '1' -> SuccessfulPush
@@ -2953,9 +2954,11 @@ pub unsafe extern "C" fn seed_words_get_at(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn seed_words_push_word(
     seed_words: *mut TariSeedWords,
     word: *const c_char,
+    passphrase: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
     use tari_key_manager::mnemonic::Mnemonic;
@@ -2984,6 +2987,18 @@ pub unsafe extern "C" fn seed_words_push_word(
             },
         }
     }
+    let passphrase = if passphrase.is_null() {
+        None
+    } else {
+        match CStr::from_ptr(passphrase).to_str() {
+            Ok(v) => Some(SafePassword::from(v.to_owned())),
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return SeedWordPushResult::InvalidObject as u8;
+            },
+        }
+    };
 
     // Check word is from a word list
     match MnemonicLanguage::from(&word_string) {
@@ -3019,7 +3034,7 @@ pub unsafe extern "C" fn seed_words_push_word(
         // depending on word added
         if MnemonicLanguage::detect_language(&(*seed_words).0).is_ok() {
             if (*seed_words).0.len() >= 24 {
-                if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+                if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, passphrase) {
                     log::error!(
                         target: LOG_TARGET,
                         "Problem building valid private seed from seed phrase: {:?}",
@@ -5660,6 +5675,7 @@ unsafe fn init_logging(
 /// `passphrase` - An optional string that represents the passphrase used to
 /// encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
 /// encrypted then the correct passphrase is required or this function will fail.
+/// `seed_passphrase` - an optional string, if present this will derypt the seed words
 /// `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
 /// If this is null, then a new master key is created for the wallet.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
@@ -5749,6 +5765,7 @@ pub unsafe extern "C" fn wallet_create(
     num_rolling_log_files: c_uint,
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
+    seed_passphrase: *const c_char,
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
     peer_seed_str: *const c_char,
@@ -5828,10 +5845,20 @@ pub unsafe extern "C" fn wallet_create(
         peer_seed
     };
 
+    let seed_passphrase = if seed_passphrase.is_null() {
+        None
+    } else {
+        let seed_passphrase = CStr::from_ptr(seed_passphrase)
+            .to_str()
+            .expect("A non-null seed passphrase should be able to be converted to string")
+            .to_owned();
+        Some(SafePassword::from(seed_passphrase))
+    };
+
     let recovery_seed = if seed_words.is_null() {
         None
     } else {
-        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+        match CipherSeed::from_mnemonic(&(*seed_words).0, seed_passphrase) {
             Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
@@ -6879,10 +6906,11 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
         }
     };
 
-    if let Err(e) = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.set_base_node_peer((*public_key).clone(), parsed_addr))
-    {
+    if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.set_base_node_peer(
+        (*public_key).clone(),
+        parsed_addr,
+        None,
+    )) {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
@@ -10270,6 +10298,7 @@ mod test {
                 0,
                 passphrase,
                 ptr::null(),
+                ptr::null(),
                 alice_network_str,
                 dns_string,
                 false,
@@ -10316,6 +10345,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 alice_network_str,
                 dns_string,
@@ -10433,6 +10463,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -10565,9 +10596,9 @@ mod test {
                 // Try to wrongfully add a new seed word onto the mnemonic wordlist seed words object
                 let w = CString::new(mnemonic_wordlist[188]).unwrap();
                 let w_str: *const c_char = CString::into_raw(w) as *const c_char;
-                seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr);
+                seed_words_push_word(mnemonic_wordlist_ffi, w_str, ptr::null(), error_ptr);
                 assert_eq!(
-                    seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr),
+                    seed_words_push_word(mnemonic_wordlist_ffi, w_str, ptr::null(), error_ptr),
                     SeedWordPushResult::InvalidObject as u8
                 );
                 assert_ne!(error, 0);
@@ -10606,7 +10637,7 @@ mod test {
             let w_str: *const c_char = CString::into_raw(w) as *const c_char;
 
             assert_eq!(
-                seed_words_push_word(seed_words, w_str, error_ptr),
+                seed_words_push_word(seed_words, w_str, ptr::null(), error_ptr),
                 SeedWordPushResult::InvalidSeedWord as u8
             );
 
@@ -10616,12 +10647,12 @@ mod test {
 
                 if count + 1 < 24 {
                     assert_eq!(
-                        seed_words_push_word(seed_words, w_str, error_ptr),
+                        seed_words_push_word(seed_words, w_str, ptr::null(), error_ptr),
                         SeedWordPushResult::SuccessfulPush as u8
                     );
                 } else {
                     assert_eq!(
-                        seed_words_push_word(seed_words, w_str, error_ptr),
+                        seed_words_push_word(seed_words, w_str, ptr::null(), error_ptr),
                         SeedWordPushResult::SeedPhraseComplete as u8
                     );
                 }
@@ -10661,6 +10692,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -10729,6 +10761,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 seed_words,
                 network_str,
                 dns_string,
@@ -10809,6 +10842,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -10988,6 +11022,7 @@ mod test {
                 0,
                 passphrase,
                 ptr::null(),
+                ptr::null(),
                 network_str,
                 dns_string,
                 false,
@@ -11126,6 +11161,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11345,6 +11381,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11572,6 +11609,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -11833,6 +11871,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 network_str,
                 dns_string,
@@ -12215,6 +12254,7 @@ mod test {
                 0,
                 passphrase,
                 ptr::null(),
+                ptr::null(),
                 alice_network_str,
                 dns_string,
                 false,
@@ -12279,6 +12319,7 @@ mod test {
                 0,
                 0,
                 passphrase,
+                ptr::null(),
                 ptr::null(),
                 bob_network_str,
                 dns_string,
