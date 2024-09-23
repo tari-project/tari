@@ -468,9 +468,9 @@ async fn get_new_block_p2pool_node(
         pow_algo: PowAlgos::Sha3x.into(),
     };
     let coinbase_extra = if config.coinbase_extra.trim().is_empty() {
-        None
+        String::new()
     } else {
-        Some(config.coinbase_extra.clone())
+        config.coinbase_extra.clone()
     };
     let block_result = sha_p2pool_client
         .get_new_block(GetNewBlockRequest {

@@ -134,9 +134,9 @@ impl BlockTemplateProtocol<'_> {
                             pow_algo: PowAlgos::Randomx.into(),
                         };
                         let coinbase_extra = if self.config.coinbase_extra.trim().is_empty() {
-                            None
+                            String::new()
                         } else {
-                            Some(self.config.coinbase_extra.clone())
+                            self.config.coinbase_extra.clone()
                         };
                         let block_result = client
                             .get_new_block(GetNewBlockRequest {
