@@ -33,6 +33,8 @@ service ShaP2Pool {
 
 message GetNewBlockRequest {
   tari.rpc.PowAlgo pow = 1;
+  string coinbase_extra = 2;
+  string wallet_payment_address = 3;
 }
 
 message GetNewBlockResponse {
