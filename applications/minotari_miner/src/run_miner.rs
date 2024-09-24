@@ -376,7 +376,7 @@ async fn get_new_block(
 ) -> Result<GetNewBlockResponse, MinerError> {
     if config.sha_p2pool_enabled {
         if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
-            return get_new_block_p2pool_node(client).await;
+            return get_new_block_p2pool_node(config, client, wallet_payment_address).await;
         }
     }
 
@@ -461,13 +461,24 @@ async fn get_new_block_base_node(
 }
 
 async fn get_new_block_p2pool_node(
+    config: &MinerConfig,
     sha_p2pool_client: &mut ShaP2PoolGrpcClient,
+    wallet_payment_address: &TariAddress,
 ) -> Result<GetNewBlockResponse, MinerError> {
     let pow_algo = PowAlgo {
         pow_algo: PowAlgos::Sha3x.into(),
     };
+    let coinbase_extra = if config.coinbase_extra.trim().is_empty() {
+        String::new()
+    } else {
+        config.coinbase_extra.clone()
+    };
     let block_result = sha_p2pool_client
-        .get_new_block(GetNewBlockRequest { pow: Some(pow_algo) })
+        .get_new_block(GetNewBlockRequest {
+            pow: Some(pow_algo),
+            coinbase_extra,
+            wallet_payment_address: wallet_payment_address.to_base58(),
+        })
         .await?
         .into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;

@@ -133,8 +133,17 @@ impl BlockTemplateProtocol<'_> {
                         let pow_algo = PowAlgo {
                             pow_algo: PowAlgos::Randomx.into(),
                         };
+                        let coinbase_extra = if self.config.coinbase_extra.trim().is_empty() {
+                            String::new()
+                        } else {
+                            self.config.coinbase_extra.clone()
+                        };
                         let block_result = client
-                            .get_new_block(GetNewBlockRequest { pow: Some(pow_algo) })
+                            .get_new_block(GetNewBlockRequest {
+                                pow: Some(pow_algo),
+                                coinbase_extra,
+                                wallet_payment_address: self.wallet_payment_address.to_base58(),
+                            })
                             .await?
                             .into_inner();
                         block_result
