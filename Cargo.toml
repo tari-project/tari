@@ -33,11 +33,35 @@ members = [
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
     "integration_tests",
-    "hashing"
+    "hashing",
 ]
 
 # Add here until we move to edition=2021
 resolver = "2"
+
+
+[workspace.dependencies]
+tari_common_types = { path = "base_layer/common_types" }
+tari_comms = { path = "comms/core" }
+tari_core = { path = "base_layer/core" }
+tari_crypto = { version = "0.20.3" }
+tari_script = { path = "infrastructure/tari_script" }
+tari_max_size = { path = "infrastructure/max_size" }
+tari_utilities = { version = "0.7" }
+tari_features = { path = "common/tari_features", version = "1.5.1-pre.0" }
+minotari_app_grpc = { path = "applications/minotari_app_grpc" }
+minotari_app_utilities = { path = "applications/minotari_app_utilities" }
+minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "1.5.1-pre.0" }
+tari_common = { path = "common" }
+tari_comms_dht = { path = "comms/dht" }
+tari_contacts = { path = "base_layer/contacts" }
+tari_key_manager = { path = "base_layer/key_manager" }
+tari_libtor = { path = "infrastructure/libtor" }
+tari_p2p = { path = "base_layer/p2p" }
+tari_shutdown = { path = "infrastructure/shutdown" }
+minotari_wallet = { path = "base_layer/wallet" }
+tari_hashing = { path = "hashing" }
+minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common" }
 
 [profile.release]
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error

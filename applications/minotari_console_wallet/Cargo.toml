@@ -6,26 +6,24 @@ edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
-minotari_app_grpc = { path = "../minotari_app_grpc" }
-minotari_app_utilities = { path = "../minotari_app_utilities" }
-minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.5.1-pre.0", optional = true }
-tari_common = { path = "../../common" }
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
-tari_comms_dht = { path = "../../comms/dht" }
-tari_contacts = { path = "../../base_layer/contacts" }
-tari_crypto = { version = "0.20.3" }
-tari_key_manager = { path = "../../base_layer/key_manager" }
-tari_libtor = { path = "../../infrastructure/libtor", optional = true }
-tari_max_size = { path = "../../infrastructure/max_size" }
-tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.7" }
-minotari_wallet = { path = "../../base_layer/wallet", features = [
-    "bundled_sqlite",
-] }
-tari_hashing = { path = "../../hashing" }
+minotari_app_grpc = { workspace = true }
+minotari_app_utilities = { workspace = true }
+minotari_ledger_wallet_comms = { workspace = true, optional = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_comms = { workspace = true }
+tari_comms_dht = { workspace = true }
+tari_contacts = { workspace = true }
+tari_crypto = { workspace = true }
+tari_key_manager = { workspace = true }
+tari_libtor = { workspace = true, optional = true }
+tari_max_size = { workspace = true }
+tari_p2p = { workspace = true, features = ["auto-update"] }
+tari_script = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_utilities = { workspace = true }
+minotari_wallet = { workspace = true, features = ["bundled_sqlite"] }
+tari_hashing = { workspace = true }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
 console-subscriber = "0.1.8"
@@ -73,10 +71,11 @@ url = "2.3.1"
 zeroize = "1"
 zxcvbn = "2"
 
-[dependencies.tari_core]
-path = "../../base_layer/core"
-default-features = false
-features = ["transactions", "mempool_proto", "base_node_proto"]
+tari_core = { workspace = true, default-features = false, features = [
+    "transactions",
+    "mempool_proto",
+    "base_node_proto",
+] }
 
 [dependencies.tui]
 version = "^0.16"
@@ -84,7 +83,7 @@ default-features = false
 features = ["crossterm"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.5.1-pre.0" }
+tari_features = { workspace = true }
 
 [features]
 default = ["libtor", "ledger"]

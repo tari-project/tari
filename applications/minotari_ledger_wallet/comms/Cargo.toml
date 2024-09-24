@@ -6,13 +6,13 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.2", default-features = false }
-tari_utilities = { version = "0.7" }
-tari_common = { path = "../../../common" }
-tari_common_types = { path = "../../../base_layer/common_types" }
-tari_script = { path = "../../../infrastructure/tari_script" }
+tari_crypto = { workspace = true, default-features = false }
+tari_utilities = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_script = { workspace = true }
 
-minotari_ledger_wallet_common = { path = "../common" }
+minotari_ledger_wallet_common = { workspace = true }
 semver = "1.0"
 borsh = "1.2"
 dialoguer = { version = "0.11" }

@@ -8,13 +8,13 @@ version = "1.5.1-pre.0"
 edition = "2018"
 
 [dependencies]
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
-tari_core = { path = "../../base_layer/core" }
-tari_crypto = { version = "0.20.3" }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_max_size = { path = "../../infrastructure/max_size" }
-tari_utilities = { version = "0.7" }
+tari_common_types = { workspace = true }
+tari_comms = { workspace = true }
+tari_core = { workspace = true }
+tari_crypto = { workspace = true }
+tari_script = { workspace = true }
+tari_max_size = { workspace = true }
+tari_utilities = { workspace = true }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
@@ -32,7 +32,7 @@ tonic = { version = "0.8.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.5.1-pre.0" }
+tari_features = { workspace = true }
 tonic-build = "0.8.4"
 
 [package.metadata.cargo-machete]
