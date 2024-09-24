@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.5.1-pre.1](https://github.com/tari-project/tari/compare/v1.5.1-pre.0...v1.5.1-pre.1) (2024-09-24)
+
+
+### Features
+
+* **p2pool:** add coinbase extra field to p2pool proto ([#6570](https://github.com/tari-project/tari/issues/6570)) ([fd41ba4](https://github.com/tari-project/tari/commit/fd41ba490470ff43fb3dc7e31fc6fc77266f264e))
+
 ### [1.5.1-pre.0](https://github.com/tari-project/tari/compare/v1.5.0-pre.0...v1.5.1-pre.0) (2024-09-23)
 
 
