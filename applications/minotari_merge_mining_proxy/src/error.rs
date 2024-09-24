@@ -122,6 +122,8 @@ pub enum MmProxyError {
     MaxSizeBytesError(#[from] MaxSizeBytesError),
     #[error("Max sized vector error: {0}")]
     MaxSizeVecError(#[from] MaxSizeVecError),
+    #[error("Logical process error: {0}")]
+    LogicalError(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

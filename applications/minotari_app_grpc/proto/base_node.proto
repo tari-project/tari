@@ -398,10 +398,16 @@ message GetNewBlockBlobResult{
 // This is mining data for the miner asking for a new block
 message MinerData{
     PowAlgo algo = 1;
-    uint64 target_difficulty = 2;
+    uint64 tari_target_difficulty = 2;
     uint64 reward = 3;
 //    bytes merge_mining_hash =4;
     uint64 total_fees = 5;
+    PoolDifficulty p2pool_target_difficulty = 6;
+}
+
+// Pool difficulty
+message PoolDifficulty {
+    uint64 difficulty = 1;
 }
 
 // This is the request type for the Search Kernels rpc

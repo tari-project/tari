@@ -426,7 +426,8 @@ fn add_monero_data(
         .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
 
     let aux_chain_hashes = AuxChainHashes::try_from(vec![monero::Hash::from_slice(merge_mining_hash.as_slice())])?;
-    let tari_difficulty = miner_data.target_difficulty;
+    let tari_target_difficulty = miner_data.tari_target_difficulty;
+    let pool_target_difficulty = miner_data.p2pool_target_difficulty.as_ref().map(|val| val.difficulty);
     let block_template_data = BlockTemplateDataBuilder::new()
         .tari_block(
             tari_block_result
@@ -436,7 +437,8 @@ fn add_monero_data(
         .tari_miner_data(miner_data)
         .monero_seed(monero_mining_data.seed_hash)
         .monero_difficulty(monero_mining_data.difficulty)
-        .tari_difficulty(tari_difficulty)
+        .tari_target_difficulty(tari_target_difficulty)
+        .p2pool_target_difficulty(pool_target_difficulty)
         .tari_merge_mining_hash(merge_mining_hash)
         .aux_hashes(aux_chain_hashes.clone())
         .build()?;
@@ -454,12 +456,18 @@ fn add_monero_data(
     let blockhashing_blob = monero_rx::create_blockhashing_blob_from_block(&monero_block)?;
     let blocktemplate_blob = monero_rx::serialize_monero_block_to_hex(&monero_block)?;
 
-    let monero_difficulty = monero_mining_data.difficulty;
-    let mining_difficulty = cmp::min(monero_difficulty, tari_difficulty);
+    let mining_difficulty = cmp::min(
+        monero_mining_data.difficulty,
+        if let Some(val) = pool_target_difficulty {
+            cmp::min(val, tari_target_difficulty)
+        } else {
+            tari_target_difficulty
+        },
+    );
     info!(
         target: LOG_TARGET,
         "Difficulties: Minotari ({}), Monero({}), Selected({})",
-        tari_difficulty,
+        tari_target_difficulty,
         monero_mining_data.difficulty,
         mining_difficulty
     );

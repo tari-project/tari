@@ -60,9 +60,9 @@ monerod_url = [ # mainnet
 #listener_address = "/ip4/127.0.0.1/tcp/18081"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
-# (monerod) as well as to the Minotari blockchain, then this setting should be "true". With pool
+# (monerod) as well as to the Minotari blockchain, then this setting should be "true". With Monero pool
 # merged mining, there is no sense in submitting the solution to the Monero blockchain as the
-# pool does that, then this setting should be "false". (default = true)
+# Monero pool does that, then this setting should be "false". (default = true)
 #submit_to_origin = true
 
 # The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,

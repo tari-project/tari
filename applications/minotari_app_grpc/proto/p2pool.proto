@@ -39,10 +39,16 @@ message GetNewBlockRequest {
 
 message GetNewBlockResponse {
   tari.rpc.GetNewBlockResult block = 1;
-  uint64 target_difficulty = 2;
+  uint64 tari_target_difficulty = 2;
+  uint64 p2pool_target_difficulty = 3;
 }
 
 message SubmitBlockRequest {
   tari.rpc.Block block = 1;
   string wallet_payment_address = 2;
+  Difficulty achieved_difficulty = 3;
+}
+
+message Difficulty {
+  uint64 difficulty = 1;
 }

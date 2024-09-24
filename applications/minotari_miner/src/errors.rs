@@ -57,8 +57,10 @@ pub enum MinerError {
     ParseInputError(#[from] ParseInputError),
     #[error("Base node not responding to gRPC requests: {0}")]
     BaseNodeNotResponding(String),
-    #[error("Limit error {0}")]
+    #[error("Limit error :{0}")]
     MaxSizeBytesError(#[from] MaxSizeBytesError),
+    #[error("Logical process error: {0}")]
+    LogicalError(String),
 }
 
 pub fn err_empty(name: &str) -> MinerError {
