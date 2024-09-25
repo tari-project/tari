@@ -187,7 +187,7 @@ impl InnerService {
         let mut base_node_client = self.base_node_client.clone();
         trace!(target: LOG_TARGET, "Successful connection to base node GRPC");
 
-        let result =
+        let tari_tip_info =
             base_node_client
                 .get_tip_info(grpc::Empty {})
                 .await
@@ -195,19 +195,19 @@ impl InnerService {
                     status: err,
                     details: "get_tip_info failed".to_string(),
                 })?;
-        let height = result
+        let height = tari_tip_info
             .get_ref()
             .metadata
             .as_ref()
             .map(|meta| meta.best_block_height)
             .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
-        if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::SeqCst) {
+        if tari_tip_info.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::SeqCst) {
             self.initial_sync_achieved
-                .store(result.get_ref().initial_sync_achieved, Ordering::SeqCst);
+                .store(tari_tip_info.get_ref().initial_sync_achieved, Ordering::SeqCst);
             debug!(
                 target: LOG_TARGET,
                 "Minotari base node initial sync status change to {}",
-                result.get_ref().initial_sync_achieved
+                tari_tip_info.get_ref().initial_sync_achieved
             );
         }
 
@@ -296,7 +296,7 @@ impl InnerService {
                 .map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let p2pool_client = self.p2pool_client.clone();
-            let achieved_target = if self.config.check_tari_difficulty_before_submit {
+            let achieved_or_tari_target = if self.config.check_tari_difficulty_before_submit {
                 let timer = Instant::now();
                 let diff = randomx_difficulty(
                     &tari_header,
@@ -313,9 +313,9 @@ impl InnerService {
             let height = tari_header_mut.height;
             info!(
                 target: LOG_TARGET,
-                "Checking if we must submit block #{}. Difficulties - achieved target: {}, tari target: {}, pool target: {:?}",
+                "Checking if we must submit block #{}. Difficulties - achieved: {}, tari target: {}, pool target: {:?}",
                 height,
-                achieved_target,
+                achieved_or_tari_target,
                 block_data.template.tari_target_difficulty,
                 block_data.template.p2pool_target_difficulty,
             );
@@ -324,82 +324,66 @@ impl InnerService {
                 return Err(MmProxyError::LogicalError("No node to submit block to".to_string()));
             }
 
-            let submit_to_base_node = achieved_target >= block_data.template.tari_target_difficulty;
+            let submit_to_base_node = achieved_or_tari_target >= block_data.template.tari_target_difficulty;
             let submit_to_p2pool = p2pool_client.is_some() &&
-                achieved_target >= block_data.template.p2pool_target_difficulty.expect("has value");
+                achieved_or_tari_target >= block_data.template.p2pool_target_difficulty.expect("has value");
 
-            let mut bn_time = Duration::from_secs(0);
-            let mut p2p_time = Duration::from_secs(0);
-            let (resp_bn, resp_p2p) = match (submit_to_base_node, submit_to_p2pool) {
-                (true, true) => {
-                    let bn_timer = Instant::now();
-                    let response_bn = Some(
-                        base_node_client
-                            .submit_block(block_data.template.tari_block.clone())
+            let (mut bn_time, mut p2p_time) = (Duration::from_secs(0), Duration::from_secs(0));
+            let (mut resp_bn, mut resp_p2p) = (None, None);
+            if submit_to_base_node {
+                debug!(target: LOG_TARGET, "Submitting to base node");
+                let bn_timer = Instant::now();
+                resp_bn = Some(
+                    base_node_client
+                        .submit_block(block_data.template.tari_block.clone())
+                        .await,
+                );
+                bn_time = bn_timer.elapsed();
+                debug!(
+                    target: LOG_TARGET,
+                    "Submitted block #{} to Minotari node in {:.2?} (SubmitBlock)",
+                    height,
+                    bn_time,
+                );
+            }
+            if submit_to_p2pool {
+                if let Some(mut client) = p2pool_client {
+                    debug!(target: LOG_TARGET, "Submitting to p2pool");
+                    let p2p_timer = Instant::now();
+                    resp_p2p = Some(
+                        client
+                            .submit_block(SubmitBlockRequest {
+                                block: Some(block_data.template.tari_block),
+                                wallet_payment_address: self.wallet_payment_address.to_hex(),
+                                achieved_difficulty: if self.config.check_tari_difficulty_before_submit {
+                                    Some(Difficulty {
+                                        difficulty: achieved_or_tari_target,
+                                    })
+                                } else {
+                                    None
+                                },
+                            })
                             .await,
                     );
-                    bn_time = bn_timer.elapsed();
-                    let p2p_timer = Instant::now();
-                    let response_p2p = if let Some(mut client) = p2pool_client {
-                        info!(target: LOG_TARGET, "Submitting to p2pool");
-                        Some(
-                            client
-                                .submit_block(SubmitBlockRequest {
-                                    block: Some(block_data.template.tari_block),
-                                    wallet_payment_address: self.wallet_payment_address.to_hex(),
-                                    achieved_difficulty: if self.config.check_tari_difficulty_before_submit {
-                                        Some(Difficulty {
-                                            difficulty: achieved_target,
-                                        })
-                                    } else {
-                                        None
-                                    },
-                                })
-                                .await,
-                        )
-                    } else {
-                        None
-                    };
                     p2p_time = p2p_timer.elapsed();
-                    (response_bn, response_p2p)
-                },
-                (true, false) => {
-                    let bn_timer = Instant::now();
-                    let response_bn = Some(
-                        base_node_client
-                            .submit_block(block_data.template.tari_block.clone())
-                            .await,
+                    debug!(
+                        target: LOG_TARGET,
+                        "Submitted block #{} to p2pool in {:.2?} (SubmitBlock)",
+                        height,
+                        p2p_time,
                     );
-                    bn_time = bn_timer.elapsed();
-                    (response_bn, None)
-                },
-                (false, true) => {
-                    let p2p_timer = Instant::now();
-                    let response_p2p = if let Some(mut client) = p2pool_client {
-                        info!(target: LOG_TARGET, "Submitting to p2pool");
-                        Some(
-                            client
-                                .submit_block(SubmitBlockRequest {
-                                    block: Some(block_data.template.tari_block),
-                                    wallet_payment_address: self.wallet_payment_address.to_hex(),
-                                    achieved_difficulty: if self.config.check_tari_difficulty_before_submit {
-                                        Some(Difficulty {
-                                            difficulty: achieved_target,
-                                        })
-                                    } else {
-                                        None
-                                    },
-                                })
-                                .await,
-                        )
-                    } else {
-                        None
-                    };
-                    p2p_time = p2p_timer.elapsed();
-                    (None, response_p2p)
-                },
-                (false, false) => return Err(MmProxyError::LogicalError("No node to submit block to".to_string())),
-            };
+                } else {
+                    error!(target: LOG_TARGET, "p2pool mode enabled, but no p2pool node to submit block to");
+                }
+            }
+
+            if let (Some(Ok(resp_1)), Some(Ok(resp_2))) = (&resp_bn, &resp_p2p) {
+                if resp_1.get_ref() != resp_2.get_ref() {
+                    return Err(MmProxyError::LogicalError(
+                        "Base node and p2pool node did not agree on block submission".to_string(),
+                    ));
+                }
+            }
 
             if let Some(resp) = resp_bn {
                 match resp {
@@ -413,12 +397,6 @@ impl InnerService {
                             json_resp = append_aux_chain_data(
                                 json_resp,
                                 json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
-                            );
-                            debug!(
-                                target: LOG_TARGET,
-                                "Submitted block #{} to Minotari node in {:.2?} (SubmitBlock)",
-                                height,
-                                bn_time,
                             );
                         } else {
                             // self-select related, do not change.
@@ -458,12 +436,6 @@ impl InnerService {
             if let Some(resp) = resp_p2p {
                 match resp {
                     Ok(_) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Submitted block #{} to p2pool in {:.2?} (SubmitBlock)",
-                            height,
-                            p2p_time,
-                        );
                         self.block_templates.remove_final_block_template(&hash).await;
                     },
                     Err(err) => {
@@ -471,7 +443,7 @@ impl InnerService {
                             target: LOG_TARGET,
                             "Problem submitting block #{} to p2pool, responded in  {:.2?} (SubmitBlock): {}",
                             height,
-                            bn_time,
+                            p2p_time,
                             err
                         );
                     },
@@ -826,6 +798,7 @@ impl InnerService {
             builder = builder.basic_auth(&self.config.monerod_username, Some(&self.config.monerod_password));
         }
 
+        let timer = Instant::now();
         debug!(
             target: LOG_TARGET,
             "[monerod] request: {} {}",
@@ -898,9 +871,11 @@ impl InnerService {
         };
         debug!(
             target: LOG_TARGET,
-            "[monerod] response: status = {}, monerod_rpc = {}",
+            "[monerod] response: status = {}, monerod_rpc = {} in {:.2?} for {}",
             json_response.status(),
-            rpc_status
+            rpc_status,
+            timer.elapsed(),
+            monerod_uri,
         );
         Ok((request, json_response))
     }

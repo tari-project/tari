@@ -1647,6 +1647,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
 
+        let parent_hash = if let Some(tip_header) = handler
+            .get_header_by_hash(*meta.best_block_hash())
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+        {
+            tip_header.header().prev_hash
+        } else {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::not_found("Tip header not found".to_string()),
+            ));
+        };
+
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
@@ -1654,6 +1667,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             metadata: Some(meta.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
             base_node_state: state.into(),
+            parent_hash: parent_hash.to_vec(),
         };
 
         trace!(target: LOG_TARGET, "Sending MetaData response to client");
