@@ -3524,7 +3524,6 @@ version = "1.5.1-pre.1"
 dependencies = [
  "borsh",
  "cbindgen",
- "hex",
  "libc",
  "rand",
  "tari_common",
