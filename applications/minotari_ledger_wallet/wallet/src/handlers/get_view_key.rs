@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use ledger_device_sdk::io::Comm;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::NbglStatus;
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_crypto::tari_utilities::ByteArray;
@@ -11,7 +13,14 @@ use crate::{utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION, STAT
 pub fn handler_get_view_key(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 8 {
-        SingleMessage::new("Invalid data length").show_and_wait();
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            SingleMessage::new("Invalid data length").show_and_wait();
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            NbglStatus::new().text(&"Invalid data length").show(false);
+        }
         return Err(AppSW::WrongApduLength);
     }
 

@@ -9,7 +9,11 @@ use digest::{
     consts::{U32, U64},
     Digest,
 };
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use include_gif::include_gif;
 use ledger_device_sdk::io::Comm;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::{Field, NbglGlyph, NbglReview, NbglStatus};
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::{
     bitmaps::{CROSSMARK, EYE, VALIDATE_14},
@@ -76,7 +80,16 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
         Ok(address) => address,
         Err(e) => {
-            SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!("Error: {:?}", e.to_string()))
+                    .show(false);
+            }
             return Err(AppSW::MetadataSignatureFail);
         },
     };
@@ -94,17 +107,35 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             value: &format!("{}", receiver_address),
         },
     ];
-    let review = MultiFieldReview::new(
-        &fields,
-        &["Review ", "Transaction"],
-        Some(&EYE),
-        "Approve",
-        Some(&VALIDATE_14),
-        "Reject",
-        Some(&CROSSMARK),
-    );
-    if !review.show() {
-        return Err(AppSW::UserCancelled);
+    #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+    {
+        let review = MultiFieldReview::new(
+            &fields,
+            &["Review ", "Transaction"],
+            Some(&EYE),
+            "Approve",
+            Some(&VALIDATE_14),
+            "Reject",
+            Some(&CROSSMARK),
+        );
+        if !review.show() {
+            return Err(AppSW::UserCancelled);
+        }
+    }
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    {
+        // Load glyph from 64x64 4bpp gif file with include_gif macro. Creates an NBGL compatible glyph.
+        const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
+        // Create NBGL review. Maximum number of fields and string buffer length can be customised
+        // with constant generic parameters of NbglReview. Default values are 32 and 1024 respectively.
+        let mut review: NbglReview = NbglReview::new()
+            .titles("Review transaction\nto send CRAB", "", "Sign transaction\nto send CRAB")
+            .glyph(&FERRIS);
+
+        //
+        if !review.show(&fields[0..2]) {
+            return Err(AppSW::UserCancelled);
+        }
     }
 
     let value_as_private_key: RistrettoSecretKey = value_u64.into();
@@ -127,7 +158,16 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
             Ok(bytes) => get_key_from_canonical_bytes::<RistrettoPublicKey>(&bytes)?,
             Err(e) => {
-                SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
+                #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+                {
+                    SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
+                }
+                #[cfg(any(target_os = "stax", target_os = "flex"))]
+                {
+                    NbglStatus::new()
+                        .text(&format!("Error: {:?}", e.to_string()))
+                        .show(false);
+                }
                 return Err(AppSW::MetadataSignatureFail);
             },
         };
@@ -158,7 +198,16 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     ) {
         Ok(sig) => sig,
         Err(e) => {
-            SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .show(false);
+            }
             return Err(AppSW::MetadataSignatureFail);
         },
     };

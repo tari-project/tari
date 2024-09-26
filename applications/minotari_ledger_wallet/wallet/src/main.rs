@@ -37,7 +37,11 @@ use handlers::{
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
-use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::io::Event;
+use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::{init_comm, NbglReviewStatus, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::common_types::{
@@ -45,7 +49,6 @@ use minotari_ledger_wallet_common::common_types::{
     Branch as BranchMapping,
     Instruction as InstructionMapping,
 };
-
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
@@ -54,7 +57,7 @@ static RESPONSE_VERSION: u8 = 1;
 
 // Application status words.
 #[repr(u16)]
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppSW {
     Deny = AppSWMapping::Deny as u16,
     WrongP1P2 = AppSWMapping::WrongP1P2 as u16,
@@ -71,6 +74,7 @@ pub enum AppSW {
     MetadataSignatureFail = AppSWMapping::MetadataSignatureFail as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    Ok = AppSWMapping::Ok as u16,
 }
 
 impl From<AppSW> for Reply {
@@ -80,6 +84,7 @@ impl From<AppSW> for Reply {
 }
 
 /// Possible input commands received through APDUs.
+#[derive(Clone, Copy)]
 pub enum Instruction {
     GetVersion,
     GetAppName,
@@ -175,7 +180,8 @@ impl TryFrom<ApduHeader> for Instruction {
 }
 
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-fn show_status_if_needed(ins: &Instruction, tx_ctx: &ScriptOffsetCtx, status: &AppSW) {
+fn show_status_and_home_if_needed(status: &AppSW) {
+    // fn show_status_and_home_if_needed(ins: &Instruction, tx_ctx: &ScriptOffsetCtx, status: &AppSW) {
     // let (show_status, status_type) = match (ins, status) {
     //     (Instruction::GetPubkey { display: true }, AppSW::Deny | AppSW::Ok) => {
     //         (true, StatusType::Address)
@@ -186,11 +192,11 @@ fn show_status_if_needed(ins: &Instruction, tx_ctx: &ScriptOffsetCtx, status: &A
     //     (_, _) => (false, StatusType::Transaction),
     // };
 
-    //if show_status {
-    if true{
+    // if show_status {
+    if true {
         let success = *status == AppSW::Ok;
         NbglReviewStatus::new()
-            .status_type(status_type)
+            .status_type(StatusType::Transaction)
             .show(success);
     }
 }
@@ -202,32 +208,41 @@ extern "C" fn sample_main() {
     // BadCla status word.
     let mut comm = Comm::new().set_expected_cla(CLA);
 
-    // Initialize reference to Comm instance for NBGL
-    // API calls.
-    #[cfg(any(target_os = "stax", target_os = "flex"))]
-    init_comm(&mut comm);
-
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
-    loop {
-        // Wait for either a specific button push to exit the app
-        // or an APDU command
-        if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            let result = handle_apdu(&mut comm, ins, &mut offset_ctx);
-            let _status: AppSW = match result {
-                Ok(()) => {
-                    comm.reply_ok();
-                    AppSW::Ok
-                }
-                Err(sw) => {
-                    comm.reply(sw);
-                    sw
-                }
-            };
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    {
+        // Initialize reference to Comm instance for NBGL
+        // API calls.
+        init_comm(&mut comm);
+        offset_ctx.home = ui_menu_main(&mut comm);
+        offset_ctx.home.show_and_return();
+    }
 
-            #[cfg(any(target_os = "stax", target_os = "flex"))]
-            show_status_if_needed(&ins, &tx_ctx, &_status);
-        }
+    loop {
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        let ins: Instruction = comm.next_command();
+
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        let ins = if let Event::Command(ins) = ui_menu_main(&mut comm) {
+            ins
+        } else {
+            continue;
+        };
+
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+            Ok(()) => {
+                comm.reply_ok();
+                AppSW::Ok
+            },
+            Err(sw) => {
+                comm.reply(sw.clone());
+                sw
+            },
+        };
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        show_status_and_home_if_needed(&_status);
+        // show_status_and_home_if_needed(&ins, &mut offset_ctx, &_status);
     }
 }
 
@@ -252,4 +267,3 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
     }
 }
-

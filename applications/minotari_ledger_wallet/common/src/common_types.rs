@@ -24,6 +24,7 @@ pub enum AppSW {
     MetadataSignatureFail = 0xB00D,
     WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    Ok = 0x9000,
 }
 
 impl TryFrom<u16> for AppSW {

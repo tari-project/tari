@@ -4,6 +4,8 @@
 use alloc::vec::Vec;
 
 use ledger_device_sdk::io::Comm;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::NbglHomeAndSettings;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
 
 use crate::{
@@ -25,6 +27,8 @@ pub struct ScriptOffsetCtx {
     total_derived_offset_keys: u64,
     total_derived_script_keys: u64,
     unique_keys: Vec<RistrettoSecretKey>,
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    pub home: NbglHomeAndSettings,
 }
 
 // Implement constructor for TxInfo with default values
@@ -39,6 +43,8 @@ impl ScriptOffsetCtx {
             total_derived_offset_keys: 0,
             total_derived_script_keys: 0,
             unique_keys: Vec::new(),
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            home: Default::default(),
         }
     }
 
@@ -52,6 +58,10 @@ impl ScriptOffsetCtx {
         self.total_derived_offset_keys = 0;
         self.total_derived_script_keys = 0;
         self.unique_keys = Vec::new();
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            self.home = Default::default();
+        }
     }
 
     fn add_unique_key(&mut self, secret_key: RistrettoSecretKey) {
