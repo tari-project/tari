@@ -196,10 +196,7 @@ impl BlockTemplateProtocol<'_> {
                     .cloned()
                     .ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
 
-                (
-                    add_monero_data(block, monero_mining_data.clone(), miner_data)?,
-                    height,
-                )
+                (add_monero_data(block, monero_mining_data.clone(), miner_data)?, height)
             };
 
             block_templates
@@ -214,10 +211,7 @@ impl BlockTemplateProtocol<'_> {
                 .remove_new_block_template(best_block_hash.to_vec())
                 .await;
 
-            if !self
-                .check_expected_tip_and_parent(best_block_hash.as_slice())
-                .await?
-            {
+            if !self.check_expected_tip_and_parent(best_block_hash.as_slice()).await? {
                 debug!(
                     target: LOG_TARGET,
                     "Template (height {}) not based on current chain tip anymore (with hash {}), fetching a new block \
@@ -349,10 +343,7 @@ impl BlockTemplateProtocol<'_> {
 
     /// Check if the height and parent hash is still as expected, so that it still makes sense to compute the block for
     /// that height.
-    async fn check_expected_tip_and_parent(
-        &mut self,
-        best_block_hash: &[u8],
-    ) -> Result<bool, MmProxyError> {
+    async fn check_expected_tip_and_parent(&mut self, best_block_hash: &[u8]) -> Result<bool, MmProxyError> {
         let tip = self
             .base_node_client
             .clone()
