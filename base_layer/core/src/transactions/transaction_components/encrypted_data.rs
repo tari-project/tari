@@ -187,7 +187,7 @@ impl Display for PaymentId {
             PaymentId::U64(v) => write!(f, "{}", v),
             PaymentId::U256(v) => write!(f, "{}", v),
             PaymentId::Address(v) => write!(f, "{}", v.to_emoji_string()),
-            PaymentId::Open(v) => write!(f, "byte vector of len: {}", v.len()),
+            PaymentId::Open(v) => write!(f, "byte vector: {}", v.to_hex()),
             PaymentId::AddressAndData(v, d) => write!(f, "From {} with data: {:?}", v.to_emoji_string(), d),
         }
     }
