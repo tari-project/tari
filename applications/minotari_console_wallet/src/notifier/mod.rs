@@ -37,8 +37,10 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use tari_common_types::transaction::TxId;
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::broadcast::Sender};
+
 pub const LOG_TARGET: &str = "wallet::notifier";
 pub const RECEIVED: &str = "received";
 pub const SENT: &str = "sent";
@@ -287,6 +289,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
     let amount = format!("{}", tx.amount);
     let status = format!("{}", tx.status);
     let direction = format!("{}", tx.direction);
+    let payment_id = format!("{}", tx.payment_id.clone().unwrap_or(PaymentId::Empty));
 
     let kernel = tx.transaction.body.kernels().first();
     let (excess, public_nonce, signature) = match kernel {
@@ -311,6 +314,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
+        payment_id,
         tx.source_address.to_base58(),
         tx.destination_address.to_base58(),
         status,
