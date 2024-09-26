@@ -160,7 +160,6 @@ message TipInfoResponse {
     MetaData metadata = 1;
     bool initial_sync_achieved = 2;
     BaseNodeState base_node_state = 3;
-    bytes parent_hash = 4;
 }
 
 enum BaseNodeState{

@@ -109,20 +109,13 @@ impl BlockTemplateProtocol<'_> {
                 tokio::time::sleep(std::time::Duration::from_millis(loop_count * 250)).await;
             }
             loop_count += 1;
-            let (final_template_data, block_height, parent_hash) = if let Some(data) = final_block_template.clone() {
+            let (final_template_data, block_height) = if let Some(data) = final_block_template.clone() {
                 let height = data
                     .template
                     .tari_block
                     .header
                     .as_ref()
                     .map(|h| h.height)
-                    .unwrap_or_default();
-                let prev_hash = data
-                    .template
-                    .tari_block
-                    .header
-                    .as_ref()
-                    .map(|h| h.prev_hash.clone())
                     .unwrap_or_default();
                 debug!(
                     target: LOG_TARGET,
@@ -134,7 +127,7 @@ impl BlockTemplateProtocol<'_> {
                         None => "None".to_string(),
                     }
                 );
-                (data, height, prev_hash)
+                (data, height)
             } else {
                 let block = match self.p2pool_client.as_mut() {
                     Some(client) => {
@@ -196,11 +189,6 @@ impl BlockTemplateProtocol<'_> {
                     .as_ref()
                     .map(|b| b.header.as_ref().map(|h| h.height).unwrap_or_default())
                     .unwrap_or_default();
-                let prev_hash = block
-                    .block
-                    .as_ref()
-                    .map(|b| b.header.as_ref().map(|h| h.prev_hash.clone()).unwrap_or_default())
-                    .unwrap_or_default();
 
                 let miner_data = block
                     .miner_data
@@ -211,7 +199,6 @@ impl BlockTemplateProtocol<'_> {
                 (
                     add_monero_data(block, monero_mining_data.clone(), miner_data)?,
                     height,
-                    prev_hash,
                 )
             };
 
@@ -228,14 +215,14 @@ impl BlockTemplateProtocol<'_> {
                 .await;
 
             if !self
-                .check_expected_tip_and_parent(block_height, best_block_hash.as_slice(), &parent_hash)
+                .check_expected_tip_and_parent(best_block_hash.as_slice())
                 .await?
             {
                 debug!(
                     target: LOG_TARGET,
-                    "Template (height {}, parent {}) not based on current chain tip anymore, fetching a new block \
+                    "Template (height {}) not based on current chain tip anymore (with hash {}), fetching a new block \
                     template (try {}).",
-                    block_height, parent_hash.to_hex(), loop_count
+                    block_height, best_block_hash.to_hex(), loop_count
                 );
                 continue;
             }
@@ -364,9 +351,7 @@ impl BlockTemplateProtocol<'_> {
     /// that height.
     async fn check_expected_tip_and_parent(
         &mut self,
-        height: u64,
         best_block_hash: &[u8],
-        parent_hash: &[u8],
     ) -> Result<bool, MmProxyError> {
         let tip = self
             .base_node_client
@@ -374,38 +359,18 @@ impl BlockTemplateProtocol<'_> {
             .get_tip_info(grpc::Empty {})
             .await?
             .into_inner();
-        let tip_height = tip.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0);
         let tip_hash = tip
             .metadata
             .as_ref()
             .map(|m| m.best_block_hash.clone())
             .unwrap_or_default();
-        let tip_parent_hash = tip.parent_hash;
 
         if tip_hash != best_block_hash {
             warn!(
                 target: LOG_TARGET,
                 "Base node received next block (hash={}) that has invalidated the block template (hash={})",
-                tip_parent_hash.to_hex(),
-                parent_hash.to_vec().to_hex()
-            );
-            return Ok(false);
-        }
-        if tip_parent_hash != parent_hash {
-            warn!(
-                target: LOG_TARGET,
-                "Base node received next block (parent hash={}) that has invalidated the block template (parent hash={})",
-                tip_parent_hash.to_hex(),
-                parent_hash.to_vec().to_hex()
-            );
-            return Ok(false);
-        }
-        if height <= tip_height {
-            warn!(
-                target: LOG_TARGET,
-                "Base node received next block (height={}) that has invalidated the block template (height={})",
-                tip_height,
-                height
+                tip_hash.to_hex(),
+                best_block_hash.to_vec().to_hex()
             );
             return Ok(false);
         }
