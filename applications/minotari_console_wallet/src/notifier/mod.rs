@@ -287,6 +287,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
     let amount = format!("{}", tx.amount);
     let status = format!("{}", tx.status);
     let direction = format!("{}", tx.direction);
+    let payment_id = format!("{}", tx.payment_id);
 
     let kernel = tx.transaction.body.kernels().first();
     let (excess, public_nonce, signature) = match kernel {
@@ -311,6 +312,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
         amount,
         tx.tx_id.to_string(),
         tx.message.clone(),
+        payment_id,
         tx.source_address.to_base58(),
         tx.destination_address.to_base58(),
         status,
