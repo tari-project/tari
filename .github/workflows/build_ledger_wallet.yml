@@ -36,6 +36,8 @@ jobs:
           - ledger_target: nanox
             best_effort: true
           - ledger_target: nanosplus
+          - ledger_target: flex
+            best_effort: true
           - ledger_target: stax
             best_effort: true
 
