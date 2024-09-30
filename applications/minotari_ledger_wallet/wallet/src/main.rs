@@ -24,7 +24,6 @@ mod handlers {
     pub mod get_version;
     pub mod get_view_key;
 }
-
 use app_ui::menu::ui_menu_main;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
@@ -41,7 +40,7 @@ use handlers::{
 use ledger_device_sdk::io::Event;
 use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::{init_comm, NbglReviewStatus, StatusType};
+use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, NbglReviewStatus, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::common_types::{
@@ -180,24 +179,22 @@ impl TryFrom<ApduHeader> for Instruction {
 }
 
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-fn show_status_and_home_if_needed(status: &AppSW) {
-    // fn show_status_and_home_if_needed(ins: &Instruction, tx_ctx: &ScriptOffsetCtx, status: &AppSW) {
-    // let (show_status, status_type) = match (ins, status) {
-    //     (Instruction::GetPubkey { display: true }, AppSW::Deny | AppSW::Ok) => {
-    //         (true, StatusType::Address)
-    //     }
-    //     (Instruction::SignTx { .. }, AppSW::Deny | AppSW::Ok) if tx_ctx.finished() => {
-    //         (true, StatusType::Transaction)
-    //     }
-    //     (_, _) => (false, StatusType::Transaction),
-    // };
+fn show_status_and_home_if_needed(
+    ins: &Instruction,
+    status: &AppSW,
+    offset_ctx: &mut ScriptOffsetCtx,
+    home: &mut NbglHomeAndSettings,
+) {
+    let (show_status, status_type) = match (ins, status) {
+        (Instruction::GetOneSidedMetadataSignature, AppSW::Deny | AppSW::Ok) => (true, StatusType::Transaction),
+        (_, _) => (false, StatusType::Transaction),
+    };
 
-    // if show_status {
-    if true {
+    if show_status {
         let success = *status == AppSW::Ok;
-        NbglReviewStatus::new()
-            .status_type(StatusType::Transaction)
-            .show(success);
+        // We should this, but this breaks the ledger app
+        // NbglReviewStatus::new().status_type(status_type).show(success);
+        home.show_and_return();
     }
 }
 
@@ -211,13 +208,15 @@ extern "C" fn sample_main() {
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
     #[cfg(any(target_os = "stax", target_os = "flex"))]
-    {
+    let mut home = {
         // Initialize reference to Comm instance for NBGL
         // API calls.
         init_comm(&mut comm);
-        offset_ctx.home = ui_menu_main(&mut comm);
-        offset_ctx.home.show_and_return();
-    }
+
+        let mut home = ui_menu_main(&mut comm);
+        home.show_and_return();
+        home
+    };
 
     loop {
         #[cfg(any(target_os = "stax", target_os = "flex"))]
@@ -230,7 +229,7 @@ extern "C" fn sample_main() {
             continue;
         };
 
-        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+        let status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
@@ -241,8 +240,7 @@ extern "C" fn sample_main() {
             },
         };
         #[cfg(any(target_os = "stax", target_os = "flex"))]
-        show_status_and_home_if_needed(&_status);
-        // show_status_and_home_if_needed(&ins, &mut offset_ctx, &_status);
+        show_status_and_home_if_needed(&ins, &status, &mut offset_ctx, &mut home);
     }
 }
 

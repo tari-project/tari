@@ -4,8 +4,6 @@
 use alloc::vec::Vec;
 
 use ledger_device_sdk::io::Comm;
-#[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::NbglHomeAndSettings;
 use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
 
 use crate::{
@@ -26,9 +24,8 @@ pub struct ScriptOffsetCtx {
     total_script_indexes: u64,
     total_derived_offset_keys: u64,
     total_derived_script_keys: u64,
+    pub finished: bool,
     unique_keys: Vec<RistrettoSecretKey>,
-    #[cfg(any(target_os = "stax", target_os = "flex"))]
-    pub home: NbglHomeAndSettings,
 }
 
 // Implement constructor for TxInfo with default values
@@ -42,9 +39,8 @@ impl ScriptOffsetCtx {
             total_script_indexes: 0,
             total_derived_offset_keys: 0,
             total_derived_script_keys: 0,
+            finished: false,
             unique_keys: Vec::new(),
-            #[cfg(any(target_os = "stax", target_os = "flex"))]
-            home: Default::default(),
         }
     }
 
@@ -58,10 +54,6 @@ impl ScriptOffsetCtx {
         self.total_derived_offset_keys = 0;
         self.total_derived_script_keys = 0;
         self.unique_keys = Vec::new();
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            self.home = Default::default();
-        }
     }
 
     fn add_unique_key(&mut self, secret_key: RistrettoSecretKey) {
@@ -141,6 +133,7 @@ pub fn handler_get_script_offset(
 
     // 1. data sizes
     if chunk_number == 0 {
+        offset_ctx.finished = false;
         // Reset offset context
         offset_ctx.reset();
         read_instructions(offset_ctx, data)?;
@@ -209,6 +202,7 @@ pub fn handler_get_script_offset(
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
     offset_ctx.reset();
+    offset_ctx.finished = true;
     comm.reply_ok();
 
     Ok(())
