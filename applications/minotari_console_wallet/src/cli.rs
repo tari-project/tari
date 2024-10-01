@@ -194,6 +194,8 @@ pub struct PreMineSpendSessionInfoArgs {
     pub recipient_info: Vec<CliRecipientInfo>,
     #[clap(long)]
     pub verify_unspent_outputs: bool,
+    #[clap(long)]
+    pub use_pre_mine_input_file: bool,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -248,6 +250,8 @@ pub struct PreMineSpendPartyDetailsArgs {
     #[clap(long)]
     pub input_file: PathBuf,
     #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(long)]
     pub recipient_info: Vec<CliRecipientInfo>,
     #[clap(long)]
     pub alias: String,
@@ -259,12 +263,16 @@ pub struct PreMineSpendEncumberAggregateUtxoArgs {
     pub session_id: String,
     #[clap(long)]
     pub input_file_names: Vec<String>,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendInputOutputSigArgs {
     #[clap(long)]
     pub session_id: String,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -45,6 +45,7 @@ struct PreMineSpendStep1SessionInfo {
     session_id: String,
     fee_per_gram: MicroMinotari,
     recipient_info: Vec<RecipientInfo>,
+    use_pre_mine_input_file: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

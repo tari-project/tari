@@ -27,7 +27,7 @@ use std::{
     fs,
     fs::File,
     io,
-    io::{LineWriter, Write},
+    io::{BufRead, BufReader, LineWriter, Write},
     path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant},
@@ -84,6 +84,7 @@ use tari_core::{
             Transaction,
             TransactionInput,
             TransactionInputVersion,
+            TransactionKernel,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
@@ -860,16 +861,16 @@ pub async fn command_runner(
 
                 let mut recipient_info = Vec::new();
                 for item in args_recipient_info {
-                    let embedded_outputs = match get_embedded_pre_mine_outputs(item.output_indexes.clone()) {
-                        Ok(outputs) => outputs,
-                        Err(e) => {
-                            eprintln!("\nError: {}\n", e);
-                            break;
-                        },
-                    };
-                    let output_hashes = embedded_outputs.iter().map(|v| v.hash()).collect::<Vec<_>>();
+                    if args.verify_unspent_outputs && !args.use_pre_mine_input_file {
+                        let embedded_outputs = match get_embedded_pre_mine_outputs(item.output_indexes.clone(), None) {
+                            Ok(outputs) => outputs,
+                            Err(e) => {
+                                eprintln!("\nError: {}\n", e);
+                                break;
+                            },
+                        };
+                        let output_hashes = embedded_outputs.iter().map(|v| v.hash()).collect::<Vec<_>>();
 
-                    if args.verify_unspent_outputs {
                         let unspent_outputs = transaction_service.fetch_unspent_outputs(output_hashes.clone()).await?;
                         if unspent_outputs.len() != output_hashes.len() {
                             let unspent_output_hashes = unspent_outputs.iter().map(|v| v.hash()).collect::<Vec<_>>();
@@ -904,6 +905,7 @@ pub async fn command_runner(
                     session_id: session_id.clone(),
                     fee_per_gram: args.fee_per_gram,
                     recipient_info,
+                    use_pre_mine_input_file: args.use_pre_mine_input_file,
                 };
 
                 let out_file = out_dir.join(get_file_name(SPEND_SESSION_INFO, None));
@@ -928,7 +930,7 @@ pub async fn command_runner(
                     },
                 }
 
-                let embedded_output = match get_embedded_pre_mine_outputs(vec![args.output_index]) {
+                let embedded_output = match get_embedded_pre_mine_outputs(vec![args.output_index], None) {
                     Ok(outputs) => outputs[0].clone(),
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -1013,10 +1015,22 @@ pub async fn command_runner(
                     break;
                 }
 
+                let pre_mine_from_file =
+                    match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
+                        Ok(outputs) => outputs,
+                        Err(e) => {
+                            eprintln!("\nError: {}\n", e);
+                            break;
+                        },
+                    };
+
                 let mut outputs_for_leader = Vec::with_capacity(args_recipient_info.len());
                 let mut outputs_for_self = Vec::with_capacity(args_recipient_info.len());
                 for recipient_info in &args_recipient_info {
-                    let embedded_outputs = match get_embedded_pre_mine_outputs(recipient_info.output_indexes.clone()) {
+                    let embedded_outputs = match get_embedded_pre_mine_outputs(
+                        recipient_info.output_indexes.clone(),
+                        pre_mine_from_file.clone(),
+                    ) {
                         Ok(outputs) => outputs,
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
@@ -1175,6 +1189,15 @@ pub async fn command_runner(
                     party_info_per_index.push(outputs_per_index);
                 }
 
+                let pre_mine_from_file =
+                    match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
+                        Ok(outputs) => outputs,
+                        Err(e) => {
+                            eprintln!("\nError: {}\n", e);
+                            break;
+                        },
+                    };
+
                 // Encumber outputs
                 let mut outputs_for_parties = Vec::with_capacity(party_info_per_index.len());
                 let mut outputs_for_self = Vec::with_capacity(party_info_per_index.len());
@@ -1217,13 +1240,14 @@ pub async fn command_runner(
                     }
 
                     let original_maturity = pre_mine_items[current_index].original_maturity;
-                    let embedded_output = match get_embedded_pre_mine_outputs(vec![current_index]) {
-                        Ok(outputs) => outputs[0].clone(),
-                        Err(e) => {
-                            eprintln!("\nError: {}\n", e);
-                            break;
-                        },
-                    };
+                    let embedded_output =
+                        match get_embedded_pre_mine_outputs(vec![current_index], pre_mine_from_file.clone()) {
+                            Ok(outputs) => outputs[0].clone(),
+                            Err(e) => {
+                                eprintln!("\nError: {}\n", e);
+                                break;
+                            },
+                        };
 
                     match encumber_aggregate_utxo(
                         transaction_service.clone(),
@@ -1345,13 +1369,25 @@ pub async fn command_runner(
                     break;
                 }
 
+                let pre_mine_from_file =
+                    match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
+                        Ok(outputs) => outputs,
+                        Err(e) => {
+                            eprintln!("\nError: {}\n", e);
+                            break;
+                        },
+                    };
+
                 let mut outputs_for_leader = Vec::with_capacity(party_info_indexed.outputs_for_self.len());
                 for (leader_info, party_info) in leader_info_indexed
                     .outputs_for_parties
                     .iter()
                     .zip(party_info_indexed.outputs_for_self.iter())
                 {
-                    let embedded_output = match get_embedded_pre_mine_outputs(vec![party_info.output_index]) {
+                    let embedded_output = match get_embedded_pre_mine_outputs(
+                        vec![party_info.output_index],
+                        pre_mine_from_file.clone(),
+                    ) {
                         Ok(outputs) => outputs[0].clone(),
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
@@ -1598,7 +1634,7 @@ pub async fn command_runner(
                 }
 
                 if args.save_to_file {
-                    let file_name = get_pre_mine_file_name();
+                    let file_name = get_pre_mine_addition_file_name();
                     let out_dir_path = out_dir(&args.session_id)?;
                     let out_file = out_dir_path.join(&file_name);
                     let mut file_stream = match File::create(&out_file) {
@@ -2352,7 +2388,58 @@ pub async fn command_runner(
     Ok(())
 }
 
+fn read_genesis_file_outputs(
+    use_pre_mine_input_file: bool,
+    pre_mine_file_path: Option<PathBuf>,
+) -> Result<Option<Vec<TransactionOutput>>, String> {
+    if use_pre_mine_input_file {
+        let file_path = if let Some(path) = pre_mine_file_path {
+            let file = path.join(get_pre_mine_file_name());
+            if !file.exists() {
+                return Err(format!("Pre-mine file '{}' does not exist!", file.display()));
+            }
+            file
+        } else {
+            return Err("Missing pre-mine file!".to_string());
+        };
+
+        let file = File::open(file_path.clone())
+            .map_err(|e| format!("Problem opening file '{}' ({})", file_path.display(), e))?;
+        let reader = BufReader::new(file);
+
+        let mut outputs = Vec::new();
+        for line in reader.lines() {
+            let line = line.map_err(|e| format!("Problem reading line in file '{}' ({})", file_path.display(), e))?;
+            if let Ok(output) = serde_json::from_str::<TransactionOutput>(&line) {
+                outputs.push(output);
+            } else if serde_json::from_str::<TransactionKernel>(&line).is_ok() {
+                // Do nothing here
+            } else {
+                return Err(format!("Error: Could not deserialize line: {}", line));
+            }
+        }
+        if outputs.is_empty() {
+            return Err(format!("No outputs found in '{}'", file_path.display()));
+        }
+
+        Ok(Some(outputs))
+    } else {
+        Ok(None)
+    }
+}
+
 fn get_pre_mine_file_name() -> String {
+    match Network::get_current_or_user_setting_or_default() {
+        Network::MainNet => "mainnet_pre_mine.json".to_string(),
+        Network::StageNet => "stagenet_pre_mine.json".to_string(),
+        Network::NextNet => "nextnet_pre_mine.json".to_string(),
+        Network::LocalNet => "esmeralda_pre_mine.json".to_string(),
+        Network::Igor => "igor_pre_mine.json".to_string(),
+        Network::Esmeralda => "esmeralda_pre_mine.json".to_string(),
+    }
+}
+
+fn get_pre_mine_addition_file_name() -> String {
     match Network::get_current_or_user_setting_or_default() {
         Network::MainNet => "mainnet_pre_mine_addition.json".to_string(),
         Network::StageNet => "stagenet_pre_mine_addition.json".to_string(),
@@ -2388,14 +2475,21 @@ fn sort_args_recipient_info(recipient_info: Vec<CliRecipientInfo>) -> Vec<CliRec
     args_recipient_info
 }
 
-fn get_embedded_pre_mine_outputs(output_indexes: Vec<usize>) -> Result<Vec<TransactionOutput>, CommandError> {
-    let utxos = get_all_embedded_pre_mine_outputs()?;
+fn get_embedded_pre_mine_outputs(
+    output_indexes: Vec<usize>,
+    utxos: Option<Vec<TransactionOutput>>,
+) -> Result<Vec<TransactionOutput>, CommandError> {
+    let utxos = if let Some(val) = utxos {
+        val
+    } else {
+        get_all_embedded_pre_mine_outputs()?
+    };
 
     let mut fetched_outputs = Vec::with_capacity(output_indexes.len());
     for index in output_indexes {
         if index >= utxos.len() {
             return Err(CommandError::PreMine(format!(
-                "Error: Invalid 'output_index' {} provided pre-mine outputs only number {}!",
+                "Error: Invalid 'output_index' {} provided, pre-mine outputs only number {}!",
                 index,
                 utxos.len()
             )));
