@@ -23,6 +23,7 @@
 use std::{
     fmt::{Debug, Display, Formatter},
     path::PathBuf,
+    str::FromStr,
     time::Duration,
 };
 
@@ -190,11 +191,58 @@ pub struct PreMineSpendSessionInfoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
-    pub output_index: usize,
-    #[clap(long)]
-    pub recipient_address: TariAddress,
+    pub recipient_info: Vec<CliRecipientInfo>,
     #[clap(long)]
     pub verify_unspent_outputs: bool,
+    #[clap(long)]
+    pub use_pre_mine_input_file: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CliRecipientInfo {
+    pub output_indexes: Vec<usize>,
+    pub recipient_address: TariAddress,
+}
+
+impl FromStr for CliRecipientInfo {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Parse 'RecipientInfo' from "[<v1>,<v2>,<v3>]:<recipient_address>"
+        if !s.contains(':') {
+            return Err("Invalid 'recipient-info', could not find address separator ':'".to_string());
+        }
+        let parts: Vec<&str> = s.split(':').collect();
+        if parts.len() != 2 {
+            return Err(format!(
+                "Invalid 'recipient-info', needs exactly 2 parts, found {}",
+                parts.len()
+            ));
+        }
+
+        // Parse output indexes
+        if !parts[0].starts_with('[') && !parts[0].ends_with(']') {
+            return Err("Invalid 'recipient-info' part 1; array bounds must be indicated with '[' and ']'".to_string());
+        }
+        let binding = parts[0].replace("[", "").replace("]", "");
+        let parts_0 = binding.split(',').collect::<Vec<&str>>();
+        let output_indexes = parts_0
+            .iter()
+            .map(|v| {
+                v.parse()
+                    .map_err(|e| format!("'recipient_info' - invalid output_index: {}", e))
+            })
+            .collect::<Result<Vec<usize>, String>>()?;
+
+        // Parse recipient address
+        let recipient_address = TariAddress::from_base58(parts[1])
+            .map_err(|e| format!("'recipient_info' - invalid recipient address: {}", e))?;
+
+        Ok(CliRecipientInfo {
+            output_indexes,
+            recipient_address,
+        })
+    }
 }
 
 #[derive(Debug, Args, Clone)]
@@ -202,7 +250,9 @@ pub struct PreMineSpendPartyDetailsArgs {
     #[clap(long)]
     pub input_file: PathBuf,
     #[clap(long)]
-    pub output_index: usize,
+    pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(long)]
+    pub recipient_info: Vec<CliRecipientInfo>,
     #[clap(long)]
     pub alias: String,
 }
@@ -213,12 +263,16 @@ pub struct PreMineSpendEncumberAggregateUtxoArgs {
     pub session_id: String,
     #[clap(long)]
     pub input_file_names: Vec<String>,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendInputOutputSigArgs {
     #[clap(long)]
     pub session_id: String,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -227,6 +281,10 @@ pub struct PreMineSpendAggregateTransactionArgs {
     pub session_id: String,
     #[clap(long)]
     pub input_file_names: Vec<String>,
+    #[clap(long)]
+    pub save_to_file: bool,
+    #[clap(long)]
+    pub print_to_console: bool,
 }
 
 #[derive(Debug, Args, Clone)]

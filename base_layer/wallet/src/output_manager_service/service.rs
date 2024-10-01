@@ -257,6 +257,7 @@ where
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
+                original_maturity,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
@@ -270,7 +271,7 @@ where
                     dh_shared_secret_shares,
                     recipient_address,
                     PaymentId::Empty,
-                    0,
+                    original_maturity,
                     RangeProofType::BulletProofPlus,
                     0.into(),
                 )
@@ -1251,7 +1252,7 @@ where
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         payment_id: PaymentId,
-        maturity: u64,
+        original_maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
     ) -> Result<
@@ -1365,7 +1366,7 @@ where
 
         // The entire input will be spent to a single recipient with no change
         let output_features = OutputFeatures {
-            maturity,
+            maturity: original_maturity,
             range_proof_type,
             ..Default::default()
         };

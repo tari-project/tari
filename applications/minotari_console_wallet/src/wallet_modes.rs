@@ -543,11 +543,15 @@ mod test {
 
             pre-mine-spend-get-output-status
 
-            pre-mine-spend-session-info --fee-per-gram 2 --output-index 123 --recipient-address \
+            pre-mine-spend-session-info --fee-per-gram 2 \
+             --recipient-info=[1,123,313]:\
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
-             --verify-unspent-outputs
+             --verify-unspent-outputs --use-pre-mine-input-file
 
-            pre-mine-spend-party-details --input-file ./step_1_session_info.txt --output-index 123 --alias alice
+            pre-mine-spend-party-details --input-file ./step_1_session_info.txt --alias alice \
+             --recipient-info=[1,123,313]:\
+             f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
+             --pre-mine-file-path ./pre_mine_file.txt
 
             pre-mine-spend-encumber-aggregate-utxo --session-id ee1643655c \
              --input-file-names=step_2_for_leader_from_alice.txt --input-file-names=step_2_for_leader_from_bob.txt \

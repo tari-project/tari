@@ -32,7 +32,10 @@ use tari_utilities::ByteArray;
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
-    transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{TransactionKernel, TransactionOutput},
+    },
     OutputSmt,
 };
 
@@ -51,17 +54,15 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
 
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut utxos = Vec::new();
-    let mut counter = 1;
-    let lines_count = file.lines().count();
     for line in file.lines() {
-        if counter < lines_count {
-            let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+        if let Ok(utxo) = serde_json::from_str::<TransactionOutput>(line) {
             utxos.push(utxo);
-        } else {
-            block.body.add_kernel(serde_json::from_str(line).unwrap());
+        } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
+            block.body.add_kernel(kernel);
             block.header.kernel_mmr_size += 1;
+        } else {
+            panic!("Error: Could not deserialize line: {} in file: {}", line, file);
         }
-        counter += 1;
     }
     block.header.output_smt_size += utxos.len() as u64;
     block.body.add_outputs(utxos);
