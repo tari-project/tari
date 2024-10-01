@@ -6906,10 +6906,20 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
         }
     };
 
+    let peer_manager = (*wallet).wallet.comms.peer_manager();
+    let query = PeerQuery::new().select_where(|p| p.is_seed());
+    let backup_peers = match (*wallet)
+        .runtime
+        .block_on(async move { Result::<_, WalletError>::Ok(peer_manager.perform_query(query).await?) })
+    {
+        Ok(peers) => Some(peers),
+        Err(_) => None,
+    };
+
     if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.set_base_node_peer(
         (*public_key).clone(),
         parsed_addr,
-        None,
+        backup_peers,
     )) {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
