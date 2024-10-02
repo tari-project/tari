@@ -128,6 +128,7 @@ struct Step3OutputsForParties {
     metadata_signature_ephemeral_pubkey: PublicKey,
     encrypted_data: EncryptedData,
     output_features: OutputFeatures,
+    shared_secret: PublicKey,
 }
 
 // Step 4 outputs for leader with `PreMineSpendInputOutputSigs`
