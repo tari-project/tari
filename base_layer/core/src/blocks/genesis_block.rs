@@ -656,16 +656,23 @@ mod test {
             .body
             .inputs()
             .iter()
-            .map(|o| &o.commitment().unwrap())
-            .sum();
-        let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum() - input_sum;
+            .map(|o| o.commitment().unwrap())
+            .sum::<Commitment>();
+        let utxo_sum = block
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .map(|o| &o.commitment)
+            .sum::<Commitment>();
+        let total_utxo_sum = Commitment::from_public_key(&(utxo_sum.as_public_key() - input_sum.as_public_key()));
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
+            .validate(&*lock, 0, &total_utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }
 
