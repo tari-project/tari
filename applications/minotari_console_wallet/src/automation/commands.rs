@@ -1462,7 +1462,7 @@ pub async fn command_runner(
                     match key_manager_service
                         .verify_mask(
                             &leader_info.output_commitment,
-                            &commitment_mask_key_id,
+                            commitment_mask_key_id,
                             committed_value.as_u64(),
                         )
                         .await
@@ -1476,8 +1476,8 @@ pub async fn command_runner(
                     // now lets calculate the script with stealth key
                     let script_spending_key = key_manager_service
                         .stealth_address_script_spending_key(
-                            &commitment_mask_key_id,
-                            &party_info.recipient_address.public_spend_key(),
+                            commitment_mask_key_id,
+                            party_info.recipient_address.public_spend_key(),
                         )
                         .await?;
                     let script = push_pubkey_script(&script_spending_key);
