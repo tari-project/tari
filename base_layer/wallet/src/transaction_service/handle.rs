@@ -60,7 +60,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
-    output_manager_service::UtxoSelectionCriteria,
+    output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -104,7 +104,6 @@ pub enum TransactionServiceRequest {
     },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -113,6 +112,7 @@ pub enum TransactionServiceRequest {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     },
     SpendBackupPreMineUtxo {
         fee_per_gram: MicroMinotari,
@@ -246,7 +246,6 @@ impl fmt::Display for TransactionServiceRequest {
             )),
             Self::EncumberAggregateUtxo {
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -255,43 +254,50 @@ impl fmt::Display for TransactionServiceRequest {
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
                 ..
-            } => f.write_str(&format!(
-                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, \
-                 script_input_shares = {:?}, script_signature_shares = {:?}, sender_offset_public_key_shares = {:?}, \
-                 metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address = {}, \
-                 original_maturity: {}",
-                fee_per_gram,
-                output_hash,
-                expected_commitment.to_hex(),
-                script_input_shares
-                    .iter()
-                    .map(|v| format!(
-                        "(public_key: {}, sig: {}, nonce: {})",
-                        v.0.to_hex(),
-                        v.1.get_signature().to_hex(),
-                        v.1.get_public_nonce().to_hex()
-                    ))
-                    .collect::<Vec<String>>(),
-                script_signature_public_nonces
-                    .iter()
-                    .map(|v| format!("(public nonce: {})", v.to_hex(),))
-                    .collect::<Vec<String>>(),
-                sender_offset_public_key_shares
-                    .iter()
-                    .map(|v| v.to_hex())
-                    .collect::<Vec<String>>(),
-                metadata_ephemeral_public_key_shares
-                    .iter()
-                    .map(|v| v.to_hex())
-                    .collect::<Vec<String>>(),
-                dh_shared_secret_shares
-                    .iter()
-                    .map(|v| v.to_hex())
-                    .collect::<Vec<String>>(),
-                recipient_address,
-                original_maturity,
-            )),
+            } => {
+                let output_hash = match use_output {
+                    UseOutput::FromBlockchain(hash) => *hash,
+                    UseOutput::AsProvided(output) => output.hash(),
+                };
+                f.write_str(&format!(
+                    "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, \
+                     script_input_shares = {:?}, script_signature_shares = {:?}, sender_offset_public_key_shares = \
+                     {:?}, metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, \
+                     recipient_address = {}, original_maturity: {}",
+                    fee_per_gram,
+                    output_hash,
+                    expected_commitment.to_hex(),
+                    script_input_shares
+                        .iter()
+                        .map(|v| format!(
+                            "(public_key: {}, sig: {}, nonce: {})",
+                            v.0.to_hex(),
+                            v.1.get_signature().to_hex(),
+                            v.1.get_public_nonce().to_hex()
+                        ))
+                        .collect::<Vec<String>>(),
+                    script_signature_public_nonces
+                        .iter()
+                        .map(|v| format!("(public nonce: {})", v.to_hex(),))
+                        .collect::<Vec<String>>(),
+                    sender_offset_public_key_shares
+                        .iter()
+                        .map(|v| v.to_hex())
+                        .collect::<Vec<String>>(),
+                    metadata_ephemeral_public_key_shares
+                        .iter()
+                        .map(|v| v.to_hex())
+                        .collect::<Vec<String>>(),
+                    dh_shared_secret_shares
+                        .iter()
+                        .map(|v| v.to_hex())
+                        .collect::<Vec<String>>(),
+                    recipient_address,
+                    original_maturity,
+                ))
+            },
             Self::FetchUnspentOutputs { output_hashes } => {
                 write!(
                     f,
@@ -747,7 +753,6 @@ impl TransactionServiceHandle {
     pub async fn encumber_aggregate_utxo(
         &mut self,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -756,12 +761,12 @@ impl TransactionServiceHandle {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -770,6 +775,7 @@ impl TransactionServiceHandle {
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
             })
             .await??
         {

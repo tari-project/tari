@@ -249,7 +249,6 @@ where
             OutputManagerRequest::EncumberAggregateUtxo {
                 tx_id,
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -258,11 +257,11 @@ where
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
                     fee_per_gram,
-                    output_hash,
                     expected_commitment,
                     script_input_shares,
                     script_signature_public_nonces,
@@ -274,6 +273,7 @@ where
                     original_maturity,
                     RangeProofType::BulletProofPlus,
                     0.into(),
+                    use_output,
                 )
                 .await
                 .map(OutputManagerResponse::EncumberAggregateUtxo),
@@ -1243,7 +1243,6 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         mut script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1255,6 +1254,7 @@ where
         original_maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
+        use_output: UseOutput,
     ) -> Result<
         (
             Transaction,
@@ -1267,17 +1267,20 @@ where
         OutputManagerError,
     > {
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
-        // Fetch the output from the blockchain
-        let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| {
-                OutputManagerError::ServiceError(format!(
-                    "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash, tx_id
-                ))
-            })?;
+        // Fetch the output from the blockchain or use provided
+        let output = match use_output {
+            UseOutput::FromBlockchain(output_hash) => self
+                .fetch_unspent_outputs_from_node(vec![output_hash])
+                .await?
+                .pop()
+                .ok_or_else(|| {
+                    OutputManagerError::ServiceError(format!(
+                        "Output with hash {} not found in blockchain (TxId: {})",
+                        output_hash, tx_id
+                    ))
+                })?,
+            UseOutput::AsProvided(val) => val,
+        };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {})",
@@ -3297,6 +3300,16 @@ where
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight_params())
     }
+}
+
+/// Use the provided output when encumbering an aggregate UTXO or not, for use with
+/// `fn encumber_aggregate_utxo`
+#[derive(Clone)]
+pub enum UseOutput {
+    /// The transaction output will be fetched from the blockchain
+    FromBlockchain(HashOutput),
+    /// The transaction output must be provided
+    AsProvided(TransactionOutput),
 }
 
 fn get_multi_sig_script_components(
