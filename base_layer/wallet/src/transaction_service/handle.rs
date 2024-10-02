@@ -389,7 +389,14 @@ impl fmt::Display for TransactionServiceRequest {
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionSentWithOutputHash(TxId, FixedHash),
-    EncumberAggregateUtxo(TxId, Box<Transaction>, Box<PublicKey>, Box<PublicKey>, Box<PublicKey>),
+    EncumberAggregateUtxo(
+        TxId,
+        Box<Transaction>,
+        Box<PublicKey>,
+        Box<PublicKey>,
+        Box<PublicKey>,
+        Box<PublicKey>,
+    ),
     UnspentOutputs(Vec<TransactionOutput>),
     TransactionImported(TxId),
     BurntTransactionSent {
@@ -762,7 +769,7 @@ impl TransactionServiceHandle {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
@@ -785,12 +792,14 @@ impl TransactionServiceHandle {
                 total_script_key,
                 total_metadata_ephemeral_public_key,
                 total_script_nonce,
+                shared_secret,
             ) => Ok((
                 tx_id,
                 *transaction,
                 *total_script_key,
                 *total_metadata_ephemeral_public_key,
                 *total_script_nonce,
+                *shared_secret,
             )),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
