@@ -1279,7 +1279,7 @@ where
                         output_hash, tx_id
                     ))
                 })?,
-            UseOutput::AsProvided(val) => val,
+            UseOutput::AsProvided(ref val) => val.clone(),
         };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
@@ -1386,7 +1386,7 @@ where
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value - fee;
-        trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script");
+        trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script, with fee {}", fee);
 
         // Create sender transaction protocol builder with recipient data and no change
         let mut builder = SenderTransactionProtocol::builder(
@@ -1396,6 +1396,10 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
+            .with_allow_zero_fees(match use_output {
+                UseOutput::FromBlockchain(_) => false,
+                UseOutput::AsProvided(_) => true,
+            })
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())

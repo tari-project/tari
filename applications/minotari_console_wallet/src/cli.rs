@@ -281,10 +281,6 @@ pub struct PreMineSpendAggregateTransactionArgs {
     pub session_id: String,
     #[clap(long)]
     pub input_file_names: Vec<String>,
-    #[clap(long)]
-    pub save_to_file: bool,
-    #[clap(long)]
-    pub print_to_console: bool,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -295,6 +291,8 @@ pub struct PreMineSpendBackupUtxoArgs {
     pub output_index: usize,
     #[clap(long)]
     pub recipient_address: TariAddress,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]

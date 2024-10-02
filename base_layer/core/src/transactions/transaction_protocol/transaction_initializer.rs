@@ -105,6 +105,7 @@ pub struct SenderTransactionInitializer<KM> {
     fee: Fee,
     key_manager: KM,
     sender_address: TariAddress,
+    allow_zero_fees: bool,
 }
 
 pub struct BuildError<KM> {
@@ -137,6 +138,7 @@ where KM: TransactionKeyManagerInterface
             tx_id: None,
             sender_address: TariAddress::default(),
             key_manager,
+            allow_zero_fees: false,
         }
     }
 
@@ -144,6 +146,13 @@ where KM: TransactionKeyManagerInterface
     /// absolute fee is calculated from the fee-per-gram value.
     pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
+        self
+    }
+
+    /// Set the fee per weight for the transaction. See (Fee::calculate)[Struct.Fee.html#calculate] for how the
+    /// absolute fee is calculated from the fee-per-gram value.
+    pub fn with_allow_zero_fees(&mut self, allow_zero_fees: bool) -> &mut Self {
+        self.allow_zero_fees = allow_zero_fees;
         self
     }
 
@@ -521,7 +530,7 @@ where KM: TransactionKeyManagerInterface
             "Build transaction with Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
         );
         // Some checks on the fee
-        if total_fee < Fee::MINIMUM_TRANSACTION_FEE {
+        if total_fee < Fee::MINIMUM_TRANSACTION_FEE && !self.allow_zero_fees {
             return self.build_err("Fee is less than the minimum");
         }
 
