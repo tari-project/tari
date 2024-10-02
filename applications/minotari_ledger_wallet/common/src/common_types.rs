@@ -154,6 +154,7 @@ mod test {
             (0xB00D, AppSW::MetadataSignatureFail),
             (0x6e03, AppSW::WrongApduLength),
             (0x6e04, AppSW::UserCancelled),
+            (0x9000, AppSW::Ok),
         ];
 
         for (value, expected_app_sw) in &mappings {
@@ -201,6 +202,9 @@ mod test {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::UserCancelled => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::Ok => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
             }
