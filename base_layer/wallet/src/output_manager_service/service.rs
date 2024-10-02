@@ -258,6 +258,7 @@ where
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
@@ -274,6 +275,7 @@ where
                     original_maturity,
                     RangeProofType::BulletProofPlus,
                     0.into(),
+                    use_output,
                 )
                 .await
                 .map(OutputManagerResponse::EncumberAggregateUtxo),
@@ -1255,6 +1257,7 @@ where
         original_maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
+        use_output: UseOutput,
     ) -> Result<
         (
             Transaction,
@@ -1267,17 +1270,20 @@ where
         OutputManagerError,
     > {
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
-        // Fetch the output from the blockchain
-        let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| {
-                OutputManagerError::ServiceError(format!(
-                    "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash, tx_id
-                ))
-            })?;
+        // Fetch the output from the blockchain or use provided
+        let output = match use_output {
+            UseOutput::FromBlockchain => self
+                .fetch_unspent_outputs_from_node(vec![output_hash])
+                .await?
+                .pop()
+                .ok_or_else(|| {
+                    OutputManagerError::ServiceError(format!(
+                        "Output with hash {} not found in blockchain (TxId: {})",
+                        output_hash, tx_id
+                    ))
+                })?,
+            UseOutput::AsProvided(val) => val,
+        };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {})",
@@ -3297,6 +3303,16 @@ where
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight_params())
     }
+}
+
+/// Use the provided output when encumbering an aggregate UTXO or not, for use with
+/// `fn encumber_aggregate_utxo`
+#[derive(Clone)]
+pub enum UseOutput {
+    /// The transaction output will be fetched from the blockchain
+    FromBlockchain,
+    /// The transaction output must be provided
+    AsProvided(TransactionOutput),
 }
 
 fn get_multi_sig_script_components(

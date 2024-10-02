@@ -46,7 +46,7 @@ use tower::Service;
 
 use crate::output_manager_service::{
     error::OutputManagerError,
-    service::{Balance, OutputInfoByTxId},
+    service::{Balance, OutputInfoByTxId, UseOutput},
     storage::models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     UtxoSelectionCriteria,
 };
@@ -73,6 +73,7 @@ pub enum OutputManagerRequest {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     },
     SpendBackupPreMineUtxo {
         tx_id: TxId,
@@ -817,6 +818,7 @@ impl OutputManagerHandle {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     ) -> Result<
         (
             Transaction,
@@ -842,6 +844,7 @@ impl OutputManagerHandle {
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
             })
             .await??
         {

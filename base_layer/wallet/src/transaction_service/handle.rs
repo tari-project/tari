@@ -60,7 +60,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
-    output_manager_service::UtxoSelectionCriteria,
+    output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -113,6 +113,7 @@ pub enum TransactionServiceRequest {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     },
     SpendBackupPreMineUtxo {
         fee_per_gram: MicroMinotari,
@@ -756,6 +757,7 @@ impl TransactionServiceHandle {
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         match self
             .handle
@@ -770,6 +772,7 @@ impl TransactionServiceHandle {
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
             })
             .await??
         {

@@ -92,6 +92,7 @@ use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
+        service::UseOutput,
         storage::models::SpendingPriority,
         UtxoSelectionCriteria,
     },
@@ -711,6 +712,7 @@ where
                 dh_shared_secret_shares,
                 recipient_address,
                 original_maturity,
+                use_output,
             } => self
                 .encumber_aggregate_tx(
                     fee_per_gram,
@@ -723,6 +725,7 @@ where
                     dh_shared_secret_shares,
                     recipient_address,
                     original_maturity,
+                    use_output,
                 )
                 .await
                 .map(
@@ -1208,6 +1211,7 @@ where
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
+        use_output: UseOutput,
     ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1226,6 +1230,7 @@ where
                 dh_shared_secret_shares,
                 recipient_address.clone(),
                 original_maturity,
+                use_output,
             )
             .await
         {
