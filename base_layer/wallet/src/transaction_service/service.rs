@@ -727,13 +727,21 @@ where
                 )
                 .await
                 .map(
-                    |(tx_id, tx, total_script_pubkey, total_metadata_ephemeral_public_key, total_script_nonce)| {
+                    |(
+                        tx_id,
+                        tx,
+                        total_script_pubkey,
+                        total_metadata_ephemeral_public_key,
+                        total_script_nonce,
+                        shared_secret,
+                    )| {
                         TransactionServiceResponse::EncumberAggregateUtxo(
                             tx_id,
                             Box::new(tx),
                             Box::new(total_script_pubkey),
                             Box::new(total_metadata_ephemeral_public_key),
                             Box::new(total_script_nonce),
+                            Box::new(shared_secret),
                         )
                     },
                 ),
@@ -1209,7 +1217,7 @@ where
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
+    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
         match self
@@ -1237,6 +1245,7 @@ where
                 total_script_key,
                 total_metadata_ephemeral_public_key,
                 total_script_nonce,
+                shared_secret,
             )) => {
                 let completed_tx = CompletedTransaction::new(
                     tx_id,
@@ -1261,6 +1270,7 @@ where
                     total_script_key,
                     total_metadata_ephemeral_public_key,
                     total_script_nonce,
+                    shared_secret,
                 ))
             },
             Err(e) => Err(e.into()),

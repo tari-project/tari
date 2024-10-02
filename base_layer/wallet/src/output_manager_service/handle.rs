@@ -283,6 +283,7 @@ pub enum OutputManagerResponse {
             PublicKey,
             PublicKey,
             PublicKey,
+            PublicKey,
         ),
     ),
     SpendBackupPreMineUtxo((Transaction, MicroMinotari, MicroMinotari)),
@@ -831,6 +832,7 @@ impl OutputManagerHandle {
             PublicKey,
             PublicKey,
             PublicKey,
+            PublicKey,
         ),
         OutputManagerError,
     > {
@@ -858,6 +860,7 @@ impl OutputManagerHandle {
                 total_script_key,
                 total_metadata_ephemeral_public_key,
                 total_script_nonce,
+                shared_secret,
             )) => Ok((
                 transaction,
                 amount,
@@ -865,6 +868,7 @@ impl OutputManagerHandle {
                 total_script_key,
                 total_metadata_ephemeral_public_key,
                 total_script_nonce,
+                shared_secret,
             )),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }

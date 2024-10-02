@@ -76,11 +76,13 @@ use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     blocks::pre_mine::get_pre_mine_items,
     covenants::Covenant,
+    one_sided::shared_secret_to_output_encryption_key,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
+            EncryptedData,
             OutputFeatures,
             Transaction,
             TransactionInput,
@@ -93,13 +95,16 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey};
+use tari_crypto::{
+    dhke::DiffieHellmanSharedSecret,
+    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
+};
 use tari_key_manager::{
     key_manager_service::{KeyId, KeyManagerInterface},
     SeedWords,
 };
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
-use tari_script::{script, CheckSigSchnorrSignature};
+use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex::Hex, ByteArray, SafePassword};
 use tokio::{
@@ -208,7 +213,7 @@ async fn encumber_aggregate_utxo(
     recipient_address: TariAddress,
     original_maturity: u64,
     use_output: UseOutput,
-) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), CommandError> {
+) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
@@ -1275,6 +1280,7 @@ pub async fn command_runner(
                             script_pubkey,
                             total_metadata_ephemeral_public_key,
                             total_script_nonce,
+                            shared_secret,
                         )) => {
                             outputs_for_parties.push(Step3OutputsForParties {
                                 output_index: current_index,
@@ -1295,6 +1301,7 @@ pub async fn command_runner(
                                 metadata_signature_ephemeral_pubkey: total_metadata_ephemeral_public_key,
                                 encrypted_data: transaction.body.outputs()[0].clone().encrypted_data,
                                 output_features: transaction.body.outputs()[0].clone().features,
+                                shared_secret,
                             });
                             outputs_for_self.push(Step3OutputsForSelf {
                                 output_index: current_index,
@@ -1426,6 +1433,55 @@ pub async fn command_runner(
                         },
                     };
 
+                    // lets verify the script
+                    let shared_secret = match DiffieHellmanSharedSecret::<PublicKey>::from_canonical_bytes(
+                        leader_info.shared_secret.as_bytes(),
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("\nError: Could not create shared secret from canonical bytes! {}\n", e);
+                            break;
+                        },
+                    };
+
+                    let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                    let (committed_value, commitment_mask_private_key, _payment_id) = match EncryptedData::decrypt_data(
+                        &encryption_key,
+                        &leader_info.output_commitment,
+                        &leader_info.encrypted_data,
+                    ) {
+                        Ok((value, mask, id)) => (value, mask, id),
+                        Err(e) => {
+                            eprintln!("\nError: Could not decrypt data! {}\n", e);
+                            break;
+                        },
+                    };
+                    let commitment_mask_key_id = &key_manager_service
+                        .import_key(commitment_mask_private_key.clone())
+                        .await?;
+                    match key_manager_service
+                        .verify_mask(
+                            &leader_info.output_commitment,
+                            commitment_mask_key_id,
+                            committed_value.as_u64(),
+                        )
+                        .await
+                    {
+                        Ok(_) => {},
+                        Err(e) => {
+                            eprintln!("\nError: Could not verify mask! {}\n", e);
+                            break;
+                        },
+                    }
+                    // now lets calculate the script with stealth key
+                    let script_spending_key = key_manager_service
+                        .stealth_address_script_spending_key(
+                            commitment_mask_key_id,
+                            party_info.recipient_address.public_spend_key(),
+                        )
+                        .await?;
+                    let script = push_pubkey_script(&script_spending_key);
+
                     // Metadata signature
                     let script_offset = key_manager_service
                         .get_script_offset(&vec![party_info.pre_mine_script_key_id.clone()], &vec![party_info
@@ -1434,9 +1490,7 @@ pub async fn command_runner(
                         .await?;
                     let challenge = TransactionOutput::build_metadata_signature_challenge(
                         &TransactionOutputVersion::get_current_version(),
-                        &script!(PushPubKey(Box::new(
-                            party_info.recipient_address.public_spend_key().clone()
-                        )))?,
+                        &script,
                         &leader_info.output_features,
                         &leader_info.sender_offset_pubkey,
                         &leader_info.metadata_signature_ephemeral_commitment,

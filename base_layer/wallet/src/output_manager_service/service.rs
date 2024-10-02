@@ -1263,6 +1263,7 @@ where
             PublicKey,
             PublicKey,
             PublicKey,
+            PublicKey,
         ),
         OutputManagerError,
     > {
@@ -1373,14 +1374,16 @@ where
             range_proof_type,
             ..Default::default()
         };
-        let script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())))?;
+        // we assign a temp script to calculate all the sizes for now, we override this with the stealth one later if
+        // needed
+        let temp_script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())))?;
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
                 output_features.get_serialized_size()? +
-                    script.get_serialized_size()? +
+                    temp_script.get_serialized_size()? +
                     Covenant::default().get_serialized_size()?,
             );
         let fee = self.get_fee_calc();
@@ -1496,6 +1499,13 @@ where
             .fold(PublicKey::default(), |acc, x| acc + x);
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: prepared inputs for partial metadata signature");
 
+        let script_spending_key = self
+            .resources
+            .key_manager
+            .stealth_address_script_spending_key(&spending_key_id, recipient_address.public_spend_key())
+            .await?;
+        let script = push_pubkey_script(&script_spending_key);
+
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
@@ -1573,6 +1583,10 @@ where
 
         let fee = stp.get_fee_amount()?;
 
+        // shared secret does not support debug so we manually convert this to a public key
+        let shared_secret_bytes = shared_secret.as_bytes();
+        let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret_bytes)?;
+
         Ok((
             tx,
             amount,
@@ -1580,6 +1594,7 @@ where
             total_script_public_key,
             total_metadata_ephemeral_public_key,
             total_script_nonce,
+            shared_secret_public_key,
         ))
     }
 
