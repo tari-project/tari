@@ -249,7 +249,6 @@ where
             OutputManagerRequest::EncumberAggregateUtxo {
                 tx_id,
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -263,7 +262,6 @@ where
                 .encumber_aggregate_utxo(
                     tx_id,
                     fee_per_gram,
-                    output_hash,
                     expected_commitment,
                     script_input_shares,
                     script_signature_public_nonces,
@@ -1245,7 +1243,6 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         mut script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1272,7 +1269,7 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
         // Fetch the output from the blockchain or use provided
         let output = match use_output {
-            UseOutput::FromBlockchain => self
+            UseOutput::FromBlockchain(output_hash) => self
                 .fetch_unspent_outputs_from_node(vec![output_hash])
                 .await?
                 .pop()
@@ -3310,7 +3307,7 @@ where
 #[derive(Clone)]
 pub enum UseOutput {
     /// The transaction output will be fetched from the blockchain
-    FromBlockchain,
+    FromBlockchain(HashOutput),
     /// The transaction output must be provided
     AsProvided(TransactionOutput),
 }

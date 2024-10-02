@@ -703,7 +703,6 @@ where
                 }),
             TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -716,7 +715,6 @@ where
             } => self
                 .encumber_aggregate_tx(
                     fee_per_gram,
-                    output_hash,
                     expected_commitment,
                     script_input_shares,
                     script_signature_public_nonces,
@@ -1202,7 +1200,6 @@ where
     pub async fn encumber_aggregate_tx(
         &mut self,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -1221,7 +1218,6 @@ where
             .encumber_aggregate_utxo(
                 tx_id,
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,

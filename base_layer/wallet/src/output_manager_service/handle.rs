@@ -64,7 +64,6 @@ pub enum OutputManagerRequest {
     EncumberAggregateUtxo {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -173,18 +172,24 @@ impl fmt::Display for OutputManagerRequest {
             },
             EncumberAggregateUtxo {
                 tx_id,
-                output_hash,
                 expected_commitment,
                 original_maturity,
+                use_output,
                 ..
-            } => write!(
-                f,
-                "Encumber aggregate utxo with tx_id: {} and output: ({},{}) with original maturity: {}",
-                tx_id,
-                expected_commitment.to_hex(),
-                output_hash,
-                original_maturity,
-            ),
+            } => {
+                let output_hash = match use_output {
+                    UseOutput::FromBlockchain(hash) => *hash,
+                    UseOutput::AsProvided(output) => output.hash(),
+                };
+                write!(
+                    f,
+                    "Encumber aggregate utxo with tx_id: {} and output: ({},{}) with original maturity: {}",
+                    tx_id,
+                    expected_commitment.to_hex(),
+                    output_hash,
+                    original_maturity,
+                )
+            },
             SpendBackupPreMineUtxo {
                 tx_id,
                 output_hash,
@@ -809,7 +814,6 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -835,7 +839,6 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::EncumberAggregateUtxo {
                 tx_id,
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,

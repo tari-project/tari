@@ -199,7 +199,6 @@ pub async fn burn_tari(
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
-    output_hash: HashOutput,
     expected_commitment: PedersenCommitment,
     script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
     script_signature_public_nonces: Vec<PublicKey>,
@@ -213,7 +212,6 @@ async fn encumber_aggregate_utxo(
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
-            output_hash,
             expected_commitment,
             script_input_shares,
             script_signature_public_nonces,
@@ -1255,7 +1253,6 @@ pub async fn command_runner(
                     match encumber_aggregate_utxo(
                         transaction_service.clone(),
                         session_info.fee_per_gram,
-                        embedded_output.hash(),
                         embedded_output.commitment.clone(),
                         input_shares,
                         script_signature_public_nonces,
@@ -1267,7 +1264,7 @@ pub async fn command_runner(
                         if pre_mine_from_file.is_some() {
                             UseOutput::AsProvided(embedded_output)
                         } else {
-                            UseOutput::FromBlockchain
+                            UseOutput::FromBlockchain(embedded_output.hash())
                         },
                     )
                     .await
