@@ -937,15 +937,14 @@ where
                             .get_serialized_size()
                             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
                 );
-                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
-                return Ok(Fee::normalize(fee));
+                return Ok(fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size));
             },
             Err(e) => Err(e),
         }?;
 
         debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
-        let fee = Fee::normalize(utxo_selection.as_final_fee());
+        let fee = utxo_selection.as_final_fee();
 
         debug!(target: LOG_TARGET, "Fee calculated: {}", fee);
         Ok(fee)
@@ -1396,10 +1395,6 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_allow_zero_fees(match use_output {
-                UseOutput::FromBlockchain(_) => false,
-                UseOutput::AsProvided(_) => true,
-            })
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())
