@@ -128,7 +128,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
         // Create NBGL review. Maximum number of fields and string buffer length can be customised
         // with constant generic parameters of NbglReview. Default values are 32 and 1024 respectively.
-        let mut review: NbglReview = NbglReview::new()
+        let review: NbglReview = NbglReview::new()
             .titles("Review transaction\nto send", "", "Sign transaction\nto send")
             .glyph(&FERRIS);
 

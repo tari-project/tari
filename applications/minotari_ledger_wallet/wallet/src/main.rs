@@ -40,7 +40,7 @@ use handlers::{
 use ledger_device_sdk::io::Event;
 use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, NbglReviewStatus, StatusType};
+use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::common_types::{
@@ -182,16 +182,16 @@ impl TryFrom<ApduHeader> for Instruction {
 fn show_status_and_home_if_needed(
     ins: &Instruction,
     status: &AppSW,
-    offset_ctx: &mut ScriptOffsetCtx,
+    _offset_ctx: &mut ScriptOffsetCtx,
     home: &mut NbglHomeAndSettings,
 ) {
-    let (show_status, status_type) = match (ins, status) {
+    let (show_status, _status_type) = match (ins, status) {
         (Instruction::GetOneSidedMetadataSignature, AppSW::Deny | AppSW::Ok) => (true, StatusType::Transaction),
         (_, _) => (false, StatusType::Transaction),
     };
 
     if show_status {
-        let success = *status == AppSW::Ok;
+        let _success = *status == AppSW::Ok;
         // We should this, but this breaks the ledger app
         // NbglReviewStatus::new().status_type(status_type).show(success);
         home.show_and_return();
