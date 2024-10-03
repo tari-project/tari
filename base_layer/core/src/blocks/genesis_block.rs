@@ -665,7 +665,7 @@ mod test {
             .iter()
             .map(|o| &o.commitment)
             .sum::<Commitment>();
-        let total_utxo_sum = Commitment::from_public_key(&(utxo_sum.as_public_key() - input_sum.as_public_key()));
+        let total_utxo_sum = &utxo_sum - &input_sum;
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
         let db = create_new_blockchain_with_network(network);
