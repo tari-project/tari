@@ -881,8 +881,7 @@ mod test {
             )
             .await
             .unwrap();
-        builder.build().await.unwrap();
-        // assert!(builder.build().await.is_ok(), "Zero fee should be allowed");
+        assert!(builder.build().await.is_ok(), "Zero fee should be allowed");
     }
 
     #[tokio::test]
