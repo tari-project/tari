@@ -839,12 +839,13 @@ mod test {
     }
 
     #[tokio::test]
-    async fn fee_too_low() {
+    async fn zero_fee_allowed() {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
+        let fee_per_gram = MicroMinotari(0);
         let tx_fee = p.fee().calculate(
-            MicroMinotari(1),
+            fee_per_gram,
             1,
             1,
             1,
@@ -870,7 +871,7 @@ mod test {
                 Covenant::default(),
                 TariAddress::default(),
             )
-            .with_fee_per_gram(MicroMinotari(1))
+            .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
                 script,
                 Default::default(),
@@ -880,8 +881,8 @@ mod test {
             )
             .await
             .unwrap();
-        let err = builder.build().await.unwrap_err();
-        assert_eq!(err.message, "Fee is less than the minimum");
+        builder.build().await.unwrap();
+        // assert!(builder.build().await.is_ok(), "Zero fee should be allowed");
     }
 
     #[tokio::test]
