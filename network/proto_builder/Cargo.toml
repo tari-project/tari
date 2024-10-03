@@ -1,0 +1,11 @@
+[package]
+name = "proto_builder"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+prost-build = { workspace = true }
+sha2 = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+name = "tari_swarm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+libp2p = { workspace = true, features = ["tokio", "noise", "macros", "ping", "tcp", "identify", "yamux", "relay", "quic", "dcutr", "gossipsub", "mdns", "autonat"] }
+libp2p-messaging = { workspace = true, features = ["prost"] }
+libp2p-substream = { workspace = true }
+libp2p-peersync = { workspace = true }
+
+thiserror = { workspace = true }
