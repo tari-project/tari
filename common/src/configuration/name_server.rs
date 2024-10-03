@@ -29,30 +29,36 @@ use std::{
 use anyhow::anyhow;
 use serde::Deserialize;
 
-/// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver
-pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:853/cloudflare-dns.com";
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct DnsNameServer {
-    pub addr: SocketAddr,
-    pub dns_name: String,
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+pub enum DnsNameServer {
+    #[default]
+    System,
+    Custom {
+        addr: SocketAddr,
+        dns_name: Option<String>,
+    },
 }
 
 impl DnsNameServer {
-    pub fn new(addr: SocketAddr, dns_name: String) -> Self {
-        Self { addr, dns_name }
-    }
-}
-
-impl Default for DnsNameServer {
-    fn default() -> Self {
-        Self::from_str(DEFAULT_DNS_NAME_SERVER).expect("is valid")
+    pub fn custom(addr: SocketAddr, dns_name: Option<String>) -> Self {
+        Self::Custom { addr, dns_name }
     }
 }
 
 impl Display for DnsNameServer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.addr, self.dns_name)
+        match self {
+            DnsNameServer::System => write!(f, "SystemDns"),
+            DnsNameServer::Custom {
+                addr,
+                dns_name: Some(dns_name),
+            } => {
+                write!(f, "{}/{}", addr, dns_name)
+            },
+            DnsNameServer::Custom { addr, .. } => {
+                write!(f, "{}", addr)
+            },
+        }
     }
 }
 
@@ -64,12 +70,13 @@ impl FromStr for DnsNameServer {
         let addr = split
             .next()
             .ok_or_else(|| anyhow!("failed to parse DNS name server 'addr'"))?;
-        let dns_name = split
-            .next()
-            .ok_or_else(|| anyhow!("failed to parse DNS name server 'dns_name'"))?;
-        Ok(Self {
+        if addr.to_ascii_lowercase() == "system" {
+            return Ok(Self::System);
+        }
+        let dns_name = split.next();
+        Ok(Self::Custom {
             addr: addr.parse()?,
-            dns_name: dns_name.to_string(),
+            dns_name: dns_name.map(ToString::to_string),
         })
     }
 }
@@ -86,7 +93,7 @@ mod test {
         let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
         let ip = IpAddr::V4(ipv4);
         let socket = SocketAddr::new(ip, 8080);
-        let dns = DnsNameServer::new(socket, String::from("my_dns"));
+        let dns = DnsNameServer::custom(socket, Some(String::from("my_dns")));
 
         // test formatting
         assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
@@ -96,9 +103,6 @@ mod test {
         assert_eq!(new_dns, dns);
 
         // default
-        assert_eq!(
-            DnsNameServer::default(),
-            DnsNameServer::from_str(DEFAULT_DNS_NAME_SERVER).unwrap()
-        );
+        assert_eq!(DnsNameServer::default(), DnsNameServer::System);
     }
 }

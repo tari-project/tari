@@ -28,7 +28,6 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
-        name_server::DEFAULT_DNS_NAME_SERVER,
         serializers,
         utils::{deserialize_string_or_struct, serialize_string},
         MultiaddrList,
@@ -77,7 +76,7 @@ impl Default for PeerSeedsConfig {
                 Network::get_current_or_user_setting_or_default().as_key_str()
             )]
             .into(),
-            dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
+            dns_seeds_name_server: DnsNameServer::default(),
             dns_seeds_use_dnssec: false,
         }
     }
@@ -181,6 +180,8 @@ impl P2pConfig {
 
 #[cfg(test)]
 mod test {
+    use tari_common::DnsNameServer;
+
     use crate::PeerSeedsConfig;
 
     #[test]
@@ -215,7 +216,7 @@ mod test {
             Ok(_) => panic!("Should fail"),
             Err(e) => assert_eq!(
                 e.to_string(),
-                "failed to parse DNS name server 'dns_name' for key `dns_seeds_name_server` at line 4 column 37"
+                "invalid socket address syntax for key `dns_seeds_name_server` at line 4 column 37"
             ),
         }
 
@@ -245,10 +246,17 @@ mod test {
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
         assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert_eq!(
-            config.dns_seeds_name_server.to_string(),
-            "1.1.1.1:853/cloudflare-dns.com".to_string()
-        );
+        assert!(matches!(config.dns_seeds_name_server, DnsNameServer::System));
         assert!(!config.dns_seeds_use_dnssec);
+
+        // System
+        let config_str = r#"
+            #dns_seeds = []
+            #peer_seeds = []
+            dns_seeds_name_server = "system"
+            #dns_seeds_use_dnssec = false
+         "#;
+        let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
+        assert!(matches!(config.dns_seeds_name_server, DnsNameServer::System));
     }
 }

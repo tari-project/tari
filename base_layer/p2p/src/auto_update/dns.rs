@@ -204,7 +204,7 @@ impl Display for UpdateSpec {
 
 #[cfg(test)]
 mod test {
-    use trust_dns_client::{
+    use hickory_client::{
         op::Query,
         proto::{
             rr::{rdata, Name, RData, RecordType},
@@ -218,14 +218,14 @@ mod test {
 
     fn create_txt_record(contents: Vec<&str>) -> DnsResponse {
         let resp_query = Query::query(Name::from_str("test.local.").unwrap(), RecordType::A);
-        let mut record = Record::new();
-        record
-            .set_record_type(RecordType::TXT)
-            .set_data(Some(RData::TXT(rdata::TXT::new(
-                contents.into_iter().map(ToString::to_string).collect(),
-            ))));
 
-        mock::message(resp_query, vec![record], vec![], vec![]).into()
+        let origin = Name::parse("example.com.", None).unwrap();
+        let record = Record::from_rdata(
+            origin,
+            86300,
+            RData::TXT(rdata::TXT::new(contents.into_iter().map(ToString::to_string).collect())),
+        );
+        DnsResponse::from_message(mock::message(resp_query, vec![record], vec![], vec![])).unwrap()
     }
 
     mod update_spec {
@@ -244,15 +244,13 @@ mod test {
     mod dns_software_update {
         use std::time::Duration;
 
-        use tari_common::configuration::name_server::DEFAULT_DNS_NAME_SERVER;
-
         use super::*;
 
         impl AutoUpdateConfig {
             fn get_test_defaults() -> Self {
                 Self {
                     override_from: None,
-                    name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
+                    name_server: Default::default(),
                     update_uris: vec!["test.local".to_string()].into(),
                     use_dnssec: true,
                     download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),

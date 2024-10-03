@@ -20,10 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{error::Error, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 
 use futures::{future, stream, Future};
-use trust_dns_client::{
+use hickory_client::{
     op::{Message, Query},
     proto::{
         error::ProtoError,
@@ -33,14 +33,14 @@ use trust_dns_client::{
 };
 
 #[derive(Clone)]
-pub struct MockClientHandle<O: OnSend, E> {
-    messages: Arc<Vec<Result<DnsResponse, E>>>,
+pub struct MockClientHandle<O: OnSend> {
+    messages: Arc<Vec<Result<DnsResponse, ProtoError>>>,
     _on_send: O,
 }
 
-impl<E> MockClientHandle<DefaultOnSend, E> {
+impl MockClientHandle<DefaultOnSend> {
     /// constructs a new MockClient which returns each Message one after the other
-    pub fn mock(messages: Vec<Result<DnsResponse, E>>) -> Self {
+    pub fn mock(messages: Vec<Result<DnsResponse, ProtoError>>) -> Self {
         println!("MockClientHandle::mock message count: {}", messages.len());
 
         MockClientHandle {
@@ -50,13 +50,10 @@ impl<E> MockClientHandle<DefaultOnSend, E> {
     }
 }
 
-impl<O: OnSend + Unpin, E> DnsHandle for MockClientHandle<O, E>
-where E: From<ProtoError> + Error + Clone + Send + Sync + Unpin + 'static
-{
-    type Error = E;
-    type Response = stream::Once<future::Ready<Result<DnsResponse, E>>>;
+impl<O: OnSend + Unpin> DnsHandle for MockClientHandle<O> {
+    type Response = stream::Once<future::Ready<Result<DnsResponse, ProtoError>>>;
 
-    fn send<R: Into<DnsRequest>>(&mut self, _: R) -> Self::Response {
+    fn send<R: Into<DnsRequest>>(&self, _: R) -> Self::Response {
         let responses = (*self.messages)
             .clone()
             .into_iter()
@@ -66,7 +63,7 @@ where E: From<ProtoError> + Error + Clone + Send + Sync + Unpin + 'static
                     msg
                 })
             })
-            .map(DnsResponse::from);
+            .and_then(DnsResponse::from_message);
 
         // let stream = stream::unfold(messages, |mut msgs| async move {
         //     let msg = msgs.pop()?;

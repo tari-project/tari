@@ -225,8 +225,7 @@ mod test {
     }
 
     mod peer_seed_resolver {
-        use tari_common::configuration::name_server::DEFAULT_DNS_NAME_SERVER;
-        use trust_dns_client::{
+        use hickory_client::{
             proto::{
                 op::Query,
                 rr::{DNSClass, Name},
@@ -241,9 +240,7 @@ mod test {
         #[tokio::test]
         #[ignore = "Useful for developer testing but will fail unless the DNS has TXT records setup correctly."]
         async fn it_returns_seeds_from_real_address() {
-            let mut resolver = DnsSeedResolver::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
-                .await
-                .unwrap();
+            let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).await.unwrap();
             let seeds = resolver.resolve("seeds.esmeralda.tari.com").await.unwrap();
             println!("{:?}", seeds);
             assert!(!seeds.is_empty());
@@ -252,14 +249,15 @@ mod test {
         fn create_txt_record(contents: Vec<&str>) -> DnsResponse {
             let mut resp_query = Query::query(Name::from_str(TEST_NAME).unwrap(), RecordType::TXT);
             resp_query.set_query_class(DNSClass::IN);
-            let mut record = Record::new();
-            record
-                .set_record_type(RecordType::TXT)
-                .set_data(Some(RData::TXT(rdata::TXT::new(
-                    contents.into_iter().map(ToString::to_string).collect(),
-                ))));
 
-            mock::message(resp_query, vec![record], vec![], vec![]).into()
+            let origin = Name::parse("example.com.", None).unwrap();
+            let record = Record::from_rdata(
+                origin,
+                86300,
+                RData::TXT(rdata::TXT::new(contents.into_iter().map(ToString::to_string).collect())),
+            );
+
+            DnsResponse::from_message(mock::message(resp_query, vec![record], vec![], vec![])).unwrap()
         }
 
         #[tokio::test]
