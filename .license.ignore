@@ -3,7 +3,6 @@
 ./applications/minotari_node/osx-pkg/entitlements.xml
 ./base_layer/contacts/src/schema.rs
 ./base_layer/key_manager/src/schema.rs
-./base_layer/p2p/src/dns/roots/tls.rs
 ./base_layer/wallet/src/schema.rs
 ./docs/src/theme/book.js
 ./docs/src/theme/highlight.js

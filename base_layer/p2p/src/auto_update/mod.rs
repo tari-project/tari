@@ -53,7 +53,6 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_utilities::hex::Hex;
-pub use trust_dns_client::rr::dnssec::TrustAnchor;
 
 use crate::auto_update::{dns::UpdateSpec, signature::SignedMessageVerifier};
 

@@ -114,8 +114,9 @@ use minotari_wallet::{
 use num_traits::FromPrimitive;
 use rand::{prelude::SliceRandom, rngs::OsRng};
 use tari_common::{
-    configuration::{name_server::DEFAULT_DNS_NAME_SERVER, MultiaddrList, StringList},
+    configuration::{MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
+    DnsNameServer,
 };
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
@@ -6012,7 +6013,7 @@ pub unsafe extern "C" fn wallet_create(
     ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
 
     let peer_seeds = PeerSeedsConfig {
-        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
+        dns_seeds_name_server: DnsNameServer::System,
         dns_seeds_use_dnssec: dns_sec,
         dns_seeds: StringList::from(vec![peer_seed.to_string()]),
         ..Default::default()
