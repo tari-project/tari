@@ -112,7 +112,7 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use num_traits::FromPrimitive;
-use rand::rngs::OsRng;
+use rand::{prelude::SliceRandom, rngs::OsRng};
 use tari_common::{
     configuration::{name_server::DEFAULT_DNS_NAME_SERVER, MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
@@ -6049,7 +6049,7 @@ pub unsafe extern "C" fn wallet_create(
     ));
 
     match w {
-        Ok(w) => {
+        Ok(mut w) => {
             let wallet_address = match runtime.block_on(async { w.get_wallet_interactive_address().await }) {
                 Ok(address) => address,
                 Err(e) => {
@@ -6058,6 +6058,34 @@ pub unsafe extern "C" fn wallet_create(
                     return ptr::null_mut();
                 },
             };
+
+            // Lets set the base node peers
+            let peer_manager = w.comms.peer_manager();
+            let query = PeerQuery::new().select_where(|p| p.is_seed());
+            let peers = match runtime.block_on(async { peer_manager.perform_query(query).await }) {
+                Ok(peers) => peers,
+                Err(_) => Vec::new(),
+            };
+
+            if !peers.is_empty() {
+                let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
+                let net_address = selected_base_node.addresses.best().expect("No addresses for base node");
+                match runtime.block_on(async {
+                    w.set_base_node_peer(
+                        selected_base_node.public_key.clone(),
+                        Some(net_address.address().clone()),
+                        Some(peers.to_vec()),
+                    )
+                    .await
+                }) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        error = LibWalletError::from(e).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                }
+            }
 
             let mut utxo_scanner = w.utxo_scanner_service.clone();
 
@@ -6906,20 +6934,10 @@ pub unsafe extern "C" fn wallet_set_base_node_peer(
         }
     };
 
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
-    let backup_peers = match (*wallet)
-        .runtime
-        .block_on(async move { Result::<_, WalletError>::Ok(peer_manager.perform_query(query).await?) })
-    {
-        Ok(peers) => Some(peers),
-        Err(_) => None,
-    };
-
     if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.set_base_node_peer(
         (*public_key).clone(),
         parsed_addr,
-        backup_peers,
+        None,
     )) {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
