@@ -6063,10 +6063,7 @@ pub unsafe extern "C" fn wallet_create(
             // Lets set the base node peers
             let peer_manager = w.comms.peer_manager();
             let query = PeerQuery::new().select_where(|p| p.is_seed());
-            let peers = match runtime.block_on(async { peer_manager.perform_query(query).await }) {
-                Ok(peers) => peers,
-                Err(_) => Vec::new(),
-            };
+            let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
 
             if !peers.is_empty() {
                 let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
