@@ -34,7 +34,7 @@ use crate::{
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionKernel, TransactionOutput},
+        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
     OutputSmt,
 };
@@ -54,9 +54,12 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
 
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut utxos = Vec::new();
+    let mut inputs = Vec::new();
     for line in file.lines() {
         if let Ok(utxo) = serde_json::from_str::<TransactionOutput>(line) {
             utxos.push(utxo);
+        } else if let Ok(input) = serde_json::from_str::<TransactionInput>(line) {
+            inputs.push(input);
         } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
             block.body.add_kernel(kernel);
             block.header.kernel_mmr_size += 1;
@@ -66,6 +69,7 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     }
     block.header.output_smt_size += utxos.len() as u64;
     block.body.add_outputs(utxos);
+    block.body.add_inputs(inputs);
     block.body.sort();
 }
 
@@ -647,14 +651,28 @@ mod test {
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
         // kernel is correct)
 
-        let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
+        let input_sum = block
+            .block()
+            .body
+            .inputs()
+            .iter()
+            .map(|o| o.commitment().unwrap())
+            .sum::<Commitment>();
+        let utxo_sum = block
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .map(|o| &o.commitment)
+            .sum::<Commitment>();
+        let total_utxo_sum = &utxo_sum - &input_sum;
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
+            .validate(&*lock, 0, &total_utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }
 

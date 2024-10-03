@@ -36,7 +36,6 @@ use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
     transactions::{
-        fee::Fee,
         key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::*,
         transaction_components::{
@@ -720,11 +719,6 @@ impl SenderTransactionProtocol {
     /// Performs sanity checks on the collected transaction pieces prior to building the final Transaction instance
     fn validate(&self) -> Result<(), TPE> {
         if let SenderState::Finalizing(info) = &self.state {
-            let fee = info.metadata.fee;
-            // The fee must be greater than MIN_FEE to prevent spam attacks
-            if fee < Fee::MINIMUM_TRANSACTION_FEE {
-                return Err(TPE::ValidationError("Fee is less than the minimum".into()));
-            }
             // Prevent overflow attacks by imposing sane limits on some key parameters
             if info.inputs.len() > MAX_TRANSACTION_INPUTS {
                 return Err(TPE::ValidationError("Too many inputs in transaction".into()));

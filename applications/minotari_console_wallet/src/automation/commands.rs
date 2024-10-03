@@ -1257,7 +1257,11 @@ pub async fn command_runner(
 
                     match encumber_aggregate_utxo(
                         transaction_service.clone(),
-                        session_info.fee_per_gram,
+                        if session_info.use_pre_mine_input_file {
+                            MicroMinotari::zero()
+                        } else {
+                            session_info.fee_per_gram
+                        },
                         embedded_output.commitment.clone(),
                         input_shares,
                         script_signature_public_nonces,
@@ -1630,6 +1634,7 @@ pub async fn command_runner(
                 }
 
                 // Create finalized spend transactions
+                let mut inputs = Vec::new();
                 let mut outputs = Vec::new();
                 let mut kernels = Vec::new();
                 for (indexed_info, leader_self) in party_info_per_index.iter().zip(leader_info.outputs_for_self.iter())
@@ -1659,22 +1664,17 @@ pub async fn command_runner(
                         break;
                     }
 
-                    if args.print_to_console || args.save_to_file {
+                    if session_info.use_pre_mine_input_file {
                         match transaction_service.get_any_transaction(leader_self.tx_id).await {
                             Ok(Some(WalletTransaction::Completed(tx))) => {
-                                if args.save_to_file {
-                                    for output in tx.transaction.body.outputs() {
-                                        outputs.push(output.clone());
-                                    }
-                                    for kernel in tx.transaction.body.kernels() {
-                                        kernels.push(kernel.clone());
-                                    }
+                                for input in tx.transaction.body.inputs() {
+                                    inputs.push(input.clone());
                                 }
-                                if args.print_to_console {
-                                    let tx_console = serde_json::to_string(&tx.transaction).unwrap_or_else(|_| {
-                                        format!("Transaction to json conversion error! ('{}')", leader_self.tx_id)
-                                    });
-                                    println!("Tx_Id: {}, Tx: {}", leader_self.tx_id, tx_console);
+                                for output in tx.transaction.body.outputs() {
+                                    outputs.push(output.clone());
+                                }
+                                for kernel in tx.transaction.body.kernels() {
+                                    kernels.push(kernel.clone());
                                 }
                             },
                             Ok(_) => {
@@ -1692,7 +1692,7 @@ pub async fn command_runner(
                     }
                 }
 
-                if args.save_to_file {
+                if session_info.use_pre_mine_input_file {
                     let file_name = get_pre_mine_addition_file_name();
                     let out_dir_path = out_dir(&args.session_id)?;
                     let out_file = out_dir_path.join(&file_name);
@@ -1705,6 +1705,24 @@ pub async fn command_runner(
                     };
 
                     let mut error = false;
+                    for input in inputs {
+                        let input_s = match serde_json::to_string(&input) {
+                            Ok(val) => val,
+                            Err(e) => {
+                                eprintln!("\nError: Could not serialize UTXO ({})\n", e);
+                                error = true;
+                                break;
+                            },
+                        };
+                        if let Err(e) = file_stream.write_all(format!("{}\n", input_s).as_bytes()) {
+                            eprintln!("\nError: Could not write UTXO to file ({})\n", e);
+                            error = true;
+                            break;
+                        }
+                    }
+                    if error {
+                        break;
+                    }
                     for output in outputs {
                         let utxo_s = match serde_json::to_string(&output) {
                             Ok(val) => val,
@@ -2459,7 +2477,7 @@ fn read_genesis_file_outputs(
             }
             file
         } else {
-            return Err("Missing pre-mine file!".to_string());
+            return Err("Missing pre-mine file! Need '--pre-mine-file-path <path_to_file>.'".to_string());
         };
 
         let file = File::open(file_path.clone())

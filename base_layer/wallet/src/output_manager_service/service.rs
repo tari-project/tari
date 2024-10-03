@@ -937,15 +937,14 @@ where
                             .get_serialized_size()
                             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
                 );
-                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
-                return Ok(Fee::normalize(fee));
+                return Ok(fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size));
             },
             Err(e) => Err(e),
         }?;
 
         debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
-        let fee = Fee::normalize(utxo_selection.as_final_fee());
+        let fee = utxo_selection.as_final_fee();
 
         debug!(target: LOG_TARGET, "Fee calculated: {}", fee);
         Ok(fee)
@@ -1280,7 +1279,7 @@ where
                         output_hash, tx_id
                     ))
                 })?,
-            UseOutput::AsProvided(val) => val,
+            UseOutput::AsProvided(ref val) => val.clone(),
         };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
@@ -1389,7 +1388,7 @@ where
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value - fee;
-        trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script");
+        trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script, with fee {}", fee);
 
         // Create sender transaction protocol builder with recipient data and no change
         let mut builder = SenderTransactionProtocol::builder(

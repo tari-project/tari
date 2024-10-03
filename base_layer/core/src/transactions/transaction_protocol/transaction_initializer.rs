@@ -520,10 +520,6 @@ where KM: TransactionKeyManagerInterface
             target: LOG_TARGET,
             "Build transaction with Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
         );
-        // Some checks on the fee
-        if total_fee < Fee::MINIMUM_TRANSACTION_FEE {
-            return self.build_err("Fee is less than the minimum");
-        }
 
         let change_output_pair = match change_output {
             Some((output, sender_offset_key_id)) => {
@@ -843,12 +839,13 @@ mod test {
     }
 
     #[tokio::test]
-    async fn fee_too_low() {
+    async fn zero_fee_allowed() {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
+        let fee_per_gram = MicroMinotari(0);
         let tx_fee = p.fee().calculate(
-            MicroMinotari(1),
+            fee_per_gram,
             1,
             1,
             1,
@@ -874,7 +871,7 @@ mod test {
                 Covenant::default(),
                 TariAddress::default(),
             )
-            .with_fee_per_gram(MicroMinotari(1))
+            .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
                 script,
                 Default::default(),
@@ -884,8 +881,7 @@ mod test {
             )
             .await
             .unwrap();
-        let err = builder.build().await.unwrap_err();
-        assert_eq!(err.message, "Fee is less than the minimum");
+        assert!(builder.build().await.is_ok(), "Zero fee should be allowed");
     }
 
     #[tokio::test]
