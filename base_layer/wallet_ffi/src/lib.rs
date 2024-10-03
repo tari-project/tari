@@ -60,7 +60,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use rand::prelude::SliceRandom;
+
 use chrono::{DateTime, Local};
 use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
@@ -112,7 +112,7 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use num_traits::FromPrimitive;
-use rand::rngs::OsRng;
+use rand::{prelude::SliceRandom, rngs::OsRng};
 use tari_common::{
     configuration::{name_server::DEFAULT_DNS_NAME_SERVER, MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
@@ -6075,7 +6075,8 @@ pub unsafe extern "C" fn wallet_create(
                         selected_base_node.public_key.clone(),
                         Some(net_address.address().clone()),
                         Some(peers.to_vec()),
-                    ).await
+                    )
+                    .await
                 }) {
                     Ok(_) => (),
                     Err(e) => {
