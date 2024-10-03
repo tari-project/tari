@@ -183,12 +183,12 @@ impl PaymentId {
 impl Display for PaymentId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PaymentId::Empty => write!(f, "N/A"),
-            PaymentId::U64(v) => write!(f, "{}", v),
-            PaymentId::U256(v) => write!(f, "{}", v),
-            PaymentId::Address(v) => write!(f, "{}", v.to_emoji_string()),
-            PaymentId::Open(v) => write!(f, "byte vector: {}", v.to_hex()),
-            PaymentId::AddressAndData(v, d) => write!(f, "From {} with data: {:?}", v.to_emoji_string(), d),
+            PaymentId::Empty => write!(f, "None"),
+            PaymentId::U64(v) => write!(f, "u64({v})"),
+            PaymentId::U256(v) => write!(f, "u256({v})"),
+            PaymentId::Address(v) => write!(f, "address({})", v.to_base58()),
+            PaymentId::Open(v) => write!(f, "data({})", v.to_hex()),
+            PaymentId::AddressAndData(v, d) => write!(f, "address_and_data({},{})", v.to_base58(), d.to_hex()),
         }
     }
 }
@@ -522,5 +522,35 @@ mod test {
                 assert_eq!(encrypted_data, encrypted_data_from_bytes);
             }
         }
+    }
+
+    #[test]
+    fn payment_id_display() {
+        assert_eq!(PaymentId::Empty.to_string(), "None");
+        assert_eq!(PaymentId::U64(1235678).to_string(), "u64(1235678)");
+        assert_eq!(
+            PaymentId::U256(
+                U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail")
+            )
+            .to_string(),
+            "u256(465465489789785458694894263185648978947864164681631)"
+        );
+        assert_eq!(
+            PaymentId::Address(TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap())
+                .to_string(),
+            "address(f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk)"
+        );
+        assert_eq!(
+            PaymentId::Open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).to_string(),
+            "data(0102030405060708090a)"
+        );
+        assert_eq!(
+            PaymentId::AddressAndData(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64]
+            )
+            .to_string(),
+            "address_and_data(f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk,48656c6c6f20576f726c64)"
+        );
     }
 }
