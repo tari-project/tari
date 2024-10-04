@@ -55,10 +55,10 @@ pub fn ui_menu_main(comm: &mut Comm) -> Event<Instruction> {
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 pub fn ui_menu_main(_: &mut Comm) -> NbglHomeAndSettings {
     // Load glyph from 64x64 4bpp gif file with include_gif macro. Creates an NBGL compatible glyph.
-    const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
+    const TARI: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
 
     // Display the home screen.
     NbglHomeAndSettings::new()
-        .glyph(&FERRIS)
+        .glyph(&TARI)
         .infos("MinoTari Wallet", env!("CARGO_PKG_VERSION"), "The Tari Project")
 }
