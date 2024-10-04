@@ -1705,6 +1705,7 @@ pub async fn command_runner(
                     };
 
                     let mut error = false;
+                    inputs.sort();
                     for input in inputs {
                         let input_s = match serde_json::to_string(&input) {
                             Ok(val) => val,
@@ -1723,6 +1724,7 @@ pub async fn command_runner(
                     if error {
                         break;
                     }
+                    outputs.sort();
                     for output in outputs {
                         let utxo_s = match serde_json::to_string(&output) {
                             Ok(val) => val,
@@ -1741,6 +1743,7 @@ pub async fn command_runner(
                     if error {
                         break;
                     }
+                    kernels.sort();
                     for kernel in kernels {
                         let kernel_s = match serde_json::to_string(&kernel) {
                             Ok(val) => val,

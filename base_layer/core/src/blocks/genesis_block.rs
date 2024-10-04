@@ -26,17 +26,24 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
+use tari_mmr::{
+    pruned_hashset::PrunedHashSet,
+    sparse_merkle_tree::{NodeKey, ValueHash},
+};
 use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_mmr,
+    output_mr_hash_from_smt,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
     OutputSmt,
+    PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -53,11 +60,11 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
 }
 
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
-    let mut utxos = Vec::new();
+    let mut outputs = Vec::new();
     let mut inputs = Vec::new();
     for line in file.lines() {
-        if let Ok(utxo) = serde_json::from_str::<TransactionOutput>(line) {
-            utxos.push(utxo);
+        if let Ok(output) = serde_json::from_str::<TransactionOutput>(line) {
+            outputs.push(output);
         } else if let Ok(input) = serde_json::from_str::<TransactionInput>(line) {
             inputs.push(input);
         } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
@@ -67,8 +74,9 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
             panic!("Error: Could not deserialize line: {} in file: {}", line, file);
         }
     }
-    block.header.output_smt_size += utxos.len() as u64;
-    block.body.add_outputs(utxos);
+    block.header.output_smt_size += outputs.len() as u64;
+    block.header.output_smt_size -= inputs.len() as u64;
+    block.body.add_outputs(outputs);
     block.body.add_inputs(inputs);
     block.body.sort();
 }
@@ -94,13 +102,24 @@ fn print_mr_values(block: &mut Block, print: bool) {
         let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
         output_smt.insert(smt_key, smt_node).unwrap();
     }
+    for i in block.body.inputs() {
+        let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+        output_smt.delete(&smt_key).unwrap();
+    }
     let vn_mmr = calculate_validator_node_mr(&[]);
 
-    block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    block.header.output_mr = FixedHash::try_from(output_smt.hash().as_slice()).unwrap();
+    let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+    for input in block.body.inputs() {
+        input_mmr.push(input.canonical_hash().to_vec()).unwrap();
+    }
+
+    block.header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr).unwrap();
+    block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
+    block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
     block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
+    println!("input mr: {}", block.header.input_mr.to_hex());
     println!("output mr: {}", block.header.output_mr.to_hex());
     println!("vn mr: {}", block.header.validator_node_mr.to_hex());
 }
@@ -122,6 +141,8 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
         block.header.validator_node_mr =
@@ -166,6 +187,10 @@ fn get_stagenet_genesis_block_raw() -> Block {
 pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
+    // TODO: Fix this hack with the next nextnet reset!!
+    block.header.input_mr =
+        FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
+
     // Add pre-mine utxos - enable/disable as required
     let add_pre_mine_utxos = false;
     if add_pre_mine_utxos {
@@ -180,6 +205,8 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("36881d87e25183f5189d2dca5f7da450c399e7006dafd9bd9240f73a5fb3f0ad").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
         block.header.validator_node_mr =
@@ -238,6 +265,8 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("c4bceeddf911e29f651fe00ae198d4dcdf3b8d27fab7754400e3b66d18d9be95").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("084348f0081f9086cb88bc51063bba54bbf76541d56451327393614d89045249").unwrap();
         block.header.validator_node_mr =
@@ -293,6 +322,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("bc5d677b0b8349adc9d7e4a18ace7406986fc7017866f4fd351ecb0f35d6da5e").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
         block.header.validator_node_mr =
@@ -353,6 +384,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("351cc183f692dcba280ec4e8988538fc51ffdeeff13ed3ea868026c81df5cc17").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("024b4cde6fdc73edbfde822c1496d7bdf156bc25caaf45eb6642fa62ff846964").unwrap();
         block.header.validator_node_mr =
@@ -448,14 +481,14 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::zero(),
+            output_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
                 .unwrap(),
             validator_node_size: 0,
-            input_mr: FixedHash::zero(),
+            input_mr: FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
@@ -506,7 +539,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
-        check_block(network, &block, 164, 1);
+        check_block(network, &block, 0, 164, 1);
         remove_network_env_var();
     }
 
@@ -521,7 +554,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
-        check_block(network, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
 
@@ -536,7 +569,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
-        check_block(network, &block, 168, 1);
+        check_block(network, &block, 0, 168, 1);
         remove_network_env_var();
     }
 
@@ -551,7 +584,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
-        check_block(network, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
 
@@ -565,7 +598,7 @@ mod test {
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
-        check_block(network, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
 
@@ -579,14 +612,21 @@ mod test {
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
-        check_block(network, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
 
-    fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
-        assert!(block.block().body.inputs().is_empty());
+    #[allow(clippy::too_many_lines)]
+    fn check_block(
+        network: Network,
+        block: &ChainBlock,
+        expected_inputs: usize,
+        expected_outputs: usize,
+        expected_kernels: usize,
+    ) {
         assert_eq!(block.block().body.kernels().len(), expected_kernels);
         assert_eq!(block.block().body.outputs().len(), expected_outputs);
+        assert_eq!(block.block().body.inputs().len(), expected_inputs);
 
         let factories = CryptoFactories::default();
         let some_output_is_coinbase = block.block().body.outputs().iter().any(|o| o.is_coinbase());
@@ -599,7 +639,7 @@ mod test {
             block.header().kernel_mmr_size
         );
         assert_eq!(
-            block.block().body.outputs().len() as u64,
+            block.block().body.outputs().len() as u64 - block.block().body.inputs().len() as u64,
             block.header().output_smt_size
         );
 
@@ -640,13 +680,62 @@ mod test {
                 ));
             }
         }
+        for i in block.block().body.inputs() {
+            let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+            output_smt.delete(&smt_key).unwrap();
+            if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+                let reg = i
+                    .features()
+                    .unwrap()
+                    .sidechain_feature
+                    .as_ref()
+                    .and_then(|f| f.validator_node_registration())
+                    .unwrap();
+                let pos = vn_nodes
+                    .iter()
+                    .position(|v| {
+                        v == &(
+                            reg.public_key().clone(),
+                            reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+                        )
+                    })
+                    .unwrap();
+                vn_nodes.remove(pos);
+            }
+        }
 
-        assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
+        let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+        for input in block.block().body.inputs() {
+            input_mmr.push(input.canonical_hash().to_vec()).unwrap();
+        }
+
         assert_eq!(
-            FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
-            block.header().output_mr,
+            kernel_mr_hash_from_mmr(&kernel_mmr).unwrap().to_vec().to_hex(),
+            block.header().kernel_mr.to_vec().to_hex()
         );
-        assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
+        assert_eq!(
+            output_mr_hash_from_smt(&mut output_smt).unwrap().to_vec().to_hex(),
+            block.header().output_mr.to_vec().to_hex(),
+        );
+        if network == Network::NextNet {
+            // TODO: Fix this hack with the next nextnet reset!!
+            assert_eq!(
+                FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
+                    .unwrap()
+                    .to_vec()
+                    .to_hex(),
+                block.header().input_mr.to_vec().to_hex(),
+            );
+        } else {
+            assert_eq!(
+                input_mr_hash_from_pruned_mmr(&input_mmr).unwrap().to_vec().to_hex(),
+                block.header().input_mr.to_vec().to_hex(),
+            );
+        }
+        assert_eq!(
+            calculate_validator_node_mr(&vn_nodes).to_vec().to_hex(),
+            block.header().validator_node_mr.to_vec().to_hex()
+        );
 
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
         // kernel is correct)
@@ -658,14 +747,14 @@ mod test {
             .iter()
             .map(|o| o.commitment().unwrap())
             .sum::<Commitment>();
-        let utxo_sum = block
+        let output_sum = block
             .block()
             .body
             .outputs()
             .iter()
             .map(|o| &o.commitment)
             .sum::<Commitment>();
-        let total_utxo_sum = &utxo_sum - &input_sum;
+        let total_utxo_sum = &output_sum - &input_sum;
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
         let db = create_new_blockchain_with_network(network);
