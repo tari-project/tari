@@ -48,7 +48,7 @@ impl DnsNameServer {
 impl Display for DnsNameServer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DnsNameServer::System => write!(f, "SystemDns"),
+            DnsNameServer::System => write!(f, "system"),
             DnsNameServer::Custom {
                 addr,
                 dns_name: Some(dns_name),
@@ -104,5 +104,18 @@ mod test {
 
         // default
         assert_eq!(DnsNameServer::default(), DnsNameServer::System);
+    }
+
+    #[test]
+    fn to_string_from_str() {
+        let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
+        let ip = IpAddr::V4(ipv4);
+        let socket = SocketAddr::new(ip, 8080);
+        let dns = DnsNameServer::custom(socket, Some(String::from("my_dns")));
+        let parsed = dns.to_string().parse::<DnsNameServer>().unwrap();
+        assert_eq!(dns, parsed);
+
+        let parsed = DnsNameServer::System.to_string().parse::<DnsNameServer>().unwrap();
+        assert_eq!(parsed, DnsNameServer::System);
     }
 }
