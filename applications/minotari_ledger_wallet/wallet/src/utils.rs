@@ -6,10 +6,13 @@ use core::ops::Deref;
 
 use blake2::Blake2b;
 use digest::{consts::U64, Digest};
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::NbglStatus;
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::gadgets::{MessageScroller, SingleMessage};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     random::LedgerRng,
-    ui::gadgets::{MessageScroller, SingleMessage},
 };
 use rand_core::RngCore;
 use tari_crypto::{
@@ -200,8 +203,16 @@ pub fn derive_from_bip32_key(
         Err(e) => {
             let mut msg = "".to_string();
             msg.push_str("Err: raw key >>...");
-            SingleMessage::new(&msg).show_and_wait();
-            SingleMessage::new(&e).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                SingleMessage::new(&msg).show_and_wait();
+                SingleMessage::new(&e).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new().text(&msg).show(false);
+                NbglStatus::new().text(&e).show(false);
+            }
             return Err(AppSW::KeyDeriveFail);
         },
     }
@@ -212,13 +223,26 @@ pub fn get_key_from_uniform_bytes(bytes: &Zeroizing<[u8; 64]>) -> Result<Ristret
     match RistrettoSecretKey::from_uniform_bytes(bytes.as_ref()) {
         Ok(val) => Ok(val),
         Err(e) => {
-            MessageScroller::new(&format!(
-                "Err: key conversion {:?}. Length: {:?}",
-                e.to_string(),
-                &bytes.len()
-            ))
-            .event_loop();
-            SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                MessageScroller::new(&format!(
+                    "Err: key conversion {:?}. Length: {:?}",
+                    e.to_string(),
+                    &bytes.len()
+                ))
+                .event_loop();
+                SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!(
+                        "Err: key conversion {:?}. Length: {:?}",
+                        e.to_string(),
+                        &bytes.len()
+                    ))
+                    .show(false);
+            }
             return Err(AppSW::KeyDeriveFromUniform);
         },
     }
@@ -229,13 +253,27 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
-            MessageScroller::new(&format!(
-                "Err: key conversion {:?}. Length: {:?}",
-                e.to_string(),
-                &bytes.len()
-            ))
-            .event_loop();
-            SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                MessageScroller::new(&format!(
+                    "Err: key conversion {:?}. Length: {:?}",
+                    e.to_string(),
+                    &bytes.len()
+                ))
+                .event_loop();
+                SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!(
+                        "Err: key conversion {:?}. Length: {:?}",
+                        e.to_string(),
+                        &bytes.len()
+                    ))
+                    .show(false);
+            }
+
             return Err(AppSW::KeyDeriveFromCanonical);
         },
     }
@@ -265,8 +303,18 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
     match RistrettoSecretKey::from_uniform_bytes(&raw_bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
-            MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
-            SingleMessage::new(&e.to_string()).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
+                SingleMessage::new(&e.to_string()).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!("Err: nonce conversion {:?}", e.to_string()))
+                    .show(false);
+            }
+
             Err(AppSW::KeyDeriveFromUniform)
         },
     }

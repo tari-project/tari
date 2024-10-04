@@ -149,6 +149,7 @@ ledgerctl install app_nanosplus.json
 ```
 ```
 ledgerctl install .\target\nanosplus\release\app_nanosplus.json
+ledgerctl install .\target\stax\release\app_stax.json
 ```
 
 **Notes for Windows users:**

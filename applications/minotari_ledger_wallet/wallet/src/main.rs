@@ -24,11 +24,7 @@ mod handlers {
     pub mod get_version;
     pub mod get_view_key;
 }
-
-use core::mem::MaybeUninit;
-
 use app_ui::menu::ui_menu_main;
-use critical_section::RawRestoreState;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
     get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
@@ -40,62 +36,27 @@ use handlers::{
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::io::Event;
+use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-use ledger_device_sdk::{
-    io::{ApduHeader, Comm, Event, Reply, StatusWords},
-    ui::gadgets::SingleMessage,
-};
 use minotari_ledger_wallet_common::common_types::{
     AppSW as AppSWMapping,
     Branch as BranchMapping,
     Instruction as InstructionMapping,
 };
-
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
 static CLA: u8 = 0x80;
 static RESPONSE_VERSION: u8 = 1;
 
-/// Allocator heap size
-const HEAP_SIZE: usize = 1024 * 26;
-
-/// Statically allocated heap memory
-static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-
-/// Bind global allocator
-#[global_allocator]
-static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
-
-/// Error handler for allocation
-#[alloc_error_handler]
-fn alloc_error(_: core::alloc::Layout) -> ! {
-    SingleMessage::new("allocation error!").show_and_wait();
-    ledger_device_sdk::exit_app(250)
-}
-
-/// Initialise allocator
-pub fn init() {
-    unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
-}
-
-struct MyCriticalSection;
-critical_section::set_impl!(MyCriticalSection);
-
-unsafe impl critical_section::Impl for MyCriticalSection {
-    unsafe fn acquire() -> RawRestoreState {
-        // nothing, it's all good, don't worry bout it
-    }
-
-    unsafe fn release(_token: RawRestoreState) {
-        // nothing, it's all good, don't worry bout it
-    }
-}
-
 // Application status words.
 #[repr(u16)]
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppSW {
     Deny = AppSWMapping::Deny as u16,
     WrongP1P2 = AppSWMapping::WrongP1P2 as u16,
@@ -112,6 +73,7 @@ pub enum AppSW {
     MetadataSignatureFail = AppSWMapping::MetadataSignatureFail as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    Ok = AppSWMapping::Ok as u16,
 }
 
 impl From<AppSW> for Reply {
@@ -121,6 +83,7 @@ impl From<AppSW> for Reply {
 }
 
 /// Possible input commands received through APDUs.
+#[derive(Clone, Copy)]
 pub enum Instruction {
     GetVersion,
     GetAppName,
@@ -215,31 +178,69 @@ impl TryFrom<ApduHeader> for Instruction {
     }
 }
 
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+fn show_status_and_home_if_needed(
+    ins: &Instruction,
+    status: &AppSW,
+    _offset_ctx: &mut ScriptOffsetCtx,
+    home: &mut NbglHomeAndSettings,
+) {
+    let (show_status, _status_type) = match (ins, status) {
+        (Instruction::GetOneSidedMetadataSignature, AppSW::Deny | AppSW::Ok) => (true, StatusType::Transaction),
+        (_, _) => (false, StatusType::Transaction),
+    };
+
+    if show_status {
+        let _success = *status == AppSW::Ok;
+        // We should this, but this breaks the ledger app
+        // NbglReviewStatus::new().status_type(status_type).show(success);
+        home.show_and_return();
+    }
+}
+
 #[no_mangle]
 extern "C" fn sample_main() {
-    init();
     // Create the communication manager, and configure it to accept only APDU from the 0x80 class.
     // If any APDU with a wrong class value is received, comm will respond automatically with
     // BadCla status word.
     let mut comm = Comm::new().set_expected_cla(CLA);
 
-    // Developer mode / pending review popup
-    // must be cleared with user interaction
-    #[cfg(feature = "pending_review_screen")]
-    display_pending_review(&mut comm);
-
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    let mut home = {
+        // Initialize reference to Comm instance for NBGL
+        // API calls.
+        init_comm(&mut comm);
+
+        let mut home = ui_menu_main(&mut comm);
+        home.show_and_return();
+        home
+    };
 
     loop {
-        // Wait for either a specific button push to exit the app
-        // or an APDU command
-        if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins, &mut offset_ctx) {
-                Ok(()) => comm.reply_ok(),
-                Err(sw) => comm.reply(sw),
-            }
-        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        let ins: Instruction = comm.next_command();
+
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        let ins = if let Event::Command(ins) = ui_menu_main(&mut comm) {
+            ins
+        } else {
+            continue;
+        };
+
+        let status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+            Ok(()) => {
+                comm.reply_ok();
+                AppSW::Ok
+            },
+            Err(sw) => {
+                comm.reply(sw.clone());
+                sw
+            },
+        };
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        show_status_and_home_if_needed(&ins, &status, &mut offset_ctx, &mut home);
     }
 }
 

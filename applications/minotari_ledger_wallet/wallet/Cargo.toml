@@ -15,11 +15,9 @@ minotari_ledger_wallet_common = { path = "../common" }
 
 blake2 = { version = "0.10", default-features = false }
 borsh = { version = "1.2", default-features = false }
-critical-section = { version = "1.1.1" }
 digest = { version = "0.10", default-features = false }
-embedded-alloc = "0.5.0"
 include_gif = "1.0.1"
-ledger_device_sdk = "1.7"
+ledger_device_sdk = "1.15"
 rand_core = { version = "0.6", default_features = false }
 zeroize = { version = "1", default-features = false }
 
@@ -32,8 +30,8 @@ once_cell = { version = "=1.18.0", default-features = false }
 ignored = ["once_cell"]
 
 [profile.release]
-opt-level = 's'
-lto = "fat"     # same as `true`
+opt-level = 'z'
+lto = true
 panic = "abort"
 
 [features]
@@ -46,13 +44,17 @@ flags = "0"
 path = ["44'/535348'"]
 name = "MinoTari Wallet"
 
-[package.metadata.ledger.nanos]
-icon = "key.gif"
 
 [package.metadata.ledger.nanox]
 icon = "key_14x14.gif"
 
 [package.metadata.ledger.nanosplus]
 icon = "key_14x14.gif"
+
+[package.metadata.ledger.stax]
+icon = "key_32x32.gif"
+
+[package.metadata.ledger.flex]
+icon = "key_40x40.gif"
 
 [workspace]

@@ -3,7 +3,11 @@
 
 use alloc::format;
 
-use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::io::Comm;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::NbglStatus;
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_crypto::{
     hash_domain,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
@@ -27,7 +31,14 @@ pub type CheckSigSchnorrSignature = SchnorrSignature<RistrettoPublicKey, Ristret
 pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 104 {
-        SingleMessage::new("Invalid data length").show_and_wait();
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            SingleMessage::new("Invalid data length").show_and_wait();
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            NbglStatus::new().text(&"Invalid data length").show(false);
+        }
         return Err(AppSW::WrongApduLength);
     }
 
@@ -61,7 +72,16 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce.clone(), &challenge_bytes) {
         Ok(sig) => sig,
         Err(e) => {
-            SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .show(false);
+            }
             return Err(AppSW::RawSchnorrSignatureFail);
         },
     };
@@ -77,7 +97,14 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
 pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 56 {
-        SingleMessage::new("Invalid data length").show_and_wait();
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            SingleMessage::new("Invalid data length").show_and_wait();
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            NbglStatus::new().text(&"Invalid data length").show(false);
+        }
         return Err(AppSW::WrongApduLength);
     }
 
@@ -104,8 +131,16 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
         match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, &nonce_bytes) {
             Ok(sig) => sig,
             Err(e) => {
-                SingleMessage::new(&format!("Signing error:",)).show_and_wait();
-                SingleMessage::new(&format!("{}", e.to_string())).show_and_wait();
+                #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+                {
+                    SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+                }
+                #[cfg(any(target_os = "stax", target_os = "flex"))]
+                {
+                    NbglStatus::new()
+                        .text(&format!("Signing error: {:?}", e.to_string()))
+                        .show(false);
+                }
                 return Err(AppSW::SchnorrSignatureFail);
             },
         };

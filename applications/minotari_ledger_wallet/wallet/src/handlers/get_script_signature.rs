@@ -5,7 +5,11 @@ use alloc::format;
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use ledger_device_sdk::{io::Comm, ui::gadgets::SingleMessage};
+use ledger_device_sdk::io::Comm;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::NbglStatus;
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey,
@@ -31,7 +35,14 @@ use crate::{
 pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 168 {
-        SingleMessage::new("Invalid data length").show_and_wait();
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            SingleMessage::new("Invalid data length").show_and_wait();
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            NbglStatus::new().text(&"Invalid data length").show(false);
+        }
         return Err(AppSW::WrongApduLength);
     }
 
@@ -68,7 +79,14 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
 pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 184 {
-        SingleMessage::new("Invalid data length").show_and_wait();
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            SingleMessage::new("Invalid data length").show_and_wait();
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            NbglStatus::new().text(&"Invalid data length").show(false);
+        }
         return Err(AppSW::WrongApduLength);
     }
 
@@ -162,7 +180,14 @@ fn get_script_signature(
     let r_x = get_random_nonce()?;
     let r_y = get_random_nonce()?;
     if r_a == r_x || r_a == r_y || r_x == r_y {
-        SingleMessage::new("Nonces not unique!").show_and_wait();
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            SingleMessage::new("Nonces not unique").show_and_wait();
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            NbglStatus::new().text(&"Nonces not unique").show(false);
+        }
         return Err(AppSW::ScriptSignatureFail);
     }
 
@@ -193,7 +218,16 @@ fn get_script_signature(
     ) {
         Ok(sig) => Ok(sig),
         Err(e) => {
-            SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            {
+                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            {
+                NbglStatus::new()
+                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .show(false);
+            }
             Err(AppSW::ScriptSignatureFail)
         },
     }
