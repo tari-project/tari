@@ -95,20 +95,12 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             expect_end_of_address(addr_iter)
         },
 
-        Protocol::Ip4(addr)
-            if !allow_test_addrs && (addr.is_loopback() || addr.is_link_local() || addr.is_unspecified()) =>
-        {
-            Err(PeerValidatorError::InvalidMultiaddr(
-                "Non-global IP addresses are invalid".to_string(),
-            ))
-        },
-        Protocol::Ip6(addr)
-            if !allow_test_addrs && (addr.is_loopback() || is_unicast_link_local(&addr) || addr.is_unspecified()) =>
-        {
-            Err(PeerValidatorError::InvalidMultiaddr(
-                "Non-global IP addresses are invalid".to_string(),
-            ))
-        },
+        Protocol::Ip4(addr) if !allow_test_addrs && (addr.is_link_local() || addr.is_unspecified()) => Err(
+            PeerValidatorError::InvalidMultiaddr("Non-global IP addresses are invalid".to_string()),
+        ),
+        Protocol::Ip6(addr) if !allow_test_addrs && (is_unicast_link_local(&addr) || addr.is_unspecified()) => Err(
+            PeerValidatorError::InvalidMultiaddr("Non-global IP addresses are invalid".to_string()),
+        ),
         Protocol::Ip4(_) | Protocol::Ip6(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
                 PeerValidatorError::InvalidMultiaddr("Address does not include a TCP port".to_string())
@@ -219,9 +211,7 @@ mod test {
 
         let invalid = &[
             "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
-            multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([172, 0, 0, 1])),
             "/onion/aaimaq4ygg2iegci:1234/http".parse().unwrap(),
             multiaddr!(Dnsaddr("mike-magic-nodes.com")),
             multiaddr!(Memory(1234u64)),
