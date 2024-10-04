@@ -1041,7 +1041,7 @@ mod test {
             let discovery_mock = mock.get_shared_state();
             mock.spawn();
             DhtActor::new(
-                Default::default(),
+                Arc::new(DhtConfig::default_local_test()),
                 db_connection().await,
                 node_identity.clone(),
                 peer_manager.clone(),
