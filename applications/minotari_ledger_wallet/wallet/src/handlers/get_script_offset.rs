@@ -24,7 +24,6 @@ pub struct ScriptOffsetCtx {
     total_script_indexes: u64,
     total_derived_offset_keys: u64,
     total_derived_script_keys: u64,
-    pub finished: bool,
     unique_keys: Vec<RistrettoSecretKey>,
 }
 
@@ -39,7 +38,6 @@ impl ScriptOffsetCtx {
             total_script_indexes: 0,
             total_derived_offset_keys: 0,
             total_derived_script_keys: 0,
-            finished: false,
             unique_keys: Vec::new(),
         }
     }
@@ -133,7 +131,6 @@ pub fn handler_get_script_offset(
 
     // 1. data sizes
     if chunk_number == 0 {
-        offset_ctx.finished = false;
         // Reset offset context
         offset_ctx.reset();
         read_instructions(offset_ctx, data)?;
@@ -202,7 +199,6 @@ pub fn handler_get_script_offset(
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
     offset_ctx.reset();
-    offset_ctx.finished = true;
     comm.reply_ok();
 
     Ok(())

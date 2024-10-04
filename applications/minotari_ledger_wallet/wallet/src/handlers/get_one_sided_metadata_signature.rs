@@ -125,12 +125,12 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     {
         // Load glyph from 64x64 4bpp gif file with include_gif macro. Creates an NBGL compatible glyph.
-        const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
+        const TARI: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
         // Create NBGL review. Maximum number of fields and string buffer length can be customised
         // with constant generic parameters of NbglReview. Default values are 32 and 1024 respectively.
         let review: NbglReview = NbglReview::new()
             .titles("Review transaction\nto send", "", "Sign transaction\nto send")
-            .glyph(&FERRIS);
+            .glyph(&TARI);
 
         //
         if !review.show(&fields[0..2]) {
