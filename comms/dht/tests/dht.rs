@@ -366,6 +366,7 @@ async fn test_dht_propagate_dedup() {
             OutboundEncryption::encrypt_for(node_D.node_identity().public_key().clone()),
             vec![],
             out_msg,
+            String::new(),
         )
         .await
         .unwrap();
@@ -655,6 +656,7 @@ async fn test_dht_repropagate() {
             OutboundEncryption::ClearText,
             vec![],
             out_msg.clone(),
+            String::new(),
         )
         .await
         .unwrap();
