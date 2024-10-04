@@ -997,7 +997,7 @@ mod test {
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             node_identity,
             peer_manager,
@@ -1041,7 +1041,7 @@ mod test {
             let discovery_mock = mock.get_shared_state();
             mock.spawn();
             DhtActor::new(
-                Default::default(),
+                Arc::new(DhtConfig::default_local_test()),
                 db_connection().await,
                 node_identity.clone(),
                 peer_manager.clone(),
@@ -1116,7 +1116,7 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             node_identity,
             peer_manager,
@@ -1164,6 +1164,7 @@ mod test {
         let actor = DhtActor::new(
             Arc::new(DhtConfig {
                 dedup_cache_capacity: capacity,
+                excluded_dial_addresses: vec![].into(),
                 ..Default::default()
             }),
             db_connection().await,
@@ -1260,7 +1261,7 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             Arc::clone(&node_identity),
             peer_manager,
@@ -1361,7 +1362,7 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let mut shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             node_identity,
             peer_manager,

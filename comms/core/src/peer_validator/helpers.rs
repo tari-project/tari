@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::net::Ipv6Addr;
-
 use digest::Digest;
 
 use crate::{
@@ -78,13 +76,6 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
         .next()
         .ok_or_else(|| PeerValidatorError::InvalidMultiaddr("Multiaddr was empty".to_string()))?;
 
-    /// Returns [true] if the address is a unicast link-local address (fe80::/10).
-    /// Taken from stdlib
-    #[inline]
-    const fn is_unicast_link_local(addr: &Ipv6Addr) -> bool {
-        (addr.segments()[0] & 0xffc0) == 0xfe80
-    }
-
     match proto {
         Protocol::Dns4(_) | Protocol::Dns6(_) | Protocol::Dnsaddr(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
@@ -95,20 +86,12 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             expect_end_of_address(addr_iter)
         },
 
-        Protocol::Ip4(addr)
-            if !allow_test_addrs && (addr.is_loopback() || addr.is_link_local() || addr.is_unspecified()) =>
-        {
-            Err(PeerValidatorError::InvalidMultiaddr(
-                "Non-global IP addresses are invalid".to_string(),
-            ))
-        },
-        Protocol::Ip6(addr)
-            if !allow_test_addrs && (addr.is_loopback() || is_unicast_link_local(&addr) || addr.is_unspecified()) =>
-        {
-            Err(PeerValidatorError::InvalidMultiaddr(
-                "Non-global IP addresses are invalid".to_string(),
-            ))
-        },
+        Protocol::Ip4(addr) if !allow_test_addrs && addr.is_unspecified() => Err(PeerValidatorError::InvalidMultiaddr(
+            "Non-global IP addresses are invalid".to_string(),
+        )),
+        Protocol::Ip6(addr) if !allow_test_addrs && addr.is_unspecified() => Err(PeerValidatorError::InvalidMultiaddr(
+            "Non-global IP addresses are invalid".to_string(),
+        )),
         Protocol::Ip4(_) | Protocol::Ip6(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
                 PeerValidatorError::InvalidMultiaddr("Address does not include a TCP port".to_string())
@@ -219,9 +202,6 @@ mod test {
 
         let invalid = &[
             "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
-            multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([172, 0, 0, 1])),
             "/onion/aaimaq4ygg2iegci:1234/http".parse().unwrap(),
             multiaddr!(Dnsaddr("mike-magic-nodes.com")),
             multiaddr!(Memory(1234u64)),
