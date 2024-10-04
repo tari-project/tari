@@ -129,6 +129,7 @@ async fn prompt(node: &CommsNode, dht: &Dht) -> anyhow::Result<()> {
                         // Don't send directly to peer
                         vec![opts.peer.node_id.clone()],
                         msg,
+                        "Example stress".to_string(),
                     )
                     .await?
             },
