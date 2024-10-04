@@ -625,7 +625,7 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
     let request = GetBalanceRequest {};
 
     for _ in 0..num_retries {
-        let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
+        let balance_res = client.get_balance(request).await.unwrap().into_inner();
         let current_balance = balance_res.available_balance;
         if current_balance < amount {
             println!(

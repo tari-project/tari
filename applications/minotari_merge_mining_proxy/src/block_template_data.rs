@@ -405,7 +405,7 @@ pub mod test {
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.clone().try_into().unwrap())
-            .tari_miner_data(miner_data.clone());
+            .tari_miner_data(miner_data);
         assert!(
             matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"monero_difficulty not provided")
         );

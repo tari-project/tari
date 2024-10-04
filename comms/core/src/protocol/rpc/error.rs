@@ -135,7 +135,9 @@ impl HandshakeRejectReason {
     }
 
     pub fn from_i32(v: i32) -> Option<Self> {
-        rpc_proto::rpc_session_reply::HandshakeRejectReason::from_i32(v).map(Into::into)
+        rpc_proto::rpc_session_reply::HandshakeRejectReason::try_from(v)
+            .map(Into::into)
+            .ok()
     }
 }
 
