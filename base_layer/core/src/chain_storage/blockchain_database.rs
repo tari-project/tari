@@ -268,32 +268,6 @@ where B: BlockchainBackend
             txn.set_horizon_data(kernel_sum, total_utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
-            // Sanity check
-            match blockchain_db.fetch_block_by_hash(*genesis_block.hash(), false)? {
-                Some(block) => {
-                    let header_from_db = block.block().clone().header;
-                    let header_from_code = genesis_block.block().clone().header;
-                    if header_from_db != header_from_code {
-                        return Err(ChainStorageError::CriticalError(
-                            "Genesis block header  in db does not match genesis block in code".into(),
-                        ));
-                    }
-                    let mut body_from_db = block.block().clone().body;
-                    body_from_db.sort();
-                    let mut body_from_code = genesis_block.block().clone().body;
-                    body_from_code.sort();
-                    if body_from_db != body_from_code {
-                        return Err(ChainStorageError::CriticalError(
-                            "Genesis block body in db does not match genesis block in code".into(),
-                        ));
-                    }
-                },
-                None => {
-                    return Err(ChainStorageError::CriticalError(
-                        "Genesis block could not be created".into(),
-                    ))
-                },
-            }
         } else if !blockchain_db.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
             // Check the genesis block in the DB.
             error!(
