@@ -519,7 +519,7 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     let header_unmodified = msg.dht_header.clone();
 
     // Modify the header
-    msg.dht_header.message_type = DhtMessageType::from_i32(3i32).unwrap();
+    msg.dht_header.message_type = DhtMessageType::try_from(3i32).unwrap();
 
     // Forward modified message to Node C - Should get us banned
     node_B
@@ -870,7 +870,7 @@ async fn test_dht_header_not_malleable() {
     let mut msg = node_B.next_inbound_message(Duration::from_secs(10)).await.unwrap();
 
     // Modify the header
-    msg.dht_header.message_type = DhtMessageType::from_i32(21i32).unwrap();
+    msg.dht_header.message_type = DhtMessageType::try_from(21i32).unwrap();
 
     let envelope = msg.decryption_result.unwrap();
     let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();

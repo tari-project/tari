@@ -514,7 +514,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     let mut peer_node_client = world.get_node_client(&peer_node).await.unwrap();
     let req = Empty {};
     let mut expected_height = peer_node_client
-        .get_tip_info(req.clone())
+        .get_tip_info(req)
         .await
         .unwrap()
         .into_inner()
@@ -529,7 +529,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     'outer: for _ in 0..12 {
         'inner: for _ in 0..num_retries {
             current_height = base_node_client
-                .get_tip_info(req.clone())
+                .get_tip_info(req)
                 .await
                 .unwrap()
                 .into_inner()
@@ -544,7 +544,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
         }
 
         expected_height = peer_node_client
-            .get_tip_info(req.clone())
+            .get_tip_info(req)
             .await
             .unwrap()
             .into_inner()
@@ -553,7 +553,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
             .best_block_height;
 
         current_height = base_node_client
-            .get_tip_info(req.clone())
+            .get_tip_info(req)
             .await
             .unwrap()
             .into_inner()
@@ -747,7 +747,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
     let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
 
     let block_template = template_response.new_block_template.clone().unwrap();
-    let miner_data = template_response.miner_data.clone().unwrap();
+    let miner_data = template_response.miner_data.unwrap();
     let amount = miner_data.reward + miner_data.total_fees;
     let request = GetNewBlockWithCoinbasesRequest {
         new_template: Some(block_template),

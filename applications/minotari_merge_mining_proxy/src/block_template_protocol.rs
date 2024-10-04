@@ -192,7 +192,7 @@ impl BlockTemplateProtocol<'_> {
                 let miner_data = block
                     .miner_data
                     .as_ref()
-                    .cloned()
+                    .copied()
                     .ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
 
                 (add_monero_data(block, monero_mining_data.clone(), miner_data)?, height)

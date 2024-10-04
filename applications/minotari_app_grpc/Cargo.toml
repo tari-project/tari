@@ -5,7 +5,7 @@ description = "This crate is to provide a single source for all cross applicatio
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version = "1.5.1-pre.1"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 tari_common_types = { path = "../../base_layer/common_types" }
@@ -21,19 +21,19 @@ base64 = "0.13.0"
 borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 log = "0.4"
-prost = "0.11.9"
-prost-types = "0.11.9"
+prost = "0.13.3"
+prost-types = "0.13.3"
 rand = "0.8"
 rcgen = "0.11.3"
 subtle = "2.5.0"
 thiserror = "1"
 tokio = { version = "1.36", features = ["fs"] }
-tonic = { version = "0.8.3", features = ["tls"] }
+tonic = { version = "0.12.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
 tari_features = { path = "../../common/tari_features", version = "1.5.1-pre.1" }
-tonic-build = "0.8.4"
+tonic-build = "0.12.3"
 
 [package.metadata.cargo-machete]
 ignored = [

@@ -107,8 +107,8 @@ impl TryFrom<proto::TxSubmissionResponse> for TxSubmissionResponse {
         Ok(Self {
             accepted: value.accepted,
             rejection_reason: TxSubmissionRejectionReason::try_from(
-                proto::TxSubmissionRejectionReason::from_i32(value.rejection_reason)
-                    .ok_or_else(|| "Invalid or unrecognised `TxSubmissionRejectionReason` enum".to_string())?,
+                proto::TxSubmissionRejectionReason::try_from(value.rejection_reason)
+                    .map_err(|_| "Invalid or unrecognised `TxSubmissionRejectionReason` enum".to_string())?,
             )?,
             is_synced: value.is_synced,
         })
@@ -210,8 +210,8 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
 
         Ok(Self {
             location: TxLocation::try_from(
-                proto::TxLocation::from_i32(proto_response.location)
-                    .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
+                proto::TxLocation::try_from(proto_response.location)
+                    .map_err(|_| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
             best_block_hash: hash,
             confirmations: proto_response.confirmations,
@@ -260,8 +260,8 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
                     .ok_or_else(|| "Signature not present".to_string())?,
             )?,
             location: TxLocation::try_from(
-                proto::TxLocation::from_i32(proto_response.location)
-                    .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
+                proto::TxLocation::try_from(proto_response.location)
+                    .map_err(|_| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
             best_block_hash: hash,
             best_block_height: proto_response.best_block_height,

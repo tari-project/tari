@@ -65,7 +65,7 @@ strum_macros = "0.22"
 tempfile = "3.1.0"
 thiserror = "1.0.26"
 tower = "0.4"
-prost = "0.11.9"
+prost = "0.13.3"
 itertools = "0.10.3"
 chacha20poly1305 = "0.10.1"
 zeroize = "1"
@@ -87,7 +87,7 @@ tari_core = { path = "../../base_layer/core", default-features = false, features
     "base_node",
 ] }
 env_logger = "0.7.1"
-prost = "0.11.9"
+prost = "0.13.3"
 
 [features]
 default = ["bundled_sqlite"]
