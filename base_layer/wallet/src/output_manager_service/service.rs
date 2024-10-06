@@ -66,7 +66,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
 use tari_key_manager::key_manager_service::{KeyAndId, KeyId, SerializedKeyString};
 use tari_script::{
     inputs,
@@ -1523,7 +1523,7 @@ where
             )
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
-            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_sender_offset_public_key(sender_offset_public_key.clone())
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
@@ -1585,6 +1585,25 @@ where
         // shared secret does not support debug so we manually convert this to a public key
         let shared_secret_bytes = shared_secret.as_bytes();
         let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret_bytes)?;
+
+        // Transaction balance log
+        //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + total_offset
+        let mut utxo_sum = Commitment::default();
+        for output in tx.body.outputs() {
+            utxo_sum = &utxo_sum + &output.commitment;
+        }
+        for input in tx.body.inputs() {
+            utxo_sum = &utxo_sum - input.commitment()?;
+        }
+        let mut kernel_sum = Commitment::default();
+        for kernel in tx.body.kernels() {
+            kernel_sum = &kernel_sum + &kernel.excess;
+        }
+        let total_offset = self.resources.factories.commitment.commit_value(&tx.offset, 0);
+        trace!(target: LOG_TARGET, "total_offset:               {}", total_offset.to_hex());
+        trace!(target: LOG_TARGET, "utxo_sum:                   {}", utxo_sum.to_hex());
+        trace!(target: LOG_TARGET, "kernel_sum:                 {}", kernel_sum.to_hex());
+        trace!(target: LOG_TARGET, "kernel_sum + sender_offset: {}", (&kernel_sum + &total_offset).to_hex());
 
         Ok((
             tx,

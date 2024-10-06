@@ -70,6 +70,8 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
         } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
             block.body.add_kernel(kernel);
             block.header.kernel_mmr_size += 1;
+        } else if let Ok(excess) = serde_json::from_str::<PrivateKey>(line) {
+            block.header.total_kernel_offset = &block.header.total_kernel_offset + &excess;
         } else {
             panic!("Error: Could not deserialize line: {} in file: {}", line, file);
         }
