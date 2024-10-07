@@ -1357,7 +1357,7 @@ mod test {
             .sum::<MicroMinotari>();
         assert_eq!(
             contributors_tokens_at_start,
-            MicroMinotari::from(388_525_385 * 1_000_000)
+            MicroMinotari::from(262_525_385 * 1_000_000)
         );
         let participants_tokens_at_start = pre_mine_items
             .iter()
