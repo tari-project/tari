@@ -35,7 +35,11 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_network::{OutboundMessager, OutboundMessaging};
+use tari_p2p::{
+    message::{DomainMessage, TariNodeMessageSpec},
+    tari_message::TariMessageType,
+};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_utilities::hex::Hex;
 use tokio::{
@@ -418,11 +422,11 @@ where B: BlockchainBackend + 'static
 
 async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     inbound_nch: InboundNodeCommsHandlers<B>,
-    mut outbound_message_service: OutboundMessageRequester,
+    mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
     state_machine_handle: StateMachineHandle,
     domain_request_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
 ) -> Result<(), BaseNodeServiceError> {
-    let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
+    let (peer_id, inner_msg) = domain_request_msg.into_origin_and_inner();
 
     // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
     let inner_msg = match inner_msg {
@@ -475,36 +479,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         inner_msg.request_key
     );
 
-    let send_message_response = outbound_message_service
-        .send_direct_unencrypted(
-            origin_public_key,
-            OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
-            "Outbound response message from base node".to_string(),
-        )
-        .await?;
-
-    // Wait for the response to be sent and log the result
-    let request_key = inner_msg.request_key;
-    match send_message_response.resolve().await {
-        Err(err) => {
-            error!(
-                target: LOG_TARGET,
-                "Incoming request ({}) response failed to send: {}", request_key, err
-            );
-        },
-        Ok(send_states) => {
-            let msg_tag = send_states[0].tag;
-            if send_states.wait_single().await {
-            } else {
-                error!(
-                    target: LOG_TARGET,
-                    "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
-                    request_key,
-                    msg_tag
-                );
-            }
-        },
-    };
+    outbound_message_service.send_message(peer_id, message).await?;
 
     Ok(())
 }
@@ -705,7 +680,7 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
 ) -> Result<(), BaseNodeServiceError> {
     let DomainMessage::<_> {
         source_peer,
-        inner: new_block,
+        payload: new_block,
         ..
     } = domain_block_msg;
 

@@ -120,7 +120,7 @@ where TCodec: Codec + Send + Clone + 'static
     }
 
     fn on_fully_negotiated_outbound(&mut self, outbound: FullyNegotiatedOutbound<Protocol<StreamProtocol>, ()>) {
-        let mut codec = self.codec.clone();
+        let codec = self.codec.clone();
         let (mut peer_stream, _protocol) = outbound.protocol;
 
         let mut msg_stream = self
@@ -167,7 +167,7 @@ where TCodec: Codec + Send + Clone + 'static
     }
 
     fn on_fully_negotiated_inbound(&mut self, inbound: FullyNegotiatedInbound<Protocol<StreamProtocol>, ()>) {
-        let mut codec = self.codec.clone();
+        let codec = self.codec.clone();
         let peer_id = self.peer_id;
         let (mut stream, _protocol) = inbound.protocol;
         let mut events = self.pending_events_sender.clone();

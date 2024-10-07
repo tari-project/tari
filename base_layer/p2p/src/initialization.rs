@@ -20,92 +20,47 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fs,
-    fs::File,
-    iter,
-    path::Path,
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{marker::PhantomData, str::FromStr, time::Instant};
 
-use fs2::FileExt;
 use futures::future;
-use lmdb_zero::open;
 use log::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{
-    backoff::ConstantBackoff,
+use tari_network::{
+    identity,
     multiaddr::multiaddr,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
-    pipeline,
-    protocol::{
-        messaging::{MessagingEventSender, MessagingProtocolExtension},
-        rpc::RpcServer,
-        NodeNetworkInfo,
-        ProtocolId,
-    },
-    tor,
-    tor::{HiddenServiceControllerError, TorIdentity},
-    transports::{
-        predicate::FalsePredicate,
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksConfig,
-        SocksTransport,
-        TcpWithTorTransport,
-    },
-    utils::cidr::parse_cidrs,
-    CommsBuilder,
-    CommsBuilderError,
-    CommsNode,
-    PeerManager,
-    UnspawnedCommsNode,
+    MessageSpec,
+    MessagingMode,
+    NetworkError,
+    NetworkingHandle,
+    OutboundMessaging,
+    ReachabilityMode,
+    SwarmConfig,
 };
-use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc};
-use tower::ServiceBuilder;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 use crate::{
-    comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     config::{P2pConfig, PeerSeedsConfig},
+    connector::InboundMessaging,
     peer_seeds::{DnsSeedResolver, SeedPeer},
-    transport::{TorTransportConfig, TransportType},
-    TransportConfig,
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
+    services::dispatcher::Dispatcher,
 };
-const LOG_TARGET: &str = "p2p::initialization";
 
-/// ProtocolId for minotari messaging protocol
-pub static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/0.1");
+const LOG_TARGET: &str = "p2p::initialization";
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
-    #[error("Comms builder error: `{0}`")]
-    CommsBuilderError(#[from] CommsBuilderError),
-    #[error("Failed to initialize tor hidden service: {0}")]
-    HiddenServiceControllerError(#[from] HiddenServiceControllerError),
-    #[error("DHT initialization error: `{0}`")]
-    DhtInitializationError(#[from] DhtInitializationError),
-    #[error("Hidden service builder error: `{0}`")]
-    HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
     #[error("Invalid liveness CIDRs error: `{0}`")]
     InvalidLivenessCidrs(String),
-    #[error("Could not add seed peers to comms layer: `{0}`")]
-    FailedToAddSeedPeer(#[from] PeerManagerError),
+    #[error("Could not add seed peer: `{0}`")]
+    FailedToAddSeedPeer(NetworkError),
+    #[error("Network error: `{0}`")]
+    NetworkError(#[from] NetworkError),
     #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
     CannotAcquireFileLock,
     #[error("Invalid tor forward address: `{0}`")]
@@ -116,373 +71,150 @@ pub enum CommsInitializationError {
 
 impl CommsInitializationError {
     pub fn to_exit_error(&self) -> ExitError {
-        #[allow(clippy::enum_glob_use)]
-        use HiddenServiceControllerError::*;
-        match self {
-            CommsInitializationError::HiddenServiceControllerError(TorControlPortOffline) => {
-                ExitError::new(ExitCode::TorOffline, self)
-            },
-            CommsInitializationError::HiddenServiceControllerError(HashedPasswordAuthAutoNotSupported) => {
-                ExitError::new(ExitCode::TorAuthConfiguration, self)
-            },
-            CommsInitializationError::HiddenServiceControllerError(FailedToLoadCookieFile(_)) => {
-                ExitError::new(ExitCode::TorAuthUnreadableCookie, self)
-            },
-
-            _ => ExitError::new(ExitCode::NetworkError, self),
-        }
+        ExitError::new(ExitCode::NetworkError, self)
     }
 }
 
 /// Initialize Tari Comms configured for tests
-pub async fn initialize_local_test_comms<P: AsRef<Path>>(
-    node_identity: Arc<NodeIdentity>,
-    connector: InboundDomainConnector,
-    data_path: P,
-    discovery_request_timeout: Duration,
-    seed_peers: Vec<Peer>,
+pub async fn initialize_local_test_comms<TMsg>(
+    identity: identity::Keypair,
+    seed_peers: Vec<SeedPeer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError> {
-    let peer_database_name = {
-        let mut rng = thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(&data_path)
-        .set_env_flags(open::NOLOCK)
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-
-    //---------------------------------- Comms --------------------------------------------//
-
-    let comms = CommsBuilder::new()
-        .allow_test_addresses()
-        .with_listener_address(node_identity.first_public_address().unwrap())
-        .with_listener_liveness_max_sessions(1)
-        .with_node_identity(node_identity)
-        .with_user_agent(&"/test/1.0")
-        .with_peer_storage(peer_database, None)
-        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_min_connectivity(1)
-        .with_network_byte(Network::LocalNet.as_byte())
-        .with_shutdown_signal(shutdown_signal)
-        .build()?;
-
-    add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
-
-    // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
-
-    let dht = Dht::builder()
-        .local_test()
-        .with_outbound_sender(outbound_tx)
-        .with_discovery_timeout(discovery_request_timeout)
-        .build(
-            comms.node_identity(),
-            comms.peer_manager(),
-            comms.connectivity(),
-            comms.shutdown_signal(),
-        )
-        .await?;
-
-    let dht_outbound_layer = dht.outbound_middleware_layer();
-    let (event_sender, _) = broadcast::channel(100);
-    let pipeline = pipeline::Builder::new()
-        .with_outbound_pipeline(outbound_rx, |sink| {
-            ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
-        })
-        .max_concurrent_inbound_tasks(10)
-        .with_inbound_pipeline(
-            ServiceBuilder::new()
-                .layer(dht.inbound_middleware_layer())
-                .service(connector),
-        )
-        .build();
-
-    let comms = comms.add_protocol_extension(
-        MessagingProtocolExtension::new(MESSAGING_PROTOCOL_ID.clone(), event_sender.clone(), pipeline)
-            .enable_message_received_event(),
-    );
-
-    Ok((comms, dht, event_sender))
-}
-
-pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpin + Clone + 'static>(
-    comms: UnspawnedCommsNode,
-    transport_config: TransportConfig,
-    after_comms: F,
-) -> Result<CommsNode, CommsInitializationError> {
-    let comms = match transport_config.transport_type {
-        TransportType::Memory => {
-            debug!(target: LOG_TARGET, "Building in-memory comms stack");
-            comms
-                .with_listener_address(transport_config.memory.listener_address.clone())
-                .spawn_with_transport(MemoryTransport)
-                .await?
+) -> Result<
+    (
+        NetworkingHandle,
+        OutboundMessaging<TMsg>,
+        InboundMessaging<TMsg>,
+        JoinHandle<Result<(), NetworkError>>,
+    ),
+    CommsInitializationError,
+>
+where
+    TMsg: MessageSpec + 'static,
+    TMsg::Message: prost::Message + Default + Clone + 'static,
+{
+    let config = tari_network::Config {
+        listener_addrs: vec![multiaddr![Ip4([0, 0, 0, 0]), Tcp(0u16)]],
+        swarm: SwarmConfig {
+            protocol_version: format!("/tari/{}/0.0.1", Network::LocalNet).parse().unwrap(),
+            user_agent: "/tari/test/0.0.1".to_string(),
+            enable_mdns: false,
+            enable_relay: false,
+            ..Default::default()
         },
-        TransportType::Tcp => {
-            let config = transport_config.tcp;
-            debug!(
-                target: LOG_TARGET,
-                "Building TCP comms stack{}",
-                config
-                    .tor_socks_address
-                    .as_ref()
-                    .map(|_| " with Tor support")
-                    .unwrap_or("")
-            );
-            let mut transport = TcpWithTorTransport::new();
-            if let Some(addr) = config.tor_socks_address {
-                transport.set_tor_socks_proxy(SocksConfig {
-                    proxy_address: addr,
-                    authentication: config.tor_socks_auth.into(),
-                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-                });
-            }
-            comms
-                .with_listener_address(config.listener_address)
-                .spawn_with_transport(transport)
-                .await?
-        },
-        TransportType::Tor => {
-            let tor_config = transport_config.tor;
-            debug!(target: LOG_TARGET, "Building TOR comms stack ({:?})", tor_config);
-            let listener_address_override = tor_config.listener_address_override.clone();
-            let hidden_service_ctl = initialize_hidden_service(tor_config)?;
-            // Set the listener address to be the address (usually local) to which tor will forward all traffic
-            let instant = Instant::now();
-            let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms);
-            debug!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
-
-            comms
-                .with_listener_address(
-                    listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
-                )
-                .spawn_with_transport(transport)
-                .await?
-        },
-        TransportType::Socks5 => {
-            debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
-            let transport = SocksTransport::new(transport_config.socks.into());
-            comms
-                .with_listener_address(transport_config.tcp.listener_address)
-                .spawn_with_transport(transport)
-                .await?
-        },
+        reachability_mode: ReachabilityMode::Private,
+        announce: true,
+        ..Default::default()
     };
 
-    Ok(comms)
+    let (tx_messages, rx_messages) = mpsc::unbounded_channel();
+
+    let (network, outbound_messaging, join_handle) = tari_network::spawn(
+        identity,
+        MessagingMode::Enabled { tx_messages },
+        config,
+        seed_peers.into_iter().map(Into::into).collect(),
+        shutdown_signal,
+    )?;
+
+    let inbound_messaging = InboundMessaging::new(rx_messages);
+
+    Ok((network, outbound_messaging, inbound_messaging, join_handle))
 }
 
-fn initialize_hidden_service(
-    mut config: TorTransportConfig,
-) -> Result<tor::HiddenServiceController, CommsInitializationError> {
-    let mut builder = tor::HiddenServiceBuilder::new()
-        .with_port_mapping(config.to_port_mapping()?)
-        .with_socks_authentication(config.to_socks_auth())
-        .with_control_server_auth(config.to_control_auth()?)
-        .with_socks_address_override(config.socks_address_override)
-        .with_control_server_address(config.control_address)
-        .with_bypass_proxy_addresses(config.proxy_bypass_addresses.into());
+pub fn spawn_network<TMsg: MessageSpec>(
+    identity: identity::Keypair,
+    seed_peers: Vec<SeedPeer>,
+    config: tari_network::Config,
+    shutdown_signal: ShutdownSignal,
+) -> Result<
+    (
+        NetworkingHandle,
+        OutboundMessaging<TMsg>,
+        InboundMessaging<TMsg>,
+        JoinHandle<Result<(), NetworkError>>,
+    ),
+    CommsInitializationError,
+>
+where
+    TMsg: MessageSpec + 'static,
+    TMsg::Message: prost::Message + Default + Clone + 'static,
+{
+    let (tx_messages, rx_messages) = mpsc::unbounded_channel();
 
-    if config.proxy_bypass_for_outbound_tcp {
-        builder = builder.bypass_tor_for_tcp_addresses();
-    }
+    let (network, outbound_messaging, join_handle) = tari_network::spawn(
+        identity,
+        MessagingMode::Enabled { tx_messages },
+        config,
+        seed_peers.into_iter().map(Into::into).collect(),
+        shutdown_signal,
+    )?;
 
-    if let Some(identity) = config.identity.take() {
-        builder = builder.with_tor_identity(identity);
-    }
+    let inbound_messaging = InboundMessaging::new(rx_messages);
 
-    let hidden_svc_ctl = builder.build()?;
-    Ok(hidden_svc_ctl)
+    Ok((network, outbound_messaging, inbound_messaging, join_handle))
 }
 
-async fn configure_comms_and_dht(
-    builder: CommsBuilder,
-    config: &P2pConfig,
-    connector: InboundDomainConnector,
-) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
-    let file_lock = acquire_exclusive_file_lock(&config.datastore_path)?;
-
-    let datastore = LMDBBuilder::new()
-        .set_path(&config.datastore_path)
-        .set_env_flags(open::NOLOCK)
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&config.peer_database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-
-    let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
-        .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
-
-    let builder = builder
-        .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
-        .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
-        .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, Some(file_lock))
-        .with_excluded_dial_addresses(config.dht.excluded_dial_addresses.clone().into_vec().clone());
-
-    let mut comms = match config.auxiliary_tcp_listener_address {
-        Some(ref addr) => builder.with_auxiliary_tcp_listener_address(addr.clone()).build()?,
-        None => builder.build()?,
-    };
-
-    let peer_manager = comms.peer_manager();
-    let connectivity = comms.connectivity();
-    let node_identity = comms.node_identity();
-    let shutdown_signal = comms.shutdown_signal();
-    // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(config.dht.outbound_buffer_size);
-
-    let mut dht = Dht::builder();
-    dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
-    let dht = dht
-        .build(node_identity.clone(), peer_manager, connectivity, shutdown_signal)
-        .await?;
-
-    let dht_outbound_layer = dht.outbound_middleware_layer();
-
-    // DHT RPC service is only available for communication nodes
-    if node_identity.has_peer_features(PeerFeatures::COMMUNICATION_NODE) {
-        comms = comms.add_rpc_server(RpcServer::new().add_service(dht.rpc_service()));
-    }
-
-    // Hook up DHT messaging middlewares
-    let messaging_pipeline = pipeline::Builder::new()
-        .with_outbound_pipeline(outbound_rx, |sink| {
-            ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
-        })
-        .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
-        .max_concurrent_outbound_tasks(config.max_concurrent_outbound_tasks)
-        .with_inbound_pipeline(
-            ServiceBuilder::new()
-                .layer(dht.inbound_middleware_layer())
-                .service(connector),
-        )
-        .build();
-
-    let (messaging_events_sender, _) = broadcast::channel(1);
-    comms = comms.add_protocol_extension(
-        MessagingProtocolExtension::new(
-            MESSAGING_PROTOCOL_ID.clone(),
-            messaging_events_sender,
-            messaging_pipeline,
-        )
-        .with_ban_duration(config.dht.ban_duration_short),
-    );
-
-    Ok((comms, dht))
-}
-
-/// Acquire an exclusive OS level write lock on a file in the provided path. This is used to check if another instance
-/// of this database has already been initialized in order to prevent two process from using it simultaneously
-/// ## Parameters
-/// `db_path` - Path where the db will be initialized
-///
-/// ## Returns
-/// Returns a File handle that must be retained to keep the file lock active.
-fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
-    let lock_file_path = db_path.join(".p2p_file.lock");
-
-    if let Some(parent) = lock_file_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let file = File::create(lock_file_path)?;
-    // Attempt to acquire exclusive OS level Write Lock
-    if let Err(e) = file.try_lock_exclusive() {
-        error!(
-            target: LOG_TARGET,
-            "Could not acquire exclusive write lock on database lock file: {:?}", e
-        );
-        return Err(CommsInitializationError::CannotAcquireFileLock);
-    }
-
-    Ok(file)
-}
-
-/// Adds a new peer to the base node
-/// ## Parameters
-/// `comms_node` - A reference to the comms node. This is the communications stack
-/// `peers` - A list of peers to be added to the comms node, the current node identity of the comms stack is excluded if
-/// found in the list.
-///
-/// ## Returns
-/// A Result to determine if the call was successful or not, string will indicate the reason on error
+/// Adds seed peers to the list of known peers
 pub async fn add_seed_peers(
-    peer_manager: &PeerManager,
-    node_identity: &NodeIdentity,
-    peers: Vec<Peer>,
+    network: NetworkingHandle,
+    identity: &identity::Keypair,
+    peers: Vec<SeedPeer>,
 ) -> Result<(), CommsInitializationError> {
-    for mut peer in peers {
-        if &peer.public_key == node_identity.public_key() {
-            debug!(
-                target: LOG_TARGET,
-                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer
-            );
+    for peer in peers {
+        if identity.public().is_eq_sr25519(&peer.public_key) {
             continue;
         }
-        peer.add_flags(PeerFlags::SEED);
 
         debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
-        peer_manager
-            .add_peer(peer)
+        network
+            .add_peer(peer.into())
             .await
             .map_err(CommsInitializationError::FailedToAddSeedPeer)?;
     }
     Ok(())
 }
 
-pub struct P2pInitializer {
+pub struct P2pInitializer<TMsg> {
     config: P2pConfig,
     user_agent: String,
     seed_config: PeerSeedsConfig,
     network: Network,
-    node_identity: Arc<NodeIdentity>,
-    connector: Option<PubsubDomainConnector>,
+    identity: identity::Keypair,
+    _mgs_spec: PhantomData<TMsg>,
 }
 
-impl P2pInitializer {
+impl<TMsg> P2pInitializer<TMsg>
+where
+    TMsg: MessageSpec + 'static,
+    TMsg::Message: prost::Message + Default + Clone + 'static,
+{
     pub fn new(
         config: P2pConfig,
         user_agent: String,
         seed_config: PeerSeedsConfig,
         network: Network,
-        node_identity: Arc<NodeIdentity>,
-        connector: PubsubDomainConnector,
+        identity: identity::Keypair,
     ) -> Self {
         Self {
             config,
             user_agent,
             seed_config,
             network,
-            node_identity,
-            connector: Some(connector),
+            identity,
+            _mgs_spec: PhantomData,
         }
     }
 
-    // Following are inlined due to Rust ICE: https://github.com/rust-lang/rust/issues/73537
-    fn try_parse_seed_peers(peer_seeds_str: &[String]) -> Result<Vec<Peer>, ServiceInitializationError> {
+    fn try_parse_seed_peers(peer_seeds_str: &[String]) -> Result<Vec<SeedPeer>, ServiceInitializationError> {
         peer_seeds_str
             .iter()
             .map(|s| SeedPeer::from_str(s))
-            .map(|r| r.map(Peer::from))
             .collect::<Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
 
-    async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
+    async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<SeedPeer>, ServiceInitializationError> {
         if config.dns_seeds.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
@@ -533,84 +265,66 @@ impl P2pInitializer {
                         start.elapsed()
                     );
                     Some(peers)
-                },
+                }
                 Err(err) => {
                     warn!(target: LOG_TARGET, "DNS seed `{}` failed to resolve: {}", addr, err);
                     None
-                },
+                }
             })
             .flatten()
-            .map(Into::into)
-            .collect::<Vec<_>>();
+            .collect();
 
         Ok(peers)
     }
 }
 
 #[async_trait]
-impl ServiceInitializer for P2pInitializer {
+impl<TMsg> ServiceInitializer for P2pInitializer<TMsg>
+where
+    TMsg: MessageSpec + Send + Sync + 'static,
+    TMsg::Message: prost::Message + Default + Clone + Send + Sync + 'static,
+{
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        // Register the dispatcher so that services can use it to listen for their respective messages
+        context.register_handle(Dispatcher::new());
+
         debug!(target: LOG_TARGET, "Initializing P2P");
-        let mut config = self.config.clone();
-        let connector = self.connector.take().expect("P2pInitializer called more than once");
+        let seed_peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 
-        let mut builder = CommsBuilder::new()
-            .with_shutdown_signal(context.get_shutdown_signal())
-            .with_node_identity(self.node_identity.clone())
-            .with_node_info(NodeNetworkInfo {
-                major_version: MAJOR_NETWORK_VERSION,
-                minor_version: MINOR_NETWORK_VERSION,
-                network_wire_byte: self.network.as_wire_byte(),
-                user_agent: self.user_agent.clone(),
-            })
-            .with_minimize_connections(if self.config.dht.minimize_connections {
-                Some(self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes)
-            } else {
-                None
-            })
-            .set_self_liveness_check(config.listener_self_liveness_check_interval);
-
-        if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
-            // The default is false, so ensure that both settings are true in this case
-            config.allow_test_addresses = true;
-            builder = builder.allow_test_addresses();
-            config.dht.peer_validator_config = builder.peer_validator_config().clone();
-        }
-
-        let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
-
-        let peer_manager = comms.peer_manager();
-        let node_identity = comms.node_identity();
-
-        let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
-            Ok(peers) => peers,
-            Err(err) => {
+        let dns_peers = Self::try_resolve_dns_seeds(&self.seed_config)
+            .await
+            .unwrap_or_else(|err| {
                 warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {}", err);
                 Vec::new()
+            });
+
+        let config = tari_network::Config {
+            swarm: SwarmConfig {
+                protocol_version: format!("/minotari/{}/1.0.0", self.network.as_key_str()).parse()?,
+                user_agent: self.user_agent.clone(),
+                enable_mdns: self.config.enable_mdns,
+                enable_relay: self.config.enable_relay,
+                ..Default::default()
             },
+            listener_addrs: self.config.listen_addresses.clone(),
+            reachability_mode: self.config.reachability_mode,
+            announce: true,
+            check_connections_interval: Default::default(),
+            known_local_public_address: self.config.public_addresses.to_vec(),
         };
-        add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
-        let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
+        let shutdown = context.get_shutdown_signal();
+        let (network, outbound_messaging, inbound_messaging, _join_handle) = spawn_network::<TMsg>(
+            self.identity.clone(),
+            seed_peers.into_iter().chain(dns_peers).collect(),
+            config,
+            shutdown,
+        )?;
 
-        add_seed_peers(&peer_manager, &node_identity, peers).await?;
-
-        context.register_handle(comms.connectivity());
-        context.register_handle(peer_manager);
-        context.register_handle(comms);
-        context.register_handle(dht);
+        context.register_handle(network);
+        context.register_handle(outbound_messaging);
+        context.register_handle(inbound_messaging);
         debug!(target: LOG_TARGET, "P2P Initialized");
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use tari_common::configuration::Network;
-    use tari_comms::connection_manager::WireMode;
-    #[test]
-    fn self_liveness_network_wire_byte_is_consistent() {
-        let wire_mode = WireMode::Liveness;
-        assert_eq!(wire_mode.as_byte(), Network::RESERVED_WIRE_BYTE);
     }
 }

@@ -27,7 +27,7 @@ use log::*;
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
-    domain_message::DomainMessage,
+    message::DomainMessage,
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
@@ -104,9 +104,9 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
             };
             Some(DomainMessage {
                 source_peer: msg.source_peer.clone(),
-                dht_header: msg.dht_header.clone(),
+                header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
-                inner: tx,
+                payload: tx,
             })
         },
     }

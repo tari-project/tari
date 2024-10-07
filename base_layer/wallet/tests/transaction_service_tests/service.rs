@@ -158,7 +158,7 @@ use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
-use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
+use tari_p2p::{comms_connector::pubsub_connector, message::DomainMessage, Network};
 use tari_script::{inputs, push_pubkey_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};

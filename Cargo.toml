@@ -20,9 +20,6 @@ members = [
     "base_layer/tari_mining_helper_ffi",
     "clients/rust/base_node_grpc_client",
     "clients/rust/wallet_grpc_client",
-    "comms/core",
-    "comms/dht",
-    "comms/rpc_macros",
     "common_sqlite",
     "infrastructure/libtor",
     "infrastructure/metrics",
@@ -60,7 +57,7 @@ overflow-checks = true
 liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }
 
 [workspace.dependencies]
-tari_networking = { path = "network/core" }
+tari_network = { path = "network/core" }
 tari_rpc_framework = { path = "network/rpc_framework" }
 tari_rpc_macros = { path = "network/rpc_macros" }
 tari_swarm = { path = "network/swarm" }
@@ -74,9 +71,9 @@ tari_shutdown = { path = "infrastructure/shutdown" }
 tari_metrics = { path = "infrastructure/metrics" }
 
 # Use Tari's libp2p fork that adds support for Schnorr-Ristretto
-libp2p-identity = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "0dccc6ca09651f6cc76ca08c58c31e34626d26c4" }
-libp2p = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "0dccc6ca09651f6cc76ca08c58c31e34626d26c4" }
-multiaddr = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "0dccc6ca09651f6cc76ca08c58c31e34626d26c4" }
+libp2p-identity = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "95f4691c7872d45726c2989d25f94e4f6b573de1" }
+libp2p = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "95f4691c7872d45726c2989d25f94e4f6b573de1" }
+multiaddr = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "95f4691c7872d45726c2989d25f94e4f6b573de1" }
 
 anyhow = "1.0.89"
 async-trait = "0.1.83"

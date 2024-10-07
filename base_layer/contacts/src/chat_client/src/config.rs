@@ -152,7 +152,6 @@ impl ChatClientConfig {
                 self.log_path = Some(base_path.as_ref().join(path));
             }
         }
-        self.p2p.set_base_path(base_path);
     }
 
     pub fn default_local_test() -> Self {

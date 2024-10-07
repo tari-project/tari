@@ -1,0 +1,12 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+package tari.mempool;
+
+message StatsResponse {
+    uint64 unconfirmed_txs = 2;
+    uint64 reorg_txs = 5;
+    uint64 unconfirmed_weight = 6;
+}

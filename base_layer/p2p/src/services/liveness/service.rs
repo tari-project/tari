@@ -20,21 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, sync::Arc, time::Instant};
+use std::{collections::HashSet, iter, sync::Arc, time::Instant};
 
-use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
+use futures::{future::Either, pin_mut, stream::StreamExt, SinkExt, Stream};
 use log::*;
-use tari_comms::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
-    types::CommsPublicKey,
-    Minimized,
-    PeerManager,
-};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{DhtOutboundError, OutboundMessageRequester},
 };
+use tari_network::{identity::PeerId, NetworkingHandle, NetworkingService, OutboundMessager, OutboundMessaging};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::RwLock, time, time::MissedTickBehavior};
@@ -50,7 +44,8 @@ use super::{
     LOG_TARGET,
 };
 use crate::{
-    domain_message::DomainMessage,
+    initialization::add_seed_peers,
+    message::DomainMessage,
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
     tari_message::TariMessageType,
 };
@@ -61,11 +56,11 @@ pub struct LivenessService<THandleStream, TPingStream> {
     request_rx: Option<THandleStream>,
     ping_stream: Option<TPingStream>,
     state: LivenessState,
-    connectivity: ConnectivityRequester,
-    outbound_messaging: OutboundMessageRequester,
+    network: NetworkingHandle,
+    outbound_messaging: OutboundMessaging<TMsg>,
     event_publisher: LivenessEventSender,
     shutdown_signal: ShutdownSignal,
-    monitored_peers: Arc<RwLock<Vec<NodeId>>>,
+    monitored_peers: HashSet<PeerId>,
     peer_manager: Arc<PeerManager>,
 }
 
@@ -79,22 +74,20 @@ where
         request_rx: TRequestStream,
         ping_stream: TPingStream,
         state: LivenessState,
-        connectivity: ConnectivityRequester,
-        outbound_messaging: OutboundMessageRequester,
+        network: NetworkingHandle,
         event_publisher: LivenessEventSender,
         shutdown_signal: ShutdownSignal,
-        peer_manager: Arc<PeerManager>,
     ) -> Self {
         Self {
             request_rx: Some(request_rx),
             ping_stream: Some(ping_stream),
             state,
-            connectivity,
+            network,
             outbound_messaging,
             event_publisher,
             shutdown_signal,
             config: config.clone(),
-            monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
+            monitored_peers: config.monitored_peers.into_iter().collect(),
             peer_manager,
         }
     }
@@ -157,22 +150,19 @@ where
         msg: DomainMessage<Result<PingPongMessage, prost::DecodeError>>,
     ) -> Result<(), LivenessError> {
         let DomainMessage::<_> {
-            source_peer,
+            source_peer_public_key,
             dht_header,
             inner: ping_pong_msg,
             ..
         } = msg;
-        let node_id = source_peer.node_id.clone();
+        let node_id = source_peer_public_key.clone();
         let public_key = source_peer.public_key.clone();
         let message_tag = dht_header.message_tag;
         let ping_pong_msg = match ping_pong_msg {
             Ok(p) => p,
             Err(e) => {
-                self.connectivity
-                    .ban_peer(
-                        node_id.clone(),
-                        format!("Peer sent a badly formed PingPongMessage:{}", e),
-                    )
+                self.network
+                    .ban_peer(node_id, format!("Peer sent a badly formed PingPongMessage:{}", e))
                     .await?;
                 return Err(e.into());
             },
@@ -291,59 +281,46 @@ where
                 self.state.set_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)
             },
-            AddMonitoredPeer(node_id) => {
-                let node_id_exists = { self.monitored_peers.read().await.iter().any(|val| val == &node_id) };
-                if !node_id_exists {
-                    self.monitored_peers.write().await.push(node_id.clone());
-                }
+            AddMonitoredPeer(peer_id) => {
+                self.monitored_peers.insert(peer_id);
                 Ok(LivenessResponse::Ok)
             },
-            RemoveMonitoredPeer(node_id) => {
-                let node_id_exists = { self.monitored_peers.read().await.iter().position(|val| *val == node_id) };
-                if let Some(pos) = node_id_exists {
-                    self.monitored_peers.write().await.swap_remove(pos);
-                }
+            RemoveMonitoredPeer(peer_id) => {
+                self.monitored_peers.remove(&peer_id);
                 Ok(LivenessResponse::Ok)
             },
         }
     }
 
     async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
-        let monitored_peers = { self.monitored_peers.read().await.clone() };
-        let selected_peers = self
-            .connectivity
-            .select_connections(ConnectivitySelection::random_nodes(
-                self.config.num_peers_per_round,
-                Default::default(),
-            ))
-            .await?
-            .into_iter()
-            .map(|c| c.peer_node_id().clone())
-            .chain(monitored_peers)
-            .collect::<Vec<_>>();
+        let selected_conns = self
+            .network
+            .select_active_connections(Some(self.config.num_peers_per_round), true, Default::default())
+            .await?;
 
-        if selected_peers.is_empty() {
+        if selected_conns.is_empty() && self.monitored_peers.is_empty() {
             debug!(
                 target: LOG_TARGET,
                 "Cannot broadcast pings because there are no broadcast peers available"
             )
         }
 
-        let len_peers = selected_peers.len();
+        let mut count = 0usize;
+        let iter = selected_conns
+            .into_iter()
+            .map(|conn| conn.peer_id)
+            .chain(self.monitored_peers.iter().cloned());
 
-        for peer in selected_peers {
+        for peer_id in iter {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-            self.state.add_inflight_ping(msg.nonce, peer.clone());
+            self.state.add_inflight_ping(msg.nonce, peer_id);
             self.outbound_messaging
-                .send_direct_node_id(
-                    peer,
-                    OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
-                    "Start ping round".to_string(),
-                )
+                .send_message(peer_id, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
                 .await?;
+            count += 1;
         }
 
-        self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
+        self.publish_event(LivenessEvent::PingRoundBroadcast(count));
 
         Ok(())
     }
@@ -356,7 +333,7 @@ where
             .filter(|(_, n)| **n > max_allowed_ping_failures)
             .map(|(node_id, _)| node_id)
         {
-            if let Some(mut conn) = self.connectivity.get_connection(node_id.clone()).await? {
+            if let Some(mut conn) = self.network.get_connection(node_id.clone()).await? {
                 debug!(
                     target: LOG_TARGET,
                     "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
@@ -445,7 +422,7 @@ mod test {
         state.inc_pongs_received();
         state.inc_pongs_received();
 
-        let (connectivity, mock) = create_connectivity_mock();
+        let (network, mock) = create_connectivity_mock();
         mock.spawn();
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
@@ -464,7 +441,7 @@ mod test {
             receiver,
             stream::empty(),
             state,
-            connectivity,
+            network,
             outbound_messaging,
             publisher,
             shutdown.to_signal(),
@@ -483,7 +460,7 @@ mod test {
 
     #[tokio::test]
     async fn send_ping() {
-        let (connectivity, mock) = create_connectivity_mock();
+        let (network, mock) = create_connectivity_mock();
         mock.spawn();
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
@@ -500,7 +477,7 @@ mod test {
             receiver,
             stream::empty(),
             LivenessState::default(),
-            connectivity,
+            network,
             outbound_messaging,
             publisher,
             shutdown.to_signal(),
@@ -563,7 +540,7 @@ mod test {
     async fn handle_message_ping() {
         let state = LivenessState::new();
 
-        let (connectivity, mock) = create_connectivity_mock();
+        let (network, mock) = create_connectivity_mock();
         mock.spawn();
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
@@ -584,7 +561,7 @@ mod test {
             stream::empty(),
             pingpong_stream,
             state,
-            connectivity,
+            network,
             outbound_messaging,
             publisher,
             shutdown.to_signal(),
@@ -601,7 +578,7 @@ mod test {
     async fn handle_message_pong() {
         let mut state = LivenessState::new();
 
-        let (connectivity, mock) = create_connectivity_mock();
+        let (network, mock) = create_connectivity_mock();
         mock.spawn();
         let (outbound_tx, _) = mpsc::channel(10);
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
@@ -627,7 +604,7 @@ mod test {
             stream::empty(),
             pingpong_stream,
             state,
-            connectivity,
+            network,
             outbound_messaging,
             publisher.clone(),
             shutdown.to_signal(),

@@ -20,37 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(test)]
-#[macro_use]
-mod test_utils;
-
 #[cfg(feature = "auto-update")]
 pub mod auto_update;
-pub mod comms_connector;
 mod config;
-pub mod domain_message;
 pub mod initialization;
-pub mod peer;
+pub mod message;
 pub mod peer_seeds;
 pub mod proto;
-pub mod services;
-mod socks_authentication;
 pub mod tari_message;
-mod tor_authentication;
-pub mod transport;
 
+mod connector;
 mod dns;
+mod services;
 
 // Re-export
-pub use socks_authentication::SocksAuthentication;
 pub use tari_common::configuration::Network;
-pub use tor_authentication::TorControlAuthentication;
-pub use transport::{Socks5TransportConfig, TcpTransportConfig, TorTransportConfig, TransportConfig, TransportType};
 
 pub use self::config::{P2pConfig, PeerSeedsConfig};
-
-/// Major network version. Peers will refuse connections if this value differs
-pub const MAJOR_NETWORK_VERSION: u8 = 0;
-/// Minor network version. This should change with each time the network protocol has changed in a backward-compatible
-/// way.
-pub const MINOR_NETWORK_VERSION: u8 = 0;

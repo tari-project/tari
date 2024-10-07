@@ -63,8 +63,6 @@ use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_comms_dht::Dht;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -72,14 +70,14 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use self::{message::PingPongMessage, service::LivenessService};
 pub use crate::proto::liveness::MetadataKey;
 use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
-    services::{liveness::state::LivenessState, utils::map_decode},
+    services::{dispatcher::Dispatcher, liveness::state::LivenessState, utils::map_decode},
     tari_message::TariMessageType,
 };
 
@@ -129,13 +127,18 @@ impl ServiceInitializer for LivenessInitializer {
             .expect("Liveness service initialized more than once.");
 
         // Create a stream which receives PingPong messages from comms
+        let (ping_tx, ping_rx) = mpsc::unbounded_channel();
+
         let ping_stream = self.ping_stream();
+
+        let (tx, rx) = mpsc::unbounded_channel();
 
         // Spawn the Liveness service on the executor
         context.spawn_when_ready(|handles| async move {
-            let dht = handles.expect_handle::<Dht>();
+            let mut dispatcher = handles.expect_handle::<Dispatcher>();
+            dispatcher.register(TariMessageType::PingPong, rx);
+
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let outbound_messages = dht.outbound_requester();
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let service = LivenessService::new(

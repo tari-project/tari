@@ -26,7 +26,7 @@ where TMsg: prost::Message + Default
 {
     type Message = TMsg;
 
-    async fn decode_from<R>(&mut self, reader: &mut R) -> std::io::Result<(usize, Self::Message)>
+    async fn decode_from<R>(&self, reader: &mut R) -> std::io::Result<(usize, Self::Message)>
     where R: AsyncRead + Unpin + Send {
         let mut len_buf = [0u8; 4];
         reader.read_exact(&mut len_buf).await?;
@@ -49,7 +49,7 @@ where TMsg: prost::Message + Default
         Ok((len, message))
     }
 
-    async fn encode_to<W>(&mut self, writer: &mut W, message: Self::Message) -> std::io::Result<()>
+    async fn encode_to<W>(&self, writer: &mut W, message: Self::Message) -> std::io::Result<()>
     where W: AsyncWrite + Unpin + Send {
         let mut buf = Vec::new();
         message

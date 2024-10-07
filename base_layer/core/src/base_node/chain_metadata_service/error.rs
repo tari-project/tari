@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use prost::DecodeError;
-use tari_comms::{connectivity::ConnectivityError, message::MessageError, peer_manager::NodeId};
-use tari_p2p::services::liveness::error::LivenessError;
+use tari_network::identity::PeerId;
 use thiserror::Error;
 
 use crate::base_node::comms_interface::CommsInterfaceError;
@@ -33,14 +32,8 @@ pub enum ChainMetadataSyncError {
     DecodeError(#[from] DecodeError),
     #[error("Peer did not send any chain metadata")]
     NoChainMetadata,
-    #[error("Liveness error: {0}")]
-    LivenessError(#[from] LivenessError),
     #[error("Comms interface error: {0}")]
     CommsInterfaceError(#[from] CommsInterfaceError),
-    #[error("Message error: {0}")]
-    MessageError(#[from] MessageError),
-    #[error("Connectivity error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
     #[error("Received invalid chain metadata from peer `{0}`: {1}")]
-    ReceivedInvalidChainMetadata(NodeId, String),
+    ReceivedInvalidChainMetadata(PeerId, String),
 }

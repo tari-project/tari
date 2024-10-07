@@ -88,6 +88,7 @@ use tari_comms::{
     Bytes,
     PeerConnection,
 };
+use tari_rpc_framework::__macro_reexports::StreamProtocol;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -115,7 +116,7 @@ mod initializer;
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
-pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
+pub static MEMPOOL_SYNC_PROTOCOL: StreamProtocol = StreamProtocol::new("t/mempool-sync/1");
 
 pub struct MempoolSyncProtocol<TSubstream> {
     config: MempoolServiceConfig,

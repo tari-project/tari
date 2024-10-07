@@ -23,6 +23,7 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -34,21 +35,21 @@ use crate::proto::liveness::MetadataKey;
 #[derive(Debug, Clone)]
 pub enum LivenessRequest {
     /// Send a ping to the given node ID
-    SendPing(NodeId),
+    SendPing(PeerId),
     /// Retrieve the total number of pings received
     GetPingCount,
     /// Retrieve the total number of pongs received
     GetPongCount,
     /// Get average latency for node ID
-    GetAvgLatency(NodeId),
+    GetAvgLatency(PeerId),
     /// Get average latency for all connected nodes
     GetNetworkAvgLatency,
     /// Set the metadata attached to each ping/pong message
     SetMetadataEntry(MetadataKey, Vec<u8>),
     /// Add a monitored peer to the basic config
-    AddMonitoredPeer(NodeId),
+    AddMonitoredPeer(PeerId),
     /// Remove a monitored peer from the basic config
-    RemoveMonitoredPeer(NodeId),
+    RemoveMonitoredPeer(PeerId),
 }
 
 /// Response type for `LivenessService`

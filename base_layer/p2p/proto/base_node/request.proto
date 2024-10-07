@@ -1,0 +1,43 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "types.proto";
+
+package tari.base_node;
+
+// Request type for a received BaseNodeService request.
+message BaseNodeServiceRequest {
+  uint64 request_key = 1;
+  oneof request {
+    GetBlockFromAllChainsRequest get_block_from_all_chains = 8;
+    ExcessSigs fetch_mempool_transactions_by_excess_sigs = 9;
+  }
+}
+
+// Excess signature container message. `repeated` label is not permitted in oneof.
+message ExcessSigs {
+  repeated bytes excess_sigs = 1;
+}
+
+message BlockHeights {
+  repeated uint64 heights = 1;
+}
+
+message GetBlockFromAllChainsRequest {
+  bytes hash = 1;
+}
+
+message Signatures {
+  repeated tari.types.Signature sigs = 1;
+}
+
+message Commitments{
+  repeated tari.types.Commitment commitments = 1;
+}
+
+message NewBlockTemplateRequest{
+  uint64 algo = 1;
+  uint64 max_weight = 2;
+}

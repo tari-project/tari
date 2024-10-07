@@ -27,6 +27,7 @@ use prost::Message;
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{connectivity::ConnectivityRequester, message::MessageExt, BAN_DURATION_LONG};
+use tari_network::NetworkingHandle;
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
 use tokio::sync::broadcast;
 
@@ -60,7 +61,7 @@ impl ChainMetadataService {
     pub fn new(
         liveness: LivenessHandle,
         base_node: LocalNodeCommsInterface,
-        connectivity: ConnectivityRequester,
+        connectivity: NetworkingHandle,
         event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
     ) -> Self {
         Self {

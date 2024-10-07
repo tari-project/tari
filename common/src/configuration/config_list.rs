@@ -30,9 +30,15 @@ impl<T> ConfigList<T> {
         ConfigList(Vec::with_capacity(size))
     }
 
-    /// Convert ConfigList<T> into a Vec<T>
+    /// Consume ConfigList<T> and convert into a Vec<T>
     pub fn into_vec(self) -> Vec<T> {
         self.0
+    }
+
+    /// Convert ConfigList<T> into a Vec<T>
+    pub fn to_vec(&self) -> Vec<T>
+    where T: Clone {
+        self.0.clone()
     }
 
     /// Get a reference to the inner Vec<T>

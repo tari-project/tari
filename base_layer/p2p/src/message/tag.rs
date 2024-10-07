@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,45 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::fmt;
 
-use tari_comms::{
-    peer_manager::NodeIdentity,
-    protocol::messaging::MessagingEventSender,
-    transports::MemoryTransport,
-    CommsNode,
-};
-use tari_comms_dht::Dht;
-use tari_p2p::{comms_connector::InboundDomainConnector, initialization::initialize_local_test_comms};
-use tari_shutdown::ShutdownSignal;
+use rand::{rngs::OsRng, RngCore};
 
-pub async fn setup_comms_services(
-    node_identity: Arc<NodeIdentity>,
-    peers: Vec<Arc<NodeIdentity>>,
-    publisher: InboundDomainConnector,
-    data_path: &str,
-    shutdown_signal: ShutdownSignal,
-) -> (CommsNode, Dht, MessagingEventSender) {
-    let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
-    let (comms, dht, messaging_events) = initialize_local_test_comms(
-        node_identity,
-        publisher,
-        data_path,
-        Duration::from_secs(1),
-        peers,
-        shutdown_signal,
-    )
-    .await
-    .unwrap();
+/// Represents a tag for a message
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash, Default)]
+pub struct MessageTag(u64);
 
-    let mut comms = comms.spawn_with_transport(MemoryTransport).await.unwrap();
-    let address = comms
-        .connection_manager_requester()
-        .wait_until_listening()
-        .await
-        .unwrap();
-    // Set the public address for tests
-    comms.node_identity().add_public_address(address.bind_address().clone());
+impl MessageTag {
+    pub fn new() -> Self {
+        Self(OsRng.next_u64())
+    }
 
-    (comms, dht, messaging_events)
+    pub fn as_value(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for MessageTag {
+    fn from(v: u64) -> Self {
+        Self(v)
+    }
+}
+
+impl fmt::Display for MessageTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Tag#{}", self.0)
+    }
 }

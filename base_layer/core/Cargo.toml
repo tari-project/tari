@@ -30,9 +30,9 @@ metrics = ["tari_metrics"]
 minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.5.1-pre.1", optional = true }
 tari_common = { path = "../../common", version = "1.5.1-pre.1" }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.5.1-pre.1" }
-tari_comms = { path = "../../comms/core", version = "1.5.1-pre.1" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.5.1-pre.1" }
-tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.5.1-pre.1" }
+tari_network = { workspace = true }
+tari_rpc_framework = { workspace = true }
+tari_rpc_macros = { workspace = true }
 tari_crypto = { version = "0.20.3", features = ["borsh"] }
 tari_max_size = { path = "../../infrastructure/max_size" }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.5.1-pre.1" }

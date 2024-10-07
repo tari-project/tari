@@ -181,7 +181,6 @@ impl WalletConfig {
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
         }
-        self.p2p.set_base_path(base_path);
     }
 }
 

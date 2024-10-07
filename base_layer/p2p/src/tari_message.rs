@@ -20,9 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms_dht::domain_message::ToProtoEnum;
+pub use crate::proto::core::TariMessageType;
 
-pub use crate::proto::message_type::TariMessageType;
+/// Trait that exposes conversion to a protobuf i32 enum type.
+pub trait ToProtoEnum {
+    fn as_i32(&self) -> i32;
+}
+
+impl ToProtoEnum for i32 {
+    fn as_i32(&self) -> i32 {
+        *self
+    }
+}
 
 impl ToProtoEnum for TariMessageType {
     fn as_i32(&self) -> i32 {

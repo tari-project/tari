@@ -189,8 +189,6 @@ struct TransactionKernel;
 
 struct TransactionSendStatus;
 
-struct TransportConfig;
-
 /**
  * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
  * build both inputs and outputs (every input comes from an output). This is only used for import and export where
@@ -339,7 +337,7 @@ typedef struct InboundTransaction TariPendingInboundTransaction;
 
 typedef struct TransactionSendStatus TariTransactionSendStatus;
 
-typedef struct TransportConfig TariTransportConfig;
+typedef TransportConfig TariTransportConfig;
 
 typedef struct P2pConfig TariCommsConfig;
 

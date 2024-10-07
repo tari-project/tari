@@ -5,5 +5,4 @@ use core::fmt;
 
 pub trait MessageSpec {
     type Message: fmt::Debug + Send;
-    type GossipMessage: fmt::Debug + Send;
 }

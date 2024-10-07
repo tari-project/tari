@@ -27,8 +27,8 @@ pub mod sync_utxos_by_block_task;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
+use tari_rpc_framework::{Request, Response, RpcStatus, Streaming};
+use tari_rpc_macros::tari_rpc;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
@@ -61,7 +61,7 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
+#[tari_rpc(protocol_name = "t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn submit_transaction(

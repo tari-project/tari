@@ -25,6 +25,7 @@ use std::{
     sync::Arc,
 };
 
+use libp2p::PeerId;
 use log::*;
 use tokio::sync::Mutex;
 
@@ -41,16 +42,18 @@ use crate::{
 const LOG_TARGET: &str = "comms::protocol::rpc::client_pool";
 
 #[derive(Clone)]
-pub struct RpcClientPool<T> {
-    pool: Arc<Mutex<LazyPool<T>>>,
+pub struct RpcClientPool<C, T> {
+    pool: Arc<Mutex<LazyPool<C, T>>>,
 }
 
-impl<T> RpcClientPool<T>
-where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
+impl<C, T> RpcClientPool<C, T>
+where
+    C: RpcConnector + Clone,
+    T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone + Send,
 {
     /// Create a new RpcClientPool. Panics if passed a pool_size of 0.
-    pub(crate) fn new(peer_connection: PeerConnection, pool_size: usize, client_config: RpcClientBuilder<T>) -> Self {
-        let pool = LazyPool::new(peer_connection, pool_size, client_config);
+    pub(crate) fn new(connector: C, pool_size: usize, client_config: RpcClientBuilder<T>) -> Self {
+        let pool = LazyPool::new(connector, pool_size, client_config);
         Self {
             pool: Arc::new(Mutex::new(pool)),
         }
@@ -77,7 +80,7 @@ pub(crate) struct LazyPool<C, T> {
 impl<C, T> LazyPool<C, T>
 where
     C: RpcConnector + Clone,
-    T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone,
+    T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone + Send,
 {
     pub fn new(connector: C, capacity: usize, client_config: RpcClientBuilder<T>) -> Self {
         assert!(capacity > 0, "Pool capacity of 0 is invalid");
@@ -118,7 +121,8 @@ where
     }
 
     pub fn is_connected(&self) -> bool {
-        self.connector.is_connected(&self.client_config.peer_id)
+        // We assume a connection if any of the clients are connected.
+        self.clients.iter().any(|lease| lease.is_connected())
     }
 
     #[allow(dead_code)]
@@ -132,7 +136,7 @@ where
             Ok(())
         } else {
             Err(RpcClientPoolError::PeerConnectionDropped {
-                peer: self.connector.peer_node_id().clone(),
+                peer: *self.client_config.peer_id(),
             })
         }
     }
@@ -185,7 +189,8 @@ where
         let client = self
             .connector
             .connect_rpc_using_builder(self.client_config.clone())
-            .await?;
+            .await
+            .map_err(|e| RpcClientPoolError::FailedToConnect(e.to_string()))?;
         let client = RpcClientLease::new(client);
         self.clients.push(client);
         Ok(self.clients.last().unwrap())
@@ -256,11 +261,11 @@ impl<T: RpcPoolClient> RpcPoolClient for RpcClientLease<T> {
 #[derive(Debug, thiserror::Error)]
 pub enum RpcClientPoolError {
     #[error("Peer connection to peer '{peer}' dropped")]
-    PeerConnectionDropped { peer: NodeId },
+    PeerConnectionDropped { peer: PeerId },
     #[error("No peer RPC sessions are available")]
     NoMoreRemoteRpcSessions,
     #[error("Failed to create client connection: {0}")]
-    FailedToConnect(RpcError),
+    FailedToConnect(String),
 }
 
 impl From<RpcError> for RpcClientPoolError {
@@ -269,7 +274,7 @@ impl From<RpcError> for RpcClientPoolError {
             RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable)) => {
                 RpcClientPoolError::NoMoreRemoteRpcSessions
             },
-            err => RpcClientPoolError::FailedToConnect(err),
+            err => RpcClientPoolError::FailedToConnect(err.to_string()),
         }
     }
 }

@@ -8,7 +8,7 @@ use std::{
 };
 
 use libp2p::{
-    core::Endpoint,
+    core::{transport::PortUse, Endpoint},
     swarm::{
         dial_opts::DialOpts,
         AddressChange,
@@ -281,6 +281,7 @@ where TCodec: Codec + Send + Clone + 'static
         peer: PeerId,
         remote_addr: &Multiaddr,
         _role_override: Endpoint,
+        _port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(peer, self.protocol.clone(), &self.config);
         self.on_connection_established(&mut handler, peer, connection_id, Some(remote_addr.clone()));

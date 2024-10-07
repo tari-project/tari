@@ -78,7 +78,7 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
-use tari_p2p::domain_message::DomainMessage;
+use tari_p2p::message::DomainMessage;
 use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -416,20 +416,25 @@ where
                 // Incoming Transaction messages from the Comms layer
                 Some(msg) = transaction_stream.next() => {
                     let start = Instant::now();
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", msg.dht_header.message_tag);
+                    let message_tag = msg.header.message_tag;
+                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", message_tag);
 
-                    let result  = self.accept_transaction(origin_public_key, inner_msg,
-                        msg.dht_header.message_tag.as_value(), &mut receive_transaction_protocol_handles);
+                    let result  = self.accept_transaction(
+                        origin_public_key,
+                        inner_msg,
+                        message_tag.as_value(),
+                        &mut receive_transaction_protocol_handles,
+                    );
 
                     match result {
                         Err(TransactionServiceError::RepeatedMessageError) => {
                             trace!(target: LOG_TARGET, "A repeated Transaction message was received, Trace: {}",
-                            msg.dht_header.message_tag);
+                            msg.header.message_tag);
                         }
                         Err(e) => {
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
-                                e, self.resources.node_identity.node_id().short_str(), msg.dht_header.message_tag);
+                                e, self.resources.node_identity.node_id().short_str(), message_tag);
                             let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
                                 Transaction Sender message: {:?}", e).to_string())));
                         }
@@ -437,7 +442,7 @@ where
                     }
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Message, Trace: {}, processed in {}ms",
-                        msg.dht_header.message_tag,
+                        message_tag,
                         start.elapsed().as_millis(),
                     );
                 },
@@ -445,7 +450,7 @@ where
                 Some(msg) = transaction_reply_stream.next() => {
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.dht_header.message_tag);
+                    trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.header.message_tag);
                     let result = self.accept_recipient_reply(origin_public_key, inner_msg).await;
 
                     match result {
@@ -453,12 +458,12 @@ where
                             trace!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: \
                             {} due to Transaction not existing. This usually means the message was a repeated message \
                             from Store and Forward, Trace: {}", self.resources.node_identity.node_id().short_str(),
-                            msg.dht_header.message_tag);
+                            msg.header.message_tag);
                         },
                         Err(e) => {
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {} \
                             for NodeId: {}, Trace: {}", e, self.resources.node_identity.node_id().short_str(),
-                            msg.dht_header.message_tag);
+                            msg.header.message_tag);
                             let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
                             Transaction Recipient Reply message".to_string())));
                         },
@@ -466,7 +471,7 @@ where
                     }
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Reply Message, Trace: {}, processed in {}ms",
-                        msg.dht_header.message_tag,
+                        msg.header.message_tag,
                         start.elapsed().as_millis(),
                     );
                 },
@@ -476,7 +481,7 @@ where
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Finalized Message, Trace: {}",
-                        msg.dht_header.message_tag.as_value()
+                        msg.header.message_tag.as_value()
                     );
                     let result = self.accept_finalized_transaction(
                         origin_public_key,
@@ -489,12 +494,12 @@ where
                             trace!(target: LOG_TARGET, "Unable to handle incoming Finalized Transaction message from NodeId: \
                             {} due to Transaction not existing. This usually means the message was a repeated message \
                             from Store and Forward, Trace: {}", self.resources.node_identity.node_id().short_str(),
-                            msg.dht_header.message_tag);
+                            msg.header.message_tag);
                         },
                        Err(e) => {
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {} \
                             for NodeID: {}, Trace: {}", e , self.resources.node_identity.node_id().short_str(),
-                            msg.dht_header.message_tag.as_value());
+                            msg.header.message_tag.as_value());
                             let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
                             Finalized message".to_string(),)));
                        },
@@ -502,7 +507,7 @@ where
                     }
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Finalized Message, Trace: {}, processed in {}ms",
-                        msg.dht_header.message_tag.as_value(),
+                        msg.header.message_tag.as_value(),
                         start.elapsed().as_millis(),
                     );
                 },
@@ -510,16 +515,16 @@ where
                 Some(msg) = base_node_response_stream.next() => {
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
+                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.header.message_tag);
                     let _result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
                         NodeID: {}, Trace: {}", origin_public_key, e, self.resources.node_identity.node_id().short_str(),
-                        msg.dht_header.message_tag.as_value());
+                        msg.header.message_tag.as_value());
                         e
                     });
                     trace!(target: LOG_TARGET,
                         "Handling Base Node Response, Trace: {}, processed in {}ms",
-                        msg.dht_header.message_tag,
+                        msg.header.message_tag,
                         start.elapsed().as_millis(),
                     );
                 }
@@ -527,13 +532,13 @@ where
                 Some(msg) = transaction_cancelled_stream.next() => {
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.dht_header.message_tag);
+                    trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.header.message_tag);
                     if let Err(e) = self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
                         warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
                     }
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Cancelled message, Trace: {}, processed in {}ms",
-                        msg.dht_header.message_tag,
+                        msg.header.message_tag,
                         start.elapsed().as_millis(),
                     );
                 }

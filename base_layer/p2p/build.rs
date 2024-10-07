@@ -22,7 +22,8 @@
 
 fn main() {
     tari_common::build::ProtobufCompiler::new()
-        .proto_paths(&["src/proto"])
+        .proto_paths(&["proto"])
+        .include_paths(&["proto/common"])
         .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();

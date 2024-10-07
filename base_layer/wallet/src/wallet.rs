@@ -305,10 +305,10 @@ where
                     }
                 });
             };
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+            initialization::spawn_network(comms, config.p2p.transport, after_comms).await?
         } else {
             let after_comms = |_identity| {};
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+            initialization::spawn_network(comms, config.p2p.transport, after_comms).await?
         };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();

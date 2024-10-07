@@ -14,6 +14,8 @@ use libp2p::{
     gossipsub,
     identify,
     identity::Keypair,
+    kad,
+    kad::store::MemoryStoreConfig,
     mdns,
     noise,
     ping,
@@ -50,6 +52,7 @@ where TCodec: messaging::Codec + Send + Clone + 'static
     pub identify: identify::Behaviour,
     pub mdns: Toggle<mdns::tokio::Behaviour>,
     pub peer_sync: peer_sync::Behaviour<MemoryPeerStore>,
+    pub kad: kad::Behaviour<kad::store::MemoryStore>,
 
     pub substream: substream::Behaviour,
     pub messaging: Toggle<messaging::Behaviour<TCodec>>,
@@ -77,11 +80,7 @@ where
 {
     let swarm = SwarmBuilder::with_existing_identity(identity)
         .with_tokio()
-        .with_tcp(
-            tcp::Config::new().nodelay(true).port_reuse(true),
-            noise_config,
-            yamux::Config::default,
-        )?
+        .with_tcp(tcp::Config::new().nodelay(true), noise_config, yamux::Config::default)?
         .with_quic()
         .with_relay_client(noise_config, yamux::Config::default)?
         .with_behaviour(|keypair, relay_client| {
@@ -90,7 +89,6 @@ where
             // Gossipsub
             let gossipsub_config = gossipsub::ConfigBuilder::default()
                 .validation_mode(gossipsub::ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
-                .validate_messages()
                 .message_id_fn(get_message_id) // content-address messages. No two messages of the same content will be propagated.
                 .build()
                 .unwrap();
@@ -122,6 +120,12 @@ where
                 identify::Config::new(config.protocol_version.to_string(), keypair.public())
                     .with_interval(config.identify_interval)
                     .with_agent_version(config.user_agent),
+            );
+
+            // Kademlia
+            let kad = kad::Behaviour::new(
+                local_peer_id,
+                kad::store::MemoryStore::with_config(local_peer_id, MemoryStoreConfig::default()),
             );
 
             // Messaging
@@ -164,6 +168,7 @@ where
                 relay_client,
                 autonat,
                 gossipsub,
+                kad,
                 substream,
                 messaging: Toggle::from(messaging),
                 connection_limits,
@@ -224,6 +229,6 @@ fn noise_config(keypair: &Keypair) -> Result<noise::Config, noise::Error> {
 }
 
 fn noise_prologue() -> Vec<u8> {
-    const PROLOGUE: &str = "tari-digital-asset-network";
+    const PROLOGUE: &str = "com.tari";
     PROLOGUE.as_bytes().to_vec()
 }

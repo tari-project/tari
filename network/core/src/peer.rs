@@ -1,7 +1,50 @@
 //   Copyright 2023 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
+use std::fmt::{Display, Formatter};
+
 use libp2p::{Multiaddr, PeerId, StreamProtocol};
+
+use crate::identity::PublicKey;
+
+#[derive(Debug, Clone)]
+pub struct Peer {
+    pub(crate) public_key: PublicKey,
+    pub(crate) addresses: Vec<Multiaddr>,
+}
+
+impl Peer {
+    pub fn new(public_key: PublicKey, addresses: Vec<Multiaddr>) -> Self {
+        Self { public_key, addresses }
+    }
+
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+
+    pub fn addresses(&self) -> &[Multiaddr] {
+        &self.addresses
+    }
+
+    pub fn to_peer_id(&self) -> PeerId {
+        self.public_key.to_peer_id()
+    }
+}
+
+impl Display for Peer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Peer({}, {}, [",
+            self.public_key.to_peer_id(),
+            self.public_key.key_type()
+        )?;
+        for addr in &self.addresses {
+            write!(f, "{}, ", addr)?;
+        }
+        write!(f, "])")
+    }
+}
 
 pub struct PeerInfo {
     pub peer_id: PeerId,
@@ -9,25 +52,24 @@ pub struct PeerInfo {
     pub agent_version: String,
     pub listen_addrs: Vec<Multiaddr>,
     pub protocols: Vec<StreamProtocol>,
-    // pub observed_addr: Multiaddr,
 }
 
-impl std::fmt::Display for PeerInfo {
+impl Display for PeerInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        print_key_value("PeerId", &self.peer_id, f)?;
-        print_key_value("Protocol version", &self.protocol_version, f)?;
-        print_key_value("Agent version", &self.agent_version, f)?;
-        // print_key_value("Observed address", &self.observed_addr, f)?;
+        write_key_value("PeerId", &self.peer_id, f)?;
+        write_key_value("Protocol version", &self.protocol_version, f)?;
+        write_key_value("Agent version", &self.agent_version, f)?;
+
         if self.listen_addrs.is_empty() {
             writeln!(f, "No listener addresses")?;
         } else {
-            print_key("Listen addresses", f)?;
+            write_key("Listen addresses", f)?;
             for addr in &self.listen_addrs {
                 writeln!(f, "\t- {addr:?}")?;
             }
         }
         if !self.protocols.is_empty() {
-            print_key("Protocols", f)?;
+            write_key("Protocols", f)?;
             for protocol in &self.protocols {
                 writeln!(f, "\t- {protocol}")?;
             }
@@ -36,9 +78,9 @@ impl std::fmt::Display for PeerInfo {
         Ok(())
     }
 }
-fn print_key_value<V: std::fmt::Debug>(k: &str, v: &V, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn write_key_value<V: std::fmt::Debug>(k: &str, v: &V, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     writeln!(f, "{k}: {v:?}")
 }
-fn print_key(k: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn write_key(k: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     writeln!(f, "{k}:")
 }

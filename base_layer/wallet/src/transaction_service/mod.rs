@@ -39,7 +39,7 @@ use tari_core::{
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
+    message::DomainMessage,
     services::utils::map_decode,
     tari_message::TariMessageType,
 };

@@ -33,7 +33,7 @@ use tari_comms::{peer_manager::Peer, tor::TorIdentity, CommsNode, UnspawnedComms
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
 use tari_p2p::{
     comms_connector::pubsub_connector,
-    initialization::{spawn_comms_using_transport, P2pInitializer},
+    initialization::{spawn_network, P2pInitializer},
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
     TransportType,
@@ -130,10 +130,10 @@ pub async fn start(
                 node_id.add_public_address(address);
             }
         };
-        spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
+        spawn_network(comms, p2p_config.transport.clone(), after_comms).await?
     } else {
         let after_comms = |_identity| {};
-        spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
+        spawn_network(comms, p2p_config.transport.clone(), after_comms).await?
     };
     // changed by comms during initialization when using tor.
     match p2p_config.transport.transport_type {

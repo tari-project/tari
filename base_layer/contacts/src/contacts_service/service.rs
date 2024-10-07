@@ -39,7 +39,7 @@ use tari_comms::{
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
+    message::DomainMessage,
     services::{
         liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
         utils::map_decode,
@@ -431,7 +431,7 @@ where T: ContactsBackend + 'static
     ) -> Result<(), ContactsServiceError> {
         trace!(target: LOG_TARGET, "Handling incoming chat message dispatch {:?} from peer {}", msg, msg.source_peer.public_key);
 
-        let msg_inner = match &msg.inner {
+        let msg_inner = match &msg.payload {
             Ok(msg) => msg.clone(),
             Err(e) => {
                 debug!(target: LOG_TARGET, "Banning peer {} for illformed message", msg.source_peer.public_key);

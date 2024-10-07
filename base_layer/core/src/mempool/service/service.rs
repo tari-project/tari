@@ -30,7 +30,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::{message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
@@ -164,7 +164,11 @@ impl MempoolService {
     }
 
     fn handle_incoming_tx(&self, domain_transaction_msg: DomainMessage<Transaction>) {
-        let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
+        let DomainMessage::<_> {
+            source_peer,
+            payload: inner,
+            ..
+        } = domain_transaction_msg;
 
         debug!(
             "New transaction received: {}, from: {}",

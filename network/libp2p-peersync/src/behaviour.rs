@@ -9,7 +9,7 @@ use std::{
 };
 
 use libp2p::{
-    core::Endpoint,
+    core::{transport::PortUse, Endpoint},
     futures::executor::block_on,
     identity::Keypair,
     swarm::{
@@ -246,6 +246,7 @@ where TPeerStore: PeerStore
         peer: PeerId,
         _remote_addr: &Multiaddr,
         _role_override: Endpoint,
+        _port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let handler = Handler::new(
             peer,

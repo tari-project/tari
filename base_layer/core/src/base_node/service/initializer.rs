@@ -28,7 +28,7 @@ use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
-    domain_message::DomainMessage,
+    message::DomainMessage,
     services::utils::map_decode,
     tari_message::TariMessageType,
 };
@@ -136,18 +136,18 @@ fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, Extrac
         Err(e) => {
             return DomainMessage {
                 source_peer: msg.source_peer.clone(),
-                dht_header: msg.dht_header.clone(),
+                header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
-                inner: Err(e.into()),
+                payload: Err(e.into()),
             }
         },
     };
     let block = NewBlock::try_from(new_block).map_err(ExtractBlockError::MalformedMessage);
     DomainMessage {
         source_peer: msg.source_peer.clone(),
-        dht_header: msg.dht_header.clone(),
+        header: msg.dht_header.clone(),
         authenticated_origin: msg.authenticated_origin.clone(),
-        inner: block,
+        payload: block,
     }
 }
 

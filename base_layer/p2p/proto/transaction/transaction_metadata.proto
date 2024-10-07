@@ -1,0 +1,20 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "types.proto";
+
+package tari.transaction_protocol;
+
+message TransactionMetadata {
+    // The absolute fee for the transaction
+    uint64 fee = 1;
+    // The earliest block this transaction can be mined
+    uint64 lock_height = 2;
+    // features of the kernel for this transaction
+    uint32 kernel_features = 3;
+    // optional burn commitment if present
+    tari.types.Commitment burned_commitment = 4;
+}
+

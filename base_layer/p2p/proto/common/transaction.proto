@@ -1,0 +1,130 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "types.proto";
+import "sidechain_feature.proto";
+
+package tari.types;
+
+// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
+// why it is necessary, refer to the
+// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
+// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
+// this transaction can be mined) and the transaction fee, in cleartext.
+message TransactionKernel {
+  // Options for a kernel's structure or use
+  uint32 features = 1;
+  /// Fee originally included in the transaction this proof is for (in MicroMinotari)
+  uint64 fee = 2;
+  // This kernel is not valid earlier than lock_height blocks
+  // The max lock_height of all *inputs* to this transaction
+  uint64 lock_height = 3;
+  // Remainder of the sum of all transaction commitments. If the transaction
+  // is well formed, amounts components should sum to zero and the excess
+  // is hence a valid public key.
+  Commitment excess = 6;
+  // The signature proving the excess is a valid public key, which signs
+  // the transaction fee.
+  Signature excess_sig = 7;
+  // Version
+  uint32 version = 8;
+  // Optional burned commitment
+  Commitment burn_commitment = 9;
+}
+
+// A transaction input.
+//
+// Primarily a reference to an output being spent by the transaction.
+message TransactionInput {
+  // The features of the output being spent. We will check maturity for all outputs.
+  OutputFeatures features = 1;
+  // The commitment referencing the output being spent.
+  Commitment commitment = 2;
+  // The serialised script
+  bytes script = 3;
+  // The script input data, if any
+  bytes input_data = 4;
+  // A signature with k_s, signing the script, input data, and mined height
+  ComAndPubSignature script_signature = 6;
+  // The offset pubkey, K_O
+  bytes sender_offset_public_key = 7;
+  // The hash of the output this input is spending
+  bytes output_hash = 8;
+  // The serialised covenant
+  bytes covenant = 9;
+  // Version
+  uint32 version = 10;
+  // The encrypted value
+  bytes encrypted_data = 11;
+  // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
+  uint64 minimum_value_promise = 12;
+  // The metadata signature for output this input is spending
+  ComAndPubSignature metadata_signature = 13;
+  // The rangeproof hash for output this input is spending
+  bytes rangeproof_hash = 14;
+}
+
+// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
+// blinded value for the output while the range proof guarantees the commitment includes a positive value without
+// overflow and the ownership of the private key.
+message TransactionOutput {
+  // Options for an output's structure or use
+  OutputFeatures features = 1;
+  // The homomorphic commitment representing the output amount
+  Commitment commitment = 2;
+  // A proof that the commitment is in the right range
+  RangeProof range_proof = 3;
+  // Tari script serialised script
+  bytes script = 4;
+  // Tari script offset pubkey, K_O
+  bytes sender_offset_public_key = 5;
+  // UTXO signature with the script offset private key, k_O
+  ComAndPubSignature metadata_signature = 6;
+  // The serialised covenant
+  bytes covenant = 7;
+  // Version
+  uint32 version = 8;
+  // Encrypted Pedersen commitment openings (value and mask) for the output
+  bytes encrypted_data = 9;
+  // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
+  uint64 minimum_value_promise = 10;
+}
+
+// Options for UTXOs
+message OutputFeatures {
+  // Version
+  uint32 version = 1;
+  // Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
+  uint32 output_type = 2;
+  // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
+  // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
+  uint64 maturity = 3;
+  // Additional arbitrary info in coinbase transactions supplied by miners
+  bytes coinbase_extra = 4;
+  // Features that are specific to a side chain
+  SideChainFeature sidechain_feature = 5;
+  // The type of range proof used in the output
+  uint32 range_proof_type = 6;
+}
+
+// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+// cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
+// be sorted by their Blake2b-256bit digest hash
+message AggregateBody {
+  // List of inputs spent by the transaction.
+  repeated TransactionInput inputs = 1;
+  // List of outputs the transaction produces.
+  repeated TransactionOutput outputs = 2;
+  // Kernels contain the excesses and their signatures for transaction
+  repeated TransactionKernel kernels = 3;
+}
+
+// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
+// This struct is used to describe single transactions only.
+message Transaction {
+  PrivateKey offset = 1;
+  AggregateBody body = 2;
+  PrivateKey script_offset = 3;
+}

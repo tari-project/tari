@@ -212,3 +212,13 @@ where
 
     deserializer.deserialize_any(StringOrStruct(PhantomData))
 }
+
+pub fn deserialize_from_str<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: std::fmt::Display,
+{
+    let s = <String as Deserialize>::deserialize(d)?;
+    s.parse().map_err(serde::de::Error::custom)
+}

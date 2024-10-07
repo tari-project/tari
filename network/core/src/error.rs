@@ -22,13 +22,13 @@
 
 use std::io;
 
-use libp2p::{gossipsub, gossipsub::SubscriptionError, swarm::DialError, TransportError};
+use libp2p::{gossipsub, gossipsub::SubscriptionError, swarm::DialError, Multiaddr, TransportError};
 use tari_rpc_framework::RpcError;
 use tari_swarm::{messaging, substream, TariSwarmError};
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, thiserror::Error)]
-pub enum NetworkingError {
+pub enum NetworkError {
     #[error("Codec IO error: {0}")]
     CodecError(io::Error),
     #[error("Gossipsub publish error: {0}")]
@@ -55,15 +55,19 @@ pub enum NetworkingError {
     PeerSyncError(#[from] tari_swarm::peersync::Error),
     #[error("Messaging is disabled")]
     MessagingDisabled,
+    #[error("Failed to add peer: {details}")]
+    FailedToAddPeer { details: String },
+    #[error("Unsupported seed peer multiaddr '{address}'")]
+    UnsupportedSeedPeerMultiaddr { address: Multiaddr },
 }
 
-impl From<oneshot::error::RecvError> for NetworkingError {
+impl From<oneshot::error::RecvError> for NetworkError {
     fn from(e: oneshot::error::RecvError) -> Self {
         Self::NetworkingHandleError(e.into())
     }
 }
 
-impl<T> From<mpsc::error::SendError<T>> for NetworkingError {
+impl<T> From<mpsc::error::SendError<T>> for NetworkError {
     fn from(e: mpsc::error::SendError<T>) -> Self {
         Self::NetworkingHandleError(e.into())
     }

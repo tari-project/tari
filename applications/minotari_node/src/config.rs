@@ -207,7 +207,6 @@ impl BaseNodeConfig {
         if !self.lmdb_path.is_absolute() {
             self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());
         }
-        self.p2p.set_base_path(base_path);
     }
 }
 

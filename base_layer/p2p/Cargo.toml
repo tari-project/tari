@@ -10,8 +10,7 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_comms = { path = "../../comms/core", version = "1.5.1-pre.1" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.5.1-pre.1" }
+tari_network = { workspace = true }
 tari_common = { path = "../../common", version = "1.5.1-pre.1" }
 tari_crypto = { version = "0.20.3" }
 tari_service_framework = { path = "../service_framework", version = "1.5.1-pre.1" }

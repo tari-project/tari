@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet};
 use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use rand::seq::IteratorRandom;
 
+use crate::Peer;
+
 #[derive(Debug, Clone, Default)]
 pub struct RelayState {
     selected_relay: Option<RelayPeer>,
@@ -13,19 +15,22 @@ pub struct RelayState {
 }
 
 impl RelayState {
-    pub fn new<I: IntoIterator<Item = (PeerId, Multiaddr)>>(known_relays: I) -> Self {
+    pub fn new<I: IntoIterator<Item = Peer>>(known_relays: I) -> Self {
         Self {
             selected_relay: None,
             possible_relays: {
                 let mut hm = HashMap::<_, HashSet<_>>::new();
-                for (peer, addr) in known_relays {
-                    // Ensure that the /p2p/xxx protocol is present in the address
-                    let addr = if addr.iter().any(|p| matches!(p, Protocol::P2p(_))) {
-                        addr
-                    } else {
-                        addr.with(Protocol::P2p(peer))
-                    };
-                    hm.entry(peer).or_default().insert(addr);
+                for peer in known_relays {
+                    let peer_id = peer.public_key.to_peer_id();
+                    for addr in peer.addresses {
+                        // Ensure that the /p2p/xxx protocol is present in the address
+                        let addr = if addr.iter().any(|p| matches!(p, Protocol::P2p(_))) {
+                            addr
+                        } else {
+                            addr.with(Protocol::P2p(peer_id))
+                        };
+                        hm.entry(peer_id).or_default().insert(addr);
+                    }
                 }
                 hm
             },

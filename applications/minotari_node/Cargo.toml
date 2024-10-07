@@ -8,12 +8,13 @@ version = "1.5.1-pre.1"
 edition = "2018"
 
 [dependencies]
+tari_network = { workspace = true }
+tari_rpc_framework = { workspace = true }
+
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
 tari_common = { path = "../../common" }
-tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",
 ] }
@@ -72,7 +73,7 @@ tari_metrics = { path = "../../infrastructure/metrics", optional = true, feature
 
 [features]
 default = ["libtor"]
-metrics = ["tari_metrics", "tari_comms/metrics"]
+metrics = ["tari_metrics"]
 safe = []
 libtor = ["tari_libtor"]
 

@@ -33,10 +33,13 @@ mod commands;
 pub mod config;
 mod grpc;
 mod grpc_method;
+mod message_spec;
+mod message_spec;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod recovery;
 mod utils;
+
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};

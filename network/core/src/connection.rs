@@ -22,6 +22,10 @@ pub struct Connection {
 }
 
 impl Connection {
+    pub fn peer_id(&self) -> &PeerId {
+        &self.peer_id
+    }
+
     pub fn age(&self) -> Duration {
         self.created_at.elapsed()
     }

@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 
 /// Configuration for liveness service
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ pub struct LivenessConfig {
     /// Number of peers to ping per round, excluding monitored peers (Default: 8)
     pub num_peers_per_round: usize,
     /// Peers to include in every auto ping round (Default: <empty>)
-    pub monitored_peers: Vec<NodeId>,
+    pub monitored_peers: Vec<PeerId>,
     /// Number of ping failures to tolerate before disconnecting the peer. A value of zero disables this feature.
     pub max_allowed_ping_failures: usize,
 }

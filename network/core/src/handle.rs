@@ -23,7 +23,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use libp2p::{gossipsub::IdentTopic, swarm::dial_opts::DialOpts, PeerId, StreamProtocol};
+use libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, PeerId, StreamProtocol};
 use log::*;
 use tari_rpc_framework::{
     framing,
@@ -41,131 +41,85 @@ use crate::{
     connection::Connection,
     error::NetworkingHandleError,
     event::NetworkingEvent,
-    message::MessageSpec,
-    peer::PeerInfo,
-    NetworkingError,
+    peer::{Peer, PeerInfo},
+    GossipPublisher,
+    GossipReceiver,
+    NetworkError,
     NetworkingService,
+    ReachabilityMode,
     Waiter,
 };
 
 const LOG_TARGET: &str = "tari::network::handle";
 
-pub enum NetworkingRequest<TMsg: MessageSpec> {
+pub(super) type Reply<T> = oneshot::Sender<Result<T, NetworkError>>;
+
+pub enum NetworkingRequest {
     DialPeer {
         dial_opts: DialOpts,
-        reply_tx: oneshot::Sender<Result<Waiter<()>, NetworkingError>>,
+        reply_tx: Reply<Waiter<()>>,
     },
     GetConnectedPeers {
-        reply_tx: oneshot::Sender<Result<Vec<PeerId>, NetworkingError>>,
+        reply_tx: Reply<Vec<PeerId>>,
     },
-    SendMessage {
-        peer: PeerId,
-        message: TMsg::Message,
-        reply_tx: oneshot::Sender<Result<(), NetworkingError>>,
-    },
-    SendMulticast {
-        destination: MulticastDestination,
-        message: TMsg::Message,
-        reply_tx: oneshot::Sender<Result<usize, NetworkingError>>,
-    },
+
     PublishGossip {
         topic: IdentTopic,
-        message: TMsg::GossipMessage,
-        reply_tx: oneshot::Sender<Result<(), NetworkingError>>,
+        message: Vec<u8>,
+        reply_tx: Reply<()>,
     },
     SubscribeTopic {
         topic: IdentTopic,
-        reply_tx: oneshot::Sender<Result<(), NetworkingError>>,
+        inbound: mpsc::UnboundedSender<(PeerId, gossipsub::Message)>,
+        reply: Reply<mpsc::Sender<(IdentTopic, Vec<u8>)>>,
     },
     UnsubscribeTopic {
         topic: IdentTopic,
-        reply_tx: oneshot::Sender<Result<(), NetworkingError>>,
+        reply_tx: Reply<()>,
     },
     IsSubscribedTopic {
         topic: IdentTopic,
-        reply_tx: oneshot::Sender<Result<bool, NetworkingError>>,
+        reply_tx: Reply<bool>,
     },
     OpenSubstream {
         peer_id: PeerId,
         protocol_id: StreamProtocol,
-        reply_tx: oneshot::Sender<Result<NegotiatedSubstream<Substream>, NetworkingError>>,
+        reply_tx: Reply<NegotiatedSubstream<Substream>>,
     },
     AddProtocolNotifier {
         protocols: HashSet<StreamProtocol>,
         tx_notifier: mpsc::UnboundedSender<ProtocolNotification<Substream>>,
     },
-    GetActiveConnections {
-        reply_tx: oneshot::Sender<Result<Vec<Connection>, NetworkingError>>,
+    SelectActiveConnections {
+        limit: Option<usize>,
+        randomize: bool,
+        exclude_peers: HashSet<PeerId>,
+        reply_tx: Reply<Vec<Connection>>,
     },
     GetLocalPeerInfo {
-        reply_tx: oneshot::Sender<Result<PeerInfo, NetworkingError>>,
+        reply_tx: Reply<PeerInfo>,
     },
     SetWantPeers(HashSet<PeerId>),
+    AddPeer {
+        peer: Peer,
+        reply: Reply<()>,
+    },
+    BanPeer {
+        peer_id: PeerId,
+        reply: Reply<bool>,
+    },
 }
-
-#[derive(Debug, Clone, Default)]
-pub struct MulticastDestination(Vec<PeerId>);
-
-impl MulticastDestination {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(Vec::with_capacity(capacity))
-    }
-
-    pub fn push(&mut self, peer: PeerId) {
-        self.0.push(peer);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-}
-
-impl From<Vec<PeerId>> for MulticastDestination {
-    fn from(peers: Vec<PeerId>) -> Self {
-        Self(peers)
-    }
-}
-
-impl From<&[PeerId]> for MulticastDestination {
-    fn from(peers: &[PeerId]) -> Self {
-        peers.to_vec().into()
-    }
-}
-
-impl From<Vec<&PeerId>> for MulticastDestination {
-    fn from(peers: Vec<&PeerId>) -> Self {
-        peers[..].to_vec().into()
-    }
-}
-
-impl IntoIterator for MulticastDestination {
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-    type Item = PeerId;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 #[derive(Debug)]
-pub struct NetworkingHandle<TMsg: MessageSpec> {
-    tx_request: mpsc::Sender<NetworkingRequest<TMsg>>,
+pub struct NetworkingHandle {
+    tx_request: mpsc::Sender<NetworkingRequest>,
     local_peer_id: PeerId,
     tx_events: broadcast::Sender<NetworkingEvent>,
 }
 
-impl<TMsg: MessageSpec> NetworkingHandle<TMsg> {
+impl NetworkingHandle {
     pub(super) fn new(
         local_peer_id: PeerId,
-        tx_request: mpsc::Sender<NetworkingRequest<TMsg>>,
+        tx_request: mpsc::Sender<NetworkingRequest>,
         tx_events: broadcast::Sender<NetworkingEvent>,
     ) -> Self {
         Self {
@@ -179,7 +133,7 @@ impl<TMsg: MessageSpec> NetworkingHandle<TMsg> {
         self.tx_events.subscribe()
     }
 
-    pub async fn is_subscribed_to_topic<T: Into<String>>(&self, topic: T) -> Result<bool, NetworkingError> {
+    pub async fn is_subscribed_to_topic<T: Into<String>>(&self, topic: T) -> Result<bool, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::IsSubscribedTopic {
@@ -197,7 +151,7 @@ impl<TMsg: MessageSpec> NetworkingHandle<TMsg> {
         &mut self,
         protocols: I,
         tx_notifier: mpsc::UnboundedSender<ProtocolNotification<Substream>>,
-    ) -> Result<(), NetworkingError> {
+    ) -> Result<(), NetworkError> {
         self.tx_request
             .send(NetworkingRequest::AddProtocolNotifier {
                 protocols: protocols.into_iter().collect(),
@@ -212,7 +166,7 @@ impl<TMsg: MessageSpec> NetworkingHandle<TMsg> {
         &mut self,
         peer_id: PeerId,
         protocol_id: &StreamProtocol,
-    ) -> Result<NegotiatedSubstream<Substream>, NetworkingError> {
+    ) -> Result<NegotiatedSubstream<Substream>, NetworkError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::OpenSubstream {
@@ -231,20 +185,34 @@ impl<TMsg: MessageSpec> NetworkingHandle<TMsg> {
         peer_id: PeerId,
         protocol_id: &StreamProtocol,
         max_frame_size: usize,
-    ) -> Result<CanonicalFraming<Substream>, NetworkingError> {
+    ) -> Result<CanonicalFraming<Substream>, NetworkError> {
         let substream = self.open_substream(peer_id, protocol_id).await?;
         Ok(framing::canonical(substream.stream, max_frame_size))
     }
 
-    pub async fn get_active_connections(&self) -> Result<Vec<Connection>, NetworkingError> {
+    pub async fn get_active_connections(&self) -> Result<Vec<Connection>, NetworkError> {
+        self.select_active_connections(None, false, HashSet::new()).await
+    }
+
+    pub async fn select_active_connections(
+        &self,
+        limit: Option<usize>,
+        randomize: bool,
+        exclude_peers: HashSet<PeerId>,
+    ) -> Result<Vec<Connection>, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
-            .send(NetworkingRequest::GetActiveConnections { reply_tx: tx })
+            .send(NetworkingRequest::SelectActiveConnections {
+                limit,
+                randomize,
+                exclude_peers,
+                reply_tx: tx,
+            })
             .await?;
         rx.await?
     }
 
-    pub async fn get_local_peer_info(&self) -> Result<PeerInfo, NetworkingError> {
+    pub async fn get_local_peer_info(&self) -> Result<PeerInfo, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::GetLocalPeerInfo { reply_tx: tx })
@@ -252,10 +220,19 @@ impl<TMsg: MessageSpec> NetworkingHandle<TMsg> {
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?
     }
+
+    pub async fn add_peer(&self, peer: Peer) -> Result<(), NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::AddPeer { peer, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
 }
 
 #[async_trait]
-impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingHandle<TMsg> {
+impl NetworkingService for NetworkingHandle {
     fn local_peer_id(&self) -> &PeerId {
         &self.local_peer_id
     }
@@ -263,7 +240,7 @@ impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingH
     async fn dial_peer<T: Into<DialOpts> + Send + 'static>(
         &mut self,
         dial_opts: T,
-    ) -> Result<Waiter<()>, NetworkingError> {
+    ) -> Result<Waiter<()>, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::DialPeer {
@@ -275,7 +252,7 @@ impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingH
         rx.await?
     }
 
-    async fn get_connected_peers(&mut self) -> Result<Vec<PeerId>, NetworkingError> {
+    async fn get_connected_peers(&mut self) -> Result<Vec<PeerId>, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::GetConnectedPeers { reply_tx: tx })
@@ -284,41 +261,11 @@ impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingH
         rx.await?
     }
 
-    async fn send_message(&mut self, peer: PeerId, message: TMsg::Message) -> Result<(), NetworkingError> {
-        let (tx, rx) = oneshot::channel();
-        self.tx_request
-            .send(NetworkingRequest::SendMessage {
-                peer,
-                message,
-                reply_tx: tx,
-            })
-            .await
-            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        rx.await?
-    }
-
-    async fn send_multicast<D: Into<MulticastDestination> + Send>(
-        &mut self,
-        dest: D,
-        message: TMsg::Message,
-    ) -> Result<usize, NetworkingError> {
-        let (tx, rx) = oneshot::channel();
-        self.tx_request
-            .send(NetworkingRequest::SendMulticast {
-                destination: dest.into(),
-                message,
-                reply_tx: tx,
-            })
-            .await
-            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        rx.await?
-    }
-
     async fn publish_gossip<TTopic: Into<String> + Send>(
         &mut self,
         topic: TTopic,
-        message: TMsg::GossipMessage,
-    ) -> Result<(), NetworkingError> {
+        message: Vec<u8>,
+    ) -> Result<(), NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::PublishGossip {
@@ -331,19 +278,32 @@ impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingH
         rx.await?
     }
 
-    async fn subscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkingError> {
+    async fn subscribe_topic<T: Into<String> + Send, M: prost::Message + Default>(
+        &mut self,
+        topic: T,
+    ) -> Result<(GossipPublisher<M>, GossipReceiver<M>), NetworkError> {
+        let (inbound, receiver) = mpsc::unbounded_channel();
+
         let (tx, rx) = oneshot::channel();
+        let topic = IdentTopic::new(topic);
+
         self.tx_request
             .send(NetworkingRequest::SubscribeTopic {
-                topic: IdentTopic::new(topic),
-                reply_tx: tx,
+                topic: topic.clone(),
+                inbound,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        rx.await?
+        let sender = rx.await??;
+
+        Ok((
+            GossipPublisher::<M>::new(topic, sender),
+            GossipReceiver::<M>::new(receiver),
+        ))
     }
 
-    async fn unsubscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkingError> {
+    async fn unsubscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::UnsubscribeTopic {
@@ -355,10 +315,7 @@ impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingH
         rx.await?
     }
 
-    async fn set_want_peers<I: IntoIterator<Item = PeerId> + Send>(
-        &self,
-        want_peers: I,
-    ) -> Result<(), NetworkingError> {
+    async fn set_want_peers<I: IntoIterator<Item = PeerId> + Send>(&self, want_peers: I) -> Result<(), NetworkError> {
         let want_peers = want_peers.into_iter().collect();
         self.tx_request
             .send(NetworkingRequest::SetWantPeers(want_peers))
@@ -366,9 +323,19 @@ impl<TMsg: MessageSpec + Send + 'static> NetworkingService<TMsg> for NetworkingH
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         Ok(())
     }
+
+    async fn ban_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        let (reply, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::BanPeer { peer_id, reply })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+
+        rx.await?
+    }
 }
 
-impl<TMsg: MessageSpec> Clone for NetworkingHandle<TMsg> {
+impl Clone for NetworkingHandle {
     fn clone(&self) -> Self {
         Self {
             tx_request: self.tx_request.clone(),
@@ -378,13 +345,11 @@ impl<TMsg: MessageSpec> Clone for NetworkingHandle<TMsg> {
     }
 }
 
-impl<TMsg> RpcConnector for NetworkingHandle<TMsg> {
-    type Error = NetworkingError;
-
-    async fn is_connected(&self, peer_id: &PeerId) -> Result<bool, Self::Error> {}
+impl RpcConnector for NetworkingHandle {
+    type Error = NetworkError;
 
     async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, Self::Error>
-    where T: From<RpcClient> + NamedProtocolService {
+    where T: From<RpcClient> + NamedProtocolService + Send {
         let protocol = StreamProtocol::new(T::PROTOCOL_NAME);
         debug!(
             target: LOG_TARGET,

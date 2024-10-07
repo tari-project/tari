@@ -20,16 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
-
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
-        serializers,
-        utils::{deserialize_string_or_struct, serialize_string},
+        utils::{deserialize_from_str, deserialize_string_or_struct, serialize_string},
         MultiaddrList,
         Network,
         StringList,
@@ -37,10 +31,7 @@ use tari_common::{
     DnsNameServer,
     SubConfigPath,
 };
-use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-
-use crate::transport::TransportConfig;
+use tari_network::{multiaddr::Multiaddr, ReachabilityMode};
 
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -98,42 +89,23 @@ pub struct P2pConfig {
     /// the transport type. The TCP transport is not able to determine the users public IP, so this will need to be
     /// manually set.
     pub public_addresses: MultiaddrList,
-    /// Transport configuration
-    pub transport: TransportConfig,
-    /// Path to the LMDB data files.
-    pub datastore_path: PathBuf,
-    /// Name to use for the peer database
-    pub peer_database_name: String,
-    /// The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-    pub max_concurrent_inbound_tasks: usize,
-    /// The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging
-    /// queue
-    pub max_concurrent_outbound_tasks: usize,
-    /// Configuration for DHT
-    pub dht: DhtConfig,
-    /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
-    /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
-    /// should always be false for non-test nodes.
-    pub allow_test_addresses: bool,
-    /// The maximum number of liveness sessions allowed for the connection listener.
-    /// Liveness sessions can be used by third party tooling to determine node liveness.
-    /// A value of 0 will disallow any liveness sessions.
-    pub listener_liveness_max_sessions: usize,
-    /// If Some, enables periodic socket-level liveness checks
-    #[serde(with = "serializers::optional_seconds")]
-    pub listener_self_liveness_check_interval: Option<Duration>,
-    /// CIDR for addresses allowed to enter into liveness check mode on the listener.
-    pub listener_liveness_allowlist_cidrs: StringList,
-    /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
-    /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
-    /// Default: None
-    pub auxiliary_tcp_listener_address: Option<Multiaddr>,
+    /// The multiaddrs to listen on.
+    /// Default: []
+    pub listen_addresses: Vec<Multiaddr>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_from_str",
+        serialize_with = "serialize_string"
+    )]
+    pub reachability_mode: ReachabilityMode,
     /// The global maximum allowed RPC sessions.
     /// Default: 100
     pub rpc_max_simultaneous_sessions: usize,
     /// The maximum allowed RPC sessions per peer.
     /// Default: 10
     pub rpc_max_sessions_per_peer: usize,
+    pub enable_mdns: bool,
+    pub enable_relay: bool,
 }
 
 impl Default for P2pConfig {
@@ -141,23 +113,12 @@ impl Default for P2pConfig {
         Self {
             override_from: None,
             public_addresses: MultiaddrList::default(),
-            transport: Default::default(),
-            datastore_path: PathBuf::from("peer_db"),
-            peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 4,
-            max_concurrent_outbound_tasks: 4,
-            dht: DhtConfig {
-                database_url: DbConnectionUrl::file("dht.sqlite"),
-                auto_join: true,
-                ..Default::default()
-            },
-            allow_test_addresses: false,
-            listener_liveness_max_sessions: 0,
-            listener_self_liveness_check_interval: None,
-            listener_liveness_allowlist_cidrs: StringList::default(),
-            auxiliary_tcp_listener_address: None,
+            listen_addresses: vec![],
+            reachability_mode: Default::default(),
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,
+            enable_mdns: false,
+            enable_relay: false,
         }
     }
 }
@@ -165,16 +126,6 @@ impl Default for P2pConfig {
 impl SubConfigPath for P2pConfig {
     fn main_key_prefix() -> &'static str {
         "p2p"
-    }
-}
-
-impl P2pConfig {
-    /// Sets relative paths to use a common base path
-    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
-        if !self.datastore_path.is_absolute() {
-            self.datastore_path = base_path.as_ref().join(self.datastore_path.as_path());
-        }
-        self.dht.set_base_path(base_path)
     }
 }
 

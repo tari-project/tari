@@ -1,0 +1,112 @@
+// Copyright 2019, The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+mod tag;
+pub use tag::*;
+use tari_network::{identity::PeerId, MessageSpec};
+
+use crate::{proto, tari_message::TariMessageType};
+
+#[derive(Debug, Clone)]
+pub enum TariNodeMessage {
+    // Common
+    PingPong(proto::liveness::PingPongMessage),
+    // Base node
+    NewTransaction(proto::types::Transaction),
+    NewBlock(proto::core::NewBlock),
+    BaseNodeRequest(proto::base_node::BaseNodeServiceRequest),
+    BaseNodeResponse(proto::base_node::BaseNodeServiceResponse),
+    // Wallet
+    SenderPartialTransaction(proto::transaction::TransactionSenderMessage),
+    ReceiverPartialTransactionReply(proto::transaction::RecipientSignedMessage),
+    TransactionFinalized(proto::transaction::TransactionFinalizedMessage),
+    TransactionCancelled(proto::transaction::TransactionCancelledMessage),
+    // Chat
+    Chat(proto::chat::MessageDispatch),
+}
+
+macro_rules! impl_from {
+    ($variant:tt, $ty:ty) => {
+        impl From<$ty> for TariNodeMessage {
+            fn from(value: $ty) -> Self {
+                TariNodeMessage::$variant(value)
+            }
+        }
+    };
+}
+
+impl_from!(PingPong, proto::liveness::PingPongMessage);
+impl_from!(NewTransaction, proto::types::Transaction);
+impl_from!(NewBlock, proto::core::NewBlock);
+impl_from!(BaseNodeRequest, proto::base_node::BaseNodeServiceRequest);
+impl_from!(BaseNodeResponse, proto::base_node::BaseNodeServiceResponse);
+impl_from!(SenderPartialTransaction, proto::transaction::TransactionSenderMessage);
+impl_from!(
+    ReceiverPartialTransactionReply,
+    proto::transaction::RecipientSignedMessage
+);
+impl_from!(TransactionFinalized, proto::transaction::TransactionFinalizedMessage);
+impl_from!(TransactionCancelled, proto::transaction::TransactionCancelledMessage);
+impl_from!(Chat, proto::chat::MessageDispatch);
+
+pub struct TariNodeMessageSpec;
+impl MessageSpec for TariNodeMessageSpec {
+    type Message = TariNodeMessage;
+}
+
+/// Wrapper around a received message. Provides source peer and origin information
+#[derive(Debug, Clone)]
+pub struct DomainMessage<T> {
+    pub from_peer_id: PeerId,
+    /// This DHT header of this message. If `DhtMessageHeader::origin_public_key` is different from the
+    /// `source_peer.public_key`, this message was forwarded.
+    pub header: DomainMessageHeader,
+    /// The domain-level message
+    pub payload: T,
+}
+
+impl<T> DomainMessage<T> {
+    pub fn inner(&self) -> &T {
+        &self.payload
+    }
+
+    pub fn into_inner(self) -> T {
+        self.payload
+    }
+
+    /// Consumes this object returning the PeerId of the original sender of this message and the message itself
+    pub fn into_origin_and_inner(self) -> (PeerId, T) {
+        (self.from_peer_id, self.payload)
+    }
+}
+
+// TODO: this is here to avoid having to change a lot of code that references `header.message_tag`
+#[derive(Debug, Clone)]
+pub struct DomainMessageHeader {
+    pub message_tag: MessageTag,
+}
+
+// impl From<proto::liveness::PingPongMessage> for TariNodeMessage {
+//     fn from(value: proto::liveness::PingPongMessage) -> Self {
+//         TariNodeMessage::PingPong(value)
+//     }
+// }

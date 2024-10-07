@@ -3,8 +3,7 @@
 
 use std::collections::HashSet;
 
-use anyhow::anyhow;
-use libp2p::{identity::Keypair, Multiaddr, PeerId};
+use libp2p::{identity::Keypair, PeerId};
 use tari_shutdown::ShutdownSignal;
 use tari_swarm::{is_supported_multiaddr, messaging, messaging::prost::ProstCodec};
 use tokio::{
@@ -12,24 +11,39 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{message::MessageSpec, worker::NetworkingWorker, NetworkingHandle};
+use crate::{
+    message::MessageSpec,
+    messaging::OutboundMessaging,
+    worker::NetworkingWorker,
+    NetworkError,
+    NetworkingHandle,
+    Peer,
+};
 
 pub fn spawn<TMsg>(
     identity: Keypair,
     messaging_mode: MessagingMode<TMsg>,
     mut config: crate::Config,
-    seed_peers: Vec<(PeerId, Multiaddr)>,
+    seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> anyhow::Result<(NetworkingHandle<TMsg>, JoinHandle<anyhow::Result<()>>)>
+) -> Result<
+    (
+        NetworkingHandle,
+        OutboundMessaging<TMsg>,
+        JoinHandle<Result<(), NetworkError>>,
+    ),
+    NetworkError,
+>
 where
     TMsg: MessageSpec + 'static,
     TMsg::Message: messaging::prost::Message + Default + Clone + 'static,
-    TMsg::GossipMessage: messaging::prost::Message + Default + Clone + 'static,
     TMsg: MessageSpec,
 {
-    for (_, addr) in &seed_peers {
-        if !is_supported_multiaddr(addr) {
-            return Err(anyhow!("Unsupported seed peer multi-address: {}", addr));
+    for peer in &seed_peers {
+        for addr in &peer.addresses {
+            if !is_supported_multiaddr(addr) {
+                return Err(NetworkError::UnsupportedSeedPeerMultiaddr { address: addr.clone() });
+            }
         }
     }
 
@@ -38,28 +52,34 @@ where
     let swarm =
         tari_swarm::create_swarm::<ProstCodec<TMsg::Message>>(identity.clone(), HashSet::new(), config.swarm.clone())?;
     let local_peer_id = *swarm.local_peer_id();
-    let (tx, rx) = mpsc::channel(1);
+    let (tx_requests, rx_requests) = mpsc::channel(1);
+    let (tx_msg_requests, rx_msg_requests) = mpsc::channel(100);
     let (tx_events, _) = broadcast::channel(100);
     let handle = tokio::spawn(
         NetworkingWorker::<TMsg>::new(
             identity,
-            rx,
+            rx_requests,
+            rx_msg_requests,
             tx_events.clone(),
             messaging_mode,
             swarm,
             config,
             seed_peers,
+            vec![],
             shutdown_signal,
         )
         .run(),
     );
-    Ok((NetworkingHandle::new(local_peer_id, tx, tx_events), handle))
+    Ok((
+        NetworkingHandle::new(local_peer_id, tx_requests, tx_events),
+        OutboundMessaging::new(tx_msg_requests),
+        handle,
+    ))
 }
 
 pub enum MessagingMode<TMsg: MessageSpec> {
     Enabled {
         tx_messages: mpsc::UnboundedSender<(PeerId, TMsg::Message)>,
-        tx_gossip_messages: mpsc::UnboundedSender<(PeerId, TMsg::GossipMessage)>,
     },
     Disabled,
 }
@@ -78,17 +98,6 @@ impl<TMsg: MessageSpec> MessagingMode<TMsg> {
     ) -> Result<(), mpsc::error::SendError<(PeerId, TMsg::Message)>> {
         if let MessagingMode::Enabled { tx_messages, .. } = self {
             tx_messages.send((peer_id, msg))?;
-        }
-        Ok(())
-    }
-
-    pub fn send_gossip_message(
-        &self,
-        peer_id: PeerId,
-        msg: TMsg::GossipMessage,
-    ) -> Result<(), mpsc::error::SendError<(PeerId, TMsg::GossipMessage)>> {
-        if let MessagingMode::Enabled { tx_gossip_messages, .. } = self {
-            tx_gossip_messages.send((peer_id, msg))?;
         }
         Ok(())
     }
