@@ -24,10 +24,7 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{
-    net_address::{MultiaddrRangeList},
-    peer_validator::PeerValidatorConfig,
-};
+use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
 use crate::{
     actor::OffenceSeverity,
@@ -202,8 +199,7 @@ impl Default for DhtConfig {
             max_permitted_peer_claims: 5,
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
             peer_validator_config: Default::default(),
-            excluded_dial_addresses: vec![]
-            .into(),
+            excluded_dial_addresses: vec![].into(),
         }
     }
 }
