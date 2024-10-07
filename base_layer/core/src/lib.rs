@@ -50,17 +50,22 @@ pub mod mempool;
 pub mod transactions;
 
 mod common;
+
 #[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
 pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
 #[cfg(feature = "base_node")]
 mod domain_hashing {
+    use std::convert::TryFrom;
+
     use blake2::Blake2b;
     use digest::consts::U32;
+    use tari_common_types::types::{FixedHash, FixedHashSizeError};
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
     use tari_hashing::ValidatorNodeBmtHashDomain;
     use tari_mmr::{
+        error::MerkleMountainRangeError,
         pruned_hashset::PrunedHashSet,
         sparse_merkle_tree::SparseMerkleTree,
         BalancedBinaryMerkleTree,
@@ -85,6 +90,34 @@ mod domain_hashing {
 
     pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeBmtHashDomain>;
     pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeBmtHasherBlake256>;
+
+    #[inline]
+    pub fn kernel_mr_hash_from_mmr(kernel_mmr: &KernelMmr) -> Result<FixedHash, MrHashError> {
+        Ok(FixedHash::try_from(kernel_mmr.get_merkle_root()?)?)
+    }
+
+    #[inline]
+    pub fn kernel_mr_hash_from_pruned_mmr(kernel_mmr: &PrunedKernelMmr) -> Result<FixedHash, MrHashError> {
+        Ok(FixedHash::try_from(kernel_mmr.get_merkle_root()?)?)
+    }
+
+    #[inline]
+    pub fn output_mr_hash_from_smt(output_smt: &mut OutputSmt) -> Result<FixedHash, MrHashError> {
+        Ok(FixedHash::try_from(output_smt.hash().as_slice())?)
+    }
+
+    #[inline]
+    pub fn input_mr_hash_from_pruned_mmr(input_mmr: &PrunedInputMmr) -> Result<FixedHash, MrHashError> {
+        Ok(FixedHash::try_from(input_mmr.get_merkle_root()?)?)
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum MrHashError {
+        #[error("Output SMT conversion error: {0}")]
+        FixedHashSizeError(#[from] FixedHashSizeError),
+        #[error("Input MR conversion error: {0}")]
+        MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+    }
 }
 
 #[cfg(feature = "base_node")]

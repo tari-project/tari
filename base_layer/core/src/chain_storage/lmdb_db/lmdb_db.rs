@@ -104,6 +104,7 @@ use crate::{
         ValidatorNodeEntry,
     },
     consensus::{ConsensusConstants, ConsensusManager},
+    output_mr_hash_from_smt,
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
@@ -919,7 +920,7 @@ impl LMDBDatabase {
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut output_smt)?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
-        let root = FixedHash::try_from(output_smt.hash().as_slice())?;
+        let root = output_mr_hash_from_smt(&mut output_smt)?;
         if root != new_tip_header.header().output_mr {
             error!(
                 target: LOG_TARGET,

@@ -213,8 +213,7 @@ async fn chain_balance_validation() {
         .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
         .with_pre_mine_value(total_pre_mine)
         .build();
-    // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
-    // block that contains an extra pre_mine utxo
+    // Create a LocalNet consensus manager that uses custom genesis block that contains an extra pre_mine utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
