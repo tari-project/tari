@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::Path, str::FromStr, time::Duration};
+use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
 use tari_comms::{
-    net_address::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE},
+    net_address::{MultiaddrRangeList},
     peer_validator::PeerValidatorConfig,
 };
 
