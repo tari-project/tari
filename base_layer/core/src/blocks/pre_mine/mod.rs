@@ -246,380 +246,345 @@ pub fn get_tokenomics_pre_mine_unlock_schedule(network: Network) -> UnlockSchedu
     }
 }
 
+#[rustfmt::skip]
 #[allow(clippy::too_many_lines)]
 fn contributors_upfront_release() -> Vec<ReleaseStrategy> {
     vec![
         ReleaseStrategy::FromCadence({
             vec![
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 0,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 1,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 2,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 3,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 4,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 5,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 6,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 7,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 8,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 9,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 10,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 11,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 809_645.into(),
-                    taken_from_period: 12,
-                    maturity: 0,
-                },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 0, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 1, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 2, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 3, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 4, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 5, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 6, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 7, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 8, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 9, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 10, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 11, maturity: 0 },
+                CadenceRelease { value: 809_645.into(), taken_from_period: 12, maturity: 0 },
             ]
         }),
         ReleaseStrategy::FromCadence({
             vec![
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 0,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 1,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 2,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 3,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 4,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 5,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 6,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 7,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 8,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 9,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 10,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 11,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 12,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 13,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 14,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 15,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 16,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 17,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 18,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 19,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 20,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 21,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 22,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 23,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 24,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 25,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 26,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 27,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 28,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 29,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 30,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 31,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 32,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 33,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 34,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 35,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 36,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 37,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 38,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 39,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 40,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 41,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 42,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 43,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 44,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 45,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 46,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 47,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 48,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 49,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 50,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 51,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 52,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 53,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 54,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 55,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 56,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 57,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 58,
-                    maturity: 0,
-                },
-                CadenceRelease {
-                    value: 6_300_000.into(),
-                    taken_from_period: 59,
-                    maturity: 0,
-                },
+                CadenceRelease { value: 824_673.into(), taken_from_period: 0, maturity: 0 },
+                CadenceRelease { value: 1_005_513.into(), taken_from_period: 1, maturity: 0 },
+                CadenceRelease { value: 741_964.into(), taken_from_period: 2, maturity: 0 },
+                CadenceRelease { value: 765_682.into(), taken_from_period: 3, maturity: 0 },
+                CadenceRelease { value: 726_947.into(), taken_from_period: 4, maturity: 0 },
+                CadenceRelease { value: 532_348.into(), taken_from_period: 5, maturity: 0 },
+                CadenceRelease { value: 901_887.into(), taken_from_period: 6, maturity: 0 },
+                CadenceRelease { value: 847_583.into(), taken_from_period: 7, maturity: 0 },
+                CadenceRelease { value: 574_566.into(), taken_from_period: 8, maturity: 0 },
+                CadenceRelease { value: 579_726.into(), taken_from_period: 9, maturity: 0 },
+                CadenceRelease { value: 960_845.into(), taken_from_period: 10, maturity: 0 },
+                CadenceRelease { value: 873_277.into(), taken_from_period: 11, maturity: 0 },
+                CadenceRelease { value: 644_305.into(), taken_from_period: 12, maturity: 0 },
+                CadenceRelease { value: 851_701.into(), taken_from_period: 13, maturity: 0 },
+                CadenceRelease { value: 604_768.into(), taken_from_period: 14, maturity: 0 },
+                CadenceRelease { value: 736_635.into(), taken_from_period: 15, maturity: 0 },
+                CadenceRelease { value: 579_131.into(), taken_from_period: 16, maturity: 0 },
+                CadenceRelease { value: 988_598.into(), taken_from_period: 17, maturity: 0 },
+                CadenceRelease { value: 889_487.into(), taken_from_period: 18, maturity: 0 },
+                CadenceRelease { value: 753_657.into(), taken_from_period: 19, maturity: 0 },
+                CadenceRelease { value: 759_468.into(), taken_from_period: 20, maturity: 0 },
+                CadenceRelease { value: 941_477.into(), taken_from_period: 21, maturity: 0 },
+                CadenceRelease { value: 727_783.into(), taken_from_period: 22, maturity: 0 },
+                CadenceRelease { value: 890_507.into(), taken_from_period: 23, maturity: 0 },
+                CadenceRelease { value: 614_537.into(), taken_from_period: 24, maturity: 0 },
+                CadenceRelease { value: 982_928.into(), taken_from_period: 25, maturity: 0 },
+                CadenceRelease { value: 683_333.into(), taken_from_period: 26, maturity: 0 },
+                CadenceRelease { value: 608_822.into(), taken_from_period: 27, maturity: 0 },
+                CadenceRelease { value: 833_976.into(), taken_from_period: 28, maturity: 0 },
+                CadenceRelease { value: 921_427.into(), taken_from_period: 29, maturity: 0 },
+                CadenceRelease { value: 533_382.into(), taken_from_period: 30, maturity: 0 },
+                CadenceRelease { value: 777_393.into(), taken_from_period: 31, maturity: 0 },
+                CadenceRelease { value: 991_867.into(), taken_from_period: 32, maturity: 0 },
+                CadenceRelease { value: 656_632.into(), taken_from_period: 33, maturity: 0 },
+                CadenceRelease { value: 964_390.into(), taken_from_period: 34, maturity: 0 },
+                CadenceRelease { value: 685_446.into(), taken_from_period: 35, maturity: 0 },
+                CadenceRelease { value: 754_340.into(), taken_from_period: 36, maturity: 0 },
+                CadenceRelease { value: 696_425.into(), taken_from_period: 37, maturity: 0 },
+                CadenceRelease { value: 961_729.into(), taken_from_period: 38, maturity: 0 },
+                CadenceRelease { value: 979_717.into(), taken_from_period: 39, maturity: 0 },
+                CadenceRelease { value: 707_969.into(), taken_from_period: 40, maturity: 0 },
+                CadenceRelease { value: 578_193.into(), taken_from_period: 41, maturity: 0 },
+                CadenceRelease { value: 746_015.into(), taken_from_period: 42, maturity: 0 },
+                CadenceRelease { value: 660_210.into(), taken_from_period: 43, maturity: 0 },
+                CadenceRelease { value: 969_205.into(), taken_from_period: 44, maturity: 0 },
+                CadenceRelease { value: 546_862.into(), taken_from_period: 45, maturity: 0 },
+                CadenceRelease { value: 944_554.into(), taken_from_period: 46, maturity: 0 },
+                CadenceRelease { value: 783_055.into(), taken_from_period: 47, maturity: 0 },
+                CadenceRelease { value: 565_248.into(), taken_from_period: 48, maturity: 0 },
+                CadenceRelease { value: 565_419.into(), taken_from_period: 49, maturity: 0 },
+                CadenceRelease { value: 841_914.into(), taken_from_period: 50, maturity: 0 },
+                CadenceRelease { value: 533_128.into(), taken_from_period: 51, maturity: 0 },
+                CadenceRelease { value: 763_864.into(), taken_from_period: 52, maturity: 0 },
+                CadenceRelease { value: 670_235.into(), taken_from_period: 53, maturity: 0 },
+                CadenceRelease { value: 553_652.into(), taken_from_period: 54, maturity: 0 },
+                CadenceRelease { value: 994_209.into(), taken_from_period: 55, maturity: 0 },
+                CadenceRelease { value: 573_788.into(), taken_from_period: 56, maturity: 0 },
+                CadenceRelease { value: 558_331.into(), taken_from_period: 57, maturity: 0 },
+                CadenceRelease { value: 661_775.into(), taken_from_period: 58, maturity: 0 },
+                CadenceRelease { value: 660_229.into(), taken_from_period: 59, maturity: 0 },
+            ]
+        }),
+        ReleaseStrategy::FromCadence({
+            vec![
+                CadenceRelease { value: 813_643.into(), taken_from_period: 0, maturity: 0 },
+                CadenceRelease { value: 881_823.into(), taken_from_period: 1, maturity: 0 },
+                CadenceRelease { value: 789_591.into(), taken_from_period: 2, maturity: 0 },
+                CadenceRelease { value: 1_022_883.into(), taken_from_period: 3, maturity: 0 },
+                CadenceRelease { value: 1_030_418.into(), taken_from_period: 4, maturity: 0 },
+                CadenceRelease { value: 926_181.into(), taken_from_period: 5, maturity: 0 },
+                CadenceRelease { value: 577_256.into(), taken_from_period: 6, maturity: 0 },
+                CadenceRelease { value: 788_166.into(), taken_from_period: 7, maturity: 0 },
+                CadenceRelease { value: 838_888.into(), taken_from_period: 8, maturity: 0 },
+                CadenceRelease { value: 763_625.into(), taken_from_period: 9, maturity: 0 },
+                CadenceRelease { value: 972_443.into(), taken_from_period: 10, maturity: 0 },
+                CadenceRelease { value: 917_705.into(), taken_from_period: 11, maturity: 0 },
+                CadenceRelease { value: 525_627.into(), taken_from_period: 12, maturity: 0 },
+                CadenceRelease { value: 725_903.into(), taken_from_period: 13, maturity: 0 },
+                CadenceRelease { value: 648_237.into(), taken_from_period: 14, maturity: 0 },
+                CadenceRelease { value: 709_630.into(), taken_from_period: 15, maturity: 0 },
+                CadenceRelease { value: 640_568.into(), taken_from_period: 16, maturity: 0 },
+                CadenceRelease { value: 681_965.into(), taken_from_period: 17, maturity: 0 },
+                CadenceRelease { value: 602_616.into(), taken_from_period: 18, maturity: 0 },
+                CadenceRelease { value: 803_544.into(), taken_from_period: 19, maturity: 0 },
+                CadenceRelease { value: 535_435.into(), taken_from_period: 20, maturity: 0 },
+                CadenceRelease { value: 960_539.into(), taken_from_period: 21, maturity: 0 },
+                CadenceRelease { value: 805_552.into(), taken_from_period: 22, maturity: 0 },
+                CadenceRelease { value: 564_642.into(), taken_from_period: 23, maturity: 0 },
+                CadenceRelease { value: 851_760.into(), taken_from_period: 24, maturity: 0 },
+                CadenceRelease { value: 550_421.into(), taken_from_period: 25, maturity: 0 },
+                CadenceRelease { value: 616_102.into(), taken_from_period: 26, maturity: 0 },
+                CadenceRelease { value: 798_368.into(), taken_from_period: 27, maturity: 0 },
+                CadenceRelease { value: 661_595.into(), taken_from_period: 28, maturity: 0 },
+                CadenceRelease { value: 592_393.into(), taken_from_period: 29, maturity: 0 },
+                CadenceRelease { value: 892_637.into(), taken_from_period: 30, maturity: 0 },
+                CadenceRelease { value: 1_044_084.into(), taken_from_period: 31, maturity: 0 },
+                CadenceRelease { value: 921_493.into(), taken_from_period: 32, maturity: 0 },
+                CadenceRelease { value: 695_985.into(), taken_from_period: 33, maturity: 0 },
+                CadenceRelease { value: 664_685.into(), taken_from_period: 34, maturity: 0 },
+                CadenceRelease { value: 944_098.into(), taken_from_period: 35, maturity: 0 },
+                CadenceRelease { value: 739_786.into(), taken_from_period: 36, maturity: 0 },
+                CadenceRelease { value: 1_022_001.into(), taken_from_period: 37, maturity: 0 },
+                CadenceRelease { value: 674_768.into(), taken_from_period: 38, maturity: 0 },
+                CadenceRelease { value: 733_062.into(), taken_from_period: 39, maturity: 0 },
+                CadenceRelease { value: 903_737.into(), taken_from_period: 40, maturity: 0 },
+                CadenceRelease { value: 917_629.into(), taken_from_period: 41, maturity: 0 },
+                CadenceRelease { value: 732_956.into(), taken_from_period: 42, maturity: 0 },
+                CadenceRelease { value: 817_190.into(), taken_from_period: 43, maturity: 0 },
+                CadenceRelease { value: 966_635.into(), taken_from_period: 44, maturity: 0 },
+                CadenceRelease { value: 750_136.into(), taken_from_period: 45, maturity: 0 },
+                CadenceRelease { value: 580_861.into(), taken_from_period: 46, maturity: 0 },
+                CadenceRelease { value: 562_952.into(), taken_from_period: 47, maturity: 0 },
+                CadenceRelease { value: 630_510.into(), taken_from_period: 48, maturity: 0 },
+                CadenceRelease { value: 782_673.into(), taken_from_period: 49, maturity: 0 },
+                CadenceRelease { value: 835_188.into(), taken_from_period: 50, maturity: 0 },
+                CadenceRelease { value: 715_922.into(), taken_from_period: 51, maturity: 0 },
+                CadenceRelease { value: 777_730.into(), taken_from_period: 52, maturity: 0 },
+                CadenceRelease { value: 921_451.into(), taken_from_period: 53, maturity: 0 },
+                CadenceRelease { value: 924_002.into(), taken_from_period: 54, maturity: 0 },
+                CadenceRelease { value: 797_222.into(), taken_from_period: 55, maturity: 0 },
+                CadenceRelease { value: 1_004_380.into(), taken_from_period: 56, maturity: 0 },
+                CadenceRelease { value: 662_620.into(), taken_from_period: 57, maturity: 0 },
+                CadenceRelease { value: 541_377.into(), taken_from_period: 58, maturity: 0 },
+                CadenceRelease { value: 677_586.into(), taken_from_period: 59, maturity: 0 },
+            ]
+        }),
+        ReleaseStrategy::FromCadence({
+            vec![
+                CadenceRelease { value: 1_014_986.into(), taken_from_period: 0, maturity: 0 },
+                CadenceRelease { value: 579_490.into(), taken_from_period: 1, maturity: 0 },
+                CadenceRelease { value: 628_144.into(), taken_from_period: 2, maturity: 0 },
+                CadenceRelease { value: 782_380.into(), taken_from_period: 3, maturity: 0 },
+                CadenceRelease { value: 726_853.into(), taken_from_period: 4, maturity: 0 },
+                CadenceRelease { value: 1_041_368.into(), taken_from_period: 5, maturity: 0 },
+                CadenceRelease { value: 738_040.into(), taken_from_period: 6, maturity: 0 },
+                CadenceRelease { value: 535_090.into(), taken_from_period: 7, maturity: 0 },
+                CadenceRelease { value: 927_994.into(), taken_from_period: 8, maturity: 0 },
+                CadenceRelease { value: 1_019_140.into(), taken_from_period: 9, maturity: 0 },
+                CadenceRelease { value: 819_700.into(), taken_from_period: 10, maturity: 0 },
+                CadenceRelease { value: 801_647.into(), taken_from_period: 11, maturity: 0 },
+                CadenceRelease { value: 810_409.into(), taken_from_period: 12, maturity: 0 },
+                CadenceRelease { value: 909_958.into(), taken_from_period: 13, maturity: 0 },
+                CadenceRelease { value: 710_557.into(), taken_from_period: 14, maturity: 0 },
+                CadenceRelease { value: 678_670.into(), taken_from_period: 15, maturity: 0 },
+                CadenceRelease { value: 585_242.into(), taken_from_period: 16, maturity: 0 },
+                CadenceRelease { value: 953_777.into(), taken_from_period: 17, maturity: 0 },
+                CadenceRelease { value: 923_917.into(), taken_from_period: 18, maturity: 0 },
+                CadenceRelease { value: 775_199.into(), taken_from_period: 19, maturity: 0 },
+                CadenceRelease { value: 1_003_184.into(), taken_from_period: 20, maturity: 0 },
+                CadenceRelease { value: 918_275.into(), taken_from_period: 21, maturity: 0 },
+                CadenceRelease { value: 565_154.into(), taken_from_period: 22, maturity: 0 },
+                CadenceRelease { value: 694_683.into(), taken_from_period: 23, maturity: 0 },
+                CadenceRelease { value: 1_027_322.into(), taken_from_period: 24, maturity: 0 },
+                CadenceRelease { value: 570_680.into(), taken_from_period: 25, maturity: 0 },
+                CadenceRelease { value: 762_277.into(), taken_from_period: 26, maturity: 0 },
+                CadenceRelease { value: 657_084.into(), taken_from_period: 27, maturity: 0 },
+                CadenceRelease { value: 736_547.into(), taken_from_period: 28, maturity: 0 },
+                CadenceRelease { value: 810_347.into(), taken_from_period: 29, maturity: 0 },
+                CadenceRelease { value: 764_813.into(), taken_from_period: 30, maturity: 0 },
+                CadenceRelease { value: 534_728.into(), taken_from_period: 31, maturity: 0 },
+                CadenceRelease { value: 925_511.into(), taken_from_period: 32, maturity: 0 },
+                CadenceRelease { value: 654_460.into(), taken_from_period: 33, maturity: 0 },
+                CadenceRelease { value: 753_327.into(), taken_from_period: 34, maturity: 0 },
+                CadenceRelease { value: 685_149.into(), taken_from_period: 35, maturity: 0 },
+                CadenceRelease { value: 537_099.into(), taken_from_period: 36, maturity: 0 },
+                CadenceRelease { value: 751_173.into(), taken_from_period: 37, maturity: 0 },
+                CadenceRelease { value: 659_700.into(), taken_from_period: 38, maturity: 0 },
+                CadenceRelease { value: 599_538.into(), taken_from_period: 39, maturity: 0 },
+                CadenceRelease { value: 715_361.into(), taken_from_period: 40, maturity: 0 },
+                CadenceRelease { value: 939_556.into(), taken_from_period: 41, maturity: 0 },
+                CadenceRelease { value: 850_652.into(), taken_from_period: 42, maturity: 0 },
+                CadenceRelease { value: 821_581.into(), taken_from_period: 43, maturity: 0 },
+                CadenceRelease { value: 1_025_818.into(), taken_from_period: 44, maturity: 0 },
+                CadenceRelease { value: 534_215.into(), taken_from_period: 45, maturity: 0 },
+                CadenceRelease { value: 648_920.into(), taken_from_period: 46, maturity: 0 },
+                CadenceRelease { value: 928_382.into(), taken_from_period: 47, maturity: 0 },
+                CadenceRelease { value: 631_160.into(), taken_from_period: 48, maturity: 0 },
+                CadenceRelease { value: 934_093.into(), taken_from_period: 49, maturity: 0 },
+                CadenceRelease { value: 557_917.into(), taken_from_period: 50, maturity: 0 },
+                CadenceRelease { value: 952_918.into(), taken_from_period: 51, maturity: 0 },
+                CadenceRelease { value: 958_366.into(), taken_from_period: 52, maturity: 0 },
+                CadenceRelease { value: 764_993.into(), taken_from_period: 53, maturity: 0 },
+                CadenceRelease { value: 666_649.into(), taken_from_period: 54, maturity: 0 },
+                CadenceRelease { value: 865_950.into(), taken_from_period: 55, maturity: 0 },
+                CadenceRelease { value: 723_407.into(), taken_from_period: 56, maturity: 0 },
+                CadenceRelease { value: 813_615.into(), taken_from_period: 57, maturity: 0 },
+                CadenceRelease { value: 917_188.into(), taken_from_period: 58, maturity: 0 },
+                CadenceRelease { value: 924_610.into(), taken_from_period: 59, maturity: 0 },
+            ]
+        }),
+        ReleaseStrategy::FromCadence({
+            vec![
+                CadenceRelease { value: 616_830.into(), taken_from_period: 0, maturity: 0 },
+                CadenceRelease { value: 797_418.into(), taken_from_period: 1, maturity: 0 },
+                CadenceRelease { value: 941_993.into(), taken_from_period: 2, maturity: 0 },
+                CadenceRelease { value: 709_938.into(), taken_from_period: 3, maturity: 0 },
+                CadenceRelease { value: 572_674.into(), taken_from_period: 4, maturity: 0 },
+                CadenceRelease { value: 639_504.into(), taken_from_period: 5, maturity: 0 },
+                CadenceRelease { value: 572_953.into(), taken_from_period: 6, maturity: 0 },
+                CadenceRelease { value: 666_495.into(), taken_from_period: 7, maturity: 0 },
+                CadenceRelease { value: 719_367.into(), taken_from_period: 8, maturity: 0 },
+                CadenceRelease { value: 930_783.into(), taken_from_period: 9, maturity: 0 },
+                CadenceRelease { value: 613_101.into(), taken_from_period: 10, maturity: 0 },
+                CadenceRelease { value: 673_805.into(), taken_from_period: 11, maturity: 0 },
+                CadenceRelease { value: 744_488.into(), taken_from_period: 12, maturity: 0 },
+                CadenceRelease { value: 1_013_088.into(), taken_from_period: 13, maturity: 0 },
+                CadenceRelease { value: 720_550.into(), taken_from_period: 14, maturity: 0 },
+                CadenceRelease { value: 796_775.into(), taken_from_period: 15, maturity: 0 },
+                CadenceRelease { value: 795_532.into(), taken_from_period: 16, maturity: 0 },
+                CadenceRelease { value: 756_581.into(), taken_from_period: 17, maturity: 0 },
+                CadenceRelease { value: 932_389.into(), taken_from_period: 18, maturity: 0 },
+                CadenceRelease { value: 1_030_437.into(), taken_from_period: 19, maturity: 0 },
+                CadenceRelease { value: 811_102.into(), taken_from_period: 20, maturity: 0 },
+                CadenceRelease { value: 532_754.into(), taken_from_period: 21, maturity: 0 },
+                CadenceRelease { value: 803_929.into(), taken_from_period: 22, maturity: 0 },
+                CadenceRelease { value: 548_344.into(), taken_from_period: 23, maturity: 0 },
+                CadenceRelease { value: 581_285.into(), taken_from_period: 24, maturity: 0 },
+                CadenceRelease { value: 900_542.into(), taken_from_period: 25, maturity: 0 },
+                CadenceRelease { value: 1_030_901.into(), taken_from_period: 26, maturity: 0 },
+                CadenceRelease { value: 608_663.into(), taken_from_period: 27, maturity: 0 },
+                CadenceRelease { value: 972_302.into(), taken_from_period: 28, maturity: 0 },
+                CadenceRelease { value: 777_592.into(), taken_from_period: 29, maturity: 0 },
+                CadenceRelease { value: 558_963.into(), taken_from_period: 30, maturity: 0 },
+                CadenceRelease { value: 1_017_575.into(), taken_from_period: 31, maturity: 0 },
+                CadenceRelease { value: 768_931.into(), taken_from_period: 32, maturity: 0 },
+                CadenceRelease { value: 836_563.into(), taken_from_period: 33, maturity: 0 },
+                CadenceRelease { value: 591_157.into(), taken_from_period: 34, maturity: 0 },
+                CadenceRelease { value: 920_889.into(), taken_from_period: 35, maturity: 0 },
+                CadenceRelease { value: 788_603.into(), taken_from_period: 36, maturity: 0 },
+                CadenceRelease { value: 797_334.into(), taken_from_period: 37, maturity: 0 },
+                CadenceRelease { value: 1_029_718.into(), taken_from_period: 38, maturity: 0 },
+                CadenceRelease { value: 866_889.into(), taken_from_period: 39, maturity: 0 },
+                CadenceRelease { value: 628_497.into(), taken_from_period: 40, maturity: 0 },
+                CadenceRelease { value: 805_441.into(), taken_from_period: 41, maturity: 0 },
+                CadenceRelease { value: 809_036.into(), taken_from_period: 42, maturity: 0 },
+                CadenceRelease { value: 756_271.into(), taken_from_period: 43, maturity: 0 },
+                CadenceRelease { value: 746_495.into(), taken_from_period: 44, maturity: 0 },
+                CadenceRelease { value: 1_019_658.into(), taken_from_period: 45, maturity: 0 },
+                CadenceRelease { value: 991_395.into(), taken_from_period: 46, maturity: 0 },
+                CadenceRelease { value: 618_737.into(), taken_from_period: 47, maturity: 0 },
+                CadenceRelease { value: 648_297.into(), taken_from_period: 48, maturity: 0 },
+                CadenceRelease { value: 777_555.into(), taken_from_period: 49, maturity: 0 },
+                CadenceRelease { value: 931_514.into(), taken_from_period: 50, maturity: 0 },
+                CadenceRelease { value: 855_201.into(), taken_from_period: 51, maturity: 0 },
+                CadenceRelease { value: 956_589.into(), taken_from_period: 52, maturity: 0 },
+                CadenceRelease { value: 917_116.into(), taken_from_period: 53, maturity: 0 },
+                CadenceRelease { value: 569_886.into(), taken_from_period: 54, maturity: 0 },
+                CadenceRelease { value: 834_817.into(), taken_from_period: 55, maturity: 0 },
+                CadenceRelease { value: 623_698.into(), taken_from_period: 56, maturity: 0 },
+                CadenceRelease { value: 554_924.into(), taken_from_period: 57, maturity: 0 },
+                CadenceRelease { value: 913_323.into(), taken_from_period: 58, maturity: 0 },
+                CadenceRelease { value: 612_031.into(), taken_from_period: 59, maturity: 0 },
+            ]
+        }),
+        ReleaseStrategy::FromCadence({
+            vec![
+                CadenceRelease { value: 929_868.into(), taken_from_period: 0, maturity: 0 },
+                CadenceRelease { value: 935_756.into(), taken_from_period: 1, maturity: 0 },
+                CadenceRelease { value: 1_098_308.into(), taken_from_period: 2, maturity: 0 },
+                CadenceRelease { value: 919_117.into(), taken_from_period: 3, maturity: 0 },
+                CadenceRelease { value: 1_143_108.into(), taken_from_period: 4, maturity: 0 },
+                CadenceRelease { value: 1_060_599.into(), taken_from_period: 5, maturity: 0 },
+                CadenceRelease { value: 1_409_864.into(), taken_from_period: 6, maturity: 0 },
+                CadenceRelease { value: 1_362_666.into(), taken_from_period: 7, maturity: 0 },
+                CadenceRelease { value: 1_139_185.into(), taken_from_period: 8, maturity: 0 },
+                CadenceRelease { value: 906_726.into(), taken_from_period: 9, maturity: 0 },
+                CadenceRelease { value: 833_911.into(), taken_from_period: 10, maturity: 0 },
+                CadenceRelease { value: 933_566.into(), taken_from_period: 11, maturity: 0 },
+                CadenceRelease { value: 1_475_171.into(), taken_from_period: 12, maturity: 0 },
+                CadenceRelease { value: 699_350.into(), taken_from_period: 13, maturity: 0 },
+                CadenceRelease { value: 1_515_888.into(), taken_from_period: 14, maturity: 0 },
+                CadenceRelease { value: 1_278_290.into(), taken_from_period: 15, maturity: 0 },
+                CadenceRelease { value: 1_599_527.into(), taken_from_period: 16, maturity: 0 },
+                CadenceRelease { value: 819_079.into(), taken_from_period: 17, maturity: 0 },
+                CadenceRelease { value: 851_591.into(), taken_from_period: 18, maturity: 0 },
+                CadenceRelease { value: 837_163.into(), taken_from_period: 19, maturity: 0 },
+                CadenceRelease { value: 1_090_811.into(), taken_from_period: 20, maturity: 0 },
+                CadenceRelease { value: 846_955.into(), taken_from_period: 21, maturity: 0 },
+                CadenceRelease { value: 1_297_582.into(), taken_from_period: 22, maturity: 0 },
+                CadenceRelease { value: 1_501_824.into(), taken_from_period: 23, maturity: 0 },
+                CadenceRelease { value: 1_125_096.into(), taken_from_period: 24, maturity: 0 },
+                CadenceRelease { value: 1_195_429.into(), taken_from_period: 25, maturity: 0 },
+                CadenceRelease { value: 1_107_387.into(), taken_from_period: 26, maturity: 0 },
+                CadenceRelease { value: 1_527_063.into(), taken_from_period: 27, maturity: 0 },
+                CadenceRelease { value: 995_580.into(), taken_from_period: 28, maturity: 0 },
+                CadenceRelease { value: 1_098_241.into(), taken_from_period: 29, maturity: 0 },
+                CadenceRelease { value: 1_450_205.into(), taken_from_period: 30, maturity: 0 },
+                CadenceRelease { value: 826_220.into(), taken_from_period: 31, maturity: 0 },
+                CadenceRelease { value: 592_198.into(), taken_from_period: 32, maturity: 0 },
+                CadenceRelease { value: 1_356_360.into(), taken_from_period: 33, maturity: 0 },
+                CadenceRelease { value: 1_226_441.into(), taken_from_period: 34, maturity: 0 },
+                CadenceRelease { value: 964_418.into(), taken_from_period: 35, maturity: 0 },
+                CadenceRelease { value: 1_380_172.into(), taken_from_period: 36, maturity: 0 },
+                CadenceRelease { value: 933_067.into(), taken_from_period: 37, maturity: 0 },
+                CadenceRelease { value: 874_085.into(), taken_from_period: 38, maturity: 0 },
+                CadenceRelease { value: 1_020_794.into(), taken_from_period: 39, maturity: 0 },
+                CadenceRelease { value: 1_244_436.into(), taken_from_period: 40, maturity: 0 },
+                CadenceRelease { value: 959_181.into(), taken_from_period: 41, maturity: 0 },
+                CadenceRelease { value: 1_061_341.into(), taken_from_period: 42, maturity: 0 },
+                CadenceRelease { value: 1_144_748.into(), taken_from_period: 43, maturity: 0 },
+                CadenceRelease { value: 491_847.into(), taken_from_period: 44, maturity: 0 },
+                CadenceRelease { value: 1_349_129.into(), taken_from_period: 45, maturity: 0 },
+                CadenceRelease { value: 1_034_270.into(), taken_from_period: 46, maturity: 0 },
+                CadenceRelease { value: 1_306_874.into(), taken_from_period: 47, maturity: 0 },
+                CadenceRelease { value: 1_724_785.into(), taken_from_period: 48, maturity: 0 },
+                CadenceRelease { value: 1_140_260.into(), taken_from_period: 49, maturity: 0 },
+                CadenceRelease { value: 1_033_467.into(), taken_from_period: 50, maturity: 0 },
+                CadenceRelease { value: 1_142_831.into(), taken_from_period: 51, maturity: 0 },
+                CadenceRelease { value: 743_451.into(), taken_from_period: 52, maturity: 0 },
+                CadenceRelease { value: 926_205.into(), taken_from_period: 53, maturity: 0 },
+                CadenceRelease { value: 1_485_811.into(), taken_from_period: 54, maturity: 0 },
+                CadenceRelease { value: 707_802.into(), taken_from_period: 55, maturity: 0 },
+                CadenceRelease { value: 1_274_727.into(), taken_from_period: 56, maturity: 0 },
+                CadenceRelease { value: 1_610_510.into(), taken_from_period: 57, maturity: 0 },
+                CadenceRelease { value: 1_166_337.into(), taken_from_period: 58, maturity: 0 },
+                CadenceRelease { value: 1_325_544.into(), taken_from_period: 59, maturity: 0 },
             ]
         }),
     ]
@@ -1002,7 +967,7 @@ mod test {
         },
         consensus::consensus_constants::MAINNET_PRE_MINE_VALUE,
         transactions::{
-            tari_amount::MicroMinotari,
+            tari_amount::{MicroMinotari, Minotari},
             transaction_components::{TransactionKernel, TransactionOutput},
         },
     };
@@ -1253,6 +1218,78 @@ mod test {
         ] {
             let total_pre_mine_value = get_pre_mine_value(network).unwrap();
             assert_eq!(total_pre_mine_value, MAINNET_PRE_MINE_VALUE)
+        }
+    }
+
+    #[test]
+    fn test_contributors_upfront_release_totals() {
+        let upfront_release = contributors_upfront_release();
+        let min_period = upfront_release
+            .iter()
+            .filter_map(|strategy| match strategy {
+                ReleaseStrategy::FromCadence(item) => item.iter().map(|entry| entry.taken_from_period).min(),
+                _ => None,
+            })
+            .min()
+            .unwrap();
+        assert_eq!(min_period, 0);
+
+        let max_period = upfront_release
+            .iter()
+            .filter_map(|strategy| match strategy {
+                ReleaseStrategy::FromCadence(item) => item.iter().map(|entry| entry.taken_from_period).max(),
+                _ => None,
+            })
+            .max()
+            .unwrap();
+        assert_eq!(max_period, 59);
+
+        let mut total_value = 0;
+        for (i, item) in upfront_release.iter().enumerate() {
+            let tranche_value = match item {
+                ReleaseStrategy::FromCadence(item) => item.iter().map(|entry| entry.value.uT().as_u64()).sum::<u64>(),
+                _ => 0,
+            };
+            total_value += tranche_value;
+            match i {
+                0 => assert_eq!(tranche_value, MicroMinotari::from(Minotari::from(10_525_385)).as_u64()),
+                1 => assert_eq!(tranche_value, MicroMinotari::from(Minotari::from(45_226_727)).as_u64()),
+                2 => assert_eq!(tranche_value, MicroMinotari::from(Minotari::from(46_432_875)).as_u64()),
+                3 => assert_eq!(tranche_value, MicroMinotari::from(Minotari::from(46_748_963)).as_u64()),
+                4 => assert_eq!(tranche_value, MicroMinotari::from(Minotari::from(46_559_218)).as_u64()),
+                5 => assert_eq!(tranche_value, MicroMinotari::from(Minotari::from(67_032_217)).as_u64()),
+                _ => panic!("Unexpected upfront release strategy"),
+            }
+        }
+        assert_eq!(total_value, MicroMinotari::from(Minotari::from(262_525_385)).as_u64());
+
+        for i in 0..60 {
+            let value_per_period = upfront_release
+                .iter()
+                .map(|entry| match entry {
+                    ReleaseStrategy::FromCadence(item) => item
+                        .iter()
+                        .filter(|entry| entry.taken_from_period == i)
+                        .map(|entry| MicroMinotari::from(entry.value).as_u64())
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .sum::<u64>(),
+                    _ => 0,
+                })
+                .collect::<Vec<_>>()
+                .iter()
+                .sum::<u64>();
+            if i <= 12 {
+                assert_eq!(
+                    value_per_period,
+                    MicroMinotari::from(Minotari::from(809_645 + 4_200_000)).as_u64()
+                );
+            } else {
+                assert_eq!(
+                    value_per_period,
+                    MicroMinotari::from(Minotari::from(4_200_000)).as_u64()
+                );
+            }
         }
     }
 
