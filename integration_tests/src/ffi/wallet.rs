@@ -26,7 +26,7 @@ use std::{
     ptr::null_mut,
     sync::{Arc, Mutex},
 };
-
+use std::ffi::c_void;
 use callbacks::Callbacks;
 use indexmap::IndexMap;
 use libc::{c_ulonglong, c_void};
@@ -177,9 +177,10 @@ impl Wallet {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
-
+        let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
         unsafe {
             ptr = wallet_create(
+                void_ptr,
                 comms_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 11,
