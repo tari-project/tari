@@ -202,9 +202,7 @@ impl Default for DhtConfig {
             max_permitted_peer_claims: 5,
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
             peer_validator_config: Default::default(),
-            excluded_dial_addresses: vec![
-                MultiaddrRange::from_str(IP4_TCP_TEST_ADDR_RANGE).expect("should not fail static string")
-            ]
+            excluded_dial_addresses: vec![]
             .into(),
         }
     }
