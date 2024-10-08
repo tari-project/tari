@@ -1051,7 +1051,12 @@ pub async fn command_runner(
                 let mut outputs_for_self = Vec::with_capacity(args_recipient_info.len());
                 let mut error = false;
                 for (i, recipient_info) in args_recipient_info.iter().enumerate() {
-                    println!("  Outer: Starting {} of {}", i + 1, args_recipient_info.len());
+                    println!(
+                        "  Start processing {} of {} recipients, current wallet {}",
+                        i + 1,
+                        args_recipient_info.len(),
+                        recipient_info.recipient_address
+                    );
                     let embedded_outputs = match get_embedded_pre_mine_outputs(
                         recipient_info.output_indexes.clone(),
                         pre_mine_from_file.clone(),
@@ -1127,7 +1132,7 @@ pub async fn command_runner(
                             pre_mine_script_key_id,
                         });
                         println!(
-                            "    Inner: Processed {} of {}",
+                            "    Processed {} of {} transactions",
                             j + 1,
                             recipient_info.output_indexes.len()
                         );
@@ -1174,12 +1179,7 @@ pub async fn command_runner(
                     },
                 }
 
-                for peer in &mut peer_list {
-                    peer.ban_for(
-                        Duration::from_secs(24 * 60 * 60),
-                        "Busy with pre-mine spend".to_string(),
-                    );
-                }
+                temp_ban_peers(&wallet, &mut peer_list).await;
                 unban_per_manager_peers = true;
 
                 // Read session info
@@ -1375,7 +1375,7 @@ pub async fn command_runner(
                             break;
                         },
                     }
-                    println!("  Processed {} of {}", i + 1, party_info_per_index.len());
+                    println!("  Processed {} of {} transactions", i + 1, party_info_per_index.len());
                 }
                 if error {
                     break;
@@ -1613,7 +1613,7 @@ pub async fn command_runner(
                     });
 
                     println!(
-                        "  Processed {} of {}",
+                        "  Processed {} of {} transactions",
                         i + 1,
                         leader_info_indexed.outputs_for_parties.len()
                     );
@@ -1650,12 +1650,7 @@ pub async fn command_runner(
                     },
                 }
 
-                for peer in &mut peer_list {
-                    peer.ban_for(
-                        Duration::from_secs(24 * 60 * 60),
-                        "Busy with pre-mine spend".to_string(),
-                    );
-                }
+                temp_ban_peers(&wallet, &mut peer_list).await;
                 unban_per_manager_peers = true;
 
                 // Read session info
@@ -2636,9 +2631,7 @@ pub async fn command_runner(
         }
     }
     if unban_per_manager_peers {
-        for peer in &mut peer_list {
-            peer.unban();
-        }
+        lift_temp_ban_peers(&wallet, &mut peer_list).await;
     }
 
     // listen to event stream
@@ -2677,6 +2670,44 @@ pub async fn command_runner(
     }
 
     Ok(())
+}
+
+async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
+    for peer in peer_list {
+        let _ = wallet
+            .comms
+            .connectivity()
+            .remove_peer_from_allow_list(peer.node_id.clone())
+            .await;
+        let _ = wallet
+            .comms
+            .connectivity()
+            .ban_peer_until(
+                peer.node_id.clone(),
+                Duration::from_secs(24 * 60 * 60),
+                "Busy with pre-mine spend".to_string(),
+            )
+            .await;
+    }
+}
+
+async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
+    for peer in peer_list {
+        let _ = wallet
+            .comms
+            .connectivity()
+            .ban_peer_until(
+                peer.node_id.clone(),
+                Duration::from_millis(1),
+                "Busy with pre-mine spend".to_string(),
+            )
+            .await;
+        let _ = wallet
+            .comms
+            .connectivity()
+            .add_peer_to_allow_list(peer.node_id.clone())
+            .await;
+    }
 }
 
 fn read_genesis_file_outputs(
