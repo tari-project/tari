@@ -7,6 +7,7 @@ passthrough = [
   "CARGO_BUILD_TARGET",
   "TARGET_CFLAGS",
   "CC_aarch64_unknown_linux_gnu",
+  "CC_riscv64_unknown_linux_gnu",
   "PKG_CONFIG_SYSROOT_DIR",
   "PKG_CONFIG_ALLOW_CROSS",
   "RUSTFLAGS",
@@ -72,3 +73,20 @@ passthrough = [
 [target.x86_64-unknown-linux-gnu]
 image = "ubuntu:18.04"
 pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.x86_64-unknown-linux-gnu.env]
+passthrough = [
+  "PKG_CONFIG_ALLOW_CROSS=true",
+]
+
+[target.riscv64gc-unknown-linux-gnu]
+#image.name = "riscv64/ubuntu:22.04"
+#image.toolchain = ["linux/riscv64=riscv64-unknown-linux-gnu", "linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
+image.name = "ubuntu:22.04"
+image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu", "linux/riscv64=riscv64gc-unknown-linux-gnu"]
+pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.riscv64gc-unknown-linux-gnu.env]
+passthrough = [
+  "PKG_CONFIG_ALLOW_CROSS=true",
+]

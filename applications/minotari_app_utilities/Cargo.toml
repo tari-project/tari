@@ -25,7 +25,6 @@ thiserror = "^1.0.26"
 dialoguer = { version = "0.10" }
 tonic = "0.12.3"
 
-
 [build-dependencies]
 tari_common = { path = "../../common", features = [
     "build",
