@@ -227,6 +227,7 @@ jobs:
           # Should already be installed
           # choco upgrade strawberryperl -y
           choco upgrade protoc -y
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Set environment variables - Nix
         if: ${{ ! startsWith(runner.os,'Windows') }}
