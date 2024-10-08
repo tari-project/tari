@@ -2674,12 +2674,12 @@ pub async fn command_runner(
 
 async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
     for peer in peer_list {
-        let _ = wallet
+        let _unused = wallet
             .comms
             .connectivity()
             .remove_peer_from_allow_list(peer.node_id.clone())
             .await;
-        let _ = wallet
+        let _unused = wallet
             .comms
             .connectivity()
             .ban_peer_until(
@@ -2693,7 +2693,7 @@ async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
 
 async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
     for peer in peer_list {
-        let _ = wallet
+        let _unused = wallet
             .comms
             .connectivity()
             .ban_peer_until(
@@ -2702,7 +2702,7 @@ async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
                 "Busy with pre-mine spend".to_string(),
             )
             .await;
-        let _ = wallet
+        let _unused = wallet
             .comms
             .connectivity()
             .add_peer_to_allow_list(peer.node_id.clone())
