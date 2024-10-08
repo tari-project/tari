@@ -4000,7 +4000,10 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
                            TariPublicKey *base_node_public_key,
-                           void (*recovery_progress_callback)(uint8_t, uint64_t, uint64_t),
+                           void (*recovery_progress_callback)(void *context,
+                                                              uint8_t,
+                                                              uint64_t,
+                                                              uint64_t),
                            const char *recovered_output_message,
                            int *error_out);
 

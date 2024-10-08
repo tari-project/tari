@@ -112,6 +112,7 @@ impl<TBackend> CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
     pub fn new(
         context: Context,
         db: TransactionDatabase<TBackend>,
