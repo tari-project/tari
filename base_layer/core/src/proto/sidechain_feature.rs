@@ -26,19 +26,17 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{PublicKey, Signature};
 use tari_max_size::MaxSizeString;
+use tari_p2p::proto;
 use tari_utilities::ByteArray;
 
-use crate::{
-    proto,
-    transactions::transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
-        ConfidentialOutputData,
-        SideChainFeature,
-        TemplateType,
-        ValidatorNodeRegistration,
-        ValidatorNodeSignature,
-    },
+use crate::transactions::transaction_components::{
+    BuildInfo,
+    CodeTemplateRegistration,
+    ConfidentialOutputData,
+    SideChainFeature,
+    TemplateType,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
 };
 
 //---------------------------------- SideChainFeature --------------------------------------------//

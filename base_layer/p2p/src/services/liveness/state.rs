@@ -27,7 +27,7 @@ use std::{
 };
 
 use log::*;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 
 use super::LOG_TARGET;
 use crate::proto::liveness::MetadataKey;
@@ -74,9 +74,9 @@ impl From<Metadata> for HashMap<i32, Vec<u8>> {
 /// State for the LivenessService.
 #[derive(Default, Debug)]
 pub struct LivenessState {
-    inflight_pings: HashMap<u64, (NodeId, Instant)>,
-    peer_latency: HashMap<NodeId, AverageLatency>,
-    failed_pings: HashMap<NodeId, usize>,
+    inflight_pings: HashMap<u64, (PeerId, Instant)>,
+    peer_latency: HashMap<PeerId, AverageLatency>,
+    failed_pings: HashMap<PeerId, usize>,
 
     pings_received: usize,
     pongs_received: usize,
@@ -136,8 +136,8 @@ impl LivenessState {
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
-    pub fn add_inflight_ping(&mut self, nonce: u64, node_id: NodeId) {
-        self.inflight_pings.insert(nonce, (node_id, Instant::now()));
+    pub fn add_inflight_ping(&mut self, nonce: u64, peer_id: PeerId) {
+        self.inflight_pings.insert(nonce, (peer_id, Instant::now()));
         self.clear_stale_inflight_pings();
     }
 
@@ -150,9 +150,9 @@ impl LivenessState {
 
         self.inflight_pings = inflight;
 
-        for (_, (node_id, _)) in expired {
+        for (_, (peer_id, _)) in expired {
             self.failed_pings
-                .entry(node_id)
+                .entry(peer_id)
                 .and_modify(|v| {
                     *v += 1;
                 })
@@ -167,15 +167,15 @@ impl LivenessState {
 
     /// Records a pong. Specifically, the pong counter is incremented and
     /// a latency sample is added and calculated. The given `peer` must match the recorded peer
-    pub fn record_pong(&mut self, nonce: u64, sent_by: &NodeId) -> Option<Duration> {
+    pub fn record_pong(&mut self, nonce: u64, sent_by: &PeerId) -> Option<Duration> {
         self.inc_pongs_received();
         self.failed_pings.remove_entry(sent_by);
 
-        let (node_id, _) = self.inflight_pings.get(&nonce)?;
-        if node_id == sent_by {
-            self.inflight_pings.remove(&nonce).map(|(node_id, sent_time)| {
+        let (peer_id, _) = self.inflight_pings.get(&nonce)?;
+        if peer_id == sent_by {
+            self.inflight_pings.remove(&nonce).map(|(peer_id, sent_time)| {
                 let latency = sent_time.elapsed();
-                self.add_latency_sample(node_id, latency);
+                self.add_latency_sample(peer_id, latency);
                 latency
             })
         } else {
@@ -184,24 +184,24 @@ impl LivenessState {
                 "Peer {} sent an nonce for another peer {}. This could indicate malicious behaviour or a bug. \
                  Ignoring.",
                 sent_by,
-                node_id
+                peer_id
             );
             None
         }
     }
 
-    fn add_latency_sample(&mut self, node_id: NodeId, duration: Duration) -> &mut AverageLatency {
+    fn add_latency_sample(&mut self, peer_id: PeerId, duration: Duration) -> &mut AverageLatency {
         let latency = self
             .peer_latency
-            .entry(node_id)
+            .entry(peer_id)
             .or_insert_with(|| AverageLatency::new(LATENCY_SAMPLE_WINDOW_SIZE));
 
         latency.add_sample(duration);
         latency
     }
 
-    pub fn get_avg_latency(&self, node_id: &NodeId) -> Option<Duration> {
-        self.peer_latency.get(node_id).map(|latency| latency.calc_average())
+    pub fn get_avg_latency(&self, peer_id: &PeerId) -> Option<Duration> {
+        self.peer_latency.get(peer_id).map(|latency| latency.calc_average())
     }
 
     pub fn get_network_avg_latency(&self) -> Option<Duration> {
@@ -217,7 +217,7 @@ impl LivenessState {
             .map(|latency| Duration::from_millis(u64::try_from(latency.as_millis()).unwrap() / num_peers as u64))
     }
 
-    pub fn failed_pings_iter(&self) -> impl Iterator<Item = (&NodeId, &usize)> {
+    pub fn failed_pings_iter(&self) -> impl Iterator<Item = (&PeerId, &usize)> {
         self.failed_pings.iter()
     }
 
@@ -264,7 +264,16 @@ impl AverageLatency {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_network::identity;
+
     use super::*;
+
+    fn create_random_peer_id() -> PeerId {
+        let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        PeerId::from_public_key(&identity::PublicKey::from(identity::sr25519::PublicKey::from(pk)))
+    }
 
     #[test]
     fn new() {
@@ -321,10 +330,10 @@ mod test {
     fn record_pong() {
         let mut state = LivenessState::new();
 
-        let node_id = NodeId::default();
-        state.add_inflight_ping(123, node_id.clone());
+        let peer_id = create_random_peer_id();
+        state.add_inflight_ping(123, peer_id);
 
-        let latency = state.record_pong(123, &node_id).unwrap();
+        let latency = state.record_pong(123, &peer_id).unwrap();
         assert!(latency < Duration::from_millis(50));
     }
 
@@ -339,11 +348,11 @@ mod test {
     fn clear_stale_inflight_pings() {
         let mut state = LivenessState::new();
 
-        let peer1 = NodeId::default();
-        state.add_inflight_ping(1, peer1.clone());
-        let peer2 = NodeId::from_public_key(&Default::default());
-        state.add_inflight_ping(2, peer2.clone());
-        state.add_inflight_ping(3, peer2.clone());
+        let peer1 = create_random_peer_id();
+        state.add_inflight_ping(1, peer1);
+        let peer2 = create_random_peer_id();
+        state.add_inflight_ping(2, peer2);
+        state.add_inflight_ping(3, peer2);
 
         assert!(!state.failed_pings.contains_key(&peer1));
         assert!(!state.failed_pings.contains_key(&peer2));

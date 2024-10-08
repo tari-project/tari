@@ -500,7 +500,7 @@ where T: ContactsBackend + 'static
             if let Some(pos) = self
                 .liveness_data
                 .iter()
-                .position(|peer_status| *peer_status.node_id() == event.node_id)
+                .position(|peer_status| *peer_status.node_id() == event.peer_id)
             {
                 latency = self.liveness_data[pos].latency();
                 self.liveness_data.remove(pos);
@@ -515,11 +515,11 @@ where T: ContactsBackend + 'static
             }
             let this_public_key = self
                 .db
-                .update_contact_last_seen(&event.node_id, last_seen.naive_utc(), latency)?;
+                .update_contact_last_seen(&event.peer_id, last_seen.naive_utc(), latency)?;
 
             let data = ContactsLivenessData::new(
                 this_public_key,
-                event.node_id.clone(),
+                event.peer_id.clone(),
                 latency,
                 Some(last_seen.naive_utc()),
                 message_type,
@@ -536,7 +536,7 @@ where T: ContactsBackend + 'static
             trace!(
                 target: LOG_TARGET,
                 "Ping-pong metadata key from {} not recognized",
-                event.node_id
+                event.peer_id
             );
         }
         Ok(())

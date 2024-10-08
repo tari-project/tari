@@ -30,7 +30,7 @@ use handle::RpcServerRequest;
 #[cfg(feature = "metrics")]
 mod metrics;
 
-// TODO: Tests
+// TODO: tests
 // pub mod mock;
 
 mod early_close;

@@ -30,9 +30,11 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_common_types::types::{Commitment, FixedHash, RangeProofService};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
+use tari_network::{identity::PeerId, NetworkHandle};
+use tari_p2p::proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse};
+use tari_rpc_framework::{RpcClient, RpcConnector};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::task;
 
@@ -51,7 +53,6 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
     common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
-    proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::transaction_components::{
         transaction_output::batch_verify_range_proofs,
         OutputType,
@@ -77,7 +78,7 @@ pub struct HorizonStateSynchronization<'a, B> {
     num_kernels: u64,
     num_outputs: u64,
     hooks: Hooks,
-    connectivity: ConnectivityRequester,
+    network: NetworkHandle,
     final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
     max_latency: Duration,
     peer_ban_manager: PeerBanManager,
@@ -88,20 +89,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
-        connectivity: ConnectivityRequester,
+        network: NetworkHandle,
         rules: ConsensusManager,
         sync_peers: &'a mut Vec<SyncPeer>,
         horizon_sync_height: u64,
         prover: Arc<RangeProofService>,
         final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
     ) -> Self {
-        let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
+        let peer_ban_manager = PeerBanManager::new(config.clone(), network.clone());
         Self {
             max_latency: config.initial_max_sync_latency,
             config,
             db,
             rules,
-            connectivity,
+            network,
             sync_peers,
             horizon_sync_height,
             prover,
@@ -152,7 +153,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         "Slow sync peers detected: {}",
                         self.sync_peers
                             .iter()
-                            .map(|p| format!("{} ({:.2?})", p.node_id(), p.latency().unwrap_or_default()))
+                            .map(|p| format!("{} ({:.2?})", p.peer_id(), p.latency().unwrap_or_default()))
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
@@ -171,7 +172,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     async fn sync(&mut self, to_header: &BlockHeader) -> Result<(), HorizonSyncError> {
-        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
+        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).cloned().collect::<Vec<_>>();
         info!(
             target: LOG_TARGET,
             "Attempting to sync horizon state ({} sync peers)",
@@ -215,7 +216,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     async fn connect_and_attempt_sync(
         &mut self,
-        node_id: &NodeId,
+        node_id: &PeerId,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
         // Connect
@@ -235,25 +236,25 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     async fn connect_sync_peer(
         &mut self,
-        node_id: &NodeId,
+        peer_id: &PeerId,
     ) -> Result<(BaseNodeSyncRpcClient, SyncPeer), HorizonSyncError> {
         let peer_index = self
-            .get_sync_peer_index(node_id)
+            .get_sync_peer_index(peer_id)
             .ok_or(HorizonSyncError::PeerNotFound)?;
         let sync_peer = &self.sync_peers[peer_index];
         self.hooks.call_on_starting_hook(sync_peer);
 
-        let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
             target: LOG_TARGET,
-            "Attempting to synchronize horizon state with `{}`", node_id
+            "Attempting to synchronize horizon state with `{}`", peer_id
         );
 
-        let config = RpcClient::builder()
+        let config = RpcClient::builder(*peer_id)
             .with_deadline(self.config.rpc_deadline)
             .with_deadline_grace_period(Duration::from_secs(5));
 
-        let mut client = conn
+        let mut client = self
+            .network
             .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
             .await?;
 
@@ -263,7 +264,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         self.sync_peers[peer_index].set_latency(latency);
         if latency > self.max_latency {
             return Err(HorizonSyncError::MaxLatencyExceeded {
-                peer: conn.peer_node_id().clone(),
+                peer: *peer_id,
                 latency,
                 max_latency: self.max_latency,
             });
@@ -271,19 +272,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
 
         Ok((client, self.sync_peers[peer_index].clone()))
-    }
-
-    async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, HorizonSyncError> {
-        let timer = Instant::now();
-        debug!(target: LOG_TARGET, "Dialing {} sync peer", node_id);
-        let conn = self.connectivity.dial_peer(node_id.clone()).await?;
-        info!(
-            target: LOG_TARGET,
-            "Successfully dialed sync peer {} in {:.2?}",
-            node_id,
-            timer.elapsed()
-        );
-        Ok(conn)
     }
 
     async fn sync_kernels_and_outputs(
@@ -406,7 +394,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Ok(());
         }
 
-        let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Kernels {
+        let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Kernels {
             current: local_num_kernels,
             total: remote_num_kernels,
             sync_peer: sync_peer.clone(),
@@ -425,7 +413,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Initiating kernel sync with peer `{}` (latency = {}ms)",
-            sync_peer.node_id(),
+            sync_peer.peer_id(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -526,7 +514,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer.set_latency(latency);
             sync_peer.add_sample(last_sync_timer.elapsed());
             if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
-                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Kernels {
+                let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Kernels {
                     current: mmr_position,
                     total: self.num_kernels,
                     sync_peer: sync_peer.clone(),
@@ -534,7 +522,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 self.hooks.call_on_progress_horizon_hooks(info);
             }
 
-            self.check_latency(sync_peer.node_id(), &avg_latency)?;
+            self.check_latency(sync_peer.peer_id(), &avg_latency)?;
 
             last_sync_timer = Instant::now();
         }
@@ -591,7 +579,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         }
 
-        let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
+        let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Outputs {
             current: 0,
             total: self.num_outputs,
             sync_peer: sync_peer.clone(),
@@ -603,7 +591,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             target: LOG_TARGET,
             "Initiating output sync with peer `{}`, requesting ~{} outputs, tip_header height `{}`, \
             last_chain_header height `{}` (latency = {}ms)",
-            sync_peer.node_id(),
+            sync_peer.peer_id(),
             self.num_outputs,
             tip_header.height(),
             db.fetch_last_chain_header().await?.height(),
@@ -730,7 +718,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             if utxo_counter % 100 == 0 {
-                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
+                let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Outputs {
                     current: utxo_counter,
                     total: self.num_outputs,
                     sync_peer: sync_peer.clone(),
@@ -807,7 +795,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(target: LOG_TARGET, "Validating horizon state");
 
         self.hooks.call_on_progress_horizon_hooks(HorizonSyncInfo::new(
-            vec![sync_peer.node_id().clone()],
+            vec![sync_peer.peer_id().clone()],
             HorizonSyncStatus::Finalizing,
         ));
 
@@ -918,14 +906,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
     fn remove_sync_peer(&mut self, node_id: &NodeId) {
-        if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == node_id) {
             self.sync_peers.remove(pos);
         }
     }
 
     // Helper function to get the index to the node_id inside of the vec of peers
     fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
-        self.sync_peers.iter().position(|p| p.node_id() == node_id)
+        self.sync_peers.iter().position(|p| p.peer_id() == node_id)
     }
 
     #[inline]

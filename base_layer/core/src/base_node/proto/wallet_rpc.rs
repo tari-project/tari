@@ -27,9 +27,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
+use tari_p2p::proto::base_node as proto;
 use tari_utilities::ByteArray;
-
-use crate::proto::base_node as proto;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {

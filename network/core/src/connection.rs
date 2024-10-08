@@ -8,10 +8,13 @@ use std::{
 
 use libp2p::{core::ConnectedPoint, swarm::ConnectionId, PeerId};
 
+use crate::identity::PublicKey;
+
 #[derive(Debug, Clone)]
 pub struct Connection {
     pub connection_id: ConnectionId,
     pub peer_id: PeerId,
+    pub public_key: Option<PublicKey>,
     pub created_at: Instant,
     pub endpoint: ConnectedPoint,
     pub num_established: u32,

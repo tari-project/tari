@@ -21,35 +21,30 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_comms::peer_manager::NodeId;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
 
-pub fn inbound_transactions(sent_by: Option<&NodeId>) -> IntCounter {
-    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+pub fn inbound_transactions() -> IntCounter {
+    static METER: Lazy<IntCounter> = Lazy::new(|| {
+        tari_metrics::register_int_counter(
             "base_node::mempool::inbound_transactions",
             "Number of valid inbound transactions in the mempool",
-            &["peer_id"],
         )
         .unwrap()
     });
 
-    let sent_by = sent_by.map(|n| n.to_string()).unwrap_or_else(|| "local".to_string());
-    METER.with_label_values(&[&sent_by])
+    METER.clone()
 }
 
-pub fn rejected_inbound_transactions(sent_by: Option<&NodeId>) -> IntCounter {
-    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+pub fn rejected_inbound_transactions() -> IntCounter {
+    static METER: Lazy<IntCounter> = Lazy::new(|| {
+        tari_metrics::register_int_counter(
             "base_node::mempool::rejected_inbound_transactions",
             "Number of valid inbound transactions in the mempool",
-            &["peer_id"],
         )
         .unwrap()
     });
 
-    let sent_by = sent_by.map(|n| n.to_string()).unwrap_or_else(|| "local".to_string());
-    METER.with_label_values(&[&sent_by])
+    METER.clone()
 }
 
 pub fn unconfirmed_pool_size() -> IntGauge {

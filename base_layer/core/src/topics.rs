@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2024. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,37 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service;
-pub use service::MempoolRpcService;
-use tari_p2p::proto::{
-    mempool::{StateResponse, StatsResponse, TxStorage},
-    types::{Signature, Transaction},
-};
-use tari_rpc_framework::{Request, Response, RpcStatus};
-use tari_rpc_macros::tari_rpc;
-
-// #[cfg(test)]
-// mod test;
-use crate::mempool::service::MempoolHandle;
-
-#[tari_rpc(protocol_name = "t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
-pub trait MempoolService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;
-
-    #[rpc(method = 2)]
-    async fn get_state(&self, request: Request<()>) -> Result<Response<StateResponse>, RpcStatus>;
-
-    #[rpc(method = 3)]
-    async fn get_transaction_state_by_excess_sig(
-        &self,
-        request: Request<Signature>,
-    ) -> Result<Response<TxStorage>, RpcStatus>;
-
-    #[rpc(method = 4)]
-    async fn submit_transaction(&self, request: Request<Transaction>) -> Result<Response<TxStorage>, RpcStatus>;
-}
-
-pub fn create_mempool_rpc_service(mempool: MempoolHandle) -> MempoolRpcServer<MempoolRpcService> {
-    MempoolRpcServer::new(MempoolRpcService::new(mempool))
-}
+pub const BLOCK_TOPIC: &str = "tari-block";
+pub const TRANSACTION_TOPIC: &str = "tari-transaction";

@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 
 use async_trait::async_trait;
 use libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, PeerId, StreamProtocol};
@@ -43,10 +43,9 @@ use crate::{
     event::NetworkingEvent,
     peer::{Peer, PeerInfo},
     GossipPublisher,
-    GossipReceiver,
+    GossipSubscription,
     NetworkError,
     NetworkingService,
-    ReachabilityMode,
     Waiter,
 };
 
@@ -59,8 +58,9 @@ pub enum NetworkingRequest {
         dial_opts: DialOpts,
         reply_tx: Reply<Waiter<()>>,
     },
-    GetConnectedPeers {
-        reply_tx: Reply<Vec<PeerId>>,
+    DisconnectPeer {
+        peer_id: PeerId,
+        reply: Reply<bool>,
     },
 
     PublishGossip {
@@ -91,6 +91,7 @@ pub enum NetworkingRequest {
         tx_notifier: mpsc::UnboundedSender<ProtocolNotification<Substream>>,
     },
     SelectActiveConnections {
+        with_peers: Option<HashSet<PeerId>>,
         limit: Option<usize>,
         randomize: bool,
         exclude_peers: HashSet<PeerId>,
@@ -106,17 +107,19 @@ pub enum NetworkingRequest {
     },
     BanPeer {
         peer_id: PeerId,
+        reason: String,
+        ban_duration: Option<Duration>,
         reply: Reply<bool>,
     },
 }
 #[derive(Debug)]
-pub struct NetworkingHandle {
+pub struct NetworkHandle {
     tx_request: mpsc::Sender<NetworkingRequest>,
     local_peer_id: PeerId,
     tx_events: broadcast::Sender<NetworkingEvent>,
 }
 
-impl NetworkingHandle {
+impl NetworkHandle {
     pub(super) fn new(
         local_peer_id: PeerId,
         tx_request: mpsc::Sender<NetworkingRequest>,
@@ -191,11 +194,29 @@ impl NetworkingHandle {
     }
 
     pub async fn get_active_connections(&self) -> Result<Vec<Connection>, NetworkError> {
-        self.select_active_connections(None, false, HashSet::new()).await
+        self.select_active_connections(None, None, false, HashSet::new()).await
+    }
+
+    pub async fn get_connection(&self, peer_id: PeerId) -> Result<Option<Connection>, NetworkError> {
+        let mut set = HashSet::new();
+        set.insert(peer_id);
+        let mut conns = self
+            .select_active_connections(Some(set), Some(1), false, HashSet::new())
+            .await?;
+        Ok(conns.pop())
+    }
+
+    pub async fn select_random_connections(
+        &self,
+        n: usize,
+        exclude_peers: HashSet<PeerId>,
+    ) -> Result<Vec<Connection>, NetworkError> {
+        self.select_active_connections(None, Some(n), true, exclude_peers).await
     }
 
     pub async fn select_active_connections(
         &self,
+        with_peers: Option<HashSet<PeerId>>,
         limit: Option<usize>,
         randomize: bool,
         exclude_peers: HashSet<PeerId>,
@@ -203,6 +224,7 @@ impl NetworkingHandle {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::SelectActiveConnections {
+                with_peers,
                 limit,
                 randomize,
                 exclude_peers,
@@ -229,10 +251,76 @@ impl NetworkingHandle {
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?
     }
+
+    pub async fn publish_gossip<TTopic: Into<String> + Send>(
+        &mut self,
+        topic: TTopic,
+        message: Vec<u8>,
+    ) -> Result<(), NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::PublishGossip {
+                topic: IdentTopic::new(topic),
+                message,
+                reply_tx: tx,
+            })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn subscribe_topic<T: Into<String> + Send, M: prost::Message + Default>(
+        &mut self,
+        topic: T,
+    ) -> Result<(GossipPublisher<M>, GossipSubscription<M>), NetworkError> {
+        let (inbound, receiver) = mpsc::unbounded_channel();
+
+        let (tx, rx) = oneshot::channel();
+        let topic = IdentTopic::new(topic);
+
+        self.tx_request
+            .send(NetworkingRequest::SubscribeTopic {
+                topic: topic.clone(),
+                inbound,
+                reply: tx,
+            })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        let sender = rx.await??;
+
+        Ok((
+            GossipPublisher::<M>::new(topic, sender),
+            GossipSubscription::<M>::new(receiver),
+        ))
+    }
+
+    pub async fn unsubscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::UnsubscribeTopic {
+                topic: IdentTopic::new(topic),
+                reply_tx: tx,
+            })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn set_want_peers<I: IntoIterator<Item = PeerId> + Send>(
+        &self,
+        want_peers: I,
+    ) -> Result<(), NetworkError> {
+        let want_peers = want_peers.into_iter().collect();
+        self.tx_request
+            .send(NetworkingRequest::SetWantPeers(want_peers))
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        Ok(())
+    }
 }
 
 #[async_trait]
-impl NetworkingService for NetworkingHandle {
+impl NetworkingService for NetworkHandle {
     fn local_peer_id(&self) -> &PeerId {
         &self.local_peer_id
     }
@@ -252,82 +340,30 @@ impl NetworkingService for NetworkingHandle {
         rx.await?
     }
 
-    async fn get_connected_peers(&mut self) -> Result<Vec<PeerId>, NetworkError> {
+    /// Disconnects a peer. Returns true if the peer was connected, otherwise false.
+    async fn disconnect_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
-            .send(NetworkingRequest::GetConnectedPeers { reply_tx: tx })
+            .send(NetworkingRequest::DisconnectPeer { peer_id, reply: tx })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?
     }
 
-    async fn publish_gossip<TTopic: Into<String> + Send>(
+    async fn ban_peer<T: Into<String> + Send>(
         &mut self,
-        topic: TTopic,
-        message: Vec<u8>,
-    ) -> Result<(), NetworkError> {
-        let (tx, rx) = oneshot::channel();
-        self.tx_request
-            .send(NetworkingRequest::PublishGossip {
-                topic: IdentTopic::new(topic),
-                message,
-                reply_tx: tx,
-            })
-            .await
-            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        rx.await?
-    }
-
-    async fn subscribe_topic<T: Into<String> + Send, M: prost::Message + Default>(
-        &mut self,
-        topic: T,
-    ) -> Result<(GossipPublisher<M>, GossipReceiver<M>), NetworkError> {
-        let (inbound, receiver) = mpsc::unbounded_channel();
-
-        let (tx, rx) = oneshot::channel();
-        let topic = IdentTopic::new(topic);
-
-        self.tx_request
-            .send(NetworkingRequest::SubscribeTopic {
-                topic: topic.clone(),
-                inbound,
-                reply: tx,
-            })
-            .await
-            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        let sender = rx.await??;
-
-        Ok((
-            GossipPublisher::<M>::new(topic, sender),
-            GossipReceiver::<M>::new(receiver),
-        ))
-    }
-
-    async fn unsubscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkError> {
-        let (tx, rx) = oneshot::channel();
-        self.tx_request
-            .send(NetworkingRequest::UnsubscribeTopic {
-                topic: IdentTopic::new(topic),
-                reply_tx: tx,
-            })
-            .await
-            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        rx.await?
-    }
-
-    async fn set_want_peers<I: IntoIterator<Item = PeerId> + Send>(&self, want_peers: I) -> Result<(), NetworkError> {
-        let want_peers = want_peers.into_iter().collect();
-        self.tx_request
-            .send(NetworkingRequest::SetWantPeers(want_peers))
-            .await
-            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
-        Ok(())
-    }
-
-    async fn ban_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        peer_id: PeerId,
+        reason: T,
+        ban_duration: Option<Duration>,
+    ) -> Result<bool, NetworkError> {
         let (reply, rx) = oneshot::channel();
         self.tx_request
-            .send(NetworkingRequest::BanPeer { peer_id, reply })
+            .send(NetworkingRequest::BanPeer {
+                peer_id,
+                reason: reason.into(),
+                ban_duration,
+                reply,
+            })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
 
@@ -335,7 +371,7 @@ impl NetworkingService for NetworkingHandle {
     }
 }
 
-impl Clone for NetworkingHandle {
+impl Clone for NetworkHandle {
     fn clone(&self) -> Self {
         Self {
             tx_request: self.tx_request.clone(),
@@ -345,7 +381,7 @@ impl Clone for NetworkingHandle {
     }
 }
 
-impl RpcConnector for NetworkingHandle {
+impl RpcConnector for NetworkHandle {
     type Error = NetworkError;
 
     async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, Self::Error>

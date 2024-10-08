@@ -29,10 +29,12 @@ pub mod peer_seeds;
 pub mod proto;
 pub mod tari_message;
 
-mod connector;
+pub mod connector;
 mod dns;
-mod services;
+pub mod framing;
+pub mod services;
 
+pub use services::dispatcher::Dispatcher;
 // Re-export
 pub use tari_common::configuration::Network;
 

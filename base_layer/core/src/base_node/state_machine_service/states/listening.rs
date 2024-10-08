@@ -169,12 +169,12 @@ impl Listening {
                     }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
-                    match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
+                    match shared.peer_manager.is_peer_banned(peer_metadata.peer_id()).await {
                         Ok(true) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Ignoring chain metadata from banned peer {}",
-                                peer_metadata.node_id()
+                                peer_metadata.peer_id()
                             );
                             continue;
                         },
@@ -191,7 +191,7 @@ impl Listening {
                     // the peer
                     let _old_data = shared
                         .peer_manager
-                        .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
+                        .set_peer_metadata(peer_metadata.peer_id(), 1, peer_data.to_bytes())
                         .await;
                     log_mdc::extend(mdc.clone());
 
@@ -199,7 +199,7 @@ impl Listening {
                     if !configured_sync_peers.is_empty() {
                         // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
                         // we're out of sync
-                        if !configured_sync_peers.contains(peer_metadata.node_id()) {
+                        if !configured_sync_peers.contains(peer_metadata.peer_id()) {
                             continue;
                         }
                     };
@@ -450,7 +450,7 @@ fn determine_sync_mode(
             "Lagging (local height = {}, network height = {}, peer = {} ({}))",
             local_tip_height,
             network_tip_height,
-            network.node_id(),
+            network.peer_id(),
             network
                 .latency()
                 .map(|l| format!("{:.2?}", l))

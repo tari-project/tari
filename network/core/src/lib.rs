@@ -23,9 +23,10 @@ mod spawn;
 
 pub use config::*;
 pub use connection::*;
+pub use event::*;
 pub use gossip::*;
 pub use handle::*;
-pub use libp2p::{identity, multiaddr};
+pub use libp2p::{identity, multiaddr, StreamProtocol};
 pub use message::*;
 pub use messaging::*;
 pub use peer::*;

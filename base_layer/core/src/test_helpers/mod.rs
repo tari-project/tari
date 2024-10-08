@@ -34,7 +34,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::PeerManager;
 use tari_crypto::keys::{PublicKey as PublicKeyT, SecretKey};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};

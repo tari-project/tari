@@ -39,8 +39,8 @@ pub enum BaseNodeServiceError {
     InvalidRequest(String),
     #[error("Invalid response error: `{0}`")]
     InvalidResponse(String),
-    #[error("Invalid block error: `{0}`")]
-    InvalidBlockMessage(#[from] ExtractBlockError),
+    #[error("Invalid block message: `{0}`")]
+    InvalidBlockMessage(String),
 }
 
 impl BaseNodeServiceError {

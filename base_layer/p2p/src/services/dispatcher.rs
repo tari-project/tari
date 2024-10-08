@@ -1,10 +1,13 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use log::*;
-use tari_network::{identity::PeerId, MessageSpec};
+use tari_network::identity::PeerId;
 use tokio::{sync::mpsc, task};
 
 use crate::{
@@ -15,26 +18,48 @@ use crate::{
 
 const LOG_TARGET: &str = "p2p::dispatcher";
 
+#[derive(Debug, Clone)]
 pub struct Dispatcher {
+    // Because we have to share the dispatcher state between multiple tasks, we have to make this needlessly complex
+    inner: Arc<Mutex<Option<DispatcherInner>>>,
+}
+
+#[derive(Debug, Clone)]
+struct DispatcherInner {
     forward: HashMap<TariMessageType, mpsc::UnboundedSender<DomainMessage<TariNodeMessage>>>,
 }
 
 impl Dispatcher {
     pub fn new() -> Self {
         Self {
-            forward: HashMap::new(),
+            inner: Arc::new(Mutex::new(Some(DispatcherInner {
+                forward: HashMap::new(),
+            }))),
         }
     }
 
-    pub fn register(&mut self, ty: TariMessageType, tx: mpsc::UnboundedSender<DomainMessage<TariNodeMessage>>) {
-        self.forward.insert(ty, tx);
+    pub fn register(&self, msg_type: TariMessageType, sender: mpsc::UnboundedSender<DomainMessage<TariNodeMessage>>) {
+        self.inner
+            .lock()
+            .expect("only occurs if program panics")
+            .as_mut()
+            .expect("always some")
+            .forward
+            .insert(msg_type, sender);
     }
 
+    pub fn spawn(self, inbound: InboundMessaging<TariNodeMessageSpec>) -> task::JoinHandle<()> {
+        let dispatcher = self.inner.lock().unwrap().take().expect("always some");
+        dispatcher.spawn(inbound)
+    }
+}
+
+impl DispatcherInner {
     fn forward<T: Into<TariNodeMessage>>(&self, message_type: TariMessageType, peer_id: PeerId, msg: T) {
-        match self.forward.get(&TariMessageType::PingPong) {
+        match self.forward.get(&message_type) {
             Some(sender) => {
                 let msg = DomainMessage {
-                    from_peer_id: peer_id,
+                    source_peer_id: peer_id,
                     header: DomainMessageHeader {
                         message_tag: MessageTag::new(),
                     },
@@ -50,7 +75,7 @@ impl Dispatcher {
         }
     }
 
-    pub fn spawn(self, mut inbound: InboundMessaging<TariNodeMessageSpec>) -> task::JoinHandle<()> {
+    fn spawn(self, mut inbound: InboundMessaging<TariNodeMessageSpec>) -> task::JoinHandle<()> {
         tokio::spawn(async move {
             while let Some((peer_id, msg)) = inbound.next().await {
                 match msg {

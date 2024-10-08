@@ -22,7 +22,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use tari_comms::peer_manager::NodeId;
 use tari_network::identity::PeerId;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
@@ -61,8 +60,6 @@ pub enum LivenessResponse {
     Count(usize),
     /// Response for GetAvgLatency and GetNetworkAvgLatency
     AvgLatency(Option<Duration>),
-    /// The number of active neighbouring peers
-    NumActiveNeighbours(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -79,8 +76,8 @@ pub enum LivenessEvent {
 /// Represents a ping or pong event
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PingPongEvent {
-    /// The node id of the node which sent this ping or pong
-    pub node_id: NodeId,
+    /// The peer id of the node which sent this ping or pong
+    pub peer_id: PeerId,
     /// Latency if available (i.e. a corresponding event was sent within the Liveness state inflight ping TTL)
     pub latency: Option<Duration>,
     /// Metadata of the corresponding node
@@ -88,9 +85,9 @@ pub struct PingPongEvent {
 }
 
 impl PingPongEvent {
-    pub fn new(node_id: NodeId, latency: Option<Duration>, metadata: Metadata) -> Self {
+    pub fn new(peer_id: PeerId, latency: Option<Duration>, metadata: Metadata) -> Self {
         Self {
-            node_id,
+            peer_id,
             latency,
             metadata,
         }
@@ -123,8 +120,8 @@ impl LivenessHandle {
     }
 
     /// Send a ping to a given node ID
-    pub async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
-        match self.handle.call(LivenessRequest::SendPing(node_id)).await?? {
+    pub async fn send_ping(&mut self, peer_id: PeerId) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::SendPing(peer_id)).await?? {
             LivenessResponse::Ok => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
@@ -159,18 +156,18 @@ impl LivenessHandle {
     }
 
     /// Add a monitored peer to the basic config if not present
-    pub async fn check_add_monitored_peer(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
-        match self.handle.call(LivenessRequest::AddMonitoredPeer(node_id)).await?? {
+    pub async fn check_add_monitored_peer(&mut self, peer_id: PeerId) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::AddMonitoredPeer(peer_id)).await?? {
             LivenessResponse::Ok => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }
 
     /// Remove a monitored peer from the basic config if present
-    pub async fn check_remove_monitored_peer(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+    pub async fn check_remove_monitored_peer(&mut self, peer_id: PeerId) -> Result<(), LivenessError> {
         match self
             .handle
-            .call(LivenessRequest::RemoveMonitoredPeer(node_id))
+            .call(LivenessRequest::RemoveMonitoredPeer(peer_id))
             .await??
         {
             LivenessResponse::Ok => Ok(()),
@@ -179,8 +176,8 @@ impl LivenessHandle {
     }
 
     /// Retrieve the average latency for a given node
-    pub async fn get_avg_latency(&mut self, node_id: NodeId) -> Result<Option<Duration>, LivenessError> {
-        match self.handle.call(LivenessRequest::GetAvgLatency(node_id)).await?? {
+    pub async fn get_avg_latency(&mut self, peer_id: PeerId) -> Result<Option<Duration>, LivenessError> {
+        match self.handle.call(LivenessRequest::GetAvgLatency(peer_id)).await?? {
             LivenessResponse::AvgLatency(v) => Ok(v),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }

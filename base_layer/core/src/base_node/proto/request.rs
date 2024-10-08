@@ -23,12 +23,10 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::PrivateKey;
+use tari_p2p::proto::{base_node as proto, base_node::base_node_service_request::Request as ProtoNodeCommsRequest};
 use tari_utilities::ByteArray;
 
-use crate::{
-    base_node::comms_interface::NodeCommsRequest,
-    proto::{base_node as proto, base_node::base_node_service_request::Request as ProtoNodeCommsRequest},
-};
+use crate::base_node::comms_interface::NodeCommsRequest;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
@@ -72,13 +70,5 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
             ),
             e => Err(format!("{} request is not supported", e)),
         }
-    }
-}
-
-//---------------------------------- Wrappers --------------------------------------------//
-
-impl From<Vec<u64>> for proto::BlockHeights {
-    fn from(heights: Vec<u64>) -> Self {
-        Self { heights }
     }
 }

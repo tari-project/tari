@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::{BlockHash, PrivateKey};
-use tari_comms::peer_manager::NodeId;
+use tari_network::{identity::PeerId, GossipPublisher};
+use tari_p2p::proto;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -38,18 +39,18 @@ use crate::{
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
-    request_sender: SenderService<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: UnboundedSender<(NewBlock, Vec<NodeId>)>,
+    request_sender: SenderService<(NodeCommsRequest, Option<PeerId>), Result<NodeCommsResponse, CommsInterfaceError>>,
+    block_sender: GossipPublisher<proto::core::NewBlock>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<
-            (NodeCommsRequest, Option<NodeId>),
+            (NodeCommsRequest, Option<PeerId>),
             Result<NodeCommsResponse, CommsInterfaceError>,
         >,
-        block_sender: UnboundedSender<(NewBlock, Vec<NodeId>)>,
+        block_sender: GossipPublisher<proto::core::NewBlock>,
     ) -> Self {
         Self {
             request_sender,
@@ -61,11 +62,11 @@ impl OutboundNodeCommsInterface {
     pub async fn request_blocks_by_hashes_from_peer(
         &mut self,
         hash: BlockHash,
-        node_id: Option<NodeId>,
+        peer_id: PeerId,
     ) -> Result<Option<Block>, CommsInterfaceError> {
         if let NodeCommsResponse::Block(block) = self
             .request_sender
-            .call((NodeCommsRequest::GetBlockFromAllChains(hash), node_id))
+            .call((NodeCommsRequest::GetBlockFromAllChains(hash), Some(peer_id)))
             .await??
         {
             Ok(*block)
@@ -95,12 +96,8 @@ impl OutboundNodeCommsInterface {
     }
 
     /// Transmit a block to remote base nodes, excluding the provided peers.
-    pub async fn propagate_block(
-        &self,
-        new_block: NewBlock,
-        exclude_peers: Vec<NodeId>,
-    ) -> Result<(), CommsInterfaceError> {
-        self.block_sender.send((new_block, exclude_peers)).map_err(|err| {
+    pub async fn propagate_block(&self, new_block: NewBlock) -> Result<(), CommsInterfaceError> {
+        self.block_sender.publish(new_block.into()).await.map_err(|err| {
             CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
         })
     }

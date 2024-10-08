@@ -72,7 +72,7 @@ impl HeaderSyncState {
     }
 
     fn remove_sync_peer(&mut self, node_id: &NodeId) {
-        if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == node_id) {
             self.sync_peers.remove(pos);
         }
     }
@@ -93,7 +93,7 @@ impl HeaderSyncState {
                     if sync_peer.claimed_chain_metadata().accumulated_difficulty() <=
                         best_block_metadata.accumulated_difficulty()
                     {
-                        remove.push(sync_peer.node_id().clone());
+                        remove.push(sync_peer.peer_id().clone());
                     }
                 }
                 for node_id in remove {

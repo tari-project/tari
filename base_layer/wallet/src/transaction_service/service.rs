@@ -78,7 +78,14 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
-use tari_p2p::message::DomainMessage;
+use tari_network::{
+    identity::{Keypair, PeerId},
+    NetworkHandle,
+    NetworkingService,
+    OutboundMessaging,
+    ToPeerId,
+};
+use tari_p2p::message::{DomainMessage, MessageTag, TariNodeMessageSpec};
 use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -185,6 +192,8 @@ pub struct TransactionService<
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
+    network: NetworkHandle,
+    outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
     consensus_manager: ConsensusManager,
 }
 
@@ -417,24 +426,24 @@ where
                 Some(msg) = transaction_stream.next() => {
                     let start = Instant::now();
                     let message_tag = msg.header.message_tag;
-                    let (origin_public_key, inner_msg) = msg.into_origin_and_inner();
+                    let peer_id=msg.peer_id();
+                    let inner_msg = msg.into_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", message_tag);
 
                     let result  = self.accept_transaction(
-                        origin_public_key,
+                        peer_id,
                         inner_msg,
-                        message_tag.as_value(),
+                        message_tag,
                         &mut receive_transaction_protocol_handles,
                     );
 
                     match result {
                         Err(TransactionServiceError::RepeatedMessageError) => {
-                            trace!(target: LOG_TARGET, "A repeated Transaction message was received, Trace: {}",
-                            msg.header.message_tag);
+                            trace!(target: LOG_TARGET, "A repeated Transaction message was received, Trace: {}", msg.header.message_tag);
                         }
                         Err(e) => {
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
-                                e, self.resources.node_identity.node_id().short_str(), message_tag);
+                                e, self.resources.node_identity.public().to_peer_id(), message_tag);
                             let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
                                 Transaction Sender message: {:?}", e).to_string())));
                         }
@@ -2816,9 +2825,9 @@ where
     #[allow(clippy::too_many_lines)]
     pub fn accept_transaction(
         &mut self,
-        source_pubkey: CommsPublicKey,
+        source_peer_id: PeerId,
         sender_message: Result<proto::TransactionSenderMessage, prost::DecodeError>,
-        traced_message_tag: u64,
+        traced_message_tag: MessageTag,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
@@ -2836,12 +2845,12 @@ where
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
         // Currently we will only reply to a Single sender transaction protocol
-        if let TransactionSenderMessage::Single(data) = sender_message.clone() {
+        if let TransactionSenderMessage::Single(ref data) = sender_message {
             trace!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) received from {}, Trace: {}",
                 data.tx_id,
-                source_pubkey,
+                source_peer_id,
                 traced_message_tag
             );
 
@@ -2849,7 +2858,7 @@ where
             if let Ok(Some(any_tx)) = self.db.get_any_cancelled_transaction(data.tx_id) {
                 let tx = CompletedTransaction::from(any_tx);
 
-                if tx.source_address.comms_public_key() != &source_pubkey {
+                if tx.source_address.comms_public_key().to_peer_id() != source_peer_id {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
                 }
                 trace!(
@@ -2859,8 +2868,8 @@ where
                 );
                 tokio::spawn(send_transaction_cancelled_message(
                     tx.tx_id,
-                    source_pubkey,
-                    self.resources.outbound_message_service.clone(),
+                    source_peer_id,
+                    self.outbound_messaging.clone(),
                 ));
 
                 return Ok(());
@@ -2869,7 +2878,7 @@ where
             // Check if this transaction has already been received.
             if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.tx_id) {
                 // Check that it is from the same person
-                if inbound_tx.source_address.comms_public_key() != &source_pubkey {
+                if inbound_tx.source_address.comms_public_key().to_peer_id() != source_peer_id {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
                 }
                 // Check if the last reply is beyond the resend cooldown
@@ -2920,15 +2929,20 @@ where
                 return Err(TransactionServiceError::RepeatedMessageError);
             }
 
-            let source_address = if data.sender_address.comms_public_key() == &source_pubkey {
-                data.sender_address.clone()
-            } else {
-                TariAddress::new_single_address(
-                    source_pubkey,
-                    self.resources.interactive_tari_address.network(),
-                    TariAddressFeatures::INTERACTIVE,
-                )
-            };
+            if data.sender_address.comms_public_key().to_peer_id() != source_peer_id {
+                return Err(TransactionServiceError::InvalidSourcePublicKey);
+            }
+
+            let source_address = data.sender_address.clone();
+            // let source_address = if data.sender_address.comms_public_key().to_peer_id() == source_peer_id {
+            //     data.sender_address.clone()
+            // } else {
+            //     TariAddress::new_single_address(
+            //         source_pubkey,
+            //         self.resources.interactive_tari_address.network(),
+            //         TariAddressFeatures::INTERACTIVE,
+            //     )
+            // };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
             self.finalized_transaction_senders
@@ -3691,7 +3705,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub event_publisher: TransactionEventSender,
     pub interactive_tari_address: TariAddress,
     pub one_sided_tari_address: TariAddress,
-    pub node_identity: Arc<NodeIdentity>,
+    pub node_identity: Arc<Keypair>,
     pub consensus_manager: ConsensusManager,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,

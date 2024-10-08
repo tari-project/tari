@@ -16,7 +16,7 @@ use crate::{
     messaging::OutboundMessaging,
     worker::NetworkingWorker,
     NetworkError,
-    NetworkingHandle,
+    NetworkHandle,
     Peer,
 };
 
@@ -28,7 +28,7 @@ pub fn spawn<TMsg>(
     shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
-        NetworkingHandle,
+        NetworkHandle,
         OutboundMessaging<TMsg>,
         JoinHandle<Result<(), NetworkError>>,
     ),
@@ -71,7 +71,7 @@ where
         .run(),
     );
     Ok((
-        NetworkingHandle::new(local_peer_id, tx_requests, tx_events),
+        NetworkHandle::new(local_peer_id, tx_requests, tx_events),
         OutboundMessaging::new(tx_msg_requests),
         handle,
     ))

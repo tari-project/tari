@@ -4,13 +4,14 @@ use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use async_trait::async_trait;
 use libp2p::{swarm::dial_opts::DialOpts, PeerId};
 use tokio::sync::oneshot;
 
-use crate::{messaging::MulticastDestination, GossipPublisher, GossipReceiver, MessageSpec, NetworkError};
+use crate::{messaging::MulticastDestination, MessageSpec, NetworkError};
 
 #[async_trait]
 pub trait NetworkingService {
@@ -18,24 +19,14 @@ pub trait NetworkingService {
 
     async fn dial_peer<T: Into<DialOpts> + Send + 'static>(&mut self, dial_opts: T)
         -> Result<Waiter<()>, NetworkError>;
+    async fn disconnect_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError>;
 
-    async fn get_connected_peers(&mut self) -> Result<Vec<PeerId>, NetworkError>;
-
-    async fn publish_gossip<TTopic: Into<String> + Send>(
+    async fn ban_peer<T: Into<String> + Send>(
         &mut self,
-        topic: TTopic,
-        message: Vec<u8>,
-    ) -> Result<(), NetworkError>;
-
-    async fn subscribe_topic<T: Into<String> + Send, M: prost::Message + Default>(
-        &mut self,
-        topic: T,
-    ) -> Result<(GossipPublisher<M>, GossipReceiver<M>), NetworkError>;
-    async fn unsubscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkError>;
-
-    async fn set_want_peers<I: IntoIterator<Item = PeerId> + Send>(&self, want_peers: I) -> Result<(), NetworkError>;
-
-    async fn ban_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError>;
+        peer_id: PeerId,
+        reason: T,
+        until: Option<Duration>,
+    ) -> Result<bool, NetworkError>;
 }
 
 pub trait OutboundMessager<TMsg: MessageSpec> {

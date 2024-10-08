@@ -10,14 +10,14 @@ use crate::{identity, Peer};
 #[derive(Debug, Clone)]
 struct PeerRecord {
     peer: Peer,
-    is_banned: bool,
+    _is_banned: bool,
 }
 
 #[derive(Debug)]
 pub struct PeerStore {
     store: HashMap<PeerId, PeerRecord>,
     public_key_to_peer_id: HashMap<identity::PublicKey, PeerId>,
-    ban_list: HashSet<PeerId>,
+    _ban_list: HashSet<PeerId>,
 }
 
 impl PeerStore {
@@ -25,14 +25,17 @@ impl PeerStore {
         Self {
             store: HashMap::new(),
             public_key_to_peer_id: HashMap::new(),
-            ban_list: HashSet::new(),
+            _ban_list: HashSet::new(),
         }
     }
 
     pub fn insert(&mut self, peer: Peer) {
         let peer_id = peer.to_peer_id();
         self.public_key_to_peer_id.insert(peer.public_key().clone(), peer_id);
-        self.store.insert(peer_id, PeerRecord { peer, is_banned: false });
+        self.store.insert(peer_id, PeerRecord {
+            peer,
+            _is_banned: false,
+        });
     }
 
     pub fn remove(&mut self, peer_id: &PeerId) -> Option<Peer> {

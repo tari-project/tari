@@ -47,6 +47,7 @@ use tokio::sync::RwLock;
 use crate::transactions::{
     key_manager::{
         interface::{SecretTransactionKeyManagerInterface, TxoStage},
+        RistrettoDiffieHellmanSharedSecret,
         TariKeyId,
         TransactionKeyManagerInner,
         TransactionKeyManagerInterface,
@@ -254,7 +255,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<CommsDHKE, TransactionError> {
+    ) -> Result<RistrettoDiffieHellmanSharedSecret, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await

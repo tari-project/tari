@@ -23,7 +23,8 @@
 use std::{convert::TryInto, time::Instant};
 
 use log::*;
-use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
+use tari_p2p::proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse};
+use tari_rpc_framework::{RpcStatus, RpcStatusResultExt};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
@@ -31,7 +32,6 @@ use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
-    proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";

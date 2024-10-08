@@ -27,19 +27,7 @@ mod sync_utxos_task;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
-
-#[cfg(test)]
-mod tests;
-
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-
-#[cfg(feature = "base_node")]
-use crate::{
-    base_node::LocalNodeCommsInterface,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-};
-use crate::{
+use tari_p2p::{
     proto,
     proto::base_node::{
         FindChainSplitRequest,
@@ -51,8 +39,18 @@ use crate::{
         SyncUtxosResponse,
     },
 };
+use tari_rpc_framework::{Request, Response, RpcStatus, Streaming};
+use tari_rpc_macros::tari_rpc;
 
-#[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
+// #[cfg(test)]
+// mod tests;
+#[cfg(feature = "base_node")]
+use crate::{
+    base_node::LocalNodeCommsInterface,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+};
+
+#[tari_rpc(protocol_name = "t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn sync_blocks(

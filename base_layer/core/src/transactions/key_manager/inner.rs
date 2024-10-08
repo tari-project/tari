@@ -51,7 +51,6 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
-use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
     extended_range_proof::ExtendedRangeProofService,
@@ -90,7 +89,7 @@ use crate::{
     common::ConfidentialOutputHasher,
     one_sided::diffie_hellman_stealth_domain_hasher,
     transactions::{
-        key_manager::{interface::TxoStage, TariKeyId},
+        key_manager::{interface::TxoStage, RistrettoDiffieHellmanSharedSecret, TariKeyId},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -734,7 +733,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<CommsDHKE, TransactionError> {
+    ) -> Result<RistrettoDiffieHellmanSharedSecret, TransactionError> {
         if let WalletType::Ledger(ledger) = &*self.wallet_type {
             if let KeyId::Managed { branch, index } = secret_key_id {
                 match TransactionKeyManagerBranch::from_key(branch) {
@@ -764,7 +763,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
 
         let secret_key = self.get_private_key(secret_key_id).await?;
-        let shared_secret = CommsDHKE::new(&secret_key, public_key);
+        let shared_secret = RistrettoDiffieHellmanSharedSecret::new(&secret_key, public_key);
         Ok(shared_secret)
     }
 

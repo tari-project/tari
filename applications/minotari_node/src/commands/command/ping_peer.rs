@@ -59,7 +59,7 @@ impl CommandContext {
                 match liveness_events.recv().await {
                     Ok(event) => {
                         if let LivenessEvent::ReceivedPong(pong) = &*event {
-                            if pong.node_id == dest_node_id {
+                            if pong.peer_id == dest_node_id {
                                 println!(
                                     "🏓️ Pong received, round-trip-time is {:.2?}!",
                                     pong.latency.unwrap_or_default()

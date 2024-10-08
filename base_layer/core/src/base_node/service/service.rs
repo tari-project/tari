@@ -22,6 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    io,
     time::Duration,
 };
 
@@ -29,25 +30,26 @@ use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::types::BlockHash;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
-    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
+use tari_network::{
+    identity::PeerId,
+    GossipError,
+    GossipMessage,
+    GossipPublisher,
+    GossipSubscription,
+    NetworkHandle,
+    NetworkingService,
+    OutboundMessager,
+    OutboundMessaging,
 };
-use tari_network::{OutboundMessager, OutboundMessaging};
 use tari_p2p::{
-    message::{DomainMessage, TariNodeMessageSpec},
+    message::{DomainMessage, TariNodeMessage, TariNodeMessageSpec},
+    proto,
     tari_message::TariMessageType,
 };
 use tari_service_framework::reply_channel::RequestContext;
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{
-        mpsc,
-        mpsc::{Receiver, Sender, UnboundedReceiver},
-        oneshot::Sender as OneshotSender,
-    },
+    sync::{mpsc, oneshot},
     task,
 };
 
@@ -65,26 +67,24 @@ use crate::{
         waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
         BanPeriod,
     },
-    proto as shared_protos,
-    proto::base_node as proto,
 };
 
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
 /// A convenience struct to hold all the BaseNode streams
-pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
+pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock> {
     /// `NodeCommsRequest` messages to send to a remote peer. If a specific peer is not provided, a random peer is
     /// chosen.
     pub outbound_request_stream: SOutReq,
     /// Blocks to be propagated out to the network. The second element of the tuple is a list of peers to exclude from
     /// this round of propagation
-    pub outbound_block_stream: UnboundedReceiver<(NewBlock, Vec<NodeId>)>,
+    pub block_publisher: GossipPublisher<proto::core::NewBlock>,
     /// `BaseNodeRequest` messages received from external peers
-    pub inbound_request_stream: SInReq,
+    pub inbound_request_stream: mpsc::UnboundedReceiver<proto::base_node::BaseNodeServiceRequest>,
     /// `BaseNodeResponse` messages received from external peers
-    pub inbound_response_stream: SInRes,
+    pub inbound_response_stream: mpsc::UnboundedReceiver<proto::base_node::BaseNodeServiceResponse>,
     /// `NewBlock` messages received from external peers
-    pub inbound_block_stream: SBlockIn,
+    pub block_subscription: GossipSubscription<proto::core::NewBlock>,
     /// Incoming local request messages from the LocalNodeCommsInterface and other local services
     pub local_request_stream: SLocalReq,
     /// The stream of blocks sent from local services `LocalCommsNodeInterface::submit_block` e.g. block sync and
@@ -95,14 +95,14 @@ pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, 
 /// The Base Node Service is responsible for handling inbound requests and responses and for sending new requests to
 /// remote Base Node Services.
 pub(super) struct BaseNodeService<B> {
-    outbound_message_service: OutboundMessageRequester,
+    outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
     inbound_nch: InboundNodeCommsHandlers<B>,
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
-    timeout_sender: Sender<RequestKey>,
-    timeout_receiver_stream: Option<Receiver<RequestKey>>,
+    timeout_sender: mpsc::Sender<RequestKey>,
+    timeout_receiver_stream: Option<mpsc::Receiver<RequestKey>>,
     service_request_timeout: Duration,
     state_machine_handle: StateMachineHandle,
-    connectivity: ConnectivityRequester,
+    network: NetworkHandle,
     base_node_config: BaseNodeStateMachineConfig,
 }
 
@@ -110,51 +110,49 @@ impl<B> BaseNodeService<B>
 where B: BlockchainBackend + 'static
 {
     pub fn new(
-        outbound_message_service: OutboundMessageRequester,
+        outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
         inbound_nch: InboundNodeCommsHandlers<B>,
         service_request_timeout: Duration,
         state_machine_handle: StateMachineHandle,
-        connectivity: ConnectivityRequester,
+        network: NetworkHandle,
         base_node_config: BaseNodeStateMachineConfig,
     ) -> Self {
         let (timeout_sender, timeout_receiver) = mpsc::channel(100);
         Self {
-            outbound_message_service,
+            outbound_messaging,
             inbound_nch,
             waiting_requests: WaitingRequests::new(),
             timeout_sender,
             timeout_receiver_stream: Some(timeout_receiver),
             service_request_timeout,
             state_machine_handle,
-            connectivity,
+            network,
             base_node_config,
         }
     }
 
-    pub async fn start<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>(
+    pub async fn start<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock>(
         mut self,
-        streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>,
+        streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock>,
     ) -> Result<(), BaseNodeServiceError>
     where
         SOutReq: Stream<
-            Item = RequestContext<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
+            Item = RequestContext<(NodeCommsRequest, Option<PeerId>), Result<NodeCommsResponse, CommsInterfaceError>>,
         >,
-        SInReq: Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>>,
-        SInRes: Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>>,
-        SBlockIn: Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>>,
+        SInReq: Stream<Item = DomainMessage<Result<proto::base_node::BaseNodeServiceRequest, prost::DecodeError>>>,
+        SInRes: Stream<Item = DomainMessage<Result<proto::base_node::BaseNodeServiceResponse, prost::DecodeError>>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
         SLocalBlock: Stream<Item = RequestContext<Block, Result<BlockHash, CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let outbound_block_stream = streams.outbound_block_stream;
+        let outbound_block_stream = streams.block_publisher;
         pin_mut!(outbound_block_stream);
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
         let inbound_response_stream = streams.inbound_response_stream.fuse();
         pin_mut!(inbound_response_stream);
-        let inbound_block_stream = streams.inbound_block_stream.fuse();
-        pin_mut!(inbound_block_stream);
+        let mut block_subscription = streams.block_subscription;
         let local_request_stream = streams.local_request_stream.fuse();
         pin_mut!(local_request_stream);
         let local_block_stream = streams.local_block_stream.fuse();
@@ -169,11 +167,6 @@ where B: BlockchainBackend + 'static
                 // Outbound request messages from the OutboundNodeCommsInterface
                 Some(outbound_request_context) = outbound_request_stream.next() => {
                     self.spawn_handle_outbound_request(outbound_request_context);
-                },
-
-                // Outbound block messages from the OutboundNodeCommsInterface
-                Some((block, excluded_peers)) = outbound_block_stream.recv() => {
-                    self.spawn_handle_outbound_block(block, excluded_peers);
                 },
 
                 // Incoming request messages from the Comms layer
@@ -191,9 +184,9 @@ where B: BlockchainBackend + 'static
                     self.spawn_handle_request_timeout(timeout_request_key);
                 },
 
-                // Incoming block messages from the Comms layer
-                Some(block_msg) = inbound_block_stream.next() => {
-                    self.spawn_handle_incoming_block(block_msg);
+                // Incoming block messages from the network
+                Some(Ok(msg)) = block_subscription.next_message() => {
+                    self.spawn_handle_incoming_block(msg);
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -218,24 +211,24 @@ where B: BlockchainBackend + 'static
     fn spawn_handle_outbound_request(
         &self,
         request_context: RequestContext<
-            (NodeCommsRequest, Option<NodeId>),
+            (NodeCommsRequest, Option<PeerId>),
             Result<NodeCommsResponse, CommsInterfaceError>,
         >,
     ) {
-        let outbound_message_service = self.outbound_message_service.clone();
+        let outbound_messaging = self.outbound_messaging.clone();
         let waiting_requests = self.waiting_requests.clone();
         let timeout_sender = self.timeout_sender.clone();
         let service_request_timeout = self.service_request_timeout;
         task::spawn(async move {
-            let ((request, node_id), reply_tx) = request_context.split();
+            let ((request, peer_id), reply_tx) = request_context.split();
 
             let result = handle_outbound_request(
-                outbound_message_service,
+                outbound_messaging,
                 waiting_requests,
                 timeout_sender,
                 reply_tx,
                 request,
-                node_id,
+                peer_id,
                 service_request_timeout,
             )
             .await;
@@ -246,31 +239,20 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_outbound_block(&self, new_block: NewBlock, excluded_peers: Vec<NodeId>) {
-        let outbound_message_service = self.outbound_message_service.clone();
-        task::spawn(async move {
-            let result = handle_outbound_block(outbound_message_service, new_block, excluded_peers).await;
-
-            if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}", e);
-            }
-        });
-    }
-
     fn spawn_handle_incoming_request(
         &self,
-        domain_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
+        domain_msg: DomainMessage<Result<proto::base_node::BaseNodeServiceRequest, prost::DecodeError>>,
     ) {
         let inbound_nch = self.inbound_nch.clone();
-        let outbound_message_service = self.outbound_message_service.clone();
+        let outbound_messaging = self.outbound_messaging.clone();
         let state_machine_handle = self.state_machine_handle.clone();
-        let mut connectivity = self.connectivity.clone();
+        let mut network = self.network.clone();
         let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
         let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
             let result = handle_incoming_request(
                 inbound_nch,
-                outbound_message_service,
+                outbound_messaging,
                 state_machine_handle,
                 domain_msg.clone(),
             )
@@ -281,8 +263,8 @@ where B: BlockchainBackend + 'static
                         BanPeriod::Short => short_ban,
                         BanPeriod::Long => long_ban,
                     };
-                    let _drop = connectivity
-                        .ban_peer_until(domain_msg.source_peer.node_id.clone(), duration, ban_reason.reason)
+                    let _drop = network
+                        .ban_peer(domain_msg.source_peer_id, ban_reason.reason, Some(duration))
                         .await
                         .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                 }
@@ -293,15 +275,15 @@ where B: BlockchainBackend + 'static
 
     fn spawn_handle_incoming_response(
         &self,
-        domain_msg: DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>,
+        domain_msg: DomainMessage<Result<proto::base_node::BaseNodeServiceResponse, prost::DecodeError>>,
     ) {
         let waiting_requests = self.waiting_requests.clone();
-        let mut connectivity_requester = self.connectivity.clone();
+        let mut network = self.network.clone();
 
         let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
         let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
-            let source_peer = domain_msg.source_peer.clone();
+            let source_peer = domain_msg.source_peer_id;
             let result = handle_incoming_response(waiting_requests, domain_msg).await;
 
             if let Err(e) = result {
@@ -310,8 +292,8 @@ where B: BlockchainBackend + 'static
                         BanPeriod::Short => short_ban,
                         BanPeriod::Long => long_ban,
                     };
-                    let _drop = connectivity_requester
-                        .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
+                    let _drop = network
+                        .ban_peer(source_peer, ban_reason.reason, Some(duration))
                         .await
                         .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                 }
@@ -334,7 +316,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<Result<NewBlock, ExtractBlockError>>) {
+    fn spawn_handle_incoming_block(&self, new_block: GossipMessage<proto::core::NewBlock>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -342,13 +324,13 @@ where B: BlockchainBackend + 'static
             debug!(
                 target: LOG_TARGET,
                 "Propagated block from peer `{}` not processed while busy with initial sync.",
-                new_block.source_peer.node_id.short_str(),
+                new_block.origin_or_source()
             );
             return;
         }
         let inbound_nch = self.inbound_nch.clone();
-        let mut connectivity_requester = self.connectivity.clone();
-        let source_peer = new_block.source_peer.clone();
+        let mut network = self.network.clone();
+        let source_peer = new_block.origin_or_source();
         let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
         let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
@@ -367,8 +349,8 @@ where B: BlockchainBackend + 'static
                             BanPeriod::Short => short_ban,
                             BanPeriod::Long => long_ban,
                         };
-                        let _drop = connectivity_requester
-                            .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
+                        let _drop = network
+                            .ban_peer(source_peer, ban_reason.reason, Some(duration))
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                     }
@@ -422,7 +404,7 @@ where B: BlockchainBackend + 'static
 
 async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     inbound_nch: InboundNodeCommsHandlers<B>,
-    mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
+    mut outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
     state_machine_handle: StateMachineHandle,
     domain_request_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
 ) -> Result<(), BaseNodeServiceError> {
@@ -479,7 +461,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         inner_msg.request_key
     );
 
-    outbound_message_service.send_message(peer_id, message).await?;
+    outbound_messaging.send_message(peer_id, message).await?;
 
     Ok(())
 }
@@ -523,12 +505,12 @@ async fn handle_incoming_response(
 }
 
 async fn handle_outbound_request(
-    mut outbound_message_service: OutboundMessageRequester,
+    mut outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
-    timeout_sender: Sender<RequestKey>,
-    reply_tx: OneshotSender<Result<NodeCommsResponse, CommsInterfaceError>>,
+    timeout_sender: mpsc::Sender<RequestKey>,
+    reply_tx: oneshot::Sender<Result<NodeCommsResponse, CommsInterfaceError>>,
     request: NodeCommsRequest,
-    node_id: Option<NodeId>,
+    node_id: Option<PeerId>,
     service_request_timeout: Duration,
 ) -> Result<(), CommsInterfaceError> {
     let debug_info = format!(
@@ -553,7 +535,7 @@ async fn handle_outbound_request(
     };
 
     trace!(target: LOG_TARGET, "Attempting outbound request ({})", request_key);
-    let send_result = outbound_message_service
+    let send_result = outbound_messaging
         .send_message(
             send_msg_params.finish(),
             OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
@@ -618,32 +600,6 @@ async fn handle_outbound_request(
     Ok(())
 }
 
-async fn handle_outbound_block(
-    mut outbound_message_service: OutboundMessageRequester,
-    new_block: NewBlock,
-    exclude_peers: Vec<NodeId>,
-) -> Result<(), CommsInterfaceError> {
-    let result = outbound_message_service
-        .propagate(
-            NodeDestination::Unknown,
-            OutboundEncryption::ClearText,
-            exclude_peers,
-            OutboundDomainMessage::new(
-                &TariMessageType::NewBlock,
-                shared_protos::core::NewBlock::try_from(new_block).map_err(CommsInterfaceError::InternalError)?,
-            ),
-            "Outbound new block from base node".to_string(),
-        )
-        .await;
-    if let Err(e) = result {
-        return match e {
-            DhtOutboundError::NoMessagesQueued => Ok(()),
-            _ => Err(e.into()),
-        };
-    }
-    Ok(())
-}
-
 async fn handle_request_timeout(
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
     request_key: RequestKey,
@@ -676,25 +632,26 @@ fn spawn_request_timeout(timeout_sender: Sender<RequestKey>, request_key: Reques
 
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
-    domain_block_msg: DomainMessage<Result<NewBlock, ExtractBlockError>>,
+    domain_block_msg: GossipMessage<proto::core::NewBlock>,
 ) -> Result<(), BaseNodeServiceError> {
-    let DomainMessage::<_> {
-        source_peer,
-        payload: new_block,
+    let GossipMessage::<_> {
+        source,
+        origin,
+        message,
         ..
     } = domain_block_msg;
 
-    let new_block = new_block.map_err(BaseNodeServiceError::InvalidBlockMessage)?;
+    let from = origin.unwrap_or(source);
+
+    let new_block = NewBlock::try_from(message).map_err(BaseNodeServiceError::InvalidBlockMessage)?;
     debug!(
         target: LOG_TARGET,
         "New candidate block with hash `{}` received from `{}`.",
         new_block.header.hash().to_hex(),
-        source_peer.node_id.short_str()
+        from
     );
 
-    inbound_nch
-        .handle_new_block_message(new_block, source_peer.node_id)
-        .await?;
+    inbound_nch.handle_new_block_message(new_block, from).await?;
 
     Ok(())
 }

@@ -30,6 +30,8 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::BoxFuture;
+use libp2p::{identity::Keypair, StreamProtocol};
+use libp2p_substream::ProtocolNotification;
 use tokio::{
     sync::{mpsc, Mutex, RwLock},
     task,
@@ -47,6 +49,7 @@ use crate::{
     RpcServer,
     RpcStatus,
     Streaming,
+    Substream,
 };
 
 pub struct RpcRequestMock {}
@@ -73,7 +76,7 @@ impl RpcRequestMock {
 ///
 ///
 /// ```edition2018
-/// # use tari_comms::protocol::rpc::mock::{RpcMock, RpcMockMethodState};
+/// # use tari_rpc_framework::mock::{RpcMock, RpcMockMethodState};
 /// struct MyServiceMock {
 ///     // Each method has a field where it's call state (requests, number of calls etc) and canned response are stored
 ///     my_method: RpcMockMethodState<(), ()>,
@@ -153,8 +156,8 @@ impl<TReq, TResp: Default> Default for RpcMockMethodState<TReq, TResp> {
 
 pub struct MockRpcServer<TSvc> {
     inner: Option<PeerRpcServer<TSvc>>,
-    protocol_tx: ProtocolNotificationTx<Substream>,
-    our_node: Arc<NodeIdentity>,
+    protocol_tx: mpsc::UnboundedSender<ProtocolNotification<Substream>>,
+    our_node: Arc<Keypair>,
     #[allow(dead_code)]
     request_tx: mpsc::Sender<RpcServerRequest>,
 }
@@ -162,7 +165,7 @@ pub struct MockRpcServer<TSvc> {
 impl<TSvc> MockRpcServer<TSvc>
 where
     TSvc: MakeService<
-            ProtocolId,
+            StreamProtocol,
             Request<Bytes>,
             MakeError = RpcServerError,
             Response = Response<Body>,
@@ -174,8 +177,8 @@ where
     <TSvc::Service as Service<Request<Bytes>>>::Future: Send + 'static,
     TSvc::Future: Send + 'static,
 {
-    pub fn new(service: TSvc, our_node: Arc<NodeIdentity>) -> Self {
-        let (protocol_tx, protocol_rx) = mpsc::channel(1);
+    pub fn new(service: TSvc, our_node: Arc<Keypair>) -> Self {
+        let (protocol_tx, protocol_rx) = mpsc::unbounded_channel();
         let (request_tx, request_rx) = mpsc::channel(1);
 
         Self {
@@ -183,7 +186,6 @@ where
                 RpcServer::builder(),
                 service,
                 protocol_rx,
-                MockCommsProvider,
                 request_rx,
             )),
             our_node,

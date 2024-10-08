@@ -28,6 +28,7 @@ use std::{
 
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 
 use crate::{base_node::chain_metadata_service::PeerChainMetadata, common::rolling_avg::RollingAverageTime};
 
@@ -38,8 +39,8 @@ pub struct SyncPeer {
 }
 
 impl SyncPeer {
-    pub fn node_id(&self) -> &NodeId {
-        self.peer_metadata.node_id()
+    pub fn peer_id(&self) -> &PeerId {
+        self.peer_metadata.peer_id()
     }
 
     pub fn claimed_chain_metadata(&self) -> &ChainMetadata {
@@ -83,7 +84,7 @@ impl Display for SyncPeer {
         write!(
             f,
             "Node ID: {}, Chain metadata: {}, Latency: {}",
-            self.node_id(),
+            self.peer_id(),
             self.claimed_chain_metadata(),
             self.latency()
                 .map(|d| format!("{:.2?}", d))
@@ -94,7 +95,7 @@ impl Display for SyncPeer {
 
 impl PartialEq for SyncPeer {
     fn eq(&self, other: &Self) -> bool {
-        self.node_id() == other.node_id()
+        self.peer_id() == other.peer_id()
     }
 }
 impl Eq for SyncPeer {}

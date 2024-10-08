@@ -41,14 +41,7 @@ pub use self::config::LivenessConfig;
 pub mod error;
 
 mod handle;
-pub use handle::{
-    LivenessEvent,
-    LivenessEventSender,
-    LivenessHandle,
-    LivenessRequest,
-    LivenessResponse,
-    PingPongEvent,
-};
+pub use handle::{LivenessEvent, LivenessHandle, LivenessRequest, LivenessResponse, PingPongEvent};
 
 mod message;
 mod service;
@@ -59,10 +52,8 @@ pub use state::Metadata;
 #[cfg(feature = "test-mocks")]
 pub mod mock;
 
-use std::sync::Arc;
-
-use futures::{Stream, StreamExt};
 use log::*;
+use tari_network::{NetworkHandle, OutboundMessaging};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -72,12 +63,10 @@ use tari_service_framework::{
 };
 use tokio::sync::{broadcast, mpsc};
 
-use self::{message::PingPongMessage, service::LivenessService};
-pub use crate::proto::liveness::MetadataKey;
+use self::service::LivenessService;
 use crate::{
-    comms_connector::{PeerMessage, TopicSubscriptionFactory},
-    domain_message::DomainMessage,
-    services::{dispatcher::Dispatcher, liveness::state::LivenessState, utils::map_decode},
+    message::TariNodeMessageSpec,
+    services::{dispatcher::Dispatcher, liveness::state::LivenessState},
     tari_message::TariMessageType,
 };
 
@@ -86,26 +75,12 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
     config: Option<LivenessConfig>,
-    inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
 }
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from the inbound message subscriber
-    pub fn new(
-        config: LivenessConfig,
-        inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-    ) -> Self {
-        Self {
-            config: Some(config),
-            inbound_message_subscription_factory,
-        }
-    }
-
-    /// Get a stream of inbound PingPong messages
-    fn ping_stream(&self) -> impl Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>> {
-        self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::PingPong, "Liveness")
-            .map(map_decode::<PingPongMessage>)
+    pub fn new(config: LivenessConfig) -> Self {
+        Self { config: Some(config) }
     }
 }
 
@@ -126,31 +101,24 @@ impl ServiceInitializer for LivenessInitializer {
             .take()
             .expect("Liveness service initialized more than once.");
 
-        // Create a stream which receives PingPong messages from comms
-        let (ping_tx, ping_rx) = mpsc::unbounded_channel();
-
-        let ping_stream = self.ping_stream();
-
-        let (tx, rx) = mpsc::unbounded_channel();
-
         // Spawn the Liveness service on the executor
         context.spawn_when_ready(|handles| async move {
-            let mut dispatcher = handles.expect_handle::<Dispatcher>();
-            dispatcher.register(TariMessageType::PingPong, rx);
+            let dispatcher = handles.expect_handle::<Dispatcher>();
+            let (ping_tx, ping_rx) = mpsc::unbounded_channel();
+            dispatcher.register(TariMessageType::PingPong, ping_tx);
 
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
+            let network = handles.expect_handle::<NetworkHandle>();
+            let outbound_messaging = handles.expect_handle::<OutboundMessaging<TariNodeMessageSpec>>();
 
             let service = LivenessService::new(
                 config,
                 receiver,
-                ping_stream,
+                ping_rx,
                 LivenessState::new(),
-                connectivity,
-                outbound_messages,
+                network,
+                outbound_messaging,
                 publisher,
                 handles.get_shutdown_signal(),
-                peer_manager,
             );
             service.run().await;
             debug!(target: LOG_TARGET, "Liveness service has shut down");

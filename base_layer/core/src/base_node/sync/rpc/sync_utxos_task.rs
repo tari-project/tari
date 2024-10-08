@@ -27,11 +27,12 @@ use std::{
 };
 
 use log::*;
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
-    utils,
+use tari_network::identity::PeerId;
+use tari_p2p::{
+    proto,
+    proto::base_node::{sync_utxos_response::Txo, SyncUtxosRequest, SyncUtxosResponse},
 };
+use tari_rpc_framework::{Request, RpcStatus, RpcStatusResultExt};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::mpsc, task};
 
@@ -40,21 +41,19 @@ use crate::base_node::metrics;
 use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    proto,
-    proto::base_node::{sync_utxos_response::Txo, SyncUtxosRequest, SyncUtxosResponse},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
-    peer_node_id: Arc<NodeId>,
+    peer_node_id: PeerId,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
-    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<NodeId>) -> Self {
+    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: PeerId) -> Self {
         Self { db, peer_node_id }
     }
 
@@ -297,8 +296,14 @@ where B: BlockchainBackend + 'static
 
             // Ensure task stops if the peer prematurely stops their RPC session
             let txos_len = txos.len();
-            if utils::mpsc::send_all(tx, txos).await.is_err() {
-                break;
+            for txo in txos {
+                if tx.send(txo).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Peer '{}' exited TXO sync session early", self.peer_node_id
+                    );
+                    return Ok(());
+                }
             }
 
             debug!(

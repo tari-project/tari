@@ -24,7 +24,7 @@ mod tag;
 pub use tag::*;
 use tari_network::{identity::PeerId, MessageSpec};
 
-use crate::{proto, tari_message::TariMessageType};
+use crate::proto;
 
 #[derive(Debug, Clone)]
 pub enum TariNodeMessage {
@@ -42,6 +42,78 @@ pub enum TariNodeMessage {
     TransactionCancelled(proto::transaction::TransactionCancelledMessage),
     // Chat
     Chat(proto::chat::MessageDispatch),
+}
+
+impl TariNodeMessage {
+    pub fn into_ping_pong(self) -> Option<proto::liveness::PingPongMessage> {
+        match self {
+            TariNodeMessage::PingPong(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_new_transaction(self) -> Option<proto::types::Transaction> {
+        match self {
+            TariNodeMessage::NewTransaction(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_new_block(self) -> Option<proto::core::NewBlock> {
+        match self {
+            TariNodeMessage::NewBlock(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_base_node_request(self) -> Option<proto::base_node::BaseNodeServiceRequest> {
+        match self {
+            TariNodeMessage::BaseNodeRequest(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_base_node_response(self) -> Option<proto::base_node::BaseNodeServiceResponse> {
+        match self {
+            TariNodeMessage::BaseNodeResponse(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_sender_partial_transaction(self) -> Option<proto::transaction::TransactionSenderMessage> {
+        match self {
+            TariNodeMessage::SenderPartialTransaction(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_receiver_partial_transaction_reply(self) -> Option<proto::transaction::RecipientSignedMessage> {
+        match self {
+            TariNodeMessage::ReceiverPartialTransactionReply(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_transaction_finalized(self) -> Option<proto::transaction::TransactionFinalizedMessage> {
+        match self {
+            TariNodeMessage::TransactionFinalized(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_transaction_cancelled(self) -> Option<proto::transaction::TransactionCancelledMessage> {
+        match self {
+            TariNodeMessage::TransactionCancelled(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn into_chat(self) -> Option<proto::chat::MessageDispatch> {
+        match self {
+            TariNodeMessage::Chat(p) => Some(p),
+            _ => None,
+        }
+    }
 }
 
 macro_rules! impl_from {
@@ -76,7 +148,7 @@ impl MessageSpec for TariNodeMessageSpec {
 /// Wrapper around a received message. Provides source peer and origin information
 #[derive(Debug, Clone)]
 pub struct DomainMessage<T> {
-    pub from_peer_id: PeerId,
+    pub source_peer_id: PeerId,
     /// This DHT header of this message. If `DhtMessageHeader::origin_public_key` is different from the
     /// `source_peer.public_key`, this message was forwarded.
     pub header: DomainMessageHeader,
@@ -95,7 +167,11 @@ impl<T> DomainMessage<T> {
 
     /// Consumes this object returning the PeerId of the original sender of this message and the message itself
     pub fn into_origin_and_inner(self) -> (PeerId, T) {
-        (self.from_peer_id, self.payload)
+        (self.source_peer_id, self.payload)
+    }
+
+    pub fn peer_id(&self) -> PeerId {
+        self.source_peer_id
     }
 }
 

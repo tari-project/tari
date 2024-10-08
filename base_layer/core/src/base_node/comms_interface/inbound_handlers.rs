@@ -27,7 +27,7 @@ use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
 use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_network::{identity::PeerId, NetworkHandle};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
@@ -70,7 +70,7 @@ pub enum BlockEvent {
     ValidBlockAdded(Arc<Block>, BlockAddResult),
     AddBlockValidationFailed {
         block: Arc<Block>,
-        source_peer: Option<NodeId>,
+        source_peer: Option<PeerId>,
     },
     AddBlockErrored {
         block: Arc<Block>,
@@ -87,7 +87,6 @@ pub struct InboundNodeCommsHandlers<B> {
     consensus_manager: ConsensusManager,
     list_of_reconciling_blocks: Arc<RwLock<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
-    connectivity: ConnectivityRequester,
     randomx_factory: RandomXFactory,
 }
 
@@ -101,7 +100,6 @@ where B: BlockchainBackend + 'static
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
-        connectivity: ConnectivityRequester,
         randomx_factory: RandomXFactory,
     ) -> Self {
         Self {
@@ -111,7 +109,6 @@ where B: BlockchainBackend + 'static
             consensus_manager,
             list_of_reconciling_blocks: Arc::new(RwLock::new(HashSet::new())),
             outbound_nci,
-            connectivity,
             randomx_factory,
         }
     }
@@ -441,7 +438,7 @@ where B: BlockchainBackend + 'static
     pub async fn handle_new_block_message(
         &mut self,
         new_block: NewBlock,
-        source_peer: NodeId,
+        source_peer: PeerId,
     ) -> Result<(), CommsInterfaceError> {
         let block_hash = new_block.header.hash();
 
@@ -504,7 +501,7 @@ where B: BlockchainBackend + 'static
             source_peer
         );
 
-        let result = self.reconcile_and_add_block(source_peer.clone(), new_block).await;
+        let result = self.reconcile_and_add_block(source_peer, new_block).await;
 
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
@@ -587,10 +584,10 @@ where B: BlockchainBackend + 'static
 
     async fn reconcile_and_add_block(
         &mut self,
-        source_peer: NodeId,
+        source_peer: PeerId,
         new_block: NewBlock,
     ) -> Result<(), CommsInterfaceError> {
-        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+        let block = self.reconcile_block(source_peer, new_block).await?;
         self.handle_block(block, Some(source_peer)).await?;
         Ok(())
     }
@@ -598,7 +595,7 @@ where B: BlockchainBackend + 'static
     #[allow(clippy::too_many_lines)]
     async fn reconcile_block(
         &mut self,
-        source_peer: NodeId,
+        source_peer: PeerId,
         new_block: NewBlock,
     ) -> Result<Block, CommsInterfaceError> {
         let NewBlock {
@@ -741,12 +738,12 @@ where B: BlockchainBackend + 'static
 
     async fn request_full_block_from_peer(
         &mut self,
-        source_peer: NodeId,
+        source_peer: PeerId,
         block_hash: BlockHash,
     ) -> Result<Block, CommsInterfaceError> {
         match self
             .outbound_nci
-            .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
+            .request_blocks_by_hashes_from_peer(block_hash, source_peer.clone())
             .await
         {
             Ok(Some(block)) => Ok(block),
@@ -780,7 +777,7 @@ where B: BlockchainBackend + 'static
     pub async fn handle_block(
         &mut self,
         block: Block,
-        source_peer: Option<NodeId>,
+        source_peer: Option<PeerId>,
     ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
@@ -812,11 +809,12 @@ where B: BlockchainBackend + 'static
                     timer.elapsed()
                 );
 
+                // TODO: we dont really have control over this
                 let should_propagate = match &block_add_result {
-                    BlockAddResult::Ok(_) => true,
+                    BlockAddResult::Ok(_) => source_peer.is_none(),
                     BlockAddResult::BlockExists => false,
                     BlockAddResult::OrphanBlock => false,
-                    BlockAddResult::ChainReorg { .. } => true,
+                    BlockAddResult::ChainReorg { .. } => source_peer.is_none(),
                 };
 
                 #[cfg(feature = "metrics")]
@@ -830,9 +828,8 @@ where B: BlockchainBackend + 'static
                         "Propagate block ({}) to network.",
                         block_hash.to_hex()
                     );
-                    let exclude_peers = source_peer.into_iter().collect();
                     let new_block_msg = NewBlock::from(&*block);
-                    if let Err(e) = self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await {
+                    if let Err(e) = self.outbound_nci.propagate_block(new_block_msg).await {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to propagate block ({}) to network: {}.",
@@ -1013,7 +1010,6 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             consensus_manager: self.consensus_manager.clone(),
             list_of_reconciling_blocks: self.list_of_reconciling_blocks.clone(),
             outbound_nci: self.outbound_nci.clone(),
-            connectivity: self.connectivity.clone(),
             randomx_factory: self.randomx_factory.clone(),
         }
     }

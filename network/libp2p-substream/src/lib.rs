@@ -12,5 +12,6 @@ pub use behaviour::*;
 pub use config::*;
 pub use error::Error;
 pub use event::*;
+pub use libp2p::Stream as Substream;
 pub use notify::*;
 pub use stream::*;

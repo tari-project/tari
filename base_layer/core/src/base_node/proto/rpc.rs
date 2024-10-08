@@ -22,9 +22,10 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_p2p::proto::base_node as proto;
 use tari_utilities::ByteArray;
 
-use crate::{blocks::Block, mempool::FeePerGramStat, proto::base_node as proto};
+use crate::{blocks::Block, mempool::FeePerGramStat};
 
 impl TryFrom<Block> for proto::BlockBodyResponse {
     type Error = String;
@@ -34,14 +35,6 @@ impl TryFrom<Block> for proto::BlockBodyResponse {
             hash: block.hash().to_vec(),
             body: Some(block.body.try_into()?),
         })
-    }
-}
-
-impl From<Vec<FeePerGramStat>> for proto::GetMempoolFeePerGramStatsResponse {
-    fn from(stats: Vec<FeePerGramStat>) -> Self {
-        Self {
-            stats: stats.into_iter().map(Into::into).collect(),
-        }
     }
 }
 

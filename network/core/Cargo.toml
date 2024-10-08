@@ -10,6 +10,7 @@ license.workspace = true
 tari_swarm = { workspace = true }
 tari_rpc_framework = { workspace = true }
 tari_shutdown = { workspace = true }
+tari_crypto = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }

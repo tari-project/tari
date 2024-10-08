@@ -27,6 +27,7 @@ ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
 
 [dependencies]
+libp2p-substream = { workspace = true }
 minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.5.1-pre.1", optional = true }
 tari_common = { path = "../../common", version = "1.5.1-pre.1" }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.5.1-pre.1" }
@@ -108,9 +109,6 @@ quickcheck = "1.0"
 serial_test = "0.5"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = [
-    "build",
-], version = "1.5.1-pre.1" }
 tari_features = { path = "../../common/tari_features", version = "1.5.1-pre.1" }
 
 [[bench]]

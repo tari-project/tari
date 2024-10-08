@@ -26,6 +26,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use async_trait::async_trait;
 use log::*;
 use tari_common_types::types::FixedHash;
 use tari_comms::{
@@ -33,6 +34,20 @@ use tari_comms::{
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
     utils,
 };
+use tari_network::identity::PeerId;
+use tari_p2p::{
+    proto,
+    proto::base_node::{
+        FindChainSplitRequest,
+        FindChainSplitResponse,
+        SyncBlocksRequest,
+        SyncHeadersRequest,
+        SyncKernelsRequest,
+        SyncUtxosRequest,
+        SyncUtxosResponse,
+    },
+};
+use tari_rpc_framework::{Request, RpcStatus, RpcStatusResultExt, Streaming};
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -53,23 +68,13 @@ use crate::{
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
-    proto,
-    proto::base_node::{
-        FindChainSplitRequest,
-        FindChainSplitResponse,
-        SyncBlocksRequest,
-        SyncHeadersRequest,
-        SyncKernelsRequest,
-        SyncUtxosRequest,
-        SyncUtxosResponse,
-    },
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
 pub struct BaseNodeSyncRpcService<B> {
     db: AsyncBlockchainDb<B>,
-    active_sessions: Mutex<Vec<Weak<NodeId>>>,
+    active_sessions: Mutex<Vec<Weak<PeerId>>>,
     base_node_service: LocalNodeCommsInterface,
 }
 
@@ -87,7 +92,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
         self.db.clone()
     }
 
-    pub async fn try_add_exclusive_session(&self, peer: NodeId) -> Result<Arc<NodeId>, RpcStatus> {
+    pub async fn try_add_exclusive_session(&self, peer: PeerId) -> Result<Arc<PeerId>, RpcStatus> {
         let mut lock = self.active_sessions.lock().await;
         *lock = lock.drain(..).filter(|l| l.strong_count() > 0).collect();
         debug!(target: LOG_TARGET, "Number of active sync sessions: {}", lock.len());
@@ -107,7 +112,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     }
 }
 
-#[tari_comms::async_trait]
+#[async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
     #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
     #[allow(clippy::blocks_in_conditions)]
@@ -238,20 +243,23 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(blocks) => {
                             let blocks = blocks.into_iter().map(|hb| {
                                 let block = hb.into_block();
-                                proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
-                                    log::error!(target: LOG_TARGET, "Internal error: {}", e);
-                                    RpcStatus::general_default()
-                                })
+                                proto::base_node::BlockBodyResponse::try_from(block).map_err(
+                                    RpcStatus::log_internal_error(LOG_TARGET)
+                                )
                             });
 
+
                             // Ensure task stops if the peer prematurely stops their RPC session
-                            if utils::mpsc::send_all(&tx, blocks).await.is_err() {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Block sync session for peer '{}' terminated early", peer_node_id
-                                );
-                                break;
+                            for block in blocks {
+                                if let Err(_) = tx.send(block).await {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Block sync session for peer '{}' terminated early", peer_node_id
+                                    );
+                                    return Ok(())
+                                }
                             }
+
                         },
                         Err(err) => {
                             let _result = tx.send(Err(err)).await;

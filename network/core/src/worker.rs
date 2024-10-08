@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap},
     hash::Hash,
     sync::Arc,
     time::{Duration, Instant},
@@ -58,8 +58,8 @@ use crate::{
     handle::NetworkingRequest,
     messaging::MessagingRequest,
     notify::Notifiers,
-    peer_store::PeerStore,
     relay_state::RelayState,
+    ConnectionDirection,
     MessageSpec,
     MessagingMode,
     NetworkError,
@@ -77,7 +77,7 @@ where
     TMsg: MessageSpec,
     TMsg::Message: prost::Message + Default + Clone + 'static,
 {
-    _keypair: identity::Keypair,
+    keypair: identity::Keypair,
     rx_request: mpsc::Receiver<NetworkingRequest>,
     rx_msg_request: mpsc::Receiver<MessagingRequest<TMsg>>,
     tx_events: broadcast::Sender<NetworkingEvent>,
@@ -95,7 +95,6 @@ where
     seed_peers: Vec<Peer>,
     is_initial_bootstrap_complete: bool,
     has_sent_announce: bool,
-    peer_store: PeerStore,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -118,7 +117,7 @@ where
     ) -> Self {
         let (gossipsub_outbound_tx, gossipsub_outbound_rx) = mpsc::channel(100);
         Self {
-            _keypair: keypair,
+            keypair,
             rx_request,
             rx_msg_request,
             tx_events,
@@ -136,7 +135,6 @@ where
             config,
             is_initial_bootstrap_complete: false,
             has_sent_announce: false,
-            peer_store: PeerStore::new(),
             shutdown_signal,
         }
     }
@@ -233,11 +231,9 @@ where
                     },
                 }
             },
-            NetworkingRequest::GetConnectedPeers { reply_tx } => {
-                let peers = self.swarm.connected_peers().copied().collect();
-                let _ignore = reply_tx.send(Ok(peers));
+            NetworkingRequest::DisconnectPeer { peer_id, reply } => {
+                let _ignore = reply.send(Ok(self.swarm.disconnect_peer_id(peer_id).is_ok()));
             },
-
             NetworkingRequest::PublishGossip {
                 topic,
                 message,
@@ -254,7 +250,7 @@ where
             },
             NetworkingRequest::SubscribeTopic { topic, inbound, reply } => {
                 let result = self.gossipsub_subscribe_topic(topic, inbound);
-                let _ignore = reply.send(result);
+                let _ignore = reply.send(result.map(|_| self.gossipsub_outbound_tx.clone()));
             },
             NetworkingRequest::UnsubscribeTopic { topic, reply_tx } => {
                 self.gossipsub_subscriptions.remove(&topic.hash());
@@ -294,6 +290,7 @@ where
                 }
             },
             NetworkingRequest::SelectActiveConnections {
+                with_peers,
                 limit,
                 randomize,
                 exclude_peers: excluded_peers,
@@ -303,6 +300,7 @@ where
                     .active_connections
                     .values()
                     .flatten()
+                    .filter(|c| with_peers.as_ref().map_or(true, |p| p.contains(&c.peer_id)))
                     .filter(|c| !excluded_peers.contains(&c.peer_id))
                     .cloned();
                 let connections = if randomize {
@@ -318,6 +316,7 @@ where
             NetworkingRequest::GetLocalPeerInfo { reply_tx } => {
                 let peer = crate::peer::PeerInfo {
                     peer_id: *self.swarm.local_peer_id(),
+                    public_key: self.keypair.public(),
                     protocol_version: self.config.swarm.protocol_version.to_string(),
                     agent_version: self.config.swarm.user_agent.clone(),
                     listen_addrs: self.swarm.listeners().cloned().collect(),
@@ -353,7 +352,13 @@ where
                     }));
                 }
             },
-            NetworkingRequest::BanPeer { peer_id, reply } => {
+            NetworkingRequest::BanPeer {
+                peer_id,
+                reason,
+                ban_duration,
+                reply,
+            } => {
+                info!(target: LOG_TARGET, "🎯Banning peer {peer_id} for {ban_duration:?}: {reason}");
                 // TODO: mark the peer as banned and prevent connections,messages from coming through
                 if self.swarm.disconnect_peer_id(peer_id).is_ok() {
                     let _ignore = reply.send(Ok(true));
@@ -428,7 +433,7 @@ where
         &mut self,
         topic: IdentTopic,
         inbound: mpsc::UnboundedSender<(PeerId, gossipsub::Message)>,
-    ) -> Result<mpsc::Sender<(IdentTopic, Vec<u8>)>, NetworkError> {
+    ) -> Result<(), NetworkError> {
         if !self.swarm.behaviour_mut().gossipsub.subscribe(&topic)? {
             warn!(target: LOG_TARGET, "Already subscribed to {topic}");
             // We'll just replace the previous channel in this case
@@ -437,7 +442,7 @@ where
         debug!(target: LOG_TARGET, "📢 Subscribed to gossipsub topic: {}", topic);
         self.gossipsub_subscriptions.insert(topic.hash(), inbound);
 
-        Ok(self.gossipsub_outbound_tx.clone())
+        Ok(())
     }
 
     fn add_all_seed_peers(&mut self) {
@@ -815,9 +820,12 @@ where
             }
         }
 
+        let is_dialer = endpoint.is_dialer();
+
         self.active_connections.entry(peer_id).or_default().push(Connection {
             connection_id,
             peer_id,
+            public_key: None,
             created_at: Instant::now(),
             endpoint,
             num_established,
@@ -836,6 +844,14 @@ where
             let _ignore = waiter.send(Ok(()));
         }
 
+        self.publish_event(NetworkingEvent::PeerConnected {
+            peer_id,
+            direction: if is_dialer {
+                ConnectionDirection::Outbound
+            } else {
+                ConnectionDirection::Inbound
+            },
+        });
         Ok(())
     }
 
@@ -854,9 +870,17 @@ where
             return Ok(());
         }
 
-        self.update_connected_peers(&peer_id, &info);
+        let identify::Info {
+            public_key,
+            agent_version,
+            listen_addrs,
+            protocols,
+            ..
+        } = info;
 
-        let is_relay = info.protocols.iter().any(|p| *p == relay::HOP_PROTOCOL_NAME);
+        self.update_connected_peers(&peer_id, public_key.clone(), agent_version);
+
+        let is_relay = protocols.iter().any(|p| *p == relay::HOP_PROTOCOL_NAME);
 
         let is_connected_through_relay = self
             .active_connections
@@ -868,7 +892,7 @@ where
             })
             .unwrap_or(false);
 
-        for address in info.listen_addrs {
+        for address in listen_addrs {
             if is_p2p_address(&address) && address.is_global_ip() {
                 // If the peer has a p2p-circuit address, immediately upgrade to a direct connection (DCUtR /
                 // hole-punching) if we're connected to them through a relay
@@ -905,20 +929,21 @@ where
 
         self.publish_event(NetworkingEvent::NewIdentifiedPeer {
             peer_id,
-            public_key: info.public_key,
-            supported_protocols: info.protocols,
+            public_key,
+            supported_protocols: protocols,
         });
         Ok(())
     }
 
-    fn update_connected_peers(&mut self, peer_id: &PeerId, info: &identify::Info) {
+    fn update_connected_peers(&mut self, peer_id: &PeerId, public_key: identity::PublicKey, agent_version: String) {
         let Some(conns_mut) = self.active_connections.get_mut(peer_id) else {
             return;
         };
 
-        let user_agent = Arc::new(info.agent_version.clone());
+        let user_agent = Arc::new(agent_version);
         for conn_mut in conns_mut {
             conn_mut.user_agent = Some(user_agent.clone());
+            conn_mut.public_key = Some(public_key.clone());
         }
     }
 

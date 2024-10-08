@@ -34,7 +34,7 @@ use tari_network::{
     MessageSpec,
     MessagingMode,
     NetworkError,
-    NetworkingHandle,
+    NetworkHandle,
     OutboundMessaging,
     ReachabilityMode,
     SwarmConfig,
@@ -48,7 +48,6 @@ use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     connector::InboundMessaging,
     peer_seeds::{DnsSeedResolver, SeedPeer},
-    services::dispatcher::Dispatcher,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -82,7 +81,7 @@ pub async fn initialize_local_test_comms<TMsg>(
     shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
-        NetworkingHandle,
+        NetworkHandle,
         OutboundMessaging<TMsg>,
         InboundMessaging<TMsg>,
         JoinHandle<Result<(), NetworkError>>,
@@ -129,7 +128,7 @@ pub fn spawn_network<TMsg: MessageSpec>(
     shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
-        NetworkingHandle,
+        NetworkHandle,
         OutboundMessaging<TMsg>,
         InboundMessaging<TMsg>,
         JoinHandle<Result<(), NetworkError>>,
@@ -157,7 +156,7 @@ where
 
 /// Adds seed peers to the list of known peers
 pub async fn add_seed_peers(
-    network: NetworkingHandle,
+    network: NetworkHandle,
     identity: &identity::Keypair,
     peers: Vec<SeedPeer>,
 ) -> Result<(), CommsInitializationError> {
@@ -285,9 +284,6 @@ where
     TMsg::Message: prost::Message + Default + Clone + Send + Sync + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        // Register the dispatcher so that services can use it to listen for their respective messages
-        context.register_handle(Dispatcher::new());
-
         debug!(target: LOG_TARGET, "Initializing P2P");
         let seed_peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 

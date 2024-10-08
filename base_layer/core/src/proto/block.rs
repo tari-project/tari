@@ -27,9 +27,9 @@ use std::{
 
 use primitive_types::U256;
 use tari_common_types::types::PrivateKey;
+use tari_p2p::proto::core as proto;
 use tari_utilities::ByteArray;
 
-use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock},
     proof_of_work::{AccumulatedDifficulty, Difficulty},

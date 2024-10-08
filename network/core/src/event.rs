@@ -10,4 +10,24 @@ pub enum NetworkingEvent {
         public_key: identity::PublicKey,
         supported_protocols: Vec<StreamProtocol>,
     },
+    PeerConnected {
+        peer_id: PeerId,
+        direction: ConnectionDirection,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ConnectionDirection {
+    Inbound,
+    Outbound,
+}
+
+impl ConnectionDirection {
+    pub fn is_inbound(&self) -> bool {
+        matches!(self, ConnectionDirection::Inbound)
+    }
+
+    pub fn is_outbound(&self) -> bool {
+        matches!(self, ConnectionDirection::Outbound)
+    }
 }

@@ -42,12 +42,12 @@ impl<T: prost::Message + Default> GossipPublisher<T> {
 }
 
 #[derive(Debug)]
-pub struct GossipReceiver<T> {
+pub struct GossipSubscription<T> {
     receiver: mpsc::UnboundedReceiver<(PeerId, gossipsub::Message)>,
     codec: ProstCodec<T>,
 }
 
-impl<T: prost::Message + Default> GossipReceiver<T> {
+impl<T: prost::Message + Default> GossipSubscription<T> {
     pub(super) fn new(receiver: mpsc::UnboundedReceiver<(PeerId, gossipsub::Message)>) -> Self {
         Self {
             receiver,
@@ -55,23 +55,20 @@ impl<T: prost::Message + Default> GossipReceiver<T> {
         }
     }
 
-    pub async fn next_message(&mut self) -> Result<Option<GossipMessage<T>>, GossipError> {
+    pub async fn next_message(&mut self) -> Option<Result<GossipMessage<T>, io::Error>> {
         let Some((source, raw_msg)) = self.receiver.recv().await else {
-            return Ok(None);
+            return None;
         };
 
-        let (len, msg) = self
-            .codec
-            .decode_from(&mut raw_msg.data.as_slice())
-            .await
-            .map_err(GossipError::DecodeError)?;
-
-        Ok(Some(GossipMessage {
-            source,
-            origin: raw_msg.source,
-            decoded_len: len,
-            message: msg,
-        }))
+        match self.codec.decode_from(&mut raw_msg.data.as_slice()).await {
+            Ok((len, msg)) => Some(Ok(GossipMessage {
+                source,
+                origin: raw_msg.source,
+                decoded_len: len,
+                message: msg,
+            })),
+            Err(err) => Some(Err(err)),
+        }
     }
 }
 
@@ -85,6 +82,12 @@ pub struct GossipMessage<T> {
     pub decoded_len: usize,
     /// The decoded message payload
     pub message: T,
+}
+
+impl<T> GossipMessage<T> {
+    pub fn origin_or_source(&self) -> PeerId {
+        self.origin.unwrap_or(self.source)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

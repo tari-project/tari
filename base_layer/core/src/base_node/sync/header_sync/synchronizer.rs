@@ -35,6 +35,12 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError},
     PeerConnection,
 };
+use tari_network::{identity::PeerId, NetworkHandle};
+use tari_p2p::proto::{
+    base_node::{FindChainSplitRequest, SyncHeadersRequest},
+    core::BlockHeader as ProtoBlockHeader,
+};
+use tari_rpc_framework::{RpcClient, RpcConnector};
 use tari_utilities::hex::Hex;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
@@ -52,10 +58,6 @@ use crate::{
     common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
-    proto::{
-        base_node::{FindChainSplitRequest, SyncHeadersRequest},
-        core::BlockHeader as ProtoBlockHeader,
-    },
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -66,7 +68,7 @@ pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
     header_validator: BlockHeaderSyncValidator<B>,
-    connectivity: ConnectivityRequester,
+    network: NetworkHandle,
     sync_peers: &'a mut Vec<SyncPeer>,
     hooks: Hooks,
     local_cached_metadata: &'a ChainMetadata,
@@ -78,17 +80,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         consensus_rules: ConsensusManager,
-        connectivity: ConnectivityRequester,
+        network: NetworkHandle,
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,
         local_metadata: &'a ChainMetadata,
     ) -> Self {
-        let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
+        let peer_ban_manager = PeerBanManager::new(config.clone(), network.clone());
         Self {
             config,
             header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
             db,
-            connectivity,
+            network,
             sync_peers,
             hooks: Default::default(),
             local_cached_metadata: local_metadata,
@@ -145,7 +147,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         &mut self,
         max_latency: Duration,
     ) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
-        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
+        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).cloned().collect::<Vec<_>>();
         info!(
             target: LOG_TARGET,
             "Attempting to sync headers ({} sync peers)",
@@ -187,25 +189,25 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     async fn connect_and_attempt_sync(
         &mut self,
-        node_id: &NodeId,
+        peer_id: &PeerId,
         max_latency: Duration,
     ) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
         let peer_index = self
-            .get_sync_peer_index(node_id)
+            .get_sync_peer_index(peer_id)
             .ok_or(BlockHeaderSyncError::PeerNotFound)?;
         let sync_peer = &self.sync_peers[peer_index];
         self.hooks.call_on_starting_hook(sync_peer);
 
-        let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
             target: LOG_TARGET,
-            "Attempting to synchronize headers with `{}`", node_id
+            "Attempting to synchronize headers with `{}`", peer_id
         );
 
         let config = RpcClient::builder()
             .with_deadline(self.config.rpc_deadline)
             .with_deadline_grace_period(Duration::from_secs(5));
-        let mut client = conn
+        let mut client = self
+            .network
             .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
             .await?;
 
@@ -215,7 +217,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.sync_peers[peer_index].set_latency(latency);
         if latency > max_latency {
             return Err(BlockHeaderSyncError::MaxLatencyExceeded {
-                peer: conn.peer_node_id().clone(),
+                peer: *peer_id,
                 latency,
                 max_latency,
             });
@@ -225,19 +227,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let sync_peer = self.sync_peers[peer_index].clone();
         let sync_result = self.attempt_sync(&sync_peer, client, max_latency).await?;
         Ok((sync_peer, sync_result))
-    }
-
-    async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, BlockHeaderSyncError> {
-        let timer = Instant::now();
-        debug!(target: LOG_TARGET, "Dialing {} sync peer", node_id);
-        let conn = self.connectivity.dial_peer(node_id.clone()).await?;
-        info!(
-            target: LOG_TARGET,
-            "Successfully dialed sync peer {} in {:.2?}",
-            node_id,
-            timer.elapsed()
-        );
-        Ok(conn)
     }
 
     async fn attempt_sync(
@@ -250,7 +239,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Initiating header sync with peer `{}` (sync latency = {}ms)",
-            sync_peer.node_id(),
+            sync_peer.peer_id(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -453,7 +442,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(HeaderSyncStatus, FindChainSplitResult), BlockHeaderSyncError> {
         // This method will return ban-able errors for certain offenses.
         let chain_split_result = self
-            .find_chain_split(sync_peer.node_id(), client, HEADER_SYNC_INITIAL_MAX_HEADERS as u64)
+            .find_chain_split(sync_peer.peer_id(), client, HEADER_SYNC_INITIAL_MAX_HEADERS as u64)
             .await?;
         if chain_split_result.reorg_steps_back > 0 {
             debug!(
@@ -476,7 +465,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     target: LOG_TARGET,
                     "Peer `{}` did not provide any headers although they have a better chain and more headers: their \
                     difficulty: {}, our difficulty: {}. Peer will be banned.",
-                    sync_peer.node_id(),
+                    sync_peer.peer_id(),
                     sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                     best_block_header.accumulated_data().total_accumulated_difficulty,
                 );
@@ -486,7 +475,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     local: best_block_header.accumulated_data().total_accumulated_difficulty,
                 });
             }
-            debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
+            debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.peer_id());
             return Ok((HeaderSyncStatus::InSyncOrAhead, chain_split_result));
         }
 
@@ -523,7 +512,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         debug!(
             target: LOG_TARGET,
-            "Peer `{}` has submitted {} valid header(s)", sync_peer.node_id(), num_new_headers
+            "Peer `{}` has submitted {} valid header(s)", sync_peer.peer_id(), num_new_headers
         );
 
         let chain_split_info = ChainSplitInfo {
@@ -584,7 +573,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             debug!(
                 target: LOG_TARGET,
                 "Remote chain from peer {} has higher PoW. Switching",
-                sync_peer.node_id()
+                sync_peer.peer_id()
             );
             self.switch_to_pending_chain(&split_info).await?;
             has_switched_to_new_chain = true;
@@ -614,7 +603,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             target: LOG_TARGET,
             "Download remaining headers starting from header #{} from peer `{}`",
             start_header_height,
-            sync_peer.node_id()
+            sync_peer.peer_id()
         );
         let request = SyncHeadersRequest {
             start_hash: start_header_hash.to_vec(),
@@ -626,7 +615,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Reading headers from peer `{}`",
-            sync_peer.node_id()
+            sync_peer.peer_id()
         );
 
         let mut last_sync_timer = Instant::now();
@@ -706,7 +695,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             if let Some(avg_latency) = last_avg_latency {
                 if avg_latency > max_latency {
                     return Err(BlockHeaderSyncError::MaxLatencyExceeded {
-                        peer: sync_peer.node_id().clone(),
+                        peer: sync_peer.peer_id().clone(),
                         latency: avg_latency,
                         max_latency,
                     });
@@ -836,14 +825,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
     fn remove_sync_peer(&mut self, node_id: &NodeId) {
-        if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == node_id) {
             self.sync_peers.remove(pos);
         }
     }
 
     // Helper function to get the index to the node_id inside of the vec of peers
     fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
-        self.sync_peers.iter().position(|p| p.node_id() == node_id)
+        self.sync_peers.iter().position(|p| p.peer_id() == node_id)
     }
 }
 

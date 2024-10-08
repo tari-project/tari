@@ -2092,7 +2092,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .state_info
             .get_block_sync_info()
             .map(|info| {
-                let node_ids = info.sync_peer.node_id().to_string().into_bytes();
+                let node_ids = info.sync_peer.peer_id().to_string().into_bytes();
                 tari_rpc::SyncInfoResponse {
                     tip_height: info.tip_height,
                     local_height: info.local_height,

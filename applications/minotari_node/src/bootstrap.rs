@@ -49,25 +49,28 @@ use tari_network::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
     MessageSpec,
     NetworkError,
-    NetworkingHandle,
+    NetworkHandle,
     Peer,
 };
 use tari_p2p::{
     auto_update::SoftwareUpdaterService,
     comms_connector::pubsub_connector,
+    connector::InboundMessaging,
     initialization,
     initialization::P2pInitializer,
+    message::TariNodeMessageSpec,
     peer_seeds::SeedPeer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
+    Dispatcher,
     P2pConfig,
     TransportType,
 };
 use tari_rpc_framework::RpcServer;
-use tari_service_framework::{ServiceHandles, StackBuilder};
+use tari_service_framework::{RegisterHandle, ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
-use crate::{message_spec::TariNodeMessageSpec, ApplicationConfig};
+use crate::ApplicationConfig;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -93,16 +96,13 @@ where B: BlockchainBackend + 'static
         let mut p2p_config = self.app_config.base_node.p2p.clone();
         let peer_seeds = &self.app_config.peer_seeds;
 
-        let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, base_node_config.buffer_size);
-        let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size);
-        let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = base_node_config.mempool.service.clone();
 
         let sync_peers = base_node_config
             .force_sync_peers
             .iter()
             .map(|s| SeedPeer::from_str(s))
-            .map(|r| r.map(Peer::from).map(|p| p.public_key.to_peer_id()))
+            .map(|r| r.map(Peer::from).map(|p| p.public_key().to_peer_id()))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
 
@@ -115,13 +115,14 @@ where B: BlockchainBackend + 'static
 
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
         let mut handles = StackBuilder::new(self.interrupt_signal)
+            // Register the dispatcher so that services can use it to listen for their respective messages
+            .add_initializer(RegisterHandle::new(Dispatcher::new()))
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
                 user_agent,
                 peer_seeds.clone(),
                 base_node_config.network,
                 self.node_identity.clone(),
-                publisher,
             ))
             .add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::BaseNode,
@@ -150,7 +151,6 @@ where B: BlockchainBackend + 'static
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
-                peer_message_subscriptions,
             ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
@@ -164,9 +164,13 @@ where B: BlockchainBackend + 'static
             .build()
             .await?;
 
-        let network = handles
-            .take_handle::<NetworkingHandle>()
-            .expect("P2pInitializer was not added to the stack");
+        let network = handles.expect_handle::<NetworkHandle>();
+
+        let dispatcher = handles.take_handle::<Dispatcher>().expect("Dispatcher not setup");
+        let inbound = handles
+            .take_handle::<InboundMessaging<TariNodeMessageSpec>>()
+            .expect("InboundMessaging not setup");
+        dispatcher.spawn(inbound);
 
         // TODO(libp2p)
         // comms.add_protocol_notifier().await
@@ -179,7 +183,7 @@ where B: BlockchainBackend + 'static
     }
 
     async fn setup_rpc_services(
-        mut networking: NetworkingHandle,
+        mut networking: NetworkHandle,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
         config: &P2pConfig,

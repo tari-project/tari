@@ -27,13 +27,12 @@ use std::{
 };
 
 use tari_common_types::types::PrivateKey;
+pub use tari_p2p::{proto, proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse};
 use tari_utilities::{convert::try_convert_all, ByteArray};
 
-pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse},
     blocks::{Block, BlockHeader, HistoricalBlock},
-    proto,
 };
 
 impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
@@ -105,112 +104,6 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
             },
             // This would only occur if a programming error sent out the unsupported response
             resp => Err(format!("Response not supported {:?}", resp)),
-        }
-    }
-}
-
-impl From<Option<BlockHeader>> for proto::base_node::BlockHeaderResponse {
-    fn from(v: Option<BlockHeader>) -> Self {
-        Self {
-            header: v.map(Into::into),
-        }
-    }
-}
-
-impl TryInto<Option<BlockHeader>> for proto::base_node::BlockHeaderResponse {
-    type Error = String;
-
-    fn try_into(self) -> Result<Option<BlockHeader>, Self::Error> {
-        match self.header {
-            Some(header) => {
-                let header = header.try_into()?;
-                Ok(Some(header))
-            },
-            None => Ok(None),
-        }
-    }
-}
-
-impl TryFrom<Option<HistoricalBlock>> for proto::base_node::HistoricalBlockResponse {
-    type Error = String;
-
-    fn try_from(v: Option<HistoricalBlock>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            block: v.map(TryInto::try_into).transpose()?,
-        })
-    }
-}
-
-impl TryInto<Option<HistoricalBlock>> for proto::base_node::HistoricalBlockResponse {
-    type Error = String;
-
-    fn try_into(self) -> Result<Option<HistoricalBlock>, Self::Error> {
-        match self.block {
-            Some(block) => {
-                let block = block.try_into()?;
-                Ok(Some(block))
-            },
-            None => Ok(None),
-        }
-    }
-}
-
-impl TryFrom<Option<Block>> for proto::base_node::BlockResponse {
-    type Error = String;
-
-    fn try_from(v: Option<Block>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            block: v.map(TryInto::try_into).transpose()?,
-        })
-    }
-}
-
-impl TryInto<Option<Block>> for proto::base_node::BlockResponse {
-    type Error = String;
-
-    fn try_into(self) -> Result<Option<Block>, Self::Error> {
-        match self.block {
-            Some(block) => {
-                let block = block.try_into()?;
-                Ok(Some(block))
-            },
-            None => Ok(None),
-        }
-    }
-}
-
-//---------------------------------- Collection impls --------------------------------------------//
-
-// The following allow `Iterator::collect` to collect into these repeated types
-
-impl FromIterator<proto::types::TransactionKernel> for proto::base_node::TransactionKernels {
-    fn from_iter<T: IntoIterator<Item = proto::types::TransactionKernel>>(iter: T) -> Self {
-        Self {
-            kernels: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl FromIterator<proto::core::BlockHeader> for proto::base_node::BlockHeaders {
-    fn from_iter<T: IntoIterator<Item = proto::core::BlockHeader>>(iter: T) -> Self {
-        Self {
-            headers: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl FromIterator<proto::types::TransactionOutput> for proto::base_node::TransactionOutputs {
-    fn from_iter<T: IntoIterator<Item = proto::types::TransactionOutput>>(iter: T) -> Self {
-        Self {
-            outputs: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl FromIterator<proto::core::HistoricalBlock> for proto::base_node::HistoricalBlocks {
-    fn from_iter<T: IntoIterator<Item = proto::core::HistoricalBlock>>(iter: T) -> Self {
-        Self {
-            blocks: iter.into_iter().collect(),
         }
     }
 }

@@ -27,17 +27,7 @@ pub mod sync_utxos_by_block_task;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
-use tari_rpc_framework::{Request, Response, RpcStatus, Streaming};
-use tari_rpc_macros::tari_rpc;
-
-#[cfg(feature = "base_node")]
-use crate::base_node::StateMachineHandle;
-#[cfg(feature = "base_node")]
-use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::service::MempoolHandle,
-};
-use crate::{
+use tari_p2p::{
     proto,
     proto::{
         base_node::{
@@ -59,6 +49,16 @@ use crate::{
         },
         types::{Signature, Transaction},
     },
+};
+use tari_rpc_framework::{Request, Response, RpcStatus, Streaming};
+use tari_rpc_macros::tari_rpc;
+
+#[cfg(feature = "base_node")]
+use crate::base_node::StateMachineHandle;
+#[cfg(feature = "base_node")]
+use crate::{
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    mempool::service::MempoolHandle,
 };
 
 #[tari_rpc(protocol_name = "t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]

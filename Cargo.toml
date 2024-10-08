@@ -61,6 +61,7 @@ tari_network = { path = "network/core" }
 tari_rpc_framework = { path = "network/rpc_framework" }
 tari_rpc_macros = { path = "network/rpc_macros" }
 tari_swarm = { path = "network/swarm" }
+tari_crypto = "0.20.3"
 
 libp2p-messaging = { path = "network/libp2p-messaging" }
 libp2p-peersync = { path = "network/libp2p-peersync" }

@@ -3332,10 +3332,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "impl-codec"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67aa010c1e3da95bf151bd8b4c059b2ed7e75387cdb969b4f8f2723a43f9941"
+dependencies = [
+ "parity-scale-codec",
+]
+
+[[package]]
 name = "impl-serde"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc88fc67028ae3db0c853baa36269d398d5f45b6982f95549ff5def78c935cd"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "impl-serde"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a143eada6a1ec4aefa5049037a26a6d597bfd64f8c026d07b77133e02b7dd0b"
 dependencies = [
  "serde",
 ]
@@ -3873,7 +3891,7 @@ dependencies = [
  "smallvec 1.13.2",
  "thiserror",
  "tracing",
- "uint",
+ "uint 0.9.5",
  "void",
  "web-time",
 ]
@@ -4811,13 +4829,13 @@ dependencies = [
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
- "tari_comms",
  "tari_comms_dht",
  "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_key_manager",
  "tari_max_size",
+ "tari_network",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
@@ -6044,9 +6062,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b34d9fd68ae0b74a41b21c03c2f62847aa0ffea044eee893b4c140b37e244e2"
 dependencies = [
  "fixed-hash",
- "impl-codec",
- "impl-serde",
- "uint",
+ "impl-codec 0.6.0",
+ "impl-serde 0.4.0",
+ "uint 0.9.5",
+]
+
+[[package]]
+name = "primitive-types"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d15600a7d856470b7d278b3fe0e311fe28c2526348549f8ef2ff7db3299c87f5"
+dependencies = [
+ "fixed-hash",
+ "impl-codec 0.7.0",
+ "impl-serde 0.5.0",
+ "uint 0.10.0",
 ]
 
 [[package]]
@@ -7779,7 +7809,7 @@ dependencies = [
  "minotari_ledger_wallet_common",
  "newtype-ops",
  "once_cell",
- "primitive-types",
+ "primitive-types 0.13.1",
  "rand",
  "serde",
  "strum",
@@ -7956,6 +7986,7 @@ dependencies = [
  "futures 0.3.30",
  "hex",
  "integer-encoding",
+ "libp2p-substream",
  "libsqlite3-sys",
  "lmdb-zero",
  "log",
@@ -7967,7 +7998,7 @@ dependencies = [
  "num-format",
  "num-traits",
  "once_cell",
- "primitive-types",
+ "primitive-types 0.12.2",
  "prost 0.13.3",
  "quickcheck",
  "rand",
@@ -8196,6 +8227,7 @@ dependencies = [
  "log",
  "prost 0.13.3",
  "rand",
+ "tari_crypto",
  "tari_rpc_framework",
  "tari_shutdown",
  "tari_swarm",
@@ -8217,6 +8249,7 @@ dependencies = [
  "lmdb-zero",
  "log",
  "pgp",
+ "primitive-types 0.13.1",
  "prost 0.13.3",
  "rand",
  "reqwest",
@@ -8224,6 +8257,7 @@ dependencies = [
  "semver",
  "serde",
  "tari_common",
+ "tari_common_types",
  "tari_crypto",
  "tari_network",
  "tari_service_framework",
@@ -8235,6 +8269,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "tokio-util 0.7.12",
  "toml 0.5.11",
  "tower",
  "webpki-roots",
@@ -8959,6 +8994,18 @@ name = "uint"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76f64bba2c53b04fcab63c01a7d7427eadc821e3bc48c34dc9ba29c501164b52"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "hex",
+ "static_assertions",
+]
+
+[[package]]
+name = "uint"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "909988d098b2f738727b161a106cfc7cab00c539c2687a8836f8e565976fb53e"
 dependencies = [
  "byteorder",
  "crunchy",

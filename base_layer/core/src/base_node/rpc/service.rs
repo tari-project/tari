@@ -23,20 +23,10 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use async_trait::async_trait;
 use log::*;
 use tari_common_types::types::{FixedHash, Signature};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
-use tari_utilities::hex::Hex;
-use tokio::sync::mpsc;
-
-use crate::{
-    base_node::{
-        rpc::{sync_utxos_by_block_task::SyncUtxosByBlockTask, BaseNodeWalletService},
-        state_machine_service::states::StateInfo,
-        StateMachineHandle,
-    },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::{service::MempoolHandle, TxStorageResponse},
+use tari_p2p::{
     proto,
     proto::{
         base_node::{
@@ -63,6 +53,19 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
+};
+use tari_rpc_framework::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_utilities::hex::Hex;
+use tokio::sync::mpsc;
+
+use crate::{
+    base_node::{
+        rpc::{sync_utxos_by_block_task::SyncUtxosByBlockTask, BaseNodeWalletService},
+        state_machine_service::states::StateInfo,
+        StateMachineHandle,
+    },
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    mempool::{service::MempoolHandle, TxStorageResponse},
     transactions::transaction_components::Transaction,
 };
 
@@ -174,7 +177,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
     }
 }
 
-#[tari_comms::async_trait]
+#[async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpcService<B> {
     async fn submit_transaction(
         &self,

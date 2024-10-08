@@ -22,39 +22,34 @@
 
 //! Impls for transaction proto
 
-use std::{
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
+use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_p2p::proto;
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
 
-use crate::{
-    proto,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            CoinBaseExtra,
-            EncryptedData,
-            KernelFeatures,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            SideChainFeature,
-            Transaction,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-        },
+use crate::transactions::{
+    aggregated_body::AggregateBody,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        CoinBaseExtra,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        SideChainFeature,
+        Transaction,
+        TransactionInput,
+        TransactionInputVersion,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
     },
 };
 //---------------------------------- TransactionKernel --------------------------------------------//
@@ -454,20 +449,5 @@ impl TryFrom<Transaction> for proto::types::Transaction {
             body: Some(tx.body.try_into()?),
             script_offset: Some(tx.script_offset.into()),
         })
-    }
-}
-
-impl TryFrom<Arc<Transaction>> for proto::types::Transaction {
-    type Error = String;
-
-    fn try_from(tx: Arc<Transaction>) -> Result<Self, Self::Error> {
-        match Arc::try_unwrap(tx) {
-            Ok(tx) => Ok(tx.try_into()?),
-            Err(tx) => Ok(Self {
-                offset: Some(tx.offset.clone().into()),
-                body: Some(tx.body.clone().try_into()?),
-                script_offset: Some(tx.script_offset.clone().into()),
-            }),
-        }
     }
 }

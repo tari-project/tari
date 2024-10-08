@@ -3,7 +3,8 @@
 
 use std::fmt::{Display, Formatter};
 
-use libp2p::{Multiaddr, PeerId, StreamProtocol};
+use libp2p::{identity, Multiaddr, PeerId, StreamProtocol};
+use tari_crypto::ristretto::RistrettoPublicKey;
 
 use crate::identity::PublicKey;
 
@@ -46,8 +47,10 @@ impl Display for Peer {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PeerInfo {
     pub peer_id: PeerId,
+    pub public_key: PublicKey,
     pub protocol_version: String,
     pub agent_version: String,
     pub listen_addrs: Vec<Multiaddr>,
@@ -83,4 +86,26 @@ fn write_key_value<V: std::fmt::Debug>(k: &str, v: &V, f: &mut std::fmt::Formatt
 }
 fn write_key(k: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     writeln!(f, "{k}:")
+}
+
+pub trait ToPeerId {
+    fn to_peer_id(&self) -> PeerId;
+}
+
+impl ToPeerId for PeerId {
+    fn to_peer_id(&self) -> PeerId {
+        *self
+    }
+}
+
+impl ToPeerId for PublicKey {
+    fn to_peer_id(&self) -> PeerId {
+        PublicKey::to_peer_id(self)
+    }
+}
+
+impl ToPeerId for RistrettoPublicKey {
+    fn to_peer_id(&self) -> PeerId {
+        PublicKey::from(identity::sr25519::PublicKey::from(self.clone())).to_peer_id()
+    }
 }

@@ -25,7 +25,9 @@ use std::{
     sync::Arc,
 };
 
-use crate::mempool::{proto::mempool::StateResponse as ProtoStateResponse, StateResponse};
+use tari_p2p::proto::mempool::StateResponse as ProtoStateResponse;
+
+use crate::mempool::StateResponse;
 
 //--------------------------------- StateResponse -------------------------------------------//
 

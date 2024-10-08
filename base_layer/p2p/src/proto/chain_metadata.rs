@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use primitive_types::U256;
 use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
-use tari_p2p::proto::base_node as proto;
+use crate::proto::base_node as proto;
 
 const ACCUMULATED_DIFFICULTY_BYTE_SIZE: usize = 32;
 impl TryFrom<proto::ChainMetadata> for ChainMetadata {
@@ -70,10 +70,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let mut accumulated_difficulty = [0u8; ACCUMULATED_DIFFICULTY_BYTE_SIZE];
-        metadata
-            .accumulated_difficulty()
-            .to_big_endian(&mut accumulated_difficulty);
+        let accumulated_difficulty = metadata.accumulated_difficulty().to_big_endian();
         Self {
             best_block_height: metadata.best_block_height(),
             best_block_hash: metadata.best_block_hash().to_vec(),
