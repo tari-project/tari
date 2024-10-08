@@ -65,6 +65,11 @@ impl BaseNodePeerManager {
         self.current_peer_index = (self.current_peer_index + 1) % self.peer_list.len();
         self.peer_list[self.current_peer_index].clone()
     }
+
+    /// Get the base node peer manager state
+    pub fn get_state(&self) -> (usize, Vec<Peer>) {
+        (self.current_peer_index, self.peer_list.clone())
+    }
 }
 
 impl Display for BaseNodePeerManager {

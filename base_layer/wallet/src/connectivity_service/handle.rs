@@ -62,17 +62,21 @@ impl WalletConnectivityHandle {
 
 #[async_trait::async_trait]
 impl WalletConnectivityInterface for WalletConnectivityHandle {
-    fn set_base_node(&mut self, base_node_peer: BaseNodePeerManager) {
+    fn set_base_node(&mut self, base_node_peer_manager: BaseNodePeerManager) {
         if let Some(selected_peer) = self.base_node_watch.borrow().as_ref() {
-            if selected_peer.get_current_peer().public_key == base_node_peer.get_current_peer().public_key {
+            if selected_peer.get_current_peer().public_key == base_node_peer_manager.get_current_peer().public_key {
                 return;
             }
         }
-        self.base_node_watch.send(Some(base_node_peer));
+        self.base_node_watch.send(Some(base_node_peer_manager));
     }
 
     fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<BaseNodePeerManager>> {
         self.base_node_watch.get_receiver()
+    }
+
+    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)> {
+        self.base_node_watch.borrow().as_ref().map(|p| p.get_state().clone())
     }
 
     /// Obtain a BaseNodeWalletRpcClient.
