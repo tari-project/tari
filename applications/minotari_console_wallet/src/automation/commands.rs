@@ -725,7 +725,7 @@ pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<CliCommands>,
     wallet: WalletSqlite,
-) -> Result<(), CommandError> {
+) -> Result<bool, CommandError> {
     let wait_stage = config.command_send_wait_stage;
 
     let mut transaction_service = wallet.transaction_service.clone();
@@ -747,7 +747,7 @@ pub async fn command_runner(
         } else {
             (0, vec![])
         };
-    let mut unban_per_manager_peers = false;
+    let mut unban_peer_manager_peers = false;
 
     #[allow(clippy::enum_glob_use)]
     for (idx, parsed) in commands.into_iter().enumerate() {
@@ -809,7 +809,7 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        return Ok(false);
                     },
                 };
 
@@ -817,7 +817,7 @@ pub async fn command_runner(
                     Ok(values) => values,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        return Ok(false);
                     },
                 };
                 let csv_file_name = "pre_mine_items_with_status.csv";
@@ -828,7 +828,7 @@ pub async fn command_runner(
                     file_stream.write_all("index,value,maturity,fail_safe_height,beneficiary,spent_status\n".as_bytes())
                 {
                     eprintln!("\nError: Could not write pre-mine header ({})\n", e);
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 for (index, item) in pre_mine_items.iter().enumerate() {
@@ -849,7 +849,7 @@ pub async fn command_runner(
                         .as_bytes(),
                     ) {
                         eprintln!("\nError: Could not write pre-mine item ({})\n", e);
-                        return Ok(());
+                        return Ok(false);
                     }
                 }
 
@@ -920,7 +920,7 @@ pub async fn command_runner(
                     Ok(values) => values,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        return Ok(false);
                     },
                 };
                 let session_info = PreMineSpendStep1SessionInfo {
@@ -1180,7 +1180,7 @@ pub async fn command_runner(
                 }
 
                 temp_ban_peers(&wallet, &mut peer_list).await;
-                unban_per_manager_peers = true;
+                unban_peer_manager_peers = true;
 
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
@@ -1258,7 +1258,8 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        lift_temp_ban_peers(&wallet, &mut peer_list).await;
+                        return Ok(true);
                     },
                 };
                 println!();
@@ -1651,7 +1652,7 @@ pub async fn command_runner(
                 }
 
                 temp_ban_peers(&wallet, &mut peer_list).await;
-                unban_per_manager_peers = true;
+                unban_peer_manager_peers = true;
 
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
@@ -2630,8 +2631,9 @@ pub async fn command_runner(
             },
         }
     }
-    if unban_per_manager_peers {
+    if unban_peer_manager_peers {
         lift_temp_ban_peers(&wallet, &mut peer_list).await;
+        return Ok(true);
     }
 
     // listen to event stream
@@ -2669,7 +2671,7 @@ pub async fn command_runner(
         }
     }
 
-    Ok(())
+    Ok(unban_peer_manager_peers)
 }
 
 async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
