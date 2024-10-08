@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.6.0-pre.0](https://github.com/tari-project/tari/compare/v1.5.1-pre.1...v1.6.0-pre.0) (2024-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* esme test pre-mine with immediate spend (#6609)
+* add context to ffi callbacks (#6608)
+* add input mr into genesis block (#6601)
+
+### Features
+
+* add context to ffi callbacks ([#6608](https://github.com/tari-project/tari/issues/6608)) ([3c192c5](https://github.com/tari-project/tari/commit/3c192c52af1910601355ee864690c171da865802))
+* add default exclude dial ([#6607](https://github.com/tari-project/tari/issues/6607)) ([332068f](https://github.com/tari-project/tari/commit/332068f90b579af0717d602e817e223783371b65))
+* add input mr into genesis block ([#6601](https://github.com/tari-project/tari/issues/6601)) ([27ffefa](https://github.com/tari-project/tari/commit/27ffefa1601ce809adad676f7e7e415949552cb4))
+* add payment id to notify script ([#6586](https://github.com/tari-project/tari/issues/6586)) ([7f282d9](https://github.com/tari-project/tari/commit/7f282d9fea06e5f51b59981192984cb034d98056))
+* add use transaction output as provided with encumber_aggregate_utxo ([#6594](https://github.com/tari-project/tari/issues/6594)) ([0ad8c08](https://github.com/tari-project/tari/commit/0ad8c087afbe2a2e179b0933e6a0886a5d73c226))
+* add wallet ffi backup peers ([#6591](https://github.com/tari-project/tari/issues/6591)) ([7e07972](https://github.com/tari-project/tari/commit/7e079729e6c0437fb38e1f31a85610266992951d))
+* allow zero fees for pre-mine ([#6595](https://github.com/tari-project/tari/issues/6595)) ([1d2e314](https://github.com/tari-project/tari/commit/1d2e314a96e8c34904fdcf05ee3c8207fc02c1f6))
+* dont sync local only peers ([#6604](https://github.com/tari-project/tari/issues/6604)) ([f7894cf](https://github.com/tari-project/tari/commit/f7894cfe9453497e92b407e214f36653b4860c89))
+* enable identity grpc method by default ([#6613](https://github.com/tari-project/tari/issues/6613)) ([18e6ef4](https://github.com/tari-project/tari/commit/18e6ef4a5764067d5699cb3125d011bd8303c4d4))
+* esme test pre-mine with immediate spend ([#6609](https://github.com/tari-project/tari/issues/6609)) ([283d184](https://github.com/tari-project/tari/commit/283d1843b64e8250446e5729db677abfed46fc90))
+* ledger stax + flex support ([#6588](https://github.com/tari-project/tari/issues/6588)) ([fa7611d](https://github.com/tari-project/tari/commit/fa7611d647087f8827ab9f059bfa509c5f2e12a4))
+* make pre mine spend tx stealth ([#6596](https://github.com/tari-project/tari/issues/6596)) ([7b01301](https://github.com/tari-project/tari/commit/7b01301ec306750ef4b3587030ecc2da66276559))
+* **peerseeds/autoupdate:** hickory-dns upgrade, default to system DNS ([#6600](https://github.com/tari-project/tari/issues/6600)) ([5bcddf4](https://github.com/tari-project/tari/commit/5bcddf44d23a619b20b88fd382c531621ef66646))
+* pre-mine introduce temp ban and add counters ([#6612](https://github.com/tari-project/tari/issues/6612)) ([d97d00d](https://github.com/tari-project/tari/commit/d97d00dae912dfa5f3855e83547dbe8dd06e359f))
+* update payment_id display ([#6597](https://github.com/tari-project/tari/issues/6597)) ([54eb6d7](https://github.com/tari-project/tari/commit/54eb6d79d4fd9f22098bbed1c48751ee4a4621a0))
+* update pre_mine specification ([#6606](https://github.com/tari-project/tari/issues/6606)) ([755bf3e](https://github.com/tari-project/tari/commit/755bf3ed51f0c0336ad90f701546fa00ff78b53e))
+* update pre-mine specification and allow multiple spends ([#6590](https://github.com/tari-project/tari/issues/6590)) ([6d998c7](https://github.com/tari-project/tari/commit/6d998c7212e9c77bda1590571015c23bc1a55676))
+
+
+### Bug Fixes
+
+* **core:** reduce block messages with many connections ([#6602](https://github.com/tari-project/tari/issues/6602)) ([b7c8810](https://github.com/tari-project/tari/commit/b7c8810ac6a5bc41888fc653ae4d2d1e2dd6d743))
+* **dns:** fix Display impl to match from_str ([#6605](https://github.com/tari-project/tari/issues/6605)) ([ab59801](https://github.com/tari-project/tari/commit/ab598017292d54c70bb047b94d3aebaf131abbc9))
+* ffi wallet seed behaviour ([#6599](https://github.com/tari-project/tari/issues/6599)) ([0408e09](https://github.com/tari-project/tari/commit/0408e09821e433c49e5fb84f6b8a52bb54b543c4))
+
 ### [1.5.1-pre.1](https://github.com/tari-project/tari/compare/v1.5.1-pre.0...v1.5.1-pre.1) (2024-09-24)
 
 
