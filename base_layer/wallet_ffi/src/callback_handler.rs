@@ -35,8 +35,8 @@
 //! request_key is used to identify which request this callback references and a result of true means it was successful
 //! and false that the process timed out and new one will be started
 
-use std::{ops::Deref, sync::Arc};
-use std::ffi::c_void;
+use std::{ffi::c_void, ops::Deref, sync::Arc};
+
 use log::*;
 use minotari_wallet::{
     base_node_service::{
@@ -65,6 +65,7 @@ use tokio::sync::{broadcast, watch};
 
 use crate::ffi_basenode_state::TariBaseNodeState;
 
+#[derive(Clone, Copy)]
 pub struct Context(pub *mut c_void);
 
 unsafe impl Send for Context {}
@@ -74,7 +75,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 pub struct CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    context: Context,
+    pub context: Context,
     callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut InboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
@@ -129,9 +130,17 @@ where TBackend: TransactionBackend + 'static
         callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
         callback_transaction_broadcast: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
-        callback_transaction_mined_unconfirmed: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction, u64),
+        callback_transaction_mined_unconfirmed: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut CompletedTransaction,
+            u64,
+        ),
         callback_faux_transaction_confirmed: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
-        callback_faux_transaction_unconfirmed: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction, u64),
+        callback_faux_transaction_unconfirmed: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut CompletedTransaction,
+            u64,
+        ),
         callback_transaction_send_result: unsafe extern "C" fn(context: *mut c_void, u64, *mut TransactionSendStatus),
         callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
@@ -678,7 +687,7 @@ where TBackend: TransactionBackend + 'static
     fn saf_messages_received_event(&mut self) {
         debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
         unsafe {
-            (self.callback_saf_messages_received)(self.context.0, );
+            (self.callback_saf_messages_received)(self.context.0);
         }
     }
 
@@ -734,7 +743,7 @@ where TBackend: TransactionBackend + 'static
         };
 
         unsafe {
-            (self.callback_base_node_state)(self.context.0, Box::into_raw( Box::new(state)));
+            (self.callback_base_node_state)(self.context.0, Box::into_raw(Box::new(state)));
         }
     }
 }

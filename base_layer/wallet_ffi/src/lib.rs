@@ -185,12 +185,11 @@ use tokio::runtime::Runtime;
 use zeroize::Zeroize;
 
 use crate::{
-    callback_handler::CallbackHandler,
+    callback_handler::{CallbackHandler, Context},
     enums::SeedWordPushResult,
     error::{InterfaceError, TransactionError},
     tasks::recovery_event_monitoring,
 };
-use crate::callback_handler::Context;
 
 mod callback_handler;
 #[cfg(test)]
@@ -260,6 +259,7 @@ pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
+    context: Context,
 }
 
 #[derive(Debug)]
@@ -5775,24 +5775,36 @@ pub unsafe extern "C" fn wallet_create(
     peer_seed_str: *const c_char,
     dns_sec: bool,
 
-    callback_received_transaction: unsafe extern "C" fn(context: *mut c_void,*mut TariPendingInboundTransaction),
-    callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction),
-    callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction),
-    callback_transaction_broadcast: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction),
-    callback_transaction_mined: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction),
-    callback_transaction_mined_unconfirmed: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction, u64),
-    callback_faux_transaction_confirmed: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction),
-    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction, u64),
-    callback_transaction_send_result: unsafe extern "C" fn(context: *mut c_void,c_ulonglong, *mut TariTransactionSendStatus),
-    callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void,*mut TariCompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void,u64, u64),
-    callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void,*mut TariContactsLivenessData),
-    callback_balance_updated: unsafe extern "C" fn(context: *mut c_void,*mut TariBalance),
-    callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void,u64, u64),
-    callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void,),
-    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void,u64),
-    callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void,u64),
-    callback_base_node_state: unsafe extern "C" fn(context: *mut c_void,*mut TariBaseNodeState),
+    callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
+    callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+    callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+    callback_transaction_broadcast: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+    callback_transaction_mined: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+    callback_transaction_mined_unconfirmed: unsafe extern "C" fn(
+        context: *mut c_void,
+        *mut TariCompletedTransaction,
+        u64,
+    ),
+    callback_faux_transaction_confirmed: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(
+        context: *mut c_void,
+        *mut TariCompletedTransaction,
+        u64,
+    ),
+    callback_transaction_send_result: unsafe extern "C" fn(
+        context: *mut c_void,
+        c_ulonglong,
+        *mut TariTransactionSendStatus,
+    ),
+    callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction, u64),
+    callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
+    callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariContactsLivenessData),
+    callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
+    callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
+    callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
+    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+    callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
+    callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
@@ -6130,6 +6142,7 @@ pub unsafe extern "C" fn wallet_create(
                 wallet: w,
                 runtime,
                 shutdown,
+                context,
             };
 
             Box::into_raw(Box::new(tari_wallet))
@@ -8841,7 +8854,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
     base_node_public_key: *mut TariPublicKey,
-    recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
+    recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
     recovered_output_message: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
@@ -8900,6 +8913,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
         event_stream,
         recovery_join_handle,
         recovery_progress_callback,
+        (*wallet).context,
     ));
 
     true
@@ -9444,8 +9458,8 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
-    use std::{path::Path, str::from_utf8, sync::Mutex};
-    use std::ffi::c_void;
+    use std::{ffi::c_void, path::Path, str::from_utf8, sync::Mutex};
+
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::handle::TransactionSendStatus,
@@ -9582,7 +9596,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn mined_unconfirmed_callback(_context: *mut c_void, tx: *mut TariCompletedTransaction, _confirmations: u64) {
+    unsafe extern "C" fn mined_unconfirmed_callback(
+        _context: *mut c_void,
+        tx: *mut TariCompletedTransaction,
+        _confirmations: u64,
+    ) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
@@ -9624,7 +9642,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn scanned_unconfirmed_callback(_context: *mut c_void, tx: *mut TariCompletedTransaction, _confirmations: u64) {
+    unsafe extern "C" fn scanned_unconfirmed_callback(
+        _context: *mut c_void,
+        tx: *mut TariCompletedTransaction,
+        _confirmations: u64,
+    ) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
@@ -9658,7 +9680,11 @@ mod test {
         }
     }
 
-    unsafe extern "C" fn transaction_send_result_callback(_context: *mut c_void, _tx_id: c_ulonglong, status: *mut TransactionSendStatus) {
+    unsafe extern "C" fn transaction_send_result_callback(
+        _context: *mut c_void,
+        _tx_id: c_ulonglong,
+        status: *mut TransactionSendStatus,
+    ) {
         assert!(!status.is_null());
         assert_eq!(
             type_of((*status).clone()),
@@ -9667,7 +9693,11 @@ mod test {
         transaction_send_status_destroy(status);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(_context: *mut c_void, tx: *mut TariCompletedTransaction, _reason: u64) {
+    unsafe extern "C" fn tx_cancellation_callback(
+        _context: *mut c_void,
+        tx: *mut TariCompletedTransaction,
+        _reason: u64,
+    ) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
@@ -9680,7 +9710,10 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn contacts_liveness_data_updated_callback(_context: *mut c_void, _balance: *mut TariContactsLivenessData) {
+    unsafe extern "C" fn contacts_liveness_data_updated_callback(
+        _context: *mut c_void,
+        _balance: *mut TariContactsLivenessData,
+    ) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -9688,11 +9721,15 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn transaction_validation_complete_callback(_context: *mut c_void, _tx_id: c_ulonglong, _result: u64) {
+    unsafe extern "C" fn transaction_validation_complete_callback(
+        _context: *mut c_void,
+        _tx_id: c_ulonglong,
+        _result: u64,
+    ) {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn saf_messages_received_callback(_context: *mut c_void, ) {
+    unsafe extern "C" fn saf_messages_received_callback(_context: *mut c_void) {
         // assert!(true); //optimized out by compiler
     }
 
