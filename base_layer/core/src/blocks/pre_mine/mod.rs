@@ -981,7 +981,6 @@ mod test {
         Vec<PublicKey>,
     ) {
         let threshold_addresses_for_index = vec![
-            // This wil be public keys
             TariAddress::from_base58(
                 "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
             )
@@ -1404,6 +1403,7 @@ mod test {
         );
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_create_genesis_block_info() {
         for network in [

@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod test {
     use std::{
+        ffi::c_void,
         mem::size_of,
         sync::{Arc, Mutex},
         thread,
@@ -62,7 +63,7 @@ mod test {
     };
 
     use crate::{
-        callback_handler::CallbackHandler,
+        callback_handler::{CallbackHandler, Context},
         ffi_basenode_state::TariBaseNodeState,
         output_manager_service_mock::MockOutputManagerService,
     };
@@ -131,63 +132,75 @@ mod test {
 
     static CALLBACK_STATE: Lazy<Mutex<CallbackState>> = Lazy::new(|| Mutex::new(CallbackState::new()));
 
-    unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {
+    unsafe extern "C" fn received_tx_callback(_context: *mut c_void, tx: *mut InboundTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_tx_callback_called = true;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn received_tx_reply_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn received_tx_reply_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_tx_reply_callback_called = true;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn received_tx_finalized_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn received_tx_finalized_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.received_finalized_tx_callback_called = true;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn broadcast_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn broadcast_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.broadcast_tx_callback_called = true;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn mined_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn mined_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.mined_tx_callback_called = true;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut CompletedTransaction, confirmations: u64) {
+    unsafe extern "C" fn mined_unconfirmed_callback(
+        _context: *mut c_void,
+        tx: *mut CompletedTransaction,
+        confirmations: u64,
+    ) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = confirmations;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn faux_confirmed_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn faux_confirmed_callback(_context: *mut c_void, tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.faux_tx_confirmed_callback_called = true;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn faux_unconfirmed_callback(tx: *mut CompletedTransaction, confirmations: u64) {
+    unsafe extern "C" fn faux_unconfirmed_callback(
+        _context: *mut c_void,
+        tx: *mut CompletedTransaction,
+        confirmations: u64,
+    ) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.faux_tx_unconfirmed_callback_called = confirmations;
         drop(lock);
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn transaction_send_result_callback(_tx_id: u64, status: *mut TransactionSendStatus) {
+    unsafe extern "C" fn transaction_send_result_callback(
+        _context: *mut c_void,
+        _tx_id: u64,
+        status: *mut TransactionSendStatus,
+    ) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         if (*status).direct_send_result {
             lock.direct_send_callback_called += 1;
@@ -201,13 +214,13 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn saf_messages_received_callback() {
+    unsafe extern "C" fn saf_messages_received_callback(_context: *mut c_void) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.saf_messages_received = true;
         drop(lock);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction, _reason: u64) {
+    unsafe extern "C" fn tx_cancellation_callback(_context: *mut c_void, tx: *mut CompletedTransaction, _reason: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         match (*tx).tx_id.as_u64() {
             3 => lock.tx_cancellation_callback_called_inbound = true,
@@ -219,7 +232,7 @@ mod test {
         drop(Box::from_raw(tx))
     }
 
-    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: u64, result: u64) {
+    unsafe extern "C" fn txo_validation_complete_callback(_context: *mut c_void, _tx_id: u64, result: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         match result {
             0 => lock.callback_txo_validation_completed = true,
@@ -231,13 +244,16 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn contacts_liveness_data_updated_callback(_data: *mut ContactsLivenessData) {
+    unsafe extern "C" fn contacts_liveness_data_updated_callback(
+        _context: *mut c_void,
+        _data: *mut ContactsLivenessData,
+    ) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_contacts_liveness_data_updated += 1;
         drop(lock);
     }
 
-    unsafe extern "C" fn balance_updated_callback(balance: *mut Balance) {
+    unsafe extern "C" fn balance_updated_callback(_context: *mut c_void, balance: *mut Balance) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_balance_updated += 1;
         drop(lock);
@@ -246,25 +262,29 @@ mod test {
 
     // casting is okay in tests
     #[allow(clippy::cast_possible_truncation)]
-    unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, result: u64) {
+    unsafe extern "C" fn transaction_validation_complete_callback(
+        _context: *mut c_void,
+        request_key: u64,
+        result: u64,
+    ) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_transaction_validation_complete += request_key as u32 + result as u32;
         drop(lock);
     }
 
-    unsafe extern "C" fn connectivity_status_callback(status: u64) {
+    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, status: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.connectivity_status_callback_called += status + 1;
         drop(lock);
     }
 
-    unsafe extern "C" fn wallet_scanner_height_callback(height: u64) {
+    unsafe extern "C" fn wallet_scanner_height_callback(_context: *mut c_void, height: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.wallet_scanner_height_callback_called += height;
         drop(lock);
     }
 
-    unsafe extern "C" fn base_node_state_changed_callback(state: *mut TariBaseNodeState) {
+    unsafe extern "C" fn base_node_state_changed_callback(_context: *mut c_void, state: *mut TariBaseNodeState) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.base_node_state_changed_callback_invoked = true;
         drop(lock);
@@ -482,8 +502,9 @@ mod test {
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-
+        let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
         let callback_handler = CallbackHandler::new(
+            Context(void_ptr),
             db,
             base_node_event_receiver,
             transaction_event_receiver,

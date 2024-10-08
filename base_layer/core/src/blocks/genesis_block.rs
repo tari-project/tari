@@ -93,7 +93,6 @@ fn print_mr_values(block: &mut Block, print: bool) {
 
     let mut kernel_mmr = KernelMmr::new(Vec::new());
     for k in block.body.kernels() {
-        println!("k: {}", k);
         kernel_mmr.push(k.hash().to_vec()).unwrap();
     }
 

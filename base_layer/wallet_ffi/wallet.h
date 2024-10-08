@@ -2849,6 +2849,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * Creates a TariWallet
  *
  * ## Arguments
+ * Context - a pointer to some context used by all the callbacks
  * `config` - The TariCommsConfig pointer
  * `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
  * pointer.
@@ -2947,7 +2948,8 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * # Safety
  * The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
  */
-struct TariWallet *wallet_create(TariCommsConfig *config,
+struct TariWallet *wallet_create(void *context,
+                                 TariCommsConfig *config,
                                  const char *log_path,
                                  int log_verbosity,
                                  unsigned int num_rolling_log_files,
@@ -2958,28 +2960,44 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  const char *network_str,
                                  const char *peer_seed_str,
                                  bool dns_sec,
-                                 void (*callback_received_transaction)(TariPendingInboundTransaction*),
-                                 void (*callback_received_transaction_reply)(TariCompletedTransaction*),
-                                 void (*callback_received_finalized_transaction)(TariCompletedTransaction*),
-                                 void (*callback_transaction_broadcast)(TariCompletedTransaction*),
-                                 void (*callback_transaction_mined)(TariCompletedTransaction*),
-                                 void (*callback_transaction_mined_unconfirmed)(TariCompletedTransaction*,
+                                 void (*callback_received_transaction)(void *context,
+                                                                       TariPendingInboundTransaction*),
+                                 void (*callback_received_transaction_reply)(void *context,
+                                                                             TariCompletedTransaction*),
+                                 void (*callback_received_finalized_transaction)(void *context,
+                                                                                 TariCompletedTransaction*),
+                                 void (*callback_transaction_broadcast)(void *context,
+                                                                        TariCompletedTransaction*),
+                                 void (*callback_transaction_mined)(void *context,
+                                                                    TariCompletedTransaction*),
+                                 void (*callback_transaction_mined_unconfirmed)(void *context,
+                                                                                TariCompletedTransaction*,
                                                                                 uint64_t),
-                                 void (*callback_faux_transaction_confirmed)(TariCompletedTransaction*),
-                                 void (*callback_faux_transaction_unconfirmed)(TariCompletedTransaction*,
+                                 void (*callback_faux_transaction_confirmed)(void *context,
+                                                                             TariCompletedTransaction*),
+                                 void (*callback_faux_transaction_unconfirmed)(void *context,
+                                                                               TariCompletedTransaction*,
                                                                                uint64_t),
-                                 void (*callback_transaction_send_result)(unsigned long long,
+                                 void (*callback_transaction_send_result)(void *context,
+                                                                          unsigned long long,
                                                                           TariTransactionSendStatus*),
-                                 void (*callback_transaction_cancellation)(TariCompletedTransaction*,
+                                 void (*callback_transaction_cancellation)(void *context,
+                                                                           TariCompletedTransaction*,
                                                                            uint64_t),
-                                 void (*callback_txo_validation_complete)(uint64_t, uint64_t),
-                                 void (*callback_contacts_liveness_data_updated)(TariContactsLivenessData*),
-                                 void (*callback_balance_updated)(TariBalance*),
-                                 void (*callback_transaction_validation_complete)(uint64_t, uint64_t),
-                                 void (*callback_saf_messages_received)(void),
-                                 void (*callback_connectivity_status)(uint64_t),
-                                 void (*callback_wallet_scanned_height)(uint64_t),
-                                 void (*callback_base_node_state)(struct TariBaseNodeState*),
+                                 void (*callback_txo_validation_complete)(void *context,
+                                                                          uint64_t,
+                                                                          uint64_t),
+                                 void (*callback_contacts_liveness_data_updated)(void *context,
+                                                                                 TariContactsLivenessData*),
+                                 void (*callback_balance_updated)(void *context, TariBalance*),
+                                 void (*callback_transaction_validation_complete)(void *context,
+                                                                                  uint64_t,
+                                                                                  uint64_t),
+                                 void (*callback_saf_messages_received)(void *context),
+                                 void (*callback_connectivity_status)(void *context, uint64_t),
+                                 void (*callback_wallet_scanned_height)(void *context, uint64_t),
+                                 void (*callback_base_node_state)(void *context,
+                                                                  struct TariBaseNodeState*),
                                  bool *recovery_in_progress,
                                  int *error_out);
 
@@ -3689,7 +3707,7 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
                                                                  int *error_out);
 
 /**
- * Get the TariWalletAddress from a TariWallet
+ * Get the interactive TariWalletAddress from a TariWallet
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
@@ -3703,8 +3721,26 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *wallet_get_tari_address(struct TariWallet *wallet,
-                                           int *error_out);
+TariWalletAddress *wallet_get_tari_interactive_address(struct TariWallet *wallet,
+                                                       int *error_out);
+
+/**
+ * Get the one_sided only TariWalletAddress from a TariWallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariWalletAddress` - returns the address, note that ptr::null_mut() is returned
+ * if wc is null
+ *
+ * # Safety
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ */
+TariWalletAddress *wallet_get_tari_one_sided_address(struct TariWallet *wallet,
+                                                     int *error_out);
 
 /**
  * Cancel a Pending Transaction
@@ -3964,7 +4000,10 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
                            TariPublicKey *base_node_public_key,
-                           void (*recovery_progress_callback)(uint8_t, uint64_t, uint64_t),
+                           void (*recovery_progress_callback)(void *context,
+                                                              uint8_t,
+                                                              uint64_t,
+                                                              uint64_t),
                            const char *recovered_output_message,
                            int *error_out);
 
