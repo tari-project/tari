@@ -120,8 +120,8 @@ impl Default for Network {
     #[cfg(tari_target_network_mainnet)]
     fn default() -> Self {
         match std::env::var("TARI_NETWORK") {
-            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::StageNet),
-            Err(_) => Network::StageNet,
+            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::MainNet),
+            Err(_) => Network::MainNet,
         }
     }
 
