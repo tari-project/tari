@@ -20,7 +20,7 @@ grpc_server_allow_methods = [
     #"get_sync_info",
     #"get_sync_progress",
     #"get_tip_info",
-    #"identify",
+    "identify",
     #"get_network_status",
     #"list_headers",
     #"get_header_by_hash",
