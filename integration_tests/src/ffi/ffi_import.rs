@@ -551,7 +551,11 @@ extern "C" {
         transaction_id: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariCompletedTransaction;
-    pub fn wallet_get_tari_address(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariWalletAddress;
+    pub fn wallet_get_tari_interactive_address(
+        wallet: *mut TariWallet,
+        error_out: *mut c_int,
+    ) -> *mut TariWalletAddress;
+    pub fn wallet_get_tari_one_sided_address(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariWalletAddress;
     pub fn wallet_cancel_pending_transaction(
         wallet: *mut TariWallet,
         transaction_id: c_ulonglong,
@@ -575,7 +579,7 @@ extern "C" {
     pub fn wallet_start_recovery(
         wallet: *mut TariWallet,
         base_node_public_key: *mut TariPublicKey,
-        recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
+        recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
         recovered_output_message: *const c_char,
         error_out: *mut c_int,
     ) -> bool;

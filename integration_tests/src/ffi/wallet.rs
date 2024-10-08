@@ -291,10 +291,10 @@ impl Wallet {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::wallet_get_tari_address(self.ptr, &mut error);
+            ptr = ffi_import::wallet_get_tari_interactive_address(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
-                panic!("wallet_get_tari_address error");
+                println!("wallet_get_tari_interactive_address error {}", error);
+                panic!("wallet_get_tari_interactive_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
