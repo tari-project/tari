@@ -90,6 +90,10 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
         self.base_node_watch.get_receiver()
     }
 
+    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)> {
+        self.base_node_watch.borrow().as_ref().map(|p| p.get_state().clone())
+    }
+
     async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
         let mut receiver = self.base_node_wallet_rpc_client.get_receiver();
         if let Some(client) = receiver.borrow().as_ref() {
