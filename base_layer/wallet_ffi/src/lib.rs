@@ -60,7 +60,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-
 use chrono::{DateTime, Local};
 use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
@@ -183,7 +182,7 @@ use tari_utilities::{
 };
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
-
+use tari_key_manager::mnemonic::Mnemonic;
 use crate::{
     callback_handler::{CallbackHandler, Context},
     enums::SeedWordPushResult,
@@ -2783,6 +2782,81 @@ pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutpu
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
     let seed_words = SeedWords::new(vec![]);
+    Box::into_raw(Box::new(TariSeedWords(seed_words)))
+}
+
+/// Create an instance of TariSeedWords from optionally encrypted cipher seed
+///
+/// ## Arguments
+/// `cipher_bytes`: base58 encoded string pointer of the cipher bytes
+/// `passphrase`: optional passphrase to decrypt the cipher bytes
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariSeedWords` - Returns an  TariSeedWords instance
+///
+/// # Safety
+/// Tari seed words need to be destroyed
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_create_from_cipher(cipher_bytes: *const c_char, passphrase: *const c_char, error_out: *mut c_int,) -> *mut TariSeedWords {
+    let passphrase = if passphrase.is_null() {
+        None
+    } else {
+        match CStr::from_ptr(passphrase).to_str() {
+            Ok(v) => Some(SafePassword::from(v.to_owned())),
+            _ => {
+                let mut error = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    };
+    if cipher_bytes.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("cipher_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let base_57_cipher = match CStr::from_ptr(cipher_bytes).to_str() {
+        Ok(v) => {
+            v.to_owned()
+        },
+        _ => {
+            let mut error = LibWalletError::from(InterfaceError::PointerError("cipher_bytes".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut()
+        },
+    };
+    let bytes = match bs58::decode(base_57_cipher).into_vec(){
+        Ok(v) => v,
+        Err(_) => {
+            // code for invalid cipher bytes
+            let mut error = 420;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut()
+        }
+    };
+    let cipher = match CipherSeed::from_enciphered_bytes(&bytes, passphrase){
+        Ok(v) => v,
+        Err(e) => {
+            dbg!(e);
+            // code for invalid cipher bytes
+            let mut error = 421;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut()
+        }
+    };
+
+    let seed_words = match cipher.to_mnemonic(MnemonicLanguage::English, None){
+        Ok(v) => v,
+        Err(_) => {
+            // code for invalid cipher bytes
+            let mut error = 420;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut()
+        }
+    };
+
     Box::into_raw(Box::new(TariSeedWords(seed_words)))
 }
 
@@ -9465,6 +9539,7 @@ mod test {
         transaction_service::handle::TransactionSendStatus,
     };
     use once_cell::sync::Lazy;
+    use tari_utilities::encoding::Base58;
     use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
     use tari_contacts::contacts_service::types::{ChatBody, Direction, Message, MessageId, MessageMetadata};
@@ -9844,6 +9919,35 @@ mod test {
             assert_eq!(*error_ptr, 0, "No error expected");
 
             tari_address_destroy(test_address);
+        }
+    }
+
+
+    #[test]
+    fn test_seed_words_create() {
+        unsafe {
+            let cipher=CipherSeed::new();
+            let ciper_bytes = cipher.encipher(None).unwrap();
+            let cipher_string = ciper_bytes.to_base58();
+            let test_bytes = bs58::decode(&cipher_string).into_vec().unwrap();
+            assert_eq!(ciper_bytes, test_bytes);
+
+            let cipher_cstring = CString::new(cipher_string).unwrap();
+            let cipher_char: *const c_char =CString::into_raw(cipher_cstring) as *const c_char;
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let seed_words = cipher.to_mnemonic(MnemonicLanguage::English, None).unwrap();
+
+            let ffi_seed_words = seed_words_create_from_cipher(cipher_char, ptr::null(), error_ptr);
+            assert_eq!(*error_ptr, 0, "No error expected");
+
+            for i in 0..seed_words.len() {
+                let ffi_seed_word =  CString::from_raw(seed_words_get_at(ffi_seed_words, i as c_uint, error_ptr));
+                assert_eq!(*error_ptr, 0, "No error expected");
+                let seed_word = seed_words.get_word(i).unwrap();
+                assert_eq!(ffi_seed_word.to_str().unwrap().to_string(), seed_word.to_string());
+            }
+            seed_words_destroy(ffi_seed_words);
         }
     }
 

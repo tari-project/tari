@@ -113,7 +113,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-
+use tari_key_manager::cipher_seed::CipherSeed;
 use super::error::CommandError;
 use crate::{
     automation::{
@@ -2485,15 +2485,29 @@ pub async fn command_runner(
                     .join("temp");
                 println!("saving temp wallet in: {:?}", temp_path);
                 {
-                    let seed_words = SeedWords::from_str(args.seed_words.as_str())
-                        .map_err(|e| CommandError::General(e.to_string()))?;
                     let passphrase = if args.passphrase.is_empty() {
                         None
                     } else {
                         Some(SafePassword::from(args.passphrase))
                     };
-                    let seed = get_seed_from_seed_words(&seed_words, passphrase)
-                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    let seed = match (args.seed_words.as_str().is_empty(),args.cipher_seed.as_str().is_empty()){
+                        (true, false) => {
+                            let seed_words = SeedWords::from_str(args.seed_words.as_str())
+                                .map_err(|e| CommandError::General(e.to_string()))?;
+
+                            get_seed_from_seed_words(&seed_words, passphrase)
+                                .map_err(|e| CommandError::General(e.to_string()))?
+                        },
+                        (false, true) => {
+                            let bytes = bs58::decode(args.cipher_seed.as_str()).into_vec().map_err(|e| CommandError::General(e.to_string()))?;
+                            CipherSeed::from_enciphered_bytes(&bytes, passphrase)
+                                .map_err(|e| CommandError::General(e.to_string()))?
+                        }
+                        (_,_) => {
+                            return Err(CommandError::General("Either seed words or cipher seed must be provided".to_string()))
+                        }
+                    };
+
                     let wallet_type = WalletType::DerivedKeys;
                     let password = SafePassword::from("password".to_string());
                     let shutdown = Shutdown::new();
