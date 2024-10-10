@@ -34,7 +34,6 @@ console-subscriber = "0.1.8"
 tokio = { version = "1.36", features = ["signal"] }
 
 blake2 = "0.10"
-bs58 = "0.5.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.14.0"
