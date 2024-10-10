@@ -1497,6 +1497,25 @@ void output_features_destroy(TariOutputFeatures *output_features);
 struct TariSeedWords *seed_words_create(void);
 
 /**
+ * Create an instance of TariSeedWords from optionally encrypted cipher seed
+ *
+ * ## Arguments
+ * `cipher_bytes`: base58 encoded string pointer of the cipher bytes
+ * `passphrase`: optional passphrase to decrypt the cipher bytes
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `TariSeedWords` - Returns an  TariSeedWords instance
+ *
+ * # Safety
+ * Tari seed words need to be destroyed
+ */
+struct TariSeedWords *seed_words_create_from_cipher(const char *cipher_bytes,
+                                                    const char *passphrase,
+                                                    int *error_out);
+
+/**
  * Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
  *
  * ## Arguments

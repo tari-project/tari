@@ -102,13 +102,14 @@ use tari_crypto::{
     ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
 };
 use tari_key_manager::{
+    cipher_seed::CipherSeed,
     key_manager_service::{KeyId, KeyManagerInterface},
     SeedWords,
 };
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{encoding::Base58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -2485,15 +2486,32 @@ pub async fn command_runner(
                     .join("temp");
                 println!("saving temp wallet in: {:?}", temp_path);
                 {
-                    let seed_words = SeedWords::from_str(args.seed_words.as_str())
-                        .map_err(|e| CommandError::General(e.to_string()))?;
                     let passphrase = if args.passphrase.is_empty() {
                         None
                     } else {
                         Some(SafePassword::from(args.passphrase))
                     };
-                    let seed = get_seed_from_seed_words(&seed_words, passphrase)
-                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    let seed = match (!args.seed_words.is_empty(), !args.cipher_seed.is_empty()) {
+                        (true, false) => {
+                            let seed_words = SeedWords::from_str(args.seed_words.as_str())
+                                .map_err(|e| CommandError::General(e.to_string()))?;
+
+                            get_seed_from_seed_words(&seed_words, passphrase)
+                                .map_err(|e| CommandError::General(e.to_string()))?
+                        },
+                        (false, true) => {
+                            let bytes = Vec::<u8>::from_base58(args.cipher_seed.as_str())
+                                .map_err(|e| CommandError::General(e.to_string()))?;
+                            CipherSeed::from_enciphered_bytes(&bytes, passphrase)
+                                .map_err(|e| CommandError::General(e.to_string()))?
+                        },
+                        (_, _) => {
+                            return Err(CommandError::General(
+                                "Either seed words or cipher seed must be provided".to_string(),
+                            ))
+                        },
+                    };
+
                     let wallet_type = WalletType::DerivedKeys;
                     let password = SafePassword::from("password".to_string());
                     let shutdown = Shutdown::new();

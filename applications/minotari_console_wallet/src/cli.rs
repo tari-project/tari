@@ -391,8 +391,10 @@ pub struct ExportViewKeyAndSpendKeyArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct ImportPaperWalletArgs {
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "")]
     pub seed_words: String,
+    #[clap(short, long, default_value = "")]
+    pub cipher_seed: String,
     #[clap(short, long, default_value = "")]
     pub passphrase: String,
 }
