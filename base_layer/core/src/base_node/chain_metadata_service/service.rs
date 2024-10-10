@@ -134,7 +134,7 @@ impl<TNetwork: NetworkingService> ChainMetadataService<TNetwork> {
     /// Tack this node's metadata on to ping/pongs sent by the liveness service
     async fn update_liveness_chain_metadata(&mut self) -> Result<(), ChainMetadataSyncError> {
         let chain_metadata = self.base_node.get_metadata().await?;
-        let bytes = proto::ChainMetadata::from(chain_metadata).to_encoded_bytes();
+        let bytes = proto::ChainMetadata::from(chain_metadata).encode_to_vec();
         self.liveness
             .set_metadata_entry(MetadataKey::ChainMetadata, bytes)
             .await?;

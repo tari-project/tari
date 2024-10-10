@@ -31,8 +31,8 @@ use tokio::{sync::mpsc, task};
 use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    proto,
 };
+use tari_p2p::proto;
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";
 
@@ -41,7 +41,8 @@ pub(crate) struct SyncUtxosByBlockTask<B> {
 }
 
 impl<B> SyncUtxosByBlockTask<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     pub(crate) fn new(db: AsyncBlockchainDb<B>) -> Self {
         Self { db }

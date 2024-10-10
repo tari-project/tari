@@ -2883,7 +2883,7 @@ dependencies = [
  "ipnet",
  "once_cell",
  "rand",
- "ring",
+ "ring 0.17.8",
  "rustls",
  "rustls-pemfile 2.2.0",
  "thiserror",
@@ -3900,7 +3900,7 @@ dependencies = [
 
 [[package]]
 name = "libp2p-messaging"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "async-trait",
  "futures-bounded",
@@ -4057,7 +4057,7 @@ dependencies = [
 
 [[package]]
 name = "libp2p-substream"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "libp2p",
  "smallvec 1.13.2",
@@ -4123,7 +4123,7 @@ dependencies = [
  "futures-rustls",
  "libp2p-core",
  "libp2p-identity",
- "rcgen",
+ "rcgen 0.11.3",
  "ring 0.17.8",
  "rustls",
  "rustls-webpki 0.101.7",
@@ -4476,7 +4476,7 @@ dependencies = [
  "prost 0.13.3",
  "prost-types 0.13.3",
  "rand",
- "rcgen",
+ "rcgen 0.12.1",
  "subtle",
  "tari_common_types",
  "tari_comms",
@@ -4811,6 +4811,7 @@ dependencies = [
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
+ "tari_comms",
  "tari_comms_dht",
  "tari_contacts",
  "tari_core",
@@ -6248,7 +6249,7 @@ dependencies = [
 
 [[package]]
 name = "proto_builder"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "prost-build 0.13.3",
  "sha2 0.10.8",
@@ -6484,12 +6485,24 @@ dependencies = [
 
 [[package]]
 name = "rcgen"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c4f3084aa3bc7dfbba4eff4fab2a54db4324965d8872ab933565e6fbd83bc6"
+dependencies = [
+ "pem",
+ "ring 0.16.20",
+ "time",
+ "yasna",
+]
+
+[[package]]
+name = "rcgen"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48406db8ac1f3cbc7dcdb56ec355343817958a356ff430259bb07baf7607e1e1"
 dependencies = [
  "pem",
- "ring",
+ "ring 0.17.8",
  "time",
  "yasna",
 ]
@@ -6633,6 +6646,21 @@ dependencies = [
 
 [[package]]
 name = "ring"
+version = "0.16.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
+dependencies = [
+ "cc",
+ "libc",
+ "once_cell",
+ "spin 0.5.2",
+ "untrusted 0.7.1",
+ "web-sys",
+ "winapi",
+]
+
+[[package]]
+name = "ring"
 version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c17fa4cb658e3583423e915b9f3acc01cceaee1860e33d59ebae66adc3a2dc0d"
@@ -6642,7 +6670,7 @@ dependencies = [
  "getrandom",
  "libc",
  "spin 0.9.8",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -6779,7 +6807,7 @@ checksum = "f2dabaac7466917e566adb06783a81ca48944c6898a1b08b9374106dd671f4c8"
 dependencies = [
  "log",
  "once_cell",
- "ring",
+ "ring 0.17.8",
  "rustls-pki-types",
  "rustls-webpki 0.102.8",
  "subtle",
@@ -6839,9 +6867,9 @@ version = "0.102.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
 dependencies = [
- "ring",
+ "ring 0.17.8",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -8174,7 +8202,7 @@ dependencies = [
 
 [[package]]
 name = "tari_network"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8232,7 +8260,7 @@ dependencies = [
 
 [[package]]
 name = "tari_rpc_framework"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "async-trait",
  "bitflags 2.6.0",
@@ -8257,7 +8285,7 @@ dependencies = [
 
 [[package]]
 name = "tari_rpc_macros"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8322,7 +8350,7 @@ dependencies = [
 
 [[package]]
 name = "tari_swarm"
-version = "1.5.1-pre.1"
+version = "1.6.0-pre.0"
 dependencies = [
  "libp2p",
  "libp2p-messaging",
@@ -9058,6 +9086,12 @@ name = "unsigned-varint"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"

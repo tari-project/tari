@@ -78,9 +78,9 @@ use futures::{stream, SinkExt, Stream, StreamExt};
 pub use initializer::MempoolSyncInitializer;
 use libp2p_substream::{ProtocolEvent, ProtocolNotification, Substream};
 use log::*;
-use prost::Message;
+use prost::{bytes::Bytes, Message};
 use tari_network::{identity::PeerId, NetworkHandle, NetworkingEvent, StreamProtocol};
-use tari_p2p::{framing, framing::CanonicalFraming, proto::mempool as proto};
+use tari_p2p::{framing, framing::CanonicalFraming, proto as shared_proto, proto::mempool as proto};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -95,7 +95,6 @@ use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     chain_storage::BlockAddResult,
     mempool::{Mempool, MempoolServiceConfig},
-    proto as shared_proto,
     transactions::transaction_components::Transaction,
 };
 
@@ -304,19 +303,17 @@ impl MempoolSyncProtocol {
     }
 }
 
-struct MempoolPeerProtocol<TSubstream> {
+struct MempoolPeerProtocol {
     config: MempoolServiceConfig,
-    framed: CanonicalFraming<TSubstream>,
+    framed: CanonicalFraming<Substream>,
     mempool: Mempool,
     peer_id: PeerId,
 }
 
-impl<TSubstream> MempoolPeerProtocol<TSubstream>
-where TSubstream: AsyncRead + AsyncWrite + Unpin
-{
+impl MempoolPeerProtocol {
     pub fn new(
         config: MempoolServiceConfig,
-        framed: CanonicalFraming<TSubstream>,
+        framed: CanonicalFraming<Substream>,
         peer_id: PeerId,
         mempool: Mempool,
     ) -> Self {

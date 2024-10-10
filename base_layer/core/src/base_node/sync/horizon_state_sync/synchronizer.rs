@@ -906,15 +906,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
-    fn remove_sync_peer(&mut self, node_id: &NodeId) {
-        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == node_id) {
+    fn remove_sync_peer(&mut self, peer_id: &PeerId) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == peer_id) {
             self.sync_peers.remove(pos);
         }
     }
 
-    // Helper function to get the index to the node_id inside of the vec of peers
-    fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
-        self.sync_peers.iter().position(|p| p.peer_id() == node_id)
+    // Helper function to get the index to the peer_id inside of the vec of peers
+    fn get_sync_peer_index(&mut self, peer_id: &PeerId) -> Option<usize> {
+        self.sync_peers.iter().position(|p| p.peer_id() == peer_id)
     }
 
     #[inline]
