@@ -2846,8 +2846,7 @@ pub unsafe extern "C" fn seed_words_create_from_cipher(
     };
     let cipher = match CipherSeed::from_enciphered_bytes(&bytes, passphrase) {
         Ok(v) => v,
-        Err(e) => {
-            dbg!(e);
+        Err(_) => {
             // code for invalid cipher bytes
             let mut error = 421;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -9931,6 +9930,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_seed_words_create() {
         unsafe {
             let cipher = CipherSeed::new();

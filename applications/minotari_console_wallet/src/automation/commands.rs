@@ -109,7 +109,7 @@ use tari_key_manager::{
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{encoding::Base58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -2491,10 +2491,7 @@ pub async fn command_runner(
                     } else {
                         Some(SafePassword::from(args.passphrase))
                     };
-                    let seed = match (
-                        args.seed_words.as_str().is_empty(),
-                        args.cipher_seed.as_str().is_empty(),
-                    ) {
+                    let seed = match (args.seed_words.is_empty(), args.cipher_seed.is_empty()) {
                         (true, false) => {
                             let seed_words = SeedWords::from_str(args.seed_words.as_str())
                                 .map_err(|e| CommandError::General(e.to_string()))?;
@@ -2503,8 +2500,7 @@ pub async fn command_runner(
                                 .map_err(|e| CommandError::General(e.to_string()))?
                         },
                         (false, true) => {
-                            let bytes = bs58::decode(args.cipher_seed.as_str())
-                                .into_vec()
+                            let bytes = Vec::<u8>::from_base58(&args.cipher_seed.as_str())
                                 .map_err(|e| CommandError::General(e.to_string()))?;
                             CipherSeed::from_enciphered_bytes(&bytes, passphrase)
                                 .map_err(|e| CommandError::General(e.to_string()))?
