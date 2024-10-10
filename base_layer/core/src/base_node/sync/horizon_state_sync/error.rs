@@ -23,11 +23,6 @@
 use std::{num::TryFromIntError, time::Duration};
 
 use tari_common_types::types::FixedHashSizeError;
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
-};
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
 use tari_network::{identity::PeerId, NetworkError};
@@ -130,7 +125,7 @@ impl HorizonSyncError {
             HorizonSyncError::NoSyncPeers |
             HorizonSyncError::FailedSyncAllPeers |
             HorizonSyncError::AllSyncPeersExceedLatency |
-            HorizonSyncError::ConnectivityError(_) |
+            HorizonSyncError::NetworkError(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::JoinError(_) => None,

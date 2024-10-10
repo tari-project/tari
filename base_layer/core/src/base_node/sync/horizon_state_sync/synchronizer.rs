@@ -535,11 +535,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
-    fn check_latency(&self, peer: &NodeId, avg_latency: &RollingAverageTime) -> Result<(), HorizonSyncError> {
+    fn check_latency(&self, peer: &PeerId, avg_latency: &RollingAverageTime) -> Result<(), HorizonSyncError> {
         if let Some(avg_latency) = avg_latency.calculate_average_with_min_samples(5) {
             if avg_latency > self.max_latency {
                 return Err(HorizonSyncError::MaxLatencyExceeded {
-                    peer: peer.clone(),
+                    peer: *peer,
                     latency: avg_latency,
                     max_latency: self.max_latency,
                 });

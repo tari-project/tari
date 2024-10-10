@@ -89,7 +89,7 @@ thiserror = "1.0.26"
 tokio = { version = "1.36", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 zeroize = "1"
-primitive-types = { version = "0.12", features = ["serde"] }
+primitive-types = { version = "0.13.1", features = ["serde"] }
 tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }

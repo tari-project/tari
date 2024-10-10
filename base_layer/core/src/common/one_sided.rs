@@ -23,7 +23,6 @@
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};
-use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
@@ -31,6 +30,8 @@ use tari_crypto::{
 };
 use tari_hashing::WalletOutputEncryptionKeysDomain;
 use tari_utilities::{byte_array::ByteArrayError, ByteArray};
+
+use crate::transactions::key_manager::RistrettoDiffieHellmanSharedSecret;
 
 hash_domain!(
     WalletOutputRewindKeysDomain,
@@ -48,7 +49,9 @@ type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputSpendingKeysDomain>;
 
 /// Generate an output encryption key from a Diffie-Hellman shared secret
-pub fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+pub fn shared_secret_to_output_encryption_key(
+    shared_secret: &RistrettoDiffieHellmanSharedSecret,
+) -> Result<PrivateKey, ByteArrayError> {
     PrivateKey::from_uniform_bytes(
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
@@ -78,7 +81,9 @@ pub fn public_key_to_output_encryption_key(public_key: &PublicKey) -> Result<Pri
 }
 
 /// Generate an output spending key from a Diffie-Hellman shared secret
-pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
+pub fn shared_secret_to_output_spending_key(
+    shared_secret: &RistrettoDiffieHellmanSharedSecret,
+) -> Result<PrivateKey, ByteArrayError> {
     PrivateKey::from_uniform_bytes(
         WalletOutputSpendingKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
@@ -88,7 +93,9 @@ pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result
 }
 
 /// Stealth address domain separated hasher using Diffie-Hellman shared secret
-pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: CommsDHKE) -> DomainSeparatedHash<Blake2b<U64>> {
+pub fn diffie_hellman_stealth_domain_hasher(
+    diffie_hellman: RistrettoDiffieHellmanSharedSecret,
+) -> DomainSeparatedHash<Blake2b<U64>> {
     WalletHasher::new_with_label("stealth_address")
         .chain(diffie_hellman.as_bytes())
         .finalize()

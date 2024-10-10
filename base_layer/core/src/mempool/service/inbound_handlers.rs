@@ -23,7 +23,6 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::peer_manager::NodeId;
 use tari_network::identity::PeerId;
 use tari_utilities::hex::Hex;
 

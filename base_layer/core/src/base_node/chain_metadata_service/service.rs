@@ -45,15 +45,15 @@ use crate::{
 
 const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
 
-pub(super) struct ChainMetadataService {
+pub(super) struct ChainMetadataService<TNetwork> {
     liveness: LivenessHandle,
     base_node: LocalNodeCommsInterface,
-    network: NetworkHandle,
+    network: TNetwork,
     event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
     number_of_rounds_no_pings: u16,
 }
 
-impl ChainMetadataService {
+impl<TNetwork: NetworkingService> ChainMetadataService<TNetwork> {
     /// Create a new ChainMetadataService
     ///
     /// ## Arguments
@@ -63,7 +63,7 @@ impl ChainMetadataService {
     pub fn new(
         liveness: LivenessHandle,
         base_node: LocalNodeCommsInterface,
-        network: NetworkHandle,
+        network: TNetwork,
         event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
     ) -> Self {
         Self {
@@ -225,11 +225,11 @@ impl ChainMetadataService {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryInto;
+    use std::{convert::TryInto, time::Duration};
 
     use futures::StreamExt;
     use primitive_types::U256;
-    use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
+    use tari_network::{identity::PeerId, swarm, NetworkError, Waiter};
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
@@ -271,8 +271,36 @@ mod test {
         }
     }
 
+    struct NopNetwork;
+
+    impl NetworkingService for NopNetwork {
+        fn local_peer_id(&self) -> &PeerId {
+            unimplemented!()
+        }
+
+        async fn dial_peer<T: Into<swarm::dial_opts::DialOpts> + Send + 'static>(
+            &mut self,
+            dial_opts: T,
+        ) -> Result<Waiter<()>, NetworkError> {
+            unimplemented!()
+        }
+
+        async fn disconnect_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
+            Ok(true)
+        }
+
+        async fn ban_peer<T: Into<String> + Send>(
+            &mut self,
+            peer_id: PeerId,
+            reason: T,
+            until: Option<Duration>,
+        ) -> Result<bool, NetworkError> {
+            Ok(true)
+        }
+    }
+
     fn setup() -> (
-        ChainMetadataService,
+        ChainMetadataService<NopNetwork>,
         LivenessMockState,
         reply_channel::TryReceiver<NodeCommsRequest, NodeCommsResponse, CommsInterfaceError>,
         broadcast::Receiver<Arc<ChainMetadataEvent>>,
@@ -284,9 +312,7 @@ mod test {
         let (base_node, base_node_receiver) = create_base_node_nci();
         let (publisher, event_rx) = broadcast::channel(10);
 
-        let connectivity = create_connectivity_mock();
-
-        let service = ChainMetadataService::new(liveness_handle, base_node, connectivity.0, publisher);
+        let service = ChainMetadataService::new(liveness_handle, base_node, NopNetwork, publisher);
 
         (service, liveness_mock_state, base_node_receiver, event_rx)
     }

@@ -5,6 +5,7 @@ use std::{convert::TryFrom, fmt, time::Duration};
 
 use bitflags::bitflags;
 use bytes::Bytes;
+use libp2p::PeerId;
 
 use crate::{
     body::{Body, IntoBody},
@@ -18,6 +19,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Request<T> {
+    peer_id: PeerId,
     inner: BaseRequest<T>,
 }
 
@@ -25,20 +27,26 @@ impl Request<Bytes> {
     pub fn decode<T: prost::Message + Default>(mut self) -> Result<Request<T>, RpcError> {
         let message = T::decode(&mut self.inner.message)?;
         Ok(Request {
+            peer_id: self.peer_id.clone(),
             inner: BaseRequest::new(self.inner.method, message),
         })
     }
 }
 
 impl<T> Request<T> {
-    pub(super) fn new(method: RpcMethod, message: T) -> Self {
+    pub(super) fn new(peer_id: PeerId, method: RpcMethod, message: T) -> Self {
         Self {
+            peer_id,
             inner: BaseRequest::new(method, message),
         }
     }
 
     pub fn method(&self) -> RpcMethod {
         self.inner.method
+    }
+
+    pub fn peer_id(&self) -> PeerId {
+        self.peer_id
     }
 
     #[inline]

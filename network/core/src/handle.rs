@@ -151,7 +151,7 @@ impl NetworkHandle {
     /// Add a notifier for these protocols. An unbounded sender is used to prevent potential lockups waiting for
     /// consumers to read the notification.
     pub async fn add_protocol_notifier<I: IntoIterator<Item = StreamProtocol>>(
-        &mut self,
+        &self,
         protocols: I,
         tx_notifier: mpsc::UnboundedSender<ProtocolNotification<Substream>>,
     ) -> Result<(), NetworkError> {
@@ -166,7 +166,7 @@ impl NetworkHandle {
     }
 
     pub async fn open_substream(
-        &mut self,
+        &self,
         peer_id: PeerId,
         protocol_id: &StreamProtocol,
     ) -> Result<NegotiatedSubstream<Substream>, NetworkError> {
@@ -184,7 +184,7 @@ impl NetworkHandle {
     }
 
     pub async fn open_framed_substream(
-        &mut self,
+        &self,
         peer_id: PeerId,
         protocol_id: &StreamProtocol,
         max_frame_size: usize,
@@ -253,7 +253,7 @@ impl NetworkHandle {
     }
 
     pub async fn publish_gossip<TTopic: Into<String> + Send>(
-        &mut self,
+        &self,
         topic: TTopic,
         message: Vec<u8>,
     ) -> Result<(), NetworkError> {
@@ -270,7 +270,7 @@ impl NetworkHandle {
     }
 
     pub async fn subscribe_topic<T: Into<String> + Send, M: prost::Message + Default>(
-        &mut self,
+        &self,
         topic: T,
     ) -> Result<(GossipPublisher<M>, GossipSubscription<M>), NetworkError> {
         let (inbound, receiver) = mpsc::unbounded_channel();
@@ -294,7 +294,7 @@ impl NetworkHandle {
         ))
     }
 
-    pub async fn unsubscribe_topic<T: Into<String> + Send>(&mut self, topic: T) -> Result<(), NetworkError> {
+    pub async fn unsubscribe_topic<T: Into<String> + Send>(&self, topic: T) -> Result<(), NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::UnsubscribeTopic {

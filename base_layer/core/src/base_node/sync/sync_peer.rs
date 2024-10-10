@@ -27,7 +27,6 @@ use std::{
 };
 
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 use tari_network::identity::PeerId;
 
 use crate::{base_node::chain_metadata_service::PeerChainMetadata, common::rolling_avg::RollingAverageTime};
@@ -131,22 +130,23 @@ mod test {
     use std::time::Duration;
 
     use rand::rngs::OsRng;
-    use tari_common_types::chain_metadata::ChainMetadata;
+    use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
+    use tari_crypto::{
+        keys::{PublicKey, SecretKey},
+        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    };
+    use tari_network::identity;
 
     use super::*;
 
     mod sort_by_latency {
-        use tari_common_types::types::FixedHash;
-        use tari_comms::types::{CommsPublicKey, CommsSecretKey};
-        use tari_crypto::keys::{PublicKey, SecretKey};
-
         use super::*;
 
         // Helper function to generate a peer with a given latency
         fn generate_peer(latency: Option<usize>) -> SyncPeer {
-            let sk = CommsSecretKey::random(&mut OsRng);
-            let pk = CommsPublicKey::from_secret_key(&sk);
-            let node_id = NodeId::from_key(&pk);
+            let sk = RistrettoSecretKey::random(&mut OsRng);
+            let pk = RistrettoPublicKey::from_secret_key(&sk);
+            let node_id = PeerId::from_public_key(&identity::PublicKey::from(identity::sr25519::PublicKey::from(pk)));
             let latency_option = latency.map(|latency| Duration::from_millis(latency as u64));
             PeerChainMetadata::new(
                 node_id,

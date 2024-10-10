@@ -29,7 +29,6 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
-use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::{
     cipher_seed::CipherSeed,

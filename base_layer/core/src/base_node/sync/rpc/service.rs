@@ -27,13 +27,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+use futures::FutureExt;
 use log::*;
 use tari_common_types::types::FixedHash;
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
-    utils,
-};
 use tari_network::identity::PeerId;
 use tari_p2p::{
     proto,
@@ -47,7 +43,7 @@ use tari_p2p::{
         SyncUtxosResponse,
     },
 };
-use tari_rpc_framework::{Request, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_rpc_framework::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -358,8 +354,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(headers) => {
                             let headers = headers.into_iter().map(proto::core::BlockHeader::from).map(Ok);
                             // Ensure task stops if the peer prematurely stops their RPC session
-                            if utils::mpsc::send_all(&tx, headers).await.is_err() {
-                                break;
+                            for header in headers {
+                                if tx.send(header).await.is_err()  {
+                                    warn!(target: LOG_TARGET, "Header sync session for peer '{}' terminated early", peer_node_id);
+                                    return;
+                                }
+
                             }
                         },
                         Err(err) => {
@@ -369,13 +369,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     }
                 }
 
-                #[cfg(feature = "metrics")]
-                metrics::active_sync_peers().dec();
-                debug!(
+               debug!(
                     target: LOG_TARGET,
                     "Header sync round complete for peer `{}`.", peer_node_id,
                 );
             }
+                // Ensure that we always dec the active sync peer even if exiting early
+            .then(|_| {
+                #[cfg(feature = "metrics")]
+                metrics::active_sync_peers().dec();
+            })
             .instrument(span),
         );
 
@@ -550,8 +553,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         current_mmr_position += kernels.len() as u64;
                         let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
                         // Ensure task stops if the peer prematurely stops their RPC session
-                        if utils::mpsc::send_all(&tx, kernels).await.is_err() {
-                            break;
+                        for kernel in kernels {
+                            if tx.send(kernel).await.is_err() {
+                                warn!(target: LOG_TARGET, "Remote peer '{}' terminated the kernel sync session early", peer_node_id);
+                                return;
+                            }
                         }
                     },
                     Err(err) => {
@@ -591,13 +597,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 }
             }
 
-            #[cfg(feature = "metrics")]
-            metrics::active_sync_peers().dec();
+
             debug!(
                 target: LOG_TARGET,
                 "Kernel sync round complete for peer `{}`.", peer_node_id,
             );
-        });
+        }
+            .then(|_| {
+                #[cfg(feature = "metrics")]
+                metrics::active_sync_peers().dec();
+            })
+        );
         Ok(Streaming::new(rx))
     }
 

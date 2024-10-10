@@ -56,7 +56,7 @@ use tokio::{
 use crate::{
     base_node::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
-        service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
+        service::error::BaseNodeServiceError,
         state_machine_service::states::StateInfo,
         BaseNodeStateMachineConfig,
         StateMachineHandle,
@@ -134,9 +134,8 @@ where B: BlockchainBackend + 'static
         streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock>,
     ) -> Result<(), BaseNodeServiceError>
     where
-        SOutReq: Stream<
-            Item = RequestContext<(NodeCommsRequest, Option<PeerId>), Result<NodeCommsResponse, CommsInterfaceError>>,
-        >,
+        SOutReq:
+            Stream<Item = RequestContext<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>>,
         SInReq: Stream<Item = DomainMessage<Result<proto::base_node::BaseNodeServiceRequest, prost::DecodeError>>>,
         SInRes: Stream<Item = DomainMessage<Result<proto::base_node::BaseNodeServiceResponse, prost::DecodeError>>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
@@ -147,8 +146,6 @@ where B: BlockchainBackend + 'static
         let outbound_block_stream = streams.block_publisher;
         pin_mut!(outbound_block_stream);
         let mut inbound_messages = streams.inbound_messages;
-        let inbound_response_stream = streams.inbound_response_stream.fuse();
-        pin_mut!(inbound_response_stream);
         let mut block_subscription = streams.block_subscription;
         let local_request_stream = streams.local_request_stream.fuse();
         pin_mut!(local_request_stream);
@@ -169,11 +166,6 @@ where B: BlockchainBackend + 'static
                 // Incoming request messages from the Comms layer
                 Some(domain_msg) = inbound_messages.recv() => {
                     self.spawn_handle_incoming_request_or_response_message(domain_msg);
-                },
-
-                // Incoming response messages from the Comms layer
-                Some(domain_msg) = inbound_response_stream.next() => {
-                    self.spawn_handle_incoming_response(domain_msg);
                 },
 
                 // Timeout events for waiting requests
@@ -207,10 +199,7 @@ where B: BlockchainBackend + 'static
 
     fn spawn_handle_outbound_request(
         &self,
-        request_context: RequestContext<
-            (NodeCommsRequest, Option<PeerId>),
-            Result<NodeCommsResponse, CommsInterfaceError>,
-        >,
+        request_context: RequestContext<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>,
     ) {
         let outbound_messaging = self.outbound_messaging.clone();
         let waiting_requests = self.waiting_requests.clone();
@@ -494,50 +483,21 @@ async fn handle_outbound_request(
     timeout_sender: mpsc::Sender<RequestKey>,
     reply_tx: oneshot::Sender<Result<NodeCommsResponse, CommsInterfaceError>>,
     request: NodeCommsRequest,
-    node_id: Option<PeerId>,
+    peer_id: PeerId,
     service_request_timeout: Duration,
 ) -> Result<(), CommsInterfaceError> {
-    let debug_info = format!(
-        "Node request:{} to {}",
-        &request,
-        node_id
-            .as_ref()
-            .map(|n| n.short_str())
-            .unwrap_or_else(|| "random".to_string())
-    );
+    debug!("Node request:{} to {}", request, peer_id);
     let request_key = generate_request_key(&mut OsRng);
-    let service_request = proto::BaseNodeServiceRequest {
+    let service_request = proto::base_node::BaseNodeServiceRequest {
         request_key,
         request: Some(request.try_into().map_err(CommsInterfaceError::InternalError)?),
     };
 
-    let mut send_msg_params = SendMessageParams::new();
-    send_msg_params.with_debug_info(debug_info);
-    match node_id {
-        Some(node_id) => send_msg_params.direct_node_id(node_id),
-        None => send_msg_params.random(1),
-    };
-
     trace!(target: LOG_TARGET, "Attempting outbound request ({})", request_key);
-    let send_result = outbound_messaging
-        .send_message(
-            send_msg_params.finish(),
-            OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
-        )
-        .await?;
+    let result = outbound_messaging.send_message(peer_id, service_request).await;
 
-    match send_result.resolve().await {
-        Ok(send_states) if send_states.is_empty() => {
-            let result = reply_tx.send(Err(CommsInterfaceError::NoBootstrapNodesConfigured));
-
-            if let Err(_e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to send outbound request as no bootstrap nodes were configured"
-                );
-            }
-        },
-        Ok(send_states) => {
+    match result {
+        Ok(()) => {
             // Wait for matching responses to arrive
             waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
@@ -549,24 +509,6 @@ async fn handle_outbound_request(
                     service_request_timeout
                 );
                 spawn_request_timeout(timeout_sender, request_key, service_request_timeout)
-            };
-            // Log messages
-            let msg_tag = send_states[0].tag;
-            debug!(
-                target: LOG_TARGET,
-                "Outbound request ({}) response queued with {}", request_key, &msg_tag,
-            );
-
-            if send_states.wait_single().await {
-                debug!(
-                    target: LOG_TARGET,
-                    "Outbound request ({}) response Direct Send was successful {}", request_key, msg_tag
-                );
-            } else {
-                error!(
-                    target: LOG_TARGET,
-                    "Outbound request ({}) response Direct Send was unsuccessful and no message was sent", request_key
-                );
             };
         },
         Err(err) => {
@@ -607,7 +549,7 @@ async fn handle_request_timeout(
     Ok(())
 }
 
-fn spawn_request_timeout(timeout_sender: Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
+fn spawn_request_timeout(timeout_sender: mpsc::Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
     task::spawn(async move {
         tokio::time::sleep(timeout).await;
         let _ = timeout_sender.send(request_key).await;

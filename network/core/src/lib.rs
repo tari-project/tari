@@ -35,5 +35,6 @@ pub use spawn::*;
 pub use tari_swarm::{
     config::{Config as SwarmConfig, LimitPerInterval, RelayCircuitLimits, RelayReservationLimits},
     is_supported_multiaddr,
+    swarm,
     ProtocolVersion,
 };

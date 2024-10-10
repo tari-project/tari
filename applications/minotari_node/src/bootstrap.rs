@@ -111,7 +111,6 @@ where B: BlockchainBackend + 'static
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
-        let mempool_protocol = mempool_sync.get_protocol_extension();
 
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
         let mut handles = StackBuilder::new(self.interrupt_signal)

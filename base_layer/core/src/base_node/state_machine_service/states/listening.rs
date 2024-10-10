@@ -484,14 +484,16 @@ mod test {
     use primitive_types::U256;
     use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
-    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-    use tari_crypto::keys::PublicKey;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_network::{identity, identity::PeerId};
 
     use super::*;
 
-    fn random_node_id() -> NodeId {
-        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-        NodeId::from_key(&public_key)
+    fn random_peer_id() -> PeerId {
+        let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        PeerId::from_public_key(&identity::PublicKey::from(identity::sr25519::PublicKey::from(
+            public_key,
+        )))
     }
 
     #[test]
@@ -504,13 +506,13 @@ mod test {
         let accumulated_difficulty = U256::from(10000);
 
         let archival_node = PeerChainMetadata::new(
-            random_node_id(),
+            random_peer_id(),
             ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_difficulty, 0).unwrap(),
             None,
         );
 
         let behind_node = PeerChainMetadata::new(
-            random_node_id(),
+            random_peer_id(),
             ChainMetadata::new(
                 NETWORK_TIP_HEIGHT - 1,
                 block_hash,

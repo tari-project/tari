@@ -24,20 +24,6 @@ use std::{fmt, io, sync::Arc};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
-use tari_comms::{
-    connectivity::ConnectivityEvent,
-    framing,
-    memsocket::MemorySocket,
-    message::MessageExt,
-    peer_manager::PeerFeatures,
-    protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationTx},
-    test_utils::{
-        mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
-    Bytes,
-    BytesMut,
-};
 use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},

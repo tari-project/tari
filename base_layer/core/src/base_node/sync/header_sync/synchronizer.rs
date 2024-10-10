@@ -34,7 +34,7 @@ use tari_p2p::proto::{
     base_node::{FindChainSplitRequest, SyncHeadersRequest},
     core::BlockHeader as ProtoBlockHeader,
 };
-use tari_rpc_framework::{RpcClient, RpcConnector};
+use tari_rpc_framework::{RpcClient, RpcConnector, RpcError};
 use tari_utilities::hex::Hex;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
@@ -148,8 +148,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
-        for node_id in sync_peer_node_ids {
-            match self.connect_and_attempt_sync(&node_id, max_latency).await {
+        for peer_id in sync_peer_node_ids {
+            match self.connect_and_attempt_sync(&peer_id, max_latency).await {
                 Ok((peer, sync_result)) => return Ok((peer, sync_result)),
                 Err(err) => {
                     let ban_reason = BlockHeaderSyncError::get_ban_reason(&err);
@@ -160,13 +160,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             BanPeriod::Long => self.config.ban_period,
                         };
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, reason.reason, duration)
+                            .ban_peer_if_required(&peer_id, reason.reason, duration)
                             .await;
                     }
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter += 1;
                     } else {
-                        self.remove_sync_peer(&node_id);
+                        self.remove_sync_peer(&peer_id);
                     }
                 },
             }
@@ -818,15 +818,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
-    fn remove_sync_peer(&mut self, node_id: &NodeId) {
-        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == node_id) {
+    fn remove_sync_peer(&mut self, peer_id: &PeerId) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == peer_id) {
             self.sync_peers.remove(pos);
         }
     }
 
-    // Helper function to get the index to the node_id inside of the vec of peers
-    fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
-        self.sync_peers.iter().position(|p| p.peer_id() == node_id)
+    // Helper function to get the index to the peer_id inside of the vec of peers
+    fn get_sync_peer_index(&mut self, peer_id: &PeerId) -> Option<usize> {
+        self.sync_peers.iter().position(|p| p.peer_id() == peer_id)
     }
 }
 

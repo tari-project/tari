@@ -3324,29 +3324,11 @@ dependencies = [
 
 [[package]]
 name = "impl-codec"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba6a270039626615617f3f36d15fc827041df3b78c439da2cadfa47455a77f2f"
-dependencies = [
- "parity-scale-codec",
-]
-
-[[package]]
-name = "impl-codec"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b67aa010c1e3da95bf151bd8b4c059b2ed7e75387cdb969b4f8f2723a43f9941"
 dependencies = [
  "parity-scale-codec",
-]
-
-[[package]]
-name = "impl-serde"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc88fc67028ae3db0c853baa36269d398d5f45b6982f95549ff5def78c935cd"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -6057,25 +6039,13 @@ dependencies = [
 
 [[package]]
 name = "primitive-types"
-version = "0.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b34d9fd68ae0b74a41b21c03c2f62847aa0ffea044eee893b4c140b37e244e2"
-dependencies = [
- "fixed-hash",
- "impl-codec 0.6.0",
- "impl-serde 0.4.0",
- "uint 0.9.5",
-]
-
-[[package]]
-name = "primitive-types"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d15600a7d856470b7d278b3fe0e311fe28c2526348549f8ef2ff7db3299c87f5"
 dependencies = [
  "fixed-hash",
- "impl-codec 0.7.0",
- "impl-serde 0.5.0",
+ "impl-codec",
+ "impl-serde",
  "uint 0.10.0",
 ]
 
@@ -7809,7 +7779,7 @@ dependencies = [
  "minotari_ledger_wallet_common",
  "newtype-ops",
  "once_cell",
- "primitive-types 0.13.1",
+ "primitive-types",
  "rand",
  "serde",
  "strum",
@@ -7998,7 +7968,7 @@ dependencies = [
  "num-format",
  "num-traits",
  "once_cell",
- "primitive-types 0.12.2",
+ "primitive-types",
  "prost 0.13.3",
  "quickcheck",
  "rand",
@@ -8249,7 +8219,7 @@ dependencies = [
  "lmdb-zero",
  "log",
  "pgp",
- "primitive-types 0.13.1",
+ "primitive-types",
  "prost 0.13.3",
  "rand",
  "reqwest",

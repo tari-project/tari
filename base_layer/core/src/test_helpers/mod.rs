@@ -161,26 +161,6 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
 
-pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
-    let peer_database_name = {
-        let mut rng = rand::thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(data_path)
-        .set_env_config(Default::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
-}
-
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
     let achieved_target_diff = AchievedTargetDifficulty::try_construct(
         header.pow_algo(),

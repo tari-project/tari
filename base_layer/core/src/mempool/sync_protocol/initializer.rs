@@ -22,12 +22,9 @@
 
 use std::time::Duration;
 
+use libp2p_substream::{ProtocolNotification, Substream};
 use log::*;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
-    Substream,
-};
+use tari_network::NetworkHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::{sync::mpsc, time::sleep};
 
@@ -45,27 +42,11 @@ const LOG_TARGET: &str = "c::mempool::sync_protocol";
 pub struct MempoolSyncInitializer {
     config: MempoolServiceConfig,
     mempool: Mempool,
-    notif_rx: Option<mpsc::Receiver<ProtocolNotification<Substream>>>,
-    notif_tx: mpsc::Sender<ProtocolNotification<Substream>>,
 }
 
 impl MempoolSyncInitializer {
     pub fn new(config: MempoolServiceConfig, mempool: Mempool) -> Self {
-        let (notif_tx, notif_rx) = mpsc::channel(3);
-        Self {
-            mempool,
-            config,
-            notif_tx,
-            notif_rx: Some(notif_rx),
-        }
-    }
-
-    pub fn get_protocol_extension(&self) -> impl ProtocolExtension {
-        let notif_tx = self.notif_tx.clone();
-        move |context: &mut ProtocolExtensionContext| -> Result<(), ProtocolExtensionError> {
-            context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], &notif_tx);
-            Ok(())
-        }
+        Self { mempool, config }
     }
 }
 
@@ -75,14 +56,17 @@ impl ServiceInitializer for MempoolSyncInitializer {
         debug!(target: LOG_TARGET, "Initializing Mempool Sync Service");
         let config = self.config.clone();
         let mempool = self.mempool.clone();
-        let notif_rx = self.notif_rx.take().unwrap();
 
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         context.spawn_until_shutdown(move |handles| async move {
             log_mdc::extend(mdc.clone());
+            let (notif_tx, notif_rx) = mpsc::unbounded_channel();
+            let network = handles.expect_handle::<NetworkHandle>();
+            if let Err(err) = network.add_protocol_notifier(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx).await {
+                error!(target: LOG_TARGET, "Failed to register protocol notifier for mempool sync: {err}. Peers will not be able to initiate mempool sync with this node")
+            }
             let state_machine = handles.expect_handle::<StateMachineHandle>();
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let mut status_watch = state_machine.get_status_info_watch();
@@ -107,7 +91,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
             }
             let base_node_events = base_node.get_block_event_stream();
 
-            MempoolSyncProtocol::new(config, notif_rx, mempool, connectivity, base_node_events)
+            MempoolSyncProtocol::new(config, notif_rx, mempool, network, base_node_events)
                 .run()
                 .await;
         });

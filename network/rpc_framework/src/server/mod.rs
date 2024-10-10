@@ -473,16 +473,16 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
     pub(self) fn new(
         config: RpcServerBuilder,
         protocol: StreamProtocol,
-        node_id: PeerId,
+        peer_id: PeerId,
         service: TSvc,
         framed: CanonicalFraming<Substream>,
     ) -> Self {
         Self {
-            logging_context_string: Arc::new(format!("peer: {}, protocol: {}", node_id, protocol)),
+            logging_context_string: Arc::new(format!("peer: {}, protocol: {}", peer_id, protocol)),
 
             config,
             protocol,
-            peer_id: node_id,
+            peer_id,
             service,
             framed: EarlyClose::new(framed),
         }
@@ -634,7 +634,7 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             method.id()
         );
 
-        let req = Request::new(method, decoded_msg.payload.into());
+        let req = Request::new(self.peer_id, method, decoded_msg.payload.into());
 
         let service_call = log_timing(
             self.logging_context_string.clone(),

@@ -39,17 +39,14 @@ use crate::{
 /// The OutboundNodeCommsInterface provides an interface to request information from remove nodes.
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
-    request_sender: SenderService<(NodeCommsRequest, Option<PeerId>), Result<NodeCommsResponse, CommsInterfaceError>>,
+    request_sender: SenderService<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>,
     block_sender: GossipPublisher<proto::core::NewBlock>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
     pub fn new(
-        request_sender: SenderService<
-            (NodeCommsRequest, Option<PeerId>),
-            Result<NodeCommsResponse, CommsInterfaceError>,
-        >,
+        request_sender: SenderService<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>,
         block_sender: GossipPublisher<proto::core::NewBlock>,
     ) -> Self {
         Self {
@@ -66,7 +63,7 @@ impl OutboundNodeCommsInterface {
     ) -> Result<Option<Block>, CommsInterfaceError> {
         if let NodeCommsResponse::Block(block) = self
             .request_sender
-            .call((NodeCommsRequest::GetBlockFromAllChains(hash), Some(peer_id)))
+            .call((NodeCommsRequest::GetBlockFromAllChains(hash), peer_id))
             .await??
         {
             Ok(*block)
@@ -78,14 +75,14 @@ impl OutboundNodeCommsInterface {
     /// Fetch the transactions corresponding to the provided excess_sigs from the given peer `NodeId`.
     pub async fn request_transactions_by_excess_sig(
         &mut self,
-        node_id: NodeId,
+        peer_id: PeerId,
         excess_sigs: Vec<PrivateKey>,
     ) -> Result<FetchMempoolTransactionsResponse, CommsInterfaceError> {
         if let NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(resp) = self
             .request_sender
             .call((
                 NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs },
-                Some(node_id),
+                peer_id,
             ))
             .await??
         {
