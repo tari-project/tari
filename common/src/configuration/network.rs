@@ -106,7 +106,7 @@ impl Network {
             // Choose a value in 'IGOR_RANGE' or assign 'self.as_byte()'
             Network::Igor => self.as_byte(),
             // Choose a value in 'ESMERALDA_RANGE' or assign 'self.as_byte()'
-            Network::Esmeralda => 200,
+            Network::Esmeralda => 201,
         };
         // The reserved wire byte for liveness ('LIVENESS_WIRE_MODE') is defined in another module, which is not
         // accessible from here.
@@ -120,8 +120,8 @@ impl Default for Network {
     #[cfg(tari_target_network_mainnet)]
     fn default() -> Self {
         match std::env::var("TARI_NETWORK") {
-            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::StageNet),
-            Err(_) => Network::StageNet,
+            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::MainNet),
+            Err(_) => Network::MainNet,
         }
     }
 

@@ -31,8 +31,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ledger_target: nanos
-            best_effort: true
+        #  - ledger_target: nanos
+        #    best_effort: true
           - ledger_target: nanox
             best_effort: true
           - ledger_target: nanosplus
@@ -79,7 +79,7 @@ jobs:
           echo "Copying files for ${{ env.BINFILE }} to $(pwd)"
           ls -la ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/
           cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/*.json .
-          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/key_14x14.gif .
+          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/key*.gif .
           cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/minotari_ledger_wallet.* .
           echo "Compute files shasum"
           ${SHARUN} * >> "${{ env.BINFILE }}.sha256"

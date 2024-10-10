@@ -89,6 +89,9 @@ use crate::{
         ConsensusManager,
         DomainSeparatedConsensusHasher,
     },
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_pruned_mmr,
+    output_mr_hash_from_smt,
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
@@ -247,14 +250,22 @@ where B: BlockchainBackend
             txn = DbTransaction::new();
             blockchain_db.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
-            let utxo_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
+            let input_sum = body
+                .inputs()
+                .iter()
+                .map(|k| k.commitment())
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .sum::<Commitment>();
+            let output_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
+            let total_utxo_sum = &output_sum - &input_sum;
             let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
             txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
                 kernel_sum: Some(kernel_sum.clone()),
                 ..Default::default()
             });
             txn.set_pruned_height(0);
-            txn.set_horizon_data(kernel_sum, utxo_sum);
+            txn.set_horizon_data(kernel_sum, total_utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         } else if !blockchain_db.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
@@ -1416,10 +1427,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     };
 
     let mmr_roots = MmrRoots {
-        kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,
+        kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
-        input_mr: FixedHash::try_from(input_mmr.get_merkle_root()?)?,
-        output_mr: FixedHash::try_from(output_smt.hash().as_slice())?,
+        input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
+        output_mr: output_mr_hash_from_smt(output_smt)?,
         output_smt_size: output_smt.size(),
         validator_node_mr,
         validator_node_size: validator_node_size as u64,

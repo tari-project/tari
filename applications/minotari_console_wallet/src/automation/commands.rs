@@ -93,9 +93,11 @@ use tari_core::{
             UnblindedOutput,
             WalletOutput,
         },
+        CryptoFactories,
     },
 };
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     dhke::DiffieHellmanSharedSecret,
     ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
 };
@@ -723,7 +725,7 @@ pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<CliCommands>,
     wallet: WalletSqlite,
-) -> Result<(), CommandError> {
+) -> Result<bool, CommandError> {
     let wait_stage = config.command_send_wait_stage;
 
     let mut transaction_service = wallet.transaction_service.clone();
@@ -738,6 +740,14 @@ pub async fn command_runner(
     println!("==============");
     println!("Command Runner");
     println!("==============");
+
+    let (_current_index, mut peer_list) =
+        if let Some((index, list)) = wallet.wallet_connectivity.get_base_node_peer_manager_state() {
+            (index, list)
+        } else {
+            (0, vec![])
+        };
+    let mut unban_peer_manager_peers = false;
 
     #[allow(clippy::enum_glob_use)]
     for (idx, parsed) in commands.into_iter().enumerate() {
@@ -799,7 +809,7 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        return Ok(false);
                     },
                 };
 
@@ -807,7 +817,7 @@ pub async fn command_runner(
                     Ok(values) => values,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        return Ok(false);
                     },
                 };
                 let csv_file_name = "pre_mine_items_with_status.csv";
@@ -818,7 +828,7 @@ pub async fn command_runner(
                     file_stream.write_all("index,value,maturity,fail_safe_height,beneficiary,spent_status\n".as_bytes())
                 {
                     eprintln!("\nError: Could not write pre-mine header ({})\n", e);
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 for (index, item) in pre_mine_items.iter().enumerate() {
@@ -839,7 +849,7 @@ pub async fn command_runner(
                         .as_bytes(),
                     ) {
                         eprintln!("\nError: Could not write pre-mine item ({})\n", e);
-                        return Ok(());
+                        return Ok(false);
                     }
                 }
 
@@ -866,12 +876,14 @@ pub async fn command_runner(
                 }
 
                 let mut recipient_info = Vec::new();
+                let mut error = false;
                 for item in args_recipient_info {
                     if args.verify_unspent_outputs && !args.use_pre_mine_input_file {
                         let embedded_outputs = match get_embedded_pre_mine_outputs(item.output_indexes.clone(), None) {
                             Ok(outputs) => outputs,
                             Err(e) => {
                                 eprintln!("\nError: {}\n", e);
+                                error = true;
                                 break;
                             },
                         };
@@ -888,6 +900,7 @@ pub async fn command_runner(
                                 "\nError: Outputs with output_hashes '{:?}' has already been spent!\n",
                                 missing.iter().map(|v| v.to_hex()).collect::<Vec<_>>(),
                             );
+                            error = true;
                             break;
                         }
                     }
@@ -899,12 +912,15 @@ pub async fn command_runner(
                         });
                     }
                 }
+                if error {
+                    break;
+                }
 
                 let (session_id, out_dir) = match create_pre_mine_output_dir(None) {
                     Ok(values) => values,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        return Ok(false);
                     },
                 };
                 let session_info = PreMineSpendStep1SessionInfo {
@@ -1030,9 +1046,17 @@ pub async fn command_runner(
                         },
                     };
 
+                println!();
                 let mut outputs_for_leader = Vec::with_capacity(args_recipient_info.len());
                 let mut outputs_for_self = Vec::with_capacity(args_recipient_info.len());
-                for recipient_info in &args_recipient_info {
+                let mut error = false;
+                for (i, recipient_info) in args_recipient_info.iter().enumerate() {
+                    println!(
+                        "  Start processing {} of {} recipients, current wallet {}",
+                        i + 1,
+                        args_recipient_info.len(),
+                        recipient_info.recipient_address
+                    );
                     let embedded_outputs = match get_embedded_pre_mine_outputs(
                         recipient_info.output_indexes.clone(),
                         pre_mine_from_file.clone(),
@@ -1040,6 +1064,7 @@ pub async fn command_runner(
                         Ok(outputs) => outputs,
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
+                            error = true;
                             break;
                         },
                     };
@@ -1048,7 +1073,9 @@ pub async fn command_runner(
                         .map(|v| v.commitment.clone())
                         .collect::<Vec<_>>();
 
-                    for (output_index, commitment) in recipient_info.output_indexes.iter().zip(commitments.iter()) {
+                    for (j, (output_index, commitment)) in
+                        recipient_info.output_indexes.iter().zip(commitments.iter()).enumerate()
+                    {
                         let script_nonce_key = key_manager_service.get_random_key().await?;
                         let sender_offset_key = key_manager_service.get_random_key().await?;
                         let sender_offset_nonce = key_manager_service.get_random_key().await?;
@@ -1077,6 +1104,7 @@ pub async fn command_runner(
                                     "\nError: Could not retrieve script key for output {}: {}\n",
                                     output_index, e
                                 );
+                                error = true;
                                 break;
                             },
                         };
@@ -1103,7 +1131,18 @@ pub async fn command_runner(
                             sender_offset_nonce_key_id: sender_offset_nonce.key_id,
                             pre_mine_script_key_id,
                         });
+                        println!(
+                            "    Processed {} of {} transactions",
+                            j + 1,
+                            recipient_info.output_indexes.len()
+                        );
                     }
+                    if error {
+                        break;
+                    }
+                }
+                if error {
+                    break;
                 }
 
                 let out_dir = out_dir(&session_info.session_id)?;
@@ -1140,6 +1179,9 @@ pub async fn command_runner(
                     },
                 }
 
+                temp_ban_peers(&wallet, &mut peer_list).await;
+                unban_peer_manager_peers = true;
+
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
                 let session_info_indexed = session_info
@@ -1157,6 +1199,7 @@ pub async fn command_runner(
                         &session_info,
                     )?);
                 }
+                let mut error = false;
                 for party in &party_info {
                     let this_party_info = party
                         .outputs_for_leader
@@ -1177,8 +1220,12 @@ pub async fn command_runner(
                                 .map(|(index, address)| (*index, address.to_hex().clone()))
                                 .collect::<Vec<_>>(),
                         );
+                        error = true;
                         break;
                     }
+                }
+                if error {
+                    break;
                 }
 
                 // Flatten and transpose party_info to be indexed by output index
@@ -1211,10 +1258,12 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        return Ok(());
+                        lift_temp_ban_peers(&wallet, &mut peer_list).await;
+                        return Ok(true);
                     },
                 };
-                for indexed_info in party_info_per_index {
+                println!();
+                for (i, indexed_info) in party_info_per_index.iter().enumerate() {
                     #[allow(clippy::mutable_key_type)]
                     let mut input_shares = HashMap::new();
                     let mut script_signature_public_nonces = Vec::with_capacity(indexed_info.len());
@@ -1229,6 +1278,7 @@ pub async fn command_runner(
                                 "\nError: Mismatched output indexes detected! (expected {}, got {})\n",
                                 current_index, item.output_index
                             );
+                            error = true;
                             break;
                         }
                         if current_recipient_address != item.recipient_address {
@@ -1236,13 +1286,20 @@ pub async fn command_runner(
                                 "\nError: Mismatched recipient addresses detected! (expected {}, got {})\n",
                                 current_recipient_address, item.recipient_address
                             );
+                            error = true;
                             break;
                         }
-                        input_shares.insert(item.pre_mine_public_script_key, item.script_input_signature);
-                        script_signature_public_nonces.push(item.public_script_nonce_key);
-                        sender_offset_public_key_shares.push(item.public_sender_offset_key);
-                        metadata_ephemeral_public_key_shares.push(item.public_sender_offset_nonce_key);
-                        dh_shared_secret_shares.push(item.dh_shared_secret_public_key);
+                        input_shares.insert(
+                            item.pre_mine_public_script_key.clone(),
+                            item.script_input_signature.clone(),
+                        );
+                        script_signature_public_nonces.push(item.public_script_nonce_key.clone());
+                        sender_offset_public_key_shares.push(item.public_sender_offset_key.clone());
+                        metadata_ephemeral_public_key_shares.push(item.public_sender_offset_nonce_key.clone());
+                        dh_shared_secret_shares.push(item.dh_shared_secret_public_key.clone());
+                    }
+                    if error {
+                        break;
                     }
 
                     let original_maturity = pre_mine_items[current_index].original_maturity;
@@ -1251,6 +1308,7 @@ pub async fn command_runner(
                             Ok(outputs) => outputs[0].clone(),
                             Err(e) => {
                                 eprintln!("\nError: {}\n", e);
+                                error = true;
                                 break;
                             },
                         };
@@ -1312,8 +1370,16 @@ pub async fn command_runner(
                                 tx_id,
                             });
                         },
-                        Err(e) => eprintln!("\nError: Encumber aggregate transaction error! {}\n", e),
+                        Err(e) => {
+                            eprintln!("\nError: Encumber aggregate transaction error! {}\n", e);
+                            error = true;
+                            break;
+                        },
                     }
+                    println!("  Processed {} of {} transactions", i + 1, party_info_per_index.len());
+                }
+                if error {
+                    break;
                 }
 
                 let out_dir = out_dir(&args.session_id)?;
@@ -1394,11 +1460,14 @@ pub async fn command_runner(
                         },
                     };
 
+                println!();
                 let mut outputs_for_leader = Vec::with_capacity(party_info_indexed.outputs_for_self.len());
-                for (leader_info, party_info) in leader_info_indexed
+                let mut error = false;
+                for (i, (leader_info, party_info)) in leader_info_indexed
                     .outputs_for_parties
                     .iter()
                     .zip(party_info_indexed.outputs_for_self.iter())
+                    .enumerate()
                 {
                     let embedded_output = match get_embedded_pre_mine_outputs(
                         vec![party_info.output_index],
@@ -1407,6 +1476,7 @@ pub async fn command_runner(
                         Ok(outputs) => outputs[0].clone(),
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
+                            error = true;
                             break;
                         },
                     };
@@ -1433,6 +1503,7 @@ pub async fn command_runner(
                         Ok(signature) => signature,
                         Err(e) => {
                             eprintln!("\nError: Script signature SignMessage error! {}\n", e);
+                            error = true;
                             break;
                         },
                     };
@@ -1444,6 +1515,7 @@ pub async fn command_runner(
                         Ok(v) => v,
                         Err(e) => {
                             eprintln!("\nError: Could not create shared secret from canonical bytes! {}\n", e);
+                            error = true;
                             break;
                         },
                     };
@@ -1457,6 +1529,7 @@ pub async fn command_runner(
                         Ok((value, mask, id)) => (value, mask, id),
                         Err(e) => {
                             eprintln!("\nError: Could not decrypt data! {}\n", e);
+                            error = true;
                             break;
                         },
                     };
@@ -1474,6 +1547,7 @@ pub async fn command_runner(
                         Ok(_) => {},
                         Err(e) => {
                             eprintln!("\nError: Could not verify mask! {}\n", e);
+                            error = true;
                             break;
                         },
                     }
@@ -1516,6 +1590,7 @@ pub async fn command_runner(
                         Ok(signature) => signature,
                         Err(e) => {
                             eprintln!("\nError: Metadata signature SignMessage error! {}\n", e);
+                            error = true;
                             break;
                         },
                     };
@@ -1527,6 +1602,7 @@ pub async fn command_runner(
                             "\nError: Script and/or metadata signatures not created (index {})!\n",
                             party_info.output_index
                         );
+                        error = true;
                         break;
                     }
 
@@ -1536,6 +1612,15 @@ pub async fn command_runner(
                         metadata_signature,
                         script_offset,
                     });
+
+                    println!(
+                        "  Processed {} of {} transactions",
+                        i + 1,
+                        leader_info_indexed.outputs_for_parties.len()
+                    );
+                }
+                if error {
+                    break;
                 }
 
                 let out_dir = out_dir(&args.session_id)?;
@@ -1565,6 +1650,9 @@ pub async fn command_runner(
                         break;
                     },
                 }
+
+                temp_ban_peers(&wallet, &mut peer_list).await;
+                unban_peer_manager_peers = true;
 
                 // Read session info
                 let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
@@ -1603,6 +1691,7 @@ pub async fn command_runner(
                     );
                     break;
                 }
+                let mut error = false;
                 for party in &party_info {
                     let party_info_indexes = party
                         .outputs_for_leader
@@ -1614,8 +1703,12 @@ pub async fn command_runner(
                             "\nError: Mismatched output indexes from '{}' detected! session {:?} vs. party {:?}\n",
                             party.alias, session_info_indexes, party_info_indexes
                         );
+                        error = true;
                         break;
                     }
+                }
+                if error {
+                    break;
                 }
 
                 // Flatten and transpose party_info to be indexed by output index
@@ -1637,7 +1730,11 @@ pub async fn command_runner(
                 let mut inputs = Vec::new();
                 let mut outputs = Vec::new();
                 let mut kernels = Vec::new();
-                for (indexed_info, leader_self) in party_info_per_index.iter().zip(leader_info.outputs_for_self.iter())
+                let mut kernel_offset = PrivateKey::default();
+                for (i, (indexed_info, leader_self)) in party_info_per_index
+                    .iter()
+                    .zip(leader_info.outputs_for_self.iter())
+                    .enumerate()
                 {
                     let mut metadata_signatures = Vec::with_capacity(party_info_per_index.len());
                     let mut script_signatures = Vec::with_capacity(party_info_per_index.len());
@@ -1661,20 +1758,74 @@ pub async fn command_runner(
                             "\nError: Error completing transaction '{}'! ({})\n",
                             leader_self.tx_id, e
                         );
+                        error = true;
                         break;
                     }
 
+                    // Collect all inputs, outputs and kernels that should go into the genesis block
+                    println!();
                     if session_info.use_pre_mine_input_file {
                         match transaction_service.get_any_transaction(leader_self.tx_id).await {
                             Ok(Some(WalletTransaction::Completed(tx))) => {
-                                for input in tx.transaction.body.inputs() {
-                                    inputs.push(input.clone());
+                                // Fees must be zero
+                                match tx.transaction.body.get_total_fee() {
+                                    Ok(fee) => {
+                                        if fee != MicroMinotari::zero() {
+                                            eprintln!(
+                                                "\nError: Transaction {} fee ({}) for does not equal zero!\n",
+                                                tx.tx_id, fee
+                                            );
+                                            error = true;
+                                            break;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        eprintln!("\nError: Transaction {}! ({})\n", tx.tx_id, e);
+                                        error = true;
+                                        break;
+                                    },
                                 }
+
+                                let mut utxo_sum = Commitment::default();
                                 for output in tx.transaction.body.outputs() {
                                     outputs.push(output.clone());
+                                    utxo_sum = &utxo_sum + &output.commitment;
                                 }
+                                for input in tx.transaction.body.inputs() {
+                                    inputs.push(input.clone());
+                                    match input.commitment() {
+                                        Ok(commitment) => utxo_sum = &utxo_sum - commitment,
+                                        Err(e) => {
+                                            eprintln!("\nError: Input commitment ({})!\n", e);
+                                            error = true;
+                                            break;
+                                        },
+                                    }
+                                }
+                                if error {
+                                    break;
+                                }
+                                let mut kernel_sum = Commitment::default();
                                 for kernel in tx.transaction.body.kernels() {
                                     kernels.push(kernel.clone());
+                                    kernel_sum = &kernel_sum + &kernel.excess;
+                                }
+                                kernel_offset = &kernel_offset + &tx.transaction.offset;
+                                // Ensure that the balance equation holds:
+                                //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) +
+                                // total_offset
+                                let offset = CryptoFactories::default()
+                                    .commitment
+                                    .commit_value(&tx.transaction.offset, 0);
+                                if utxo_sum != &kernel_sum + &offset {
+                                    eprintln!(
+                                        "\nError: Transaction {} balance: UTXO sum {} vs. kernel sum + offset {}!\n",
+                                        tx.tx_id,
+                                        utxo_sum.to_hex(),
+                                        (&kernel_sum + &offset).to_hex()
+                                    );
+                                    error = true;
+                                    break;
                                 }
                             },
                             Ok(_) => {
@@ -1690,12 +1841,45 @@ pub async fn command_runner(
                             },
                         }
                     }
+
+                    println!("  Processed {} of {}", i + 1, party_info_per_index.len());
+                }
+                if error {
+                    break;
                 }
 
+                let file_name = get_pre_mine_addition_file_name();
+                let out_dir_path = out_dir(&args.session_id)?;
+                let out_file = out_dir_path.join(&file_name);
                 if session_info.use_pre_mine_input_file {
-                    let file_name = get_pre_mine_addition_file_name();
-                    let out_dir_path = out_dir(&args.session_id)?;
-                    let out_file = out_dir_path.join(&file_name);
+                    // Ensure that the balance equation holds:
+                    //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + kernel_offset
+                    let mut utxo_sum = Commitment::default();
+                    for output in &outputs {
+                        utxo_sum = &utxo_sum + &output.commitment;
+                    }
+                    for input in &inputs {
+                        match input.commitment() {
+                            Ok(commitment) => utxo_sum = &utxo_sum - commitment,
+                            Err(e) => {
+                                eprintln!("\nError: Input commitment ({})!\n", e);
+                                break;
+                            },
+                        }
+                    }
+                    let mut kernel_sum = Commitment::default();
+                    for kernel in &kernels {
+                        kernel_sum = &kernel_sum + &kernel.excess;
+                    }
+                    let offset = CryptoFactories::default().commitment.commit_value(&kernel_offset, 0);
+                    if utxo_sum != &kernel_sum + &offset {
+                        eprintln!(
+                            "\nError: Transactions balance: UTXO sum {} vs. kernel sum + offset {}!\n",
+                            utxo_sum.to_hex(),
+                            (&kernel_sum + &offset).to_hex()
+                        );
+                    }
+
                     let mut file_stream = match File::create(&out_file) {
                         Ok(file) => file,
                         Err(e) => {
@@ -1705,7 +1889,8 @@ pub async fn command_runner(
                     };
 
                     let mut error = false;
-                    for input in inputs {
+                    inputs.sort();
+                    for input in &inputs {
                         let input_s = match serde_json::to_string(&input) {
                             Ok(val) => val,
                             Err(e) => {
@@ -1723,7 +1908,8 @@ pub async fn command_runner(
                     if error {
                         break;
                     }
-                    for output in outputs {
+                    outputs.sort();
+                    for output in &outputs {
                         let utxo_s = match serde_json::to_string(&output) {
                             Ok(val) => val,
                             Err(e) => {
@@ -1741,7 +1927,8 @@ pub async fn command_runner(
                     if error {
                         break;
                     }
-                    for kernel in kernels {
+                    kernels.sort();
+                    for kernel in &kernels {
                         let kernel_s = match serde_json::to_string(&kernel) {
                             Ok(val) => val,
                             Err(e) => {
@@ -1758,9 +1945,27 @@ pub async fn command_runner(
                     if error {
                         break;
                     }
+                    let kernel_offset_s = match serde_json::to_string(&kernel_offset) {
+                        Ok(val) => val,
+                        Err(e) => {
+                            eprintln!("\nError: Could not serialize kernel offset ({})\n", e);
+                            break;
+                        },
+                    };
+                    if let Err(e) = file_stream.write_all(format!("{}\n", kernel_offset_s).as_bytes()) {
+                        eprintln!("\nError: Could not write the genesis file ({})\n", e);
+                        break;
+                    }
                 }
 
                 println!();
+                if session_info.use_pre_mine_input_file {
+                    println!(
+                        "Genesis block immediate pre-mine spend information: '{}' in '{}'",
+                        file_name,
+                        out_dir_path.display()
+                    );
+                }
                 println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                 println!();
             },
@@ -2426,6 +2631,10 @@ pub async fn command_runner(
             },
         }
     }
+    if unban_peer_manager_peers {
+        lift_temp_ban_peers(&wallet, &mut peer_list).await;
+        return Ok(true);
+    }
 
     // listen to event stream
     if tx_ids.is_empty() {
@@ -2462,7 +2671,45 @@ pub async fn command_runner(
         }
     }
 
-    Ok(())
+    Ok(unban_peer_manager_peers)
+}
+
+async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
+    for peer in peer_list {
+        let _unused = wallet
+            .comms
+            .connectivity()
+            .remove_peer_from_allow_list(peer.node_id.clone())
+            .await;
+        let _unused = wallet
+            .comms
+            .connectivity()
+            .ban_peer_until(
+                peer.node_id.clone(),
+                Duration::from_secs(24 * 60 * 60),
+                "Busy with pre-mine spend".to_string(),
+            )
+            .await;
+    }
+}
+
+async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
+    for peer in peer_list {
+        let _unused = wallet
+            .comms
+            .connectivity()
+            .ban_peer_until(
+                peer.node_id.clone(),
+                Duration::from_millis(1),
+                "Busy with pre-mine spend".to_string(),
+            )
+            .await;
+        let _unused = wallet
+            .comms
+            .connectivity()
+            .add_peer_to_allow_list(peer.node_id.clone())
+            .await;
+    }
 }
 
 fn read_genesis_file_outputs(

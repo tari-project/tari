@@ -185,14 +185,7 @@ where
             target: LOG_TARGET,
             "Transaction sending mechanism is {}", config.transaction_service_config.transaction_routing_mechanism
         );
-        trace!(
-            target: LOG_TARGET,
-            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}",
-            config.base_node_service_config,
-            config.output_manager_service_config,
-            config.transaction_service_config,
-            config.buffer_size,
-        );
+        trace!(target: LOG_TARGET, "Wallet config: {:?}", config);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),

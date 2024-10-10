@@ -75,4 +75,6 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     fn get_current_base_node_peer_node_id(&self) -> Option<NodeId>;
 
     fn is_base_node_set(&self) -> bool;
+
+    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)>;
 }
