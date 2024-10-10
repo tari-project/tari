@@ -341,5 +341,5 @@ where
     S::Error: fmt::Debug,
     T: prost::Message,
 {
-    writer.send(message.to_encoded_bytes().into()).await.unwrap();
+    writer.send(message.encode_to_vec().into()).await.unwrap();
 }

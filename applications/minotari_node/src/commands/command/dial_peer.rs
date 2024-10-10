@@ -25,8 +25,8 @@ use std::time::Instant;
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_utilities::utilities::UniNodeId;
-use tari_comms::peer_manager::NodeId;
+use minotari_app_utilities::utilities::UniPeerId;
+use tari_network::{identity::PeerId, NetworkingService, ToPeerId};
 use tokio::task;
 
 use super::{CommandContext, HandleCommand};
@@ -35,28 +35,32 @@ use super::{CommandContext, HandleCommand};
 #[derive(Debug, Parser)]
 pub struct Args {
     /// hex public key or emoji id
-    node_id: UniNodeId,
+    peer_id: UniPeerId,
 }
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        self.dial_peer(args.node_id.into()).await
+        self.dial_peer(args.peer_id.to_peer_id()).await
     }
 }
 
 impl CommandContext {
     /// Function to process the dial-peer command
-    pub async fn dial_peer(&self, dest_node_id: NodeId) -> Result<(), Error> {
-        let connectivity = self.comms.connectivity();
+    pub async fn dial_peer(&self, dest_peer_id: PeerId) -> Result<(), Error> {
+        let mut network = self.network.clone();
         task::spawn(async move {
             let start = Instant::now();
             println!("☎️  Dialing peer...");
 
-            match connectivity.dial_peer(dest_node_id).await {
-                Ok(connection) => {
-                    println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
-                    println!("Connection: {}", connection);
+            match network.dial_peer(dest_peer_id).await {
+                Ok(waiter) => match waiter.await {
+                    Ok(_) => {
+                        println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
+                    },
+                    Err(err) => {
+                        println!("☠️ {}", err);
+                    },
                 },
                 Err(err) => {
                     println!("☠️ {}", err);

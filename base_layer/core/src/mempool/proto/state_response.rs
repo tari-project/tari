@@ -59,8 +59,8 @@ impl TryFrom<StateResponse> for ProtoStateResponse {
             unconfirmed_pool: state
                 .unconfirmed_pool
                 .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(|tx| (&*tx).try_into())
+                .collect::<Result<_, _>>()?,
             reorg_pool: state.reorg_pool.into_iter().map(Into::into).collect::<Vec<_>>(),
         })
     }

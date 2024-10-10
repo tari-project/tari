@@ -54,7 +54,6 @@ use tari_network::{
 };
 use tari_p2p::{
     auto_update::SoftwareUpdaterService,
-    comms_connector::pubsub_connector,
     connector::InboundMessaging,
     initialization,
     initialization::P2pInitializer,
@@ -63,7 +62,6 @@ use tari_p2p::{
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     Dispatcher,
     P2pConfig,
-    TransportType,
 };
 use tari_rpc_framework::RpcServer;
 use tari_service_framework::{RegisterHandle, ServiceHandles, StackBuilder};
@@ -110,8 +108,6 @@ where B: BlockchainBackend + 'static
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
-        let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
-
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
         let mut handles = StackBuilder::new(self.interrupt_signal)
             // Register the dispatcher so that services can use it to listen for their respective messages
@@ -131,7 +127,6 @@ where B: BlockchainBackend + 'static
                 self.app_config.auto_update.clone(),
             ))
             .add_initializer(BaseNodeServiceInitializer::new(
-                peer_message_subscriptions.clone(),
                 self.db.clone().into(),
                 self.mempool.clone(),
                 self.rules.clone(),
@@ -141,9 +136,10 @@ where B: BlockchainBackend + 'static
             ))
             .add_initializer(MempoolServiceInitializer::new(
                 self.mempool.clone(),
-                peer_message_subscriptions.clone(),
             ))
-            .add_initializer(mempool_sync)
+            .add_initializer(
+                MempoolSyncInitializer::new(mempool_config, self.mempool.clone())
+            )
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(base_node_config.metadata_auto_ping_interval),
@@ -171,9 +167,6 @@ where B: BlockchainBackend + 'static
             .expect("InboundMessaging not setup");
         dispatcher.spawn(inbound);
 
-        // TODO(libp2p)
-        // comms.add_protocol_notifier().await
-        // let comms = comms.add_protocol_extension(mempool_protocol);
         Self::setup_rpc_services(network, &handles, self.db.into(), &p2p_config)
             .await
             .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?;

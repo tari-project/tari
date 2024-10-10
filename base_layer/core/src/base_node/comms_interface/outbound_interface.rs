@@ -24,7 +24,6 @@ use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_network::{identity::PeerId, GossipPublisher};
 use tari_p2p::proto;
 use tari_service_framework::{reply_channel::SenderService, Service};
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     base_node::comms_interface::{
@@ -94,7 +93,12 @@ impl OutboundNodeCommsInterface {
 
     /// Transmit a block to remote base nodes, excluding the provided peers.
     pub async fn propagate_block(&self, new_block: NewBlock) -> Result<(), CommsInterfaceError> {
-        self.block_sender.publish(new_block.into()).await.map_err(|err| {
+        let block = proto::core::NewBlock::try_from(new_block).map_err(|e| {
+            CommsInterfaceError::InternalError(format!(
+                "propagate_block: local node attempted to generate an invalid NewBlock message: {e}"
+            ))
+        })?;
+        self.block_sender.publish(block).await.map_err(|err| {
             CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
         })
     }

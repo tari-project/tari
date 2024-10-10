@@ -266,14 +266,9 @@ impl AverageLatency {
 mod test {
     use rand::rngs::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_network::identity;
+    use tari_network::{identity, test_utils::random_peer_id};
 
     use super::*;
-
-    fn create_random_peer_id() -> PeerId {
-        let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
-        PeerId::from_public_key(&identity::PublicKey::from(identity::sr25519::PublicKey::from(pk)))
-    }
 
     #[test]
     fn new() {
@@ -330,7 +325,7 @@ mod test {
     fn record_pong() {
         let mut state = LivenessState::new();
 
-        let peer_id = create_random_peer_id();
+        let peer_id = random_peer_id();
         state.add_inflight_ping(123, peer_id);
 
         let latency = state.record_pong(123, &peer_id).unwrap();
@@ -348,9 +343,9 @@ mod test {
     fn clear_stale_inflight_pings() {
         let mut state = LivenessState::new();
 
-        let peer1 = create_random_peer_id();
+        let peer1 = random_peer_id();
         state.add_inflight_ping(1, peer1);
-        let peer2 = create_random_peer_id();
+        let peer2 = random_peer_id();
         state.add_inflight_ping(2, peer2);
         state.add_inflight_ping(3, peer2);
 

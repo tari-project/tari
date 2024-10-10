@@ -41,7 +41,7 @@ impl TryFrom<ProtoNodeCommsResponse> for NodeCommsResponse {
     fn try_from(value: ProtoNodeCommsResponse) -> Result<NodeCommsResponse, Self::Error> {
         use ProtoNodeCommsResponse::{BlockResponse, FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
         let response = match value {
-            BlockResponse(block) => NodeCommsResponse::Block(Box::new(block.try_into()?)),
+            BlockResponse(block) => NodeCommsResponse::Block(Box::new(block.block.map(TryInto::try_into).transpose()?)),
             HistoricalBlocks(blocks) => {
                 let blocks = try_convert_all(blocks.blocks)?;
                 NodeCommsResponse::HistoricalBlocks(blocks)
@@ -78,23 +78,25 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
         use NodeCommsResponse::*;
         match response {
             Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse(proto::base_node::BlockResponse {
-                block: block.map(Into::into),
+                block: block.map(TryInto::try_into).transpose()?,
             })),
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks
                     .into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<proto::core::HistoricalBlock>, _>>()?
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                Ok(ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks))
+                    .map(proto::core::HistoricalBlock::try_from)
+                    .collect::<Result<_, _>>()?;
+
+                Ok(ProtoNodeCommsResponse::HistoricalBlocks(
+                    proto::base_node::HistoricalBlocks {
+                        blocks: historical_blocks,
+                    },
+                ))
             },
             FetchMempoolTransactionsByExcessSigsResponse(resp) => {
                 let transactions = resp
                     .transactions
                     .into_iter()
-                    .map(|tx| tx.try_into())
+                    .map(|tx| (&*tx).try_into())
                     .collect::<Result<_, _>>()?;
                 Ok(ProtoNodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
                     proto::base_node::FetchMempoolTransactionsResponse {

@@ -451,3 +451,15 @@ impl TryFrom<Transaction> for proto::types::Transaction {
         })
     }
 }
+
+impl TryFrom<&Transaction> for proto::types::Transaction {
+    type Error = String;
+
+    fn try_from(tx: &Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            offset: Some(tx.offset.clone().into()),
+            body: Some(tx.body.clone().try_into()?),
+            script_offset: Some(tx.script_offset.clone().into()),
+        })
+    }
+}

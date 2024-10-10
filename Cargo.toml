@@ -72,9 +72,9 @@ tari_shutdown = { path = "infrastructure/shutdown" }
 tari_metrics = { path = "infrastructure/metrics" }
 
 # Use Tari's libp2p fork that adds support for Schnorr-Ristretto
-libp2p-identity = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "95f4691c7872d45726c2989d25f94e4f6b573de1" }
-libp2p = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "95f4691c7872d45726c2989d25f94e4f6b573de1" }
-multiaddr = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "95f4691c7872d45726c2989d25f94e4f6b573de1" }
+libp2p-identity = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "2d5af69071ea6345f71b9db32c74b9d8e27f4b25" }
+libp2p = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "2d5af69071ea6345f71b9db32c74b9d8e27f4b25" }
+multiaddr = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "2d5af69071ea6345f71b9db32c74b9d8e27f4b25" }
 
 anyhow = "1.0.89"
 async-trait = "0.1.83"

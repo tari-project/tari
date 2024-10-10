@@ -23,8 +23,8 @@
 use std::sync::Arc;
 
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 use tari_core::base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata};
+use tari_network::identity::PeerId;
 use tokio::sync::broadcast;
 
 /// Create a mock Chain Metadata stream.
@@ -57,10 +57,10 @@ impl MockChainMetadata {
 
     pub async fn publish_chain_metadata(
         &mut self,
-        id: &NodeId,
+        id: &PeerId,
         metadata: &ChainMetadata,
     ) -> Result<usize, Arc<ChainMetadataEvent>> {
-        let data = PeerChainMetadata::new(id.clone(), metadata.clone(), None);
+        let data = PeerChainMetadata::new(*id, metadata.clone(), None);
         self.publish_event(ChainMetadataEvent::PeerChainMetadataReceived(data))
     }
 }

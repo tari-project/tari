@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, io, sync::Arc};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -44,7 +44,7 @@ use crate::{
 const LOG_TARGET: &str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
-pub struct MempoolStreams<STxIn, SLocalReq> {
+pub struct MempoolStreams<SLocalReq> {
     pub transaction_subscription: GossipSubscription<proto::types::Transaction>,
     pub local_request_stream: SLocalReq,
     pub block_event_stream: BlockEventReceiver,
@@ -62,14 +62,8 @@ impl MempoolService {
         Self { inbound_handlers }
     }
 
-    pub async fn start<STxIn, SLocalReq>(
-        mut self,
-        streams: MempoolStreams<STxIn, SLocalReq>,
-    ) -> Result<(), MempoolServiceError>
-    where
-        STxIn: Stream<Item = DomainMessage<Transaction>>,
-        SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
-    {
+    pub async fn start<SLocalReq>(mut self, streams: MempoolStreams<SLocalReq>) -> Result<(), MempoolServiceError>
+    where SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>> {
         let local_request_stream = streams.local_request_stream.fuse();
         pin_mut!(local_request_stream);
         let mut block_event_stream = streams.block_event_stream;
@@ -144,8 +138,16 @@ impl MempoolService {
         });
     }
 
-    fn handle_incoming_tx(&self, msg: GossipMessage<proto::types::Transaction>) {
-        let source_peer_id = msg.origin_or_source();
+    fn handle_incoming_tx(&self, result: io::Result<GossipMessage<proto::types::Transaction>>) {
+        let msg = match result {
+            Ok(msg) => msg,
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Failed to decode gossip message: {err}");
+                return;
+            },
+        };
+
+        let source_peer_id = msg.source;
         let transaction = match Transaction::try_from(msg.message) {
             Ok(tx) => tx,
             Err(e) => {
@@ -172,8 +174,7 @@ impl MempoolService {
         );
         let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let result = inbound_handlers.handle_transaction(transaction, source_peer_id).await;
-            if let Err(e) = result {
+            if let Err(e) = inbound_handlers.handle_transaction(transaction, source_peer_id).await {
                 error!(
                     target: LOG_TARGET,
                     "Failed to handle incoming transaction message: {:?}", e

@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, HashSet},
     hash::Hash,
     sync::Arc,
     time::{Duration, Instant},
@@ -87,6 +87,8 @@ where
     pending_dial_requests: HashMap<PeerId, Vec<ReplyTx<()>>>,
     substream_notifiers: Notifiers<Substream>,
     swarm: TariSwarm<ProstCodec<TMsg::Message>>,
+    // TODO: we'll replace this with a proper implementation if needed
+    ban_list: HashSet<PeerId>,
     gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<(PeerId, gossipsub::Message)>>,
     gossipsub_outbound_tx: mpsc::Sender<(IdentTopic, Vec<u8>)>,
     gossipsub_outbound_rx: Option<mpsc::Receiver<(IdentTopic, Vec<u8>)>>,
@@ -129,6 +131,7 @@ where
             relays: RelayState::new(known_relay_nodes),
             seed_peers,
             swarm,
+            ban_list: HashSet::new(),
             gossipsub_subscriptions: HashMap::new(),
             gossipsub_outbound_tx,
             gossipsub_outbound_rx: Some(gossipsub_outbound_rx),
@@ -360,12 +363,19 @@ where
             } => {
                 info!(target: LOG_TARGET, "🎯Banning peer {peer_id} for {ban_duration:?}: {reason}");
                 // TODO: mark the peer as banned and prevent connections,messages from coming through
+                self.ban_list.insert(peer_id);
                 if self.swarm.disconnect_peer_id(peer_id).is_ok() {
                     let _ignore = reply.send(Ok(true));
                 } else {
                     warn!(target: LOG_TARGET, "❓️ Disconnect peer {peer_id} was not connected");
                     let _ignore = reply.send(Ok(false));
                 }
+            },
+            NetworkingRequest::UnbanPeer { peer_id, reply } => {
+                let _ignore = reply.send(Ok(self.ban_list.remove(&peer_id)));
+            },
+            NetworkingRequest::IsPeerBanned { peer_id, reply } => {
+                let _ignore = reply.send(Ok(self.ban_list.contains(&peer_id)));
             },
         }
 

@@ -27,7 +27,7 @@ use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
 use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
-use tari_network::{identity::PeerId, NetworkHandle};
+use tari_network::identity::PeerId;
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
@@ -814,7 +814,8 @@ where B: BlockchainBackend + 'static
                     timer.elapsed()
                 );
 
-                // TODO: we dont really have control over this
+                // TODO: we dont really have control over this as GossipSub will always propagate (possible solution see https://docs.rs/libp2p-gossipsub/latest/libp2p_gossipsub/struct.Behaviour.html#method.report_message_validation_result).
+                // We only want to call gossipsub publish if the block comes from local sources (gRPC).
                 let should_propagate = match &block_add_result {
                     BlockAddResult::Ok(_) => source_peer.is_none(),
                     BlockAddResult::BlockExists => false,

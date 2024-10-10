@@ -132,7 +132,7 @@ impl MockRpcServiceState {
     }
 
     pub fn set_response_ok<T: prost::Message>(&self, response: &T) {
-        self.set_response(Ok(Response::new(response.to_encoded_bytes().into())));
+        self.set_response(Ok(Response::new(response.encode_to_vec().into())));
     }
 
     pub fn set_response_err(&self, err: RpcStatus) {

@@ -7,26 +7,28 @@ use std::{
     time::Duration,
 };
 
-use async_trait::async_trait;
 use libp2p::{swarm::dial_opts::DialOpts, PeerId};
 use tokio::sync::oneshot;
 
 use crate::{messaging::MulticastDestination, MessageSpec, NetworkError};
 
-#[async_trait]
 pub trait NetworkingService {
     fn local_peer_id(&self) -> &PeerId;
 
-    async fn dial_peer<T: Into<DialOpts> + Send + 'static>(&mut self, dial_opts: T)
-        -> Result<Waiter<()>, NetworkError>;
-    async fn disconnect_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError>;
+    fn dial_peer<T: Into<DialOpts> + Send + 'static>(
+        &mut self,
+        dial_opts: T,
+    ) -> impl Future<Output = Result<Waiter<()>, NetworkError>> + Send;
+    fn disconnect_peer(&mut self, peer_id: PeerId) -> impl Future<Output = Result<bool, NetworkError>> + Send;
 
-    async fn ban_peer<T: Into<String> + Send>(
+    fn ban_peer<T: Into<String> + Send>(
         &mut self,
         peer_id: PeerId,
         reason: T,
         until: Option<Duration>,
-    ) -> Result<bool, NetworkError>;
+    ) -> impl Future<Output = Result<bool, NetworkError>> + Send;
+
+    fn unban_peer(&mut self, peer_id: PeerId) -> impl Future<Output = Result<bool, NetworkError>> + Send;
 }
 
 pub trait OutboundMessager<TMsg: MessageSpec> {

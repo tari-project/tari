@@ -22,7 +22,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    io,
     time::Duration,
 };
 
@@ -32,7 +31,6 @@ use rand::rngs::OsRng;
 use tari_common_types::types::BlockHash;
 use tari_network::{
     identity::PeerId,
-    GossipError,
     GossipMessage,
     GossipPublisher,
     GossipSubscription,
@@ -72,13 +70,10 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
 /// A convenience struct to hold all the BaseNode streams
-pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock> {
+pub(super) struct BaseNodeStreams<SOutReq, SLocalReq, SLocalBlock> {
     /// `NodeCommsRequest` messages to send to a remote peer. If a specific peer is not provided, a random peer is
     /// chosen.
     pub outbound_request_stream: SOutReq,
-    /// Blocks to be propagated out to the network. The second element of the tuple is a list of peers to exclude from
-    /// this round of propagation
-    pub block_publisher: GossipPublisher<proto::core::NewBlock>,
     /// `BaseNodeRequest` and `BaseNodeResponse` messages received from external peers
     pub inbound_messages: mpsc::UnboundedReceiver<DomainMessage<TariNodeMessage>>,
     /// `NewBlock` messages received from external peers
@@ -129,22 +124,18 @@ where B: BlockchainBackend + 'static
         }
     }
 
-    pub async fn start<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock>(
+    pub async fn start<SOutReq, SLocalReq, SLocalBlock>(
         mut self,
-        streams: BaseNodeStreams<SOutReq, SInReq, SInRes, SLocalReq, SLocalBlock>,
+        streams: BaseNodeStreams<SOutReq, SLocalReq, SLocalBlock>,
     ) -> Result<(), BaseNodeServiceError>
     where
         SOutReq:
             Stream<Item = RequestContext<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>>,
-        SInReq: Stream<Item = DomainMessage<Result<proto::base_node::BaseNodeServiceRequest, prost::DecodeError>>>,
-        SInRes: Stream<Item = DomainMessage<Result<proto::base_node::BaseNodeServiceResponse, prost::DecodeError>>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
         SLocalBlock: Stream<Item = RequestContext<Block, Result<BlockHash, CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let outbound_block_stream = streams.block_publisher;
-        pin_mut!(outbound_block_stream);
         let mut inbound_messages = streams.inbound_messages;
         let mut block_subscription = streams.block_subscription;
         let local_request_stream = streams.local_request_stream.fuse();
@@ -233,7 +224,7 @@ where B: BlockchainBackend + 'static
             TariMessageType::BaseNodeResponse => self
                 .spawn_handle_incoming_response(domain_msg.map(|msg| msg.into_base_node_response().expect("checked"))),
             _ => {
-                warn!(target: LOG_TARGET, "Base Node Service received unexpected message type {}", domain_msg.payload.as_type())
+                warn!(target: LOG_TARGET, "Base Node Service received unexpected message type {}", domain_msg.payload.as_type().as_str_name())
             },
         }
     }
@@ -501,15 +492,13 @@ async fn handle_outbound_request(
             // Wait for matching responses to arrive
             waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
-            if service_request.request.is_some() {
-                trace!(
-                    target: LOG_TARGET,
-                    "Timeout for service request ... ({}) set at {:?}",
-                    request_key,
-                    service_request_timeout
-                );
-                spawn_request_timeout(timeout_sender, request_key, service_request_timeout)
-            };
+            trace!(
+                target: LOG_TARGET,
+                "Timeout for service request ... ({}) set at {:?}",
+                request_key,
+                service_request_timeout
+            );
+            spawn_request_timeout(timeout_sender, request_key, service_request_timeout)
         },
         Err(err) => {
             debug!(target: LOG_TARGET, "Failed to send outbound request: {}", err);

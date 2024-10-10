@@ -109,7 +109,7 @@ pub(super) async fn setup<T: GreetingRpc>(
     // Notify that a peer wants to speak the greeting RPC protocol
     notif_tx
         .send(ProtocolNotification::new(
-            StreamProtocol::new(b"/test/greeting/1.0"),
+            StreamProtocol::new("/test/greeting/1.0"),
             ProtocolEvent::NewInboundSubstream { peer_id, substream },
         ))
         .await

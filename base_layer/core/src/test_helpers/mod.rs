@@ -23,12 +23,10 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-use std::{iter, path::Path, sync::Arc};
-
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -36,7 +34,6 @@ use tari_common_types::{
 };
 use tari_crypto::keys::{PublicKey as PublicKeyT, SecretKey};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{

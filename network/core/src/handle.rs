@@ -22,7 +22,6 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use async_trait::async_trait;
 use libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, PeerId, StreamProtocol};
 use log::*;
 use tari_rpc_framework::{
@@ -111,6 +110,20 @@ pub enum NetworkingRequest {
         ban_duration: Option<Duration>,
         reply: Reply<bool>,
     },
+    UnbanPeer {
+        peer_id: PeerId,
+        reply: Reply<bool>,
+    },
+    IsPeerBanned {
+        peer_id: PeerId,
+        reply: Reply<bool>,
+    },
+    // SetPeerMetadata {
+    //     peer_id: PeerId,
+    //     metadata_key: i32,
+    //     metadata_value: Vec<u8>,
+    //     reply: Reply<()>,
+    // },
 }
 #[derive(Debug)]
 pub struct NetworkHandle {
@@ -317,9 +330,17 @@ impl NetworkHandle {
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         Ok(())
     }
+
+    pub async fn is_peer_banned(&self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::IsPeerBanned { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
 }
 
-#[async_trait]
 impl NetworkingService for NetworkHandle {
     fn local_peer_id(&self) -> &PeerId {
         &self.local_peer_id
@@ -364,6 +385,16 @@ impl NetworkingService for NetworkHandle {
                 ban_duration,
                 reply,
             })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+
+        rx.await?
+    }
+
+    async fn unban_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        let (reply, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::UnbanPeer { peer_id, reply })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
 

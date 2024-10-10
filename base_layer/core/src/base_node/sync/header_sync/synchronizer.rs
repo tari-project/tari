@@ -197,7 +197,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             "Attempting to synchronize headers with `{}`", peer_id
         );
 
-        let config = RpcClient::builder()
+        let config = RpcClient::builder(*peer_id)
             .with_deadline(self.config.rpc_deadline)
             .with_deadline_grace_period(Duration::from_secs(5));
         let mut client = self

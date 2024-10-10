@@ -107,10 +107,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
     fn from(source: BlockHeaderAccumulatedData) -> Self {
         let accumulated_randomx_difficulty = source.accumulated_randomx_difficulty.to_be_bytes();
         let accumulated_sha3x_difficulty = source.accumulated_sha3x_difficulty.to_be_bytes();
-        let mut total_accumulated_difficulty = [0u8; 32];
-        source
-            .total_accumulated_difficulty
-            .to_big_endian(&mut total_accumulated_difficulty);
+        let mut total_accumulated_difficulty = source.total_accumulated_difficulty.to_big_endian();
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
             accumulated_randomx_difficulty,
@@ -210,11 +207,11 @@ impl TryFrom<NewBlock> for proto::NewBlock {
     type Error = String;
 
     fn try_from(new_block: NewBlock) -> Result<Self, Self::Error> {
-        let mut coinbase_kernels = Vec::new();
+        let mut coinbase_kernels = Vec::with_capacity(new_block.coinbase_kernels.len());
         for coinbase_kernel in new_block.coinbase_kernels {
             coinbase_kernels.push(coinbase_kernel.into())
         }
-        let mut coinbase_outputs = Vec::new();
+        let mut coinbase_outputs = Vec::with_capacity(new_block.coinbase_outputs.len());
         for coinbase_output in new_block.coinbase_outputs {
             coinbase_outputs.push(coinbase_output.try_into()?)
         }

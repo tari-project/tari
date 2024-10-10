@@ -47,13 +47,15 @@ const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
-    peer_node_id: PeerId,
+    /// This is wrapped in an Arc because a weak ref for the Arc is used to keep track of whether the session for a
+    /// given peer is active
+    peer_node_id: Arc<PeerId>,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
-    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: PeerId) -> Self {
+    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<PeerId>) -> Self {
         Self { db, peer_node_id }
     }
 

@@ -36,19 +36,19 @@ pub struct Args {}
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.whoami()
+        self.whoami().await
     }
 }
 
 impl CommandContext {
     /// Function to process the whoami command
-    pub fn whoami(&self) -> Result<(), Error> {
-        println!("{}", self.base_node_identity);
+    pub async fn whoami(&self) -> Result<(), Error> {
+        let peer_info = self.network.get_local_peer_info().await?;
         let peer = format!(
             "{}::{}",
-            self.base_node_identity.public_key().to_hex(),
-            self.base_node_identity
-                .public_addresses()
+            peer_info.public_key.try_into_sr25519()?.inner_key(),
+            peer_info
+                .listen_addrs
                 .iter()
                 .map(|addr| addr.to_string())
                 .collect::<Vec<_>>()
@@ -57,9 +57,7 @@ impl CommandContext {
         let network = self.config.network();
         let qr_link = format!(
             "tari://{}/base_nodes/add?name={}&peer={}",
-            network,
-            self.base_node_identity.node_id(),
-            peer
+            network, peer_info.peer_id, peer
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code

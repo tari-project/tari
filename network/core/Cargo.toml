@@ -14,7 +14,7 @@ tari_crypto = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-libp2p = { workspace = true, features = ["tokio", "noise", "macros", "ping", "tcp", "identify", "yamux", "relay", "quic", "dcutr", "gossipsub", "sr25519"] }
+libp2p = { workspace = true, features = ["tokio", "noise", "macros", "ping", "tcp", "identify", "yamux", "relay", "quic", "dcutr", "gossipsub", "sr25519", "serde"] }
 log = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }

@@ -199,7 +199,7 @@ impl StateInfo {
             StartUp => "Starting up".to_string(),
             Connecting(sync_peer) => format!(
                 "Connecting to {}{}",
-                sync_peer.peer_id().short_str(),
+                sync_peer.peer_id(),
                 sync_peer
                     .latency()
                     .map(|l| format!(", Latency: {:.2?}", l))
@@ -327,7 +327,7 @@ impl BlockSyncInfo {
     fn sync_progress(&self, item: &str) -> String {
         format!(
             "({}) {}/{} ({:.0}%){}{}",
-            self.sync_peer.peer_id().short_str(),
+            self.sync_peer.peer_id(),
             self.local_height,
             self.tip_height,
             (self.local_height as f64 / self.tip_height as f64 * 100.0).floor(),

@@ -33,8 +33,6 @@ mod commands;
 pub mod config;
 mod grpc;
 mod grpc_method;
-mod message_spec;
-mod message_spec;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod recovery;
@@ -54,6 +52,7 @@ use tari_common::{
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
+use tari_network::identity;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
@@ -67,7 +66,7 @@ const LOG_TARGET: &str = "minotari::base_node::app";
 
 pub async fn run_base_node(
     shutdown: Shutdown,
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Arc<identity::Keypair>,
     config: Arc<ApplicationConfig>,
 ) -> Result<(), ExitError> {
     let data_dir = config.base_node.data_dir.clone();
@@ -100,7 +99,7 @@ pub async fn run_base_node(
 
 /// Sets up the base node and runs the cli_loop
 pub async fn run_base_node_with_cli(
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Arc<identity::Keypair>,
     config: Arc<ApplicationConfig>,
     cli: Cli,
     shutdown: Shutdown,

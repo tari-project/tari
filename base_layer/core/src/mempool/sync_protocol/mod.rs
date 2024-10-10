@@ -107,7 +107,7 @@ mod initializer;
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
-pub static MEMPOOL_SYNC_PROTOCOL: StreamProtocol = StreamProtocol::new("t/mempool-sync/1");
+pub static MEMPOOL_SYNC_PROTOCOL: StreamProtocol = StreamProtocol::new("/tari/mempool-sync/1");
 
 pub struct MempoolSyncProtocol {
     config: MempoolServiceConfig,
@@ -590,7 +590,7 @@ impl MempoolPeerProtocol {
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
         let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
             .filter_map(|txn| {
-                match shared_proto::types::Transaction::try_from(txn) {
+                match shared_proto::types::Transaction::try_from(&*txn) {
                     Ok(txn) =>   Some(proto::TransactionItem {
                         transaction: Some(txn),
                     }),
@@ -625,7 +625,7 @@ impl MempoolPeerProtocol {
         S: Stream<Item = T> + Unpin,
         T: prost::Message,
     {
-        let mut s = stream.map(|m| Bytes::from(m.to_encoded_bytes())).map(Ok);
+        let mut s = stream.map(|m| Bytes::from(m.encode_to_vec())).map(Ok);
         self.framed.send_all(&mut s).await?;
         Ok(())
     }
@@ -633,7 +633,7 @@ impl MempoolPeerProtocol {
     async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
         time::timeout(
             Duration::from_secs(10),
-            self.framed.send(message.to_encoded_bytes().into()),
+            self.framed.send(message.encode_to_vec().into()),
         )
         .await
         .map_err(|_| MempoolProtocolError::SendTimeout)??;

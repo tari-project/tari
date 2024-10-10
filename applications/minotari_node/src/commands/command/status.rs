@@ -27,7 +27,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use minotari_app_utilities::consts;
-use tari_comms::connection_manager::SelfLivenessStatus;
 use tokio::time;
 
 use super::{CommandContext, HandleCommand};
@@ -99,9 +98,9 @@ impl CommandContext {
             status_line.add_field("Mempool", "query timed out");
         };
 
-        let conns = self.comms.connectivity().get_active_connections().await?;
+        let conns = self.network.get_active_connections().await?;
         let (num_nodes, num_clients) = conns.iter().fold((0usize, 0usize), |(nodes, clients), conn| {
-            if conn.peer_features().is_node() {
+            if conn.user_agent.as_ref().map_or(true, |ua| ua.contains("wallet")) {
                 (nodes + 1, clients)
             } else {
                 (nodes, clients + 1)
@@ -111,11 +110,12 @@ impl CommandContext {
         let banned_peers = self.fetch_banned_peers().await?;
         status_line.add_field("Banned", banned_peers.len());
 
-        let num_messages = self
-            .dht_metrics_collector
-            .get_total_message_count_in_timespan(Duration::from_secs(60))
-            .await?;
-        status_line.add_field("Messages (last 60s)", num_messages);
+        // TODO: would be nice to have this
+        // let num_messages = self
+        //     .dht_metrics_collector
+        //     .get_total_message_count_in_timespan(Duration::from_secs(60))
+        //     .await?;
+        // status_line.add_field("Messages (last 60s)", num_messages);
 
         let num_active_rpc_sessions = self.rpc_server.get_num_active_sessions().await?;
         status_line.add_field(
@@ -126,18 +126,19 @@ impl CommandContext {
             ),
         );
 
-        match self.comms.liveness_status() {
-            SelfLivenessStatus::Disabled => {},
-            SelfLivenessStatus::Checking => {
-                status_line.add("⏳️️");
-            },
-            SelfLivenessStatus::Unreachable => {
-                status_line.add("️🔌");
-            },
-            SelfLivenessStatus::Live(latency) => {
-                status_line.add(format!("⚡️ {:.2?}", latency));
-            },
-        }
+        // TODO: get autonat status
+        // match self.network.get_local_peer_info() {
+        //     SelfLivenessStatus::Disabled => {},
+        //     SelfLivenessStatus::Checking => {
+        //         status_line.add("⏳️️");
+        //     },
+        //     SelfLivenessStatus::Unreachable => {
+        //         status_line.add("️🔌");
+        //     },
+        //     SelfLivenessStatus::Live(latency) => {
+        //         status_line.add(format!("⚡️ {:.2?}", latency));
+        //     },
+        // }
 
         if full_log {
             status_line.add_field(

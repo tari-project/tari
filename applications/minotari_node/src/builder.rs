@@ -27,8 +27,6 @@ use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
-use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
@@ -44,6 +42,7 @@ use tari_core::{
     },
     OutputSmt,
 };
+use tari_network::{identity, NetworkHandle};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
@@ -60,7 +59,7 @@ pub struct BaseNodeContext {
     config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
-    base_node_comms: CommsNode,
+    network_handle: CommsNode,
     base_node_dht: Dht,
     base_node_handles: ServiceHandles,
 }
@@ -72,7 +71,7 @@ impl BaseNodeContext {
         self.state_machine().shutdown_signal().wait().await;
         info!(target: LOG_TARGET, "Waiting for communications stack shutdown");
 
-        self.base_node_comms.wait_until_shutdown().await;
+        self.network_handle.wait_until_shutdown().await;
         info!(target: LOG_TARGET, "Communications stack has shutdown");
     }
 
@@ -92,8 +91,8 @@ impl BaseNodeContext {
     }
 
     /// Returns the CommsNode.
-    pub fn base_node_comms(&self) -> &CommsNode {
-        &self.base_node_comms
+    pub fn network_handle(&self) -> &NetworkHandle {
+        &self.network_handle
     }
 
     /// Returns the liveness service handle
@@ -104,11 +103,6 @@ impl BaseNodeContext {
     /// Returns the base node state machine
     pub fn state_machine(&self) -> StateMachineHandle {
         self.base_node_handles.expect_handle()
-    }
-
-    /// Returns this node's identity.
-    pub fn base_node_identity(&self) -> Arc<NodeIdentity> {
-        self.base_node_comms.node_identity()
     }
 
     /// Returns the base node DHT
@@ -276,7 +270,7 @@ async fn build_node_context(
         config: app_config,
         consensus_rules: rules,
         blockchain_db,
-        base_node_comms,
+        network_handle: base_node_comms,
         base_node_dht,
         base_node_handles,
     })

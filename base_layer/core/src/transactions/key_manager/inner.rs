@@ -809,7 +809,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             },
             _ => {
                 let secret_key = self.get_private_key(secret_key_id).await?;
-                let dh = CommsDHKE::new(&secret_key, public_key);
+                let dh = RistrettoDiffieHellmanSharedSecret::new(&secret_key, public_key);
                 Ok(diffie_hellman_stealth_domain_hasher(dh))
             },
         }

@@ -22,15 +22,14 @@
 
 use std::{convert::TryFrom, str::FromStr};
 
-use futures::future::Either;
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
-    types::{BlockHash, PrivateKey, PublicKey, Signature},
+    types::{PrivateKey, PublicKey, Signature},
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_network::{identity::PeerId, ToPeerId};
 use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
@@ -46,34 +45,21 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 }
 
 /// Returns a CommsPublicKey from either a emoji id or a public key
-pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
+pub fn parse_emoji_id_or_public_key(key: &str) -> Option<PublicKey> {
     EmojiId::from_str(&key.trim().replace('|', ""))
         .map(|emoji_id| PublicKey::from(&emoji_id))
-        .or_else(|_| CommsPublicKey::from_hex(key))
+        .or_else(|_| PublicKey::from_hex(key))
         .ok()
-}
-
-/// Returns a hash from a hex string
-pub fn parse_hash(hash_string: &str) -> Option<BlockHash> {
-    BlockHash::from_hex(hash_string).ok()
-}
-
-/// Returns a CommsPublicKey from either a emoji id, a public key or node id
-pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
-    parse_emoji_id_or_public_key(key)
-        .map(Either::Left)
-        .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
-}
-
-pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
-    match either {
-        Either::Left(pk) => NodeId::from_public_key(&pk),
-        Either::Right(n) => n,
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct UniPublicKey(PublicKey);
+
+impl UniPublicKey {
+    pub fn into_public_key(self) -> PublicKey {
+        self.0
+    }
+}
 
 impl FromStr for UniPublicKey {
     type Err = UniIdError;
@@ -96,10 +82,18 @@ impl From<UniPublicKey> for PublicKey {
 }
 
 #[derive(Debug, Clone)]
-pub enum UniNodeId {
+pub enum UniPeerId {
     PublicKey(PublicKey),
-    NodeId(NodeId),
     TariAddress(TariAddress),
+}
+
+impl ToPeerId for UniPeerId {
+    fn to_peer_id(&self) -> PeerId {
+        match self {
+            UniPeerId::PublicKey(pk) => pk.to_peer_id(),
+            UniPeerId::TariAddress(addr) => addr.comms_public_key().to_peer_id(),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -110,7 +104,7 @@ pub enum UniIdError {
     Nonconvertible,
 }
 
-impl FromStr for UniNodeId {
+impl FromStr for UniPeerId {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
@@ -118,8 +112,6 @@ impl FromStr for UniNodeId {
             Ok(Self::PublicKey(PublicKey::from(&emoji_id)))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self::PublicKey(public_key))
-        } else if let Ok(node_id) = NodeId::from_hex(key) {
-            Ok(Self::NodeId(node_id))
         } else if let Ok(tari_address) = TariAddress::from_str(key) {
             Ok(Self::TariAddress(tari_address))
         } else {
@@ -128,14 +120,13 @@ impl FromStr for UniNodeId {
     }
 }
 
-impl TryFrom<UniNodeId> for PublicKey {
+impl TryFrom<UniPeerId> for PublicKey {
     type Error = UniIdError;
 
-    fn try_from(id: UniNodeId) -> Result<Self, Self::Error> {
+    fn try_from(id: UniPeerId) -> Result<Self, Self::Error> {
         match id {
-            UniNodeId::PublicKey(public_key) => Ok(public_key),
-            UniNodeId::TariAddress(tari_address) => Ok(tari_address.public_spend_key().clone()),
-            UniNodeId::NodeId(_) => Err(UniIdError::Nonconvertible),
+            UniPeerId::PublicKey(public_key) => Ok(public_key),
+            UniPeerId::TariAddress(tari_address) => Ok(tari_address.public_spend_key().clone()),
         }
     }
 }
@@ -159,15 +150,5 @@ impl FromStr for UniSignature {
 impl From<UniSignature> for Signature {
     fn from(id: UniSignature) -> Self {
         id.0
-    }
-}
-
-impl From<UniNodeId> for NodeId {
-    fn from(id: UniNodeId) -> Self {
-        match id {
-            UniNodeId::PublicKey(public_key) => NodeId::from_public_key(&public_key),
-            UniNodeId::NodeId(node_id) => node_id,
-            UniNodeId::TariAddress(tari_address) => NodeId::from_public_key(tari_address.public_spend_key()),
-        }
     }
 }

@@ -636,7 +636,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<SyncUtxosByBlockRequest>,
     ) -> Result<Streaming<SyncUtxosByBlockResponse>, RpcStatus> {
         let req = request.message();
-        let peer = request.context().peer_node_id();
+        let peer = request.peer_id();
         debug!(
             target: LOG_TARGET,
             "Received sync_utxos_by_block request from {} from header {} to {} ",
@@ -678,6 +678,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
 
-        Ok(Response::new(stats.into()))
+        Ok(Response::new(GetMempoolFeePerGramStatsResponse {
+            stats: stats.into_iter().map(Into::into).collect(),
+        }))
     }
 }

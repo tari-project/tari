@@ -63,7 +63,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
             log_mdc::extend(mdc.clone());
             let (notif_tx, notif_rx) = mpsc::unbounded_channel();
             let network = handles.expect_handle::<NetworkHandle>();
-            if let Err(err) = network.add_protocol_notifier(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx).await {
+            if let Err(err) = network.add_protocol_notifier([MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx).await {
                 error!(target: LOG_TARGET, "Failed to register protocol notifier for mempool sync: {err}. Peers will not be able to initiate mempool sync with this node")
             }
             let state_machine = handles.expect_handle::<StateMachineHandle>();

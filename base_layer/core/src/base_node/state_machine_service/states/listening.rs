@@ -169,7 +169,7 @@ impl Listening {
                     }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
-                    match shared.network.is_peer_banned(peer_metadata.peer_id()).await {
+                    match shared.network.is_peer_banned(*peer_metadata.peer_id()).await {
                         Ok(true) => {
                             warn!(
                                 target: LOG_TARGET,
@@ -183,14 +183,14 @@ impl Listening {
                             return FatalError(format!("Error checking if peer is banned: {}", e));
                         },
                     }
-                    let peer_data = PeerMetadata {
-                        metadata: peer_metadata.claimed_chain_metadata().clone(),
-                        last_updated: EpochTime::now(),
-                    };
-                    let _old_data = shared
-                        .network
-                        .set_peer_metadata(peer_metadata.peer_id(), 1, peer_data.to_bytes())
-                        .await;
+                    // let peer_data = PeerMetadata {
+                    //     metadata: peer_metadata.claimed_chain_metadata().clone(),
+                    //     last_updated: EpochTime::now(),
+                    // };
+                    // let _old_data = shared
+                    //     .network
+                    //     .set_peer_metadata(peer_metadata.peer_id(), 1, peer_data.to_bytes())
+                    //     .await;
                     log_mdc::extend(mdc.clone());
 
                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
@@ -482,19 +482,10 @@ fn determine_sync_mode(
 #[cfg(test)]
 mod test {
     use primitive_types::U256;
-    use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_network::{identity, identity::PeerId};
+    use tari_network::test_utils::random_peer_id;
 
     use super::*;
-
-    fn random_peer_id() -> PeerId {
-        let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
-        PeerId::from_public_key(&identity::PublicKey::from(identity::sr25519::PublicKey::from(
-            public_key,
-        )))
-    }
 
     #[test]
     fn test_determine_sync_mode() {

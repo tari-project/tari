@@ -20,6 +20,7 @@ mod peer_store;
 mod relay_state;
 mod service_trait;
 mod spawn;
+pub mod test_utils;
 
 pub use config::*;
 pub use connection::*;

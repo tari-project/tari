@@ -24,7 +24,6 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Utc;
 use clap::Parser;
-use tari_comms::peer_manager::PeerQuery;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
 
 use super::{CommandContext, HandleCommand};
@@ -44,91 +43,92 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    pub async fn list_peers(&self, filter: Option<String>) -> Result<(), Error> {
-        let mut query = PeerQuery::new();
-        if let Some(f) = filter {
-            let filter = f.to_lowercase();
-            query = query.select_where(move |p| match filter.as_str() {
-                "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => p.features.is_node(),
-                "wallet" | "wallets" | "w" => p.features.is_client(),
-                _ => false,
-            })
-        }
-        let mut peers = self.comms.peer_manager().perform_query(query).await?;
-        let num_peers = peers.len();
-        println!();
-        let mut table = Table::new();
-        table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
-
-        peers.sort_by(|a, b| a.node_id.cmp(&b.node_id));
-        for peer in peers {
-            let info_str = {
-                let mut s = vec![];
-                if peer.is_seed() {
-                    s.push("SEED".to_string());
-                }
-                if peer.is_offline() && !peer.is_banned() {
-                    s.push("OFFLINE".to_string());
-                }
-
-                if let Some(dt) = peer.banned_until() {
-                    s.push(format!(
-                        "BANNED({}, {})",
-                        dt.signed_duration_since(Utc::now().naive_utc())
-                            .to_std()
-                            .map(format_duration_basic)
-                            .unwrap_or_else(|_| "∞".to_string()),
-                        peer.banned_reason
-                    ));
-                }
-
-                if let Some(metadata) = peer
-                    .get_metadata(1)
-                    .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
-                {
-                    s.push(format!("chain height: {}", metadata.metadata.best_block_height()));
-                }
-
-                if let Some(last_seen) = peer.addresses.last_seen() {
-                    let duration = Utc::now()
-                        .naive_utc()
-                        .signed_duration_since(last_seen)
-                        .to_std()
-                        .map(format_duration_basic)
-                        .unwrap_or_else(|_| "?".into());
-                    s.push(format!("last seen: {}", duration));
-                }
-
-                if s.is_empty() {
-                    "--".to_string()
-                } else {
-                    s.join(", ")
-                }
-            };
-            let ua = peer.user_agent;
-            table.add_row(row![
-                peer.node_id,
-                peer.public_key,
-                {
-                    if peer.features.is_client() {
-                        "Wallet"
-                    } else {
-                        "Base node"
-                    }
-                },
-                {
-                    if ua.is_empty() {
-                        "<unknown>"
-                    } else {
-                        ua.as_ref()
-                    }
-                },
-                info_str,
-            ]);
-        }
-        table.print_stdout();
-
-        println!("{} peer(s) known by this node", num_peers);
-        Ok(())
+    pub async fn list_peers(&self, _filter: Option<String>) -> Result<(), Error> {
+        println!("Not supported");
+        // let mut query = PeerQuery::new();
+        // if let Some(f) = filter {
+        //     let filter = f.to_lowercase();
+        //     query = query.select_where(move |p| match filter.as_str() {
+        //         "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => p.features.is_node(),
+        //         "wallet" | "wallets" | "w" => p.features.is_client(),
+        //         _ => false,
+        //     })
+        // }
+        // let mut peers = self.network.peer_manager().perform_query(query).await?;
+        // let num_peers = peers.len();
+        // println!();
+        // let mut table = Table::new();
+        // table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
+        //
+        // peers.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+        // for peer in peers {
+        //     let info_str = {
+        //         let mut s = vec![];
+        //         if peer.is_seed() {
+        //             s.push("SEED".to_string());
+        //         }
+        //         if peer.is_offline() && !peer.is_banned() {
+        //             s.push("OFFLINE".to_string());
+        //         }
+        //
+        //         if let Some(dt) = peer.banned_until() {
+        //             s.push(format!(
+        //                 "BANNED({}, {})",
+        //                 dt.signed_duration_since(Utc::now().naive_utc())
+        //                     .to_std()
+        //                     .map(format_duration_basic)
+        //                     .unwrap_or_else(|_| "∞".to_string()),
+        //                 peer.banned_reason
+        //             ));
+        //         }
+        //
+        //         if let Some(metadata) = peer
+        //             .get_metadata(1)
+        //             .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
+        //         {
+        //             s.push(format!("chain height: {}", metadata.metadata.best_block_height()));
+        //         }
+        //
+        //         if let Some(last_seen) = peer.addresses.last_seen() {
+        //             let duration = Utc::now()
+        //                 .naive_utc()
+        //                 .signed_duration_since(last_seen)
+        //                 .to_std()
+        //                 .map(format_duration_basic)
+        //                 .unwrap_or_else(|_| "?".into());
+        //             s.push(format!("last seen: {}", duration));
+        //         }
+        //
+        //         if s.is_empty() {
+        //             "--".to_string()
+        //         } else {
+        //             s.join(", ")
+        //         }
+        //     };
+        //     let ua = peer.user_agent;
+        //     table.add_row(row![
+        //         peer.node_id,
+        //         peer.public_key,
+        //         {
+        //             if peer.features.is_client() {
+        //                 "Wallet"
+        //             } else {
+        //                 "Base node"
+        //             }
+        //         },
+        //         {
+        //             if ua.is_empty() {
+        //                 "<unknown>"
+        //             } else {
+        //                 ua.as_ref()
+        //             }
+        //         },
+        //         info_str,
+        //     ]);
+        // }
+        // table.print_stdout();
+        //
+        // println!("{} peer(s) known by this node", num_peers);
+        // Ok(())
     }
 }

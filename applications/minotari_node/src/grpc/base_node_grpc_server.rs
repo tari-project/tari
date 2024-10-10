@@ -126,7 +126,7 @@ impl BaseNodeGrpcServer {
             state_machine_handle: ctx.state_machine(),
             consensus_rules: ctx.consensus_rules().clone(),
             software_updater: ctx.software_updater(),
-            comms: ctx.base_node_comms().clone(),
+            comms: ctx.network_handle().clone(),
             liveness: ctx.liveness(),
             report_grpc_error: ctx.get_report_grpc_error(),
             config,

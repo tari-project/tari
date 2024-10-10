@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
-use futures::{future, Stream, StreamExt};
+use futures::future;
 use log::*;
 use tari_network::NetworkHandle;
-use tari_p2p::{message::DomainMessage, tari_message::TariMessageType, Dispatcher};
+use tari_p2p::{tari_message::TariMessageType, Dispatcher};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -33,7 +33,6 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
@@ -41,9 +40,7 @@ use crate::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         service::service::{BaseNodeService, BaseNodeStreams},
         BaseNodeStateMachineConfig,
-        StateMachineHandle,
     },
-    blocks::NewBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     mempool::Mempool,
@@ -95,7 +92,6 @@ where T: BlockchainBackend + 'static
         debug!(target: LOG_TARGET, "Initializing Base Node Service");
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded_channel();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let (block_event_sender, _) = broadcast::channel(50);
@@ -115,19 +111,26 @@ where T: BlockchainBackend + 'static
         let config = self.base_node_config.clone();
 
         context.spawn_when_ready(move |handles| async move {
-            let mut network = handles.expect_handle::<NetworkHandle>();
+            let network = handles.expect_handle::<NetworkHandle>();
+            let (block_publisher, block_subscription) = match network.subscribe_topic(BLOCK_TOPIC).await {
+                Ok(x) => x,
+                Err(err) => {
+                    error!(target: LOG_TARGET, "⚠️ Failed to subscribe to BLOCK_TOPIC: {err}. THE BASE NODE SERVICE WILL NOT START.");
+                    return;
+                },
+            };
+
             let dispatcher = handles.expect_handle::<Dispatcher>();
             let (inbound_msgs_tx, inbound_msgs_rx) = mpsc::unbounded_channel();
             dispatcher.register(TariMessageType::BaseNodeRequest, inbound_msgs_tx.clone());
             dispatcher.register(TariMessageType::BaseNodeResponse, inbound_msgs_tx);
 
-            let (block_publisher, block_subscription) = network.subscribe_topic(BLOCK_TOPIC).await?;
 
             let state_machine = handles.expect_handle();
             let outbound_messaging = handles.expect_handle();
 
             let outbound_nci =
-                OutboundNodeCommsInterface::new(outbound_request_sender_service, block_publisher.clone());
+                OutboundNodeCommsInterface::new(outbound_request_sender_service, block_publisher);
 
             let inbound_nch = InboundNodeCommsHandlers::new(
                 block_event_sender,
@@ -140,7 +143,6 @@ where T: BlockchainBackend + 'static
 
             let streams = BaseNodeStreams {
                 outbound_request_stream,
-                block_publisher,
                 inbound_messages: inbound_msgs_rx,
                 block_subscription,
                 local_request_stream,

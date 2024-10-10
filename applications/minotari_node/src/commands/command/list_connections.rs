@@ -53,7 +53,7 @@ impl CommandContext {
             "User Agent",
             "Info",
         ]);
-        let peer_manager = self.comms.peer_manager();
+        let peer_manager = self.network.peer_manager();
         for conn in conns {
             let peer = peer_manager
                 .find_by_node_id(conn.peer_node_id())
@@ -105,7 +105,7 @@ impl CommandContext {
 impl CommandContext {
     /// Function to process the list-connections command
     pub async fn list_connections(&mut self) -> Result<(), Error> {
-        let conns = self.comms.connectivity().get_active_connections().await?;
+        let conns = self.network.connectivity().get_active_connections().await?;
         let (mut nodes, mut clients) = conns
             .into_iter()
             .partition::<Vec<_>, _>(|a| a.peer_features().is_node());

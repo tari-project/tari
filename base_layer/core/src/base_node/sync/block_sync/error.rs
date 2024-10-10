@@ -106,7 +106,7 @@ impl BlockSyncError {
         match self {
             // no ban
             BlockSyncError::AsyncTaskFailed(_) |
-            BlockSyncError::ConnectivityError(_) |
+            BlockSyncError::NetworkError(_) |
             BlockSyncError::NoMoreSyncPeers(_) |
             BlockSyncError::AllSyncPeersExceedLatency |
             BlockSyncError::FailedToConstructChainBlock |

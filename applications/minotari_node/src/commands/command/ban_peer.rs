@@ -25,8 +25,8 @@ use std::time::Duration;
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_utilities::utilities::UniNodeId;
-use tari_comms::peer_manager::NodeId;
+use minotari_app_utilities::utilities::UniPeerId;
+use tari_network::{identity::PeerId, NetworkingService, ToPeerId};
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand};
@@ -35,7 +35,7 @@ use super::{CommandContext, HandleCommand};
 #[derive(Debug, Parser)]
 pub struct ArgsBan {
     /// hex public key or emoji id
-    node_id: UniNodeId,
+    peer_id: UniPeerId,
     /// length of time to ban the peer for in seconds
     #[clap(default_value_t = std::u64::MAX)]
     length: u64,
@@ -44,9 +44,9 @@ pub struct ArgsBan {
 #[async_trait]
 impl HandleCommand<ArgsBan> for CommandContext {
     async fn handle_command(&mut self, args: ArgsBan) -> Result<(), Error> {
-        let node_id = args.node_id.into();
+        let peer_id = args.peer_id.to_peer_id();
         let duration = Duration::from_secs(args.length);
-        self.ban_peer(node_id, duration, true).await
+        self.ban_peer(peer_id, duration, true).await
     }
 }
 
@@ -54,7 +54,7 @@ impl HandleCommand<ArgsBan> for CommandContext {
 #[derive(Debug, Parser)]
 pub struct ArgsUnban {
     /// hex public key or emoji id
-    node_id: UniNodeId,
+    peer_id: UniPeerId,
     /// length of time to ban the peer for in seconds
     #[clap(default_value_t = std::u64::MAX)]
     length: u64,
@@ -63,9 +63,9 @@ pub struct ArgsUnban {
 #[async_trait]
 impl HandleCommand<ArgsUnban> for CommandContext {
     async fn handle_command(&mut self, args: ArgsUnban) -> Result<(), Error> {
-        let node_id = args.node_id.into();
+        let peer_id = args.peer_id.to_peer_id();
         let duration = Duration::from_secs(args.length);
-        self.ban_peer(node_id, duration, false).await
+        self.ban_peer(peer_id, duration, false).await
     }
 }
 
@@ -76,20 +76,21 @@ enum ArgsError {
 }
 
 impl CommandContext {
-    pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration, must_ban: bool) -> Result<(), Error> {
-        if self.base_node_identity.node_id() == &node_id {
-            Err(ArgsError::BanSelf.into())
-        } else if must_ban {
-            self.comms
-                .connectivity()
-                .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
+    pub async fn ban_peer(&mut self, peer_id: PeerId, duration: Duration, must_ban: bool) -> Result<(), Error> {
+        if *self.network.local_peer_id() == peer_id {
+            return Err(ArgsError::BanSelf.into());
+        }
+
+        if must_ban {
+            self.network
+                .ban_peer(peer_id.clone(), "UI manual ban".to_string(), Some(duration))
                 .await?;
             println!("Peer was banned in base node.");
-            Ok(())
         } else {
-            self.comms.peer_manager().unban_peer(&node_id).await?;
+            self.network.unban_peer(peer_id).await?;
             println!("Peer ban was removed from base node.");
-            Ok(())
         }
+
+        Ok(())
     }
 }

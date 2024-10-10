@@ -8,7 +8,7 @@ license = "BSD-3-Clause"
 [dependencies]
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
+tari_network = { workspace = true }
 tari_utilities = { version = "0.7" }
 minotari_app_grpc = { path = "../minotari_app_grpc", optional = true }
 

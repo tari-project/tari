@@ -83,8 +83,14 @@ impl ServiceInitializer for MempoolServiceInitializer {
         context.spawn_until_shutdown(move |handles| async move {
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
             let mut network = handles.expect_handle::<NetworkHandle>();
-            // Mempool does not publish transactions, they are gossiped by the network and published by wallets
-            let (_publisher, subscriber) = network.subscribe_topic(TRANSACTION_TOPIC).await?;
+            // Mempool does not publish transactions, they are gossiped by the network and published by wallets.
+            let (_publisher, subscriber) = match network.subscribe_topic(TRANSACTION_TOPIC).await {
+                Ok(x) => x,
+                Err(err) => {
+                    error!(target: LOG_TARGET, "⚠️ Failed to subscribe to transactions: {}. THE MEMPOOL SERVICE WILL NOT START.", err);
+                    return ;
+                },
+            };
 
             let streams = MempoolStreams {
                 transaction_subscription: subscriber,
@@ -93,7 +99,9 @@ impl ServiceInitializer for MempoolServiceInitializer {
                 request_receiver,
             };
             debug!(target: LOG_TARGET, "Mempool service started");
-            MempoolService::new(inbound_handlers).start(streams)
+            if let Err(err) = MempoolService::new(inbound_handlers).start(streams).await {
+                error!(target: LOG_TARGET, "Mempool service error: {}", err);
+            }
         });
 
         Ok(())

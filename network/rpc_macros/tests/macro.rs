@@ -110,7 +110,7 @@
 // async fn it_returns_the_correct_type() {
 //     let mut server = TestServer::new(TestService::default());
 //     let resp = server
-//         .call(Request::new(1.into(), 11u32.to_encoded_bytes().into()))
+//         .call(Request::new(1.into(), 11u32.encode_to_vec().into()))
 //         .await
 //         .unwrap();
 //     let v = resp.into_message().next().await.unwrap().unwrap();
@@ -123,18 +123,18 @@
 //     let spy = service.state.clone();
 //     let mut server = TestServer::new(service);
 //     server
-//         .call(Request::new(1.into(), 11u32.to_encoded_bytes().into()))
+//         .call(Request::new(1.into(), 11u32.encode_to_vec().into()))
 //         .await
 //         .unwrap();
 //     assert_eq!(*spy.read().await.get("request_response").unwrap(), 1);
 //     server
-//         .call(Request::new(2.into(), CustomMessage.to_encoded_bytes().into()))
+//         .call(Request::new(2.into(), CustomMessage.encode_to_vec().into()))
 //         .await
 //         .unwrap();
 //     assert_eq!(*spy.read().await.get("server_streaming").unwrap(), 1);
 //
 //     server
-//         .call(Request::new(3.into(), ().to_encoded_bytes().into()))
+//         .call(Request::new(3.into(), ().encode_to_vec().into()))
 //         .await
 //         .unwrap();
 //     assert_eq!(*spy.read().await.get("unit").unwrap(), 1);
@@ -145,7 +145,7 @@
 //     let service = TestService::default();
 //     let mut server = TestServer::new(service);
 //     let err = server
-//         .call(Request::new(10.into(), ().to_encoded_bytes().into()))
+//         .call(Request::new(10.into(), ().encode_to_vec().into()))
 //         .await
 //         .unwrap_err();
 //

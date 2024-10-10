@@ -26,7 +26,7 @@ use log::*;
 use prost::Message;
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_network::{NetworkHandle, NetworkingService};
+use tari_network::NetworkingService;
 use tari_p2p::{
     proto::{base_node as proto, liveness::MetadataKey},
     services::liveness::{LivenessEvent, LivenessHandle, PingPongEvent},
@@ -204,7 +204,7 @@ impl<TNetwork: NetworkingService> ChainMetadataService<TNetwork> {
             .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(event.peer_id.clone(), err))?;
         debug!(
             target: LOG_TARGET,
-            "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
+            "Received chain metadata from PeerId '{}' #{}, Acc_diff {}",
             event.peer_id,
             chain_metadata.best_block_height(),
             chain_metadata.accumulated_difficulty(),
@@ -229,7 +229,13 @@ mod test {
 
     use futures::StreamExt;
     use primitive_types::U256;
-    use tari_network::{identity::PeerId, swarm, NetworkError, Waiter};
+    use tari_network::{
+        identity::PeerId,
+        swarm::dial_opts::DialOpts,
+        test_utils::random_peer_id,
+        NetworkError,
+        Waiter,
+    };
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
@@ -257,8 +263,7 @@ mod test {
 
     fn create_sample_proto_chain_metadata() -> proto::ChainMetadata {
         let diff: U256 = 1.into();
-        let mut bytes = [0u8; 32];
-        diff.to_big_endian(&mut bytes);
+        let bytes = diff.to_big_endian();
         proto::ChainMetadata {
             best_block_height: 1,
             best_block_hash: vec![
@@ -278,9 +283,9 @@ mod test {
             unimplemented!()
         }
 
-        async fn dial_peer<T: Into<swarm::dial_opts::DialOpts> + Send + 'static>(
+        async fn dial_peer<T: Into<DialOpts> + Send + 'static>(
             &mut self,
-            dial_opts: T,
+            _dial_opts: T,
         ) -> Result<Waiter<()>, NetworkError> {
             unimplemented!()
         }
@@ -291,9 +296,9 @@ mod test {
 
         async fn ban_peer<T: Into<String> + Send>(
             &mut self,
-            peer_id: PeerId,
-            reason: T,
-            until: Option<Duration>,
+            _peer_id: PeerId,
+            _reason: T,
+            _until: Option<Duration>,
         ) -> Result<bool, NetworkError> {
             Ok(true)
         }
@@ -348,19 +353,19 @@ mod test {
 
         let mut metadata = Metadata::new();
         let proto_chain_metadata = create_sample_proto_chain_metadata();
-        metadata.insert(MetadataKey::ChainMetadata, proto_chain_metadata.to_encoded_bytes());
+        metadata.insert(MetadataKey::ChainMetadata, proto_chain_metadata.encode_to_vec());
 
-        let node_id = NodeId::new();
+        let peer_id = random_peer_id();
         let pong_event = PingPongEvent {
             metadata,
-            peer_id: node_id.clone(),
+            peer_id,
             latency: None,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
         service.handle_liveness_event(&sample_event).await.unwrap();
         let metadata = events_rx.recv().await.unwrap().peer_metadata().unwrap();
-        assert_eq!(*metadata.peer_id(), node_id);
+        assert_eq!(*metadata.peer_id(), peer_id);
         assert_eq!(
             metadata.claimed_chain_metadata().best_block_height(),
             proto_chain_metadata.best_block_height
@@ -372,7 +377,7 @@ mod test {
         let (mut service, _, _, mut event_rx) = setup();
 
         let metadata = Metadata::new();
-        let node_id = NodeId::new();
+        let node_id = random_peer_id();
         let pong_event = PingPongEvent {
             metadata,
             peer_id: node_id,
@@ -390,7 +395,7 @@ mod test {
 
         let mut metadata = Metadata::new();
         metadata.insert(MetadataKey::ChainMetadata, b"no-good".to_vec());
-        let node_id = NodeId::new();
+        let node_id = random_peer_id();
         let pong_event = PingPongEvent {
             metadata,
             peer_id: node_id,

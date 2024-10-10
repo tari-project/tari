@@ -29,12 +29,12 @@ use tari_utilities::ByteArray;
 use crate::base_node::comms_interface::NodeCommsRequest;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
-impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
+impl TryFrom<ProtoNodeCommsRequest> for NodeCommsRequest {
     type Error = String;
 
-    fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
+    fn try_from(value: ProtoNodeCommsRequest) -> Result<NodeCommsRequest, Self::Error> {
         use ProtoNodeCommsRequest::{FetchMempoolTransactionsByExcessSigs, GetBlockFromAllChains};
-        let request = match self {
+        let request = match value {
             GetBlockFromAllChains(req) => {
                 NodeCommsRequest::GetBlockFromAllChains(req.hash.try_into().map_err(|_| "Malformed hash".to_string())?)
             },

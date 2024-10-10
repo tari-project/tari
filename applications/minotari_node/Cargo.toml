@@ -10,7 +10,6 @@ edition = "2018"
 [dependencies]
 tari_network = { workspace = true }
 tari_rpc_framework = { workspace = true }
-
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
 tari_common = { path = "../../common" }
@@ -19,7 +18,6 @@ tari_core = { path = "../../base_layer/core", default-features = false, features
     "transactions",
 ] }
 tari_crypto = { version = "0.20.3" }
-tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = { path = "../../infrastructure/storage" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
@@ -72,10 +70,9 @@ tari_metrics = { path = "../../infrastructure/metrics", optional = true, feature
 ] }
 
 [features]
-default = ["libtor"]
+default = []
 metrics = ["tari_metrics"]
 safe = []
-libtor = ["tari_libtor"]
 
 [build-dependencies]
 tari_features = { path = "../../common/tari_features", version = "1.6.0-pre.0" }
