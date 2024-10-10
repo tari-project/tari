@@ -26,7 +26,7 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_network::NetworkHandle;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -89,8 +89,7 @@ impl Default for BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
-    pub(super) connectivity: ConnectivityRequester,
-    pub(super) peer_manager: Arc<PeerManager>,
+    pub(super) network: NetworkHandle,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
@@ -109,8 +108,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
-        connectivity: ConnectivityRequester,
-        peer_manager: Arc<PeerManager>,
+        network: NetworkHandle,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators<B>,
@@ -123,8 +121,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db,
             local_node_interface,
-            connectivity,
-            peer_manager,
+            network,
             metadata_event_stream,
             config,
             info: StateInfo::StartUp,

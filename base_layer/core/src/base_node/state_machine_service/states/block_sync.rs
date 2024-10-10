@@ -54,7 +54,7 @@ impl BlockSync {
         let mut synchronizer = BlockSynchronizer::new(
             shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
-            shared.connectivity.clone(),
+            shared.network.clone(),
             &mut self.sync_peers,
             shared.sync_validators.block_body.clone(),
         );

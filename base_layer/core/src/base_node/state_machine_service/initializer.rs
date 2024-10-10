@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_network::NetworkHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -106,17 +106,15 @@ where B: BlockchainBackend + 'static
             log_mdc::extend(mdc);
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let sync_validators =
                 SyncValidators::full_consensus(rules.clone(), factories, bypass_range_proof_verification);
+            let network = handles.expect_handle::<NetworkHandle>();
 
             let node = BaseNodeStateMachine::new(
                 db,
                 node_local_interface,
-                connectivity,
-                peer_manager,
+                network,
                 chain_metadata_service.get_event_stream(),
                 config,
                 sync_validators,

@@ -29,12 +29,6 @@ use futures::StreamExt;
 use log::*;
 use primitive_types::U256;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcClient, RpcError},
-    PeerConnection,
-};
 use tari_network::{identity::PeerId, NetworkHandle};
 use tari_p2p::proto::{
     base_node::{FindChainSplitRequest, SyncHeadersRequest},
@@ -306,7 +300,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     #[allow(clippy::too_many_lines)]
     async fn find_chain_split(
         &mut self,
-        peer_node_id: &NodeId,
+        peer_node_id: &PeerId,
         client: &mut rpc::BaseNodeSyncRpcClient,
         header_count: u64,
     ) -> Result<FindChainSplitResult, BlockHeaderSyncError> {

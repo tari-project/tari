@@ -169,7 +169,7 @@ impl Listening {
                     }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
-                    match shared.peer_manager.is_peer_banned(peer_metadata.peer_id()).await {
+                    match shared.network.is_peer_banned(peer_metadata.peer_id()).await {
                         Ok(true) => {
                             warn!(
                                 target: LOG_TARGET,
@@ -187,10 +187,8 @@ impl Listening {
                         metadata: peer_metadata.claimed_chain_metadata().clone(),
                         last_updated: EpochTime::now(),
                     };
-                    // If this fails, its not the end of the world, we just want to keep record of the stats of
-                    // the peer
                     let _old_data = shared
-                        .peer_manager
+                        .network
                         .set_peer_metadata(peer_metadata.peer_id(), 1, peer_data.to_bytes())
                         .await;
                     log_mdc::extend(mdc.clone());
