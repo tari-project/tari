@@ -2500,7 +2500,7 @@ pub async fn command_runner(
                                 .map_err(|e| CommandError::General(e.to_string()))?
                         },
                         (false, true) => {
-                            let bytes = Vec::<u8>::from_base58(&args.cipher_seed.as_str())
+                            let bytes = Vec::<u8>::from_base58(args.cipher_seed.as_str())
                                 .map_err(|e| CommandError::General(e.to_string()))?;
                             CipherSeed::from_enciphered_bytes(&bytes, passphrase)
                                 .map_err(|e| CommandError::General(e.to_string()))?
