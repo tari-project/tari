@@ -102,6 +102,7 @@ use tari_crypto::{
     ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
 };
 use tari_key_manager::{
+    cipher_seed::CipherSeed,
     key_manager_service::{KeyId, KeyManagerInterface},
     SeedWords,
 };
@@ -113,7 +114,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+
 use super::error::CommandError;
 use crate::{
     automation::{
@@ -2490,7 +2491,10 @@ pub async fn command_runner(
                     } else {
                         Some(SafePassword::from(args.passphrase))
                     };
-                    let seed = match (args.seed_words.as_str().is_empty(),args.cipher_seed.as_str().is_empty()){
+                    let seed = match (
+                        args.seed_words.as_str().is_empty(),
+                        args.cipher_seed.as_str().is_empty(),
+                    ) {
                         (true, false) => {
                             let seed_words = SeedWords::from_str(args.seed_words.as_str())
                                 .map_err(|e| CommandError::General(e.to_string()))?;
@@ -2499,13 +2503,17 @@ pub async fn command_runner(
                                 .map_err(|e| CommandError::General(e.to_string()))?
                         },
                         (false, true) => {
-                            let bytes = bs58::decode(args.cipher_seed.as_str()).into_vec().map_err(|e| CommandError::General(e.to_string()))?;
+                            let bytes = bs58::decode(args.cipher_seed.as_str())
+                                .into_vec()
+                                .map_err(|e| CommandError::General(e.to_string()))?;
                             CipherSeed::from_enciphered_bytes(&bytes, passphrase)
                                 .map_err(|e| CommandError::General(e.to_string()))?
-                        }
-                        (_,_) => {
-                            return Err(CommandError::General("Either seed words or cipher seed must be provided".to_string()))
-                        }
+                        },
+                        (_, _) => {
+                            return Err(CommandError::General(
+                                "Either seed words or cipher seed must be provided".to_string(),
+                            ))
+                        },
                     };
 
                     let wallet_type = WalletType::DerivedKeys;
