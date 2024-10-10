@@ -265,11 +265,11 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("c4bceeddf911e29f651fe00ae198d4dcdf3b8d27fab7754400e3b66d18d9be95").unwrap();
+            FixedHash::from_hex("f73daf81a3672d9e290adecb77f6071c82b7095f34bfcdfcfafe8c2148b54fad").unwrap();
         block.header.input_mr =
-            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
+            FixedHash::from_hex("b7b38b76f5832b5b63691a8334dfa67d8c762b77b2b4aa4f648c4eb1dfb25c1e").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("084348f0081f9086cb88bc51063bba54bbf76541d56451327393614d89045249").unwrap();
+            FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -570,7 +570,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
-        check_block(network, &block, 0, 168, 1);
+        check_block(network, &block, 253, 674, 254);
         remove_network_env_var();
     }
 
