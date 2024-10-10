@@ -2491,7 +2491,7 @@ pub async fn command_runner(
                     } else {
                         Some(SafePassword::from(args.passphrase))
                     };
-                    let seed = match (args.seed_words.is_empty(), args.cipher_seed.is_empty()) {
+                    let seed = match (!args.seed_words.is_empty(), !args.cipher_seed.is_empty()) {
                         (true, false) => {
                             let seed_words = SeedWords::from_str(args.seed_words.as_str())
                                 .map_err(|e| CommandError::General(e.to_string()))?;
