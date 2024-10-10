@@ -24,7 +24,7 @@ mod tag;
 pub use tag::*;
 use tari_network::{identity::PeerId, MessageSpec};
 
-use crate::proto;
+use crate::{proto, tari_message::TariMessageType};
 
 #[derive(Debug, Clone)]
 pub enum TariNodeMessage {
@@ -114,6 +114,21 @@ impl TariNodeMessage {
             _ => None,
         }
     }
+
+    pub fn as_type(&self) -> TariMessageType {
+        match self {
+            Self::PingPong(_) => TariMessageType::PingPong,
+            Self::NewTransaction(_) => TariMessageType::NewTransaction,
+            Self::NewBlock(_) => TariMessageType::NewBlock,
+            Self::BaseNodeRequest(_) => TariMessageType::BaseNodeRequest,
+            Self::BaseNodeResponse(_) => TariMessageType::BaseNodeResponse,
+            Self::SenderPartialTransaction(_) => TariMessageType::SenderPartialTransaction,
+            Self::ReceiverPartialTransactionReply(_) => TariMessageType::ReceiverPartialTransactionReply,
+            Self::TransactionFinalized(_) => TariMessageType::TransactionFinalized,
+            Self::TransactionCancelled(_) => TariMessageType::TransactionCancelled,
+            Self::Chat(_) => TariMessageType::Chat,
+        }
+    }
 }
 
 macro_rules! impl_from {
@@ -172,6 +187,14 @@ impl<T> DomainMessage<T> {
 
     pub fn peer_id(&self) -> PeerId {
         self.source_peer_id
+    }
+
+    pub fn map<F: FnMut(T) -> U, U>(self, mut f: F) -> DomainMessage<U> {
+        DomainMessage {
+            source_peer_id: self.source_peer_id,
+            header: self.header,
+            payload: f(self.payload),
+        }
     }
 }
 

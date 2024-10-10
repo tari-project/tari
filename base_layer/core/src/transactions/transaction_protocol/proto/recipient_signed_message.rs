@@ -23,9 +23,9 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_p2p::proto::transaction as proto;
 use tari_utilities::ByteArray;
 
-use super::protocol as proto;
 use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;
 
 impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {

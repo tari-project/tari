@@ -79,10 +79,8 @@ pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SLocalReq, SLocalBloc
     /// Blocks to be propagated out to the network. The second element of the tuple is a list of peers to exclude from
     /// this round of propagation
     pub block_publisher: GossipPublisher<proto::core::NewBlock>,
-    /// `BaseNodeRequest` messages received from external peers
-    pub inbound_request_stream: mpsc::UnboundedReceiver<proto::base_node::BaseNodeServiceRequest>,
-    /// `BaseNodeResponse` messages received from external peers
-    pub inbound_response_stream: mpsc::UnboundedReceiver<proto::base_node::BaseNodeServiceResponse>,
+    /// `BaseNodeRequest` and `BaseNodeResponse` messages received from external peers
+    pub inbound_messages: mpsc::UnboundedReceiver<DomainMessage<TariNodeMessage>>,
     /// `NewBlock` messages received from external peers
     pub block_subscription: GossipSubscription<proto::core::NewBlock>,
     /// Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -148,8 +146,7 @@ where B: BlockchainBackend + 'static
         pin_mut!(outbound_request_stream);
         let outbound_block_stream = streams.block_publisher;
         pin_mut!(outbound_block_stream);
-        let inbound_request_stream = streams.inbound_request_stream.fuse();
-        pin_mut!(inbound_request_stream);
+        let mut inbound_messages = streams.inbound_messages;
         let inbound_response_stream = streams.inbound_response_stream.fuse();
         pin_mut!(inbound_response_stream);
         let mut block_subscription = streams.block_subscription;
@@ -170,8 +167,8 @@ where B: BlockchainBackend + 'static
                 },
 
                 // Incoming request messages from the Comms layer
-                Some(domain_msg) = inbound_request_stream.next() => {
-                    self.spawn_handle_incoming_request(domain_msg);
+                Some(domain_msg) = inbound_messages.recv() => {
+                    self.spawn_handle_incoming_request_or_response_message(domain_msg);
                 },
 
                 // Incoming response messages from the Comms layer
@@ -239,10 +236,20 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_request(
-        &self,
-        domain_msg: DomainMessage<Result<proto::base_node::BaseNodeServiceRequest, prost::DecodeError>>,
-    ) {
+    fn spawn_handle_incoming_request_or_response_message(&self, domain_msg: DomainMessage<TariNodeMessage>) {
+        match domain_msg.inner().as_type() {
+            TariMessageType::BaseNodeRequest => {
+                self.spawn_handle_incoming_request(domain_msg.map(|msg| msg.into_base_node_request().expect("checked")))
+            },
+            TariMessageType::BaseNodeResponse => self
+                .spawn_handle_incoming_response(domain_msg.map(|msg| msg.into_base_node_response().expect("checked"))),
+            _ => {
+                warn!(target: LOG_TARGET, "Base Node Service received unexpected message type {}", domain_msg.payload.as_type())
+            },
+        }
+    }
+
+    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>) {
         let inbound_nch = self.inbound_nch.clone();
         let outbound_messaging = self.outbound_messaging.clone();
         let state_machine_handle = self.state_machine_handle.clone();
@@ -273,10 +280,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_response(
-        &self,
-        domain_msg: DomainMessage<Result<proto::base_node::BaseNodeServiceResponse, prost::DecodeError>>,
-    ) {
+    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         let mut network = self.network.clone();
 
@@ -406,50 +410,32 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     inbound_nch: InboundNodeCommsHandlers<B>,
     mut outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
     state_machine_handle: StateMachineHandle,
-    domain_request_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
+    domain_request_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>,
 ) -> Result<(), BaseNodeServiceError> {
-    let (peer_id, inner_msg) = domain_request_msg.into_origin_and_inner();
+    let peer_id = domain_request_msg.source_peer_id;
+    let inner_msg = domain_request_msg.into_inner();
 
-    // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
-    let inner_msg = match inner_msg {
-        Ok(i) => i,
-        Err(e) => {
-            return Err(BaseNodeServiceError::InvalidRequest(format!(
-                "Received invalid base node request: {}",
-                e
-            )));
-        },
-    };
+    let request = inner_msg.request.ok_or_else(|| {
+        BaseNodeServiceError::InvalidRequest("Received invalid base node request with no inner request".to_string())
+    })?;
 
-    let request = match inner_msg.request {
-        Some(r) => r,
-        None => {
-            return Err(BaseNodeServiceError::InvalidRequest(
-                "Received invalid base node request with no inner request".to_string(),
-            ));
-        },
-    };
-
-    let request = match request.try_into() {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(BaseNodeServiceError::InvalidRequest(format!(
-                "Received invalid base node request. It could not be converted:  {}",
-                e
-            )));
-        },
-    };
+    let request = request.try_into().map_err(|e| {
+        BaseNodeServiceError::InvalidRequest(format!(
+            "Received invalid base node request. It could not be converted:  {}",
+            e
+        ))
+    })?;
 
     let response = inbound_nch.handle_request(request).await?;
 
     // Determine if we are synced
     let status_watch = state_machine_handle.get_status_info_watch();
-    let is_synced = match (status_watch.borrow()).state_info {
+    let is_synced = match status_watch.borrow().state_info {
         StateInfo::Listening(li) => li.is_synced(),
         _ => false,
     };
 
-    let message = proto::BaseNodeServiceResponse {
+    let message = proto::base_node::BaseNodeServiceResponse {
         request_key: inner_msg.request_key,
         response: Some(response.try_into().map_err(BaseNodeServiceError::InvalidResponse)?),
         is_synced,
@@ -468,20 +454,18 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 
 async fn handle_incoming_response(
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
-    domain_msg: DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>,
+    domain_msg: DomainMessage<proto::base_node::BaseNodeServiceResponse>,
 ) -> Result<(), BaseNodeServiceError> {
-    let incoming_response = domain_msg
-        .inner()
-        .clone()
-        .map_err(|e| BaseNodeServiceError::InvalidResponse(format!("Received invalid base node response: {}", e)))?;
-    let proto::BaseNodeServiceResponse {
+    let proto::base_node::BaseNodeServiceResponse {
         request_key,
         response,
         is_synced,
-    } = incoming_response;
-    let response: NodeCommsResponse = response
-        .and_then(|r| r.try_into().ok())
-        .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an invalid base node response".to_string()))?;
+    } = domain_msg.into_inner();
+    let response = response
+        .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an empty base node response".to_string()))?;
+
+    let response = NodeCommsResponse::try_from(response)
+        .map_err(|e| BaseNodeServiceError::InvalidResponse(format!("Received an invalid base node response: {e}")))?;
 
     if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
         trace!(

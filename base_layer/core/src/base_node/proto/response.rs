@@ -35,12 +35,12 @@ use crate::{
     blocks::{Block, BlockHeader, HistoricalBlock},
 };
 
-impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
+impl TryFrom<ProtoNodeCommsResponse> for NodeCommsResponse {
     type Error = String;
 
-    fn try_into(self) -> Result<NodeCommsResponse, Self::Error> {
+    fn try_from(value: ProtoNodeCommsResponse) -> Result<NodeCommsResponse, Self::Error> {
         use ProtoNodeCommsResponse::{BlockResponse, FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
-        let response = match self {
+        let response = match value {
             BlockResponse(block) => NodeCommsResponse::Block(Box::new(block.try_into()?)),
             HistoricalBlocks(blocks) => {
                 let blocks = try_convert_all(blocks.blocks)?;
@@ -59,12 +59,10 @@ impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
                         PrivateKey::from_canonical_bytes(&bytes).map_err(|_| "Malformed excess signature".to_string())
                     })
                     .collect::<Result<_, _>>()?;
-                NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
-                    self::FetchMempoolTransactionsResponse {
-                        transactions,
-                        not_found,
-                    },
-                )
+                NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse {
+                    transactions,
+                    not_found,
+                })
             },
         };
 
@@ -76,9 +74,12 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
 
     fn try_from(response: NodeCommsResponse) -> Result<Self, Self::Error> {
-        use NodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
+        #[allow(clippy::enum_glob_use)]
+        use NodeCommsResponse::*;
         match response {
-            NodeCommsResponse::Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse((*block).try_into()?)),
+            Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse(proto::base_node::BlockResponse {
+                block: block.map(Into::into),
+            })),
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks
                     .into_iter()

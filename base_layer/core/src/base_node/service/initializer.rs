@@ -87,14 +87,6 @@ where T: BlockchainBackend
     }
 }
 
-#[derive(Error, Debug)]
-pub enum ExtractBlockError {
-    #[error("Could not decode inbound block message. {0}")]
-    DecodeError(#[from] prost::DecodeError),
-    #[error("Inbound block message was ill-formed. {0}")]
-    MalformedMessage(String),
-}
-
 #[async_trait]
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
 where T: BlockchainBackend + 'static
@@ -106,8 +98,6 @@ where T: BlockchainBackend + 'static
         let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded_channel();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
-        let outbound_nci =
-            OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service);
         let (block_event_sender, _) = broadcast::channel(50);
         let local_nci = LocalNodeCommsInterface::new(
             local_request_sender_service,
@@ -115,8 +105,6 @@ where T: BlockchainBackend + 'static
             block_event_sender.clone(),
         );
 
-        // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
-        context.register_handle(outbound_nci.clone());
         context.register_handle(local_nci);
 
         let service_request_timeout = self.service_request_timeout;
@@ -129,15 +117,17 @@ where T: BlockchainBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let mut network = handles.expect_handle::<NetworkHandle>();
             let dispatcher = handles.expect_handle::<Dispatcher>();
-            let (request_tx, request_rx) = mpsc::unbounded_channel();
-            let (response_tx, response_rx) = mpsc::unbounded_channel();
-            dispatcher.register(TariMessageType::BaseNodeRequest, request_tx);
-            dispatcher.register(TariMessageType::BaseNodeResponse, response_tx);
+            let (inbound_msgs_tx, inbound_msgs_rx) = mpsc::unbounded_channel();
+            dispatcher.register(TariMessageType::BaseNodeRequest, inbound_msgs_tx.clone());
+            dispatcher.register(TariMessageType::BaseNodeResponse, inbound_msgs_tx);
 
             let (block_publisher, block_subscription) = network.subscribe_topic(BLOCK_TOPIC).await?;
 
             let state_machine = handles.expect_handle();
             let outbound_messaging = handles.expect_handle();
+
+            let outbound_nci =
+                OutboundNodeCommsInterface::new(outbound_request_sender_service, block_publisher.clone());
 
             let inbound_nch = InboundNodeCommsHandlers::new(
                 block_event_sender,
@@ -151,8 +141,7 @@ where T: BlockchainBackend + 'static
             let streams = BaseNodeStreams {
                 outbound_request_stream,
                 block_publisher,
-                inbound_request_stream: request_rx,
-                inbound_response_stream: response_rx,
+                inbound_messages: inbound_msgs_rx,
                 block_subscription,
                 local_request_stream,
                 local_block_stream,

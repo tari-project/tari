@@ -20,12 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms_dht::outbound::DhtOutboundError;
 use tari_network::NetworkError;
 use thiserror::Error;
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError},
+    base_node::comms_interface::CommsInterfaceError,
     common::{BanPeriod, BanReason},
 };
 

@@ -56,4 +56,5 @@ pub mod mempool {
 }
 
 mod chain_metadata;
+mod transaction_sender;
 mod types_impls;
