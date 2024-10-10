@@ -91,7 +91,7 @@ impl BaseNodePeerManager {
     }
 
     /// Get the last connection attempt stats
-    pub fn get_last_connection_attempt(&self) -> Option<Duration> {
+    pub fn time_since_last_connection_attempt(&self) -> Option<Duration> {
         if let Some(stats) = self.last_connection_attempt.clone() {
             if stats.peer_index == self.current_peer_index {
                 Some(stats.attempt_time.elapsed())
@@ -106,7 +106,7 @@ impl BaseNodePeerManager {
 
 impl Display for BaseNodePeerManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let last_connection_attempt = match self.get_last_connection_attempt() {
+        let last_connection_attempt = match self.time_since_last_connection_attempt() {
             Some(stats) => format!("{:?}", stats.as_secs()),
             None => "Never".to_string(),
         };
