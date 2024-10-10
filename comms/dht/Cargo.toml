@@ -13,8 +13,8 @@ edition = "2021"
 tari_comms = { path = "../core", features = ["rpc"], version = "1.6.0-pre.0" }
 tari_common = { path = "../../common", version = "1.6.0-pre.0" }
 tari_comms_rpc_macros = { path = "../rpc_macros", version = "1.6.0-pre.0" }
-tari_crypto = { version = "0.20.3" }
-tari_utilities = { version = "0.7" }
+tari_crypto = { version = "0.21.0" }
+tari_utilities = { version = "0.8" }
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.6.0-pre.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "1.6.0-pre.0" }
 tari_common_sqlite = { path = "../../common_sqlite", version = "1.6.0-pre.0" }

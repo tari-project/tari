@@ -10,11 +10,11 @@ version = "1.6.0-pre.0"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.6.0-pre.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "1.6.0-pre.0" }
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.6.0-pre.0" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"

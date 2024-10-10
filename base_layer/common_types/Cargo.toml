@@ -7,13 +7,13 @@ version = "1.6.0-pre.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.20.3" }
-tari_utilities = { version = "0.7" }
+tari_crypto = { version = "0.21.0" }
+tari_utilities = { version = "0.8" }
 tari_common = { path = "../../common", version = "1.6.0-pre.0" }
 minotari_ledger_wallet_common = { path = "../../applications/minotari_ledger_wallet/common" }
 chacha20poly1305 = "0.10.1"
 bitflags = { version = "2.4", features = ["serde"] }
-borsh = "1.2"
+borsh = "1.5"
 bs58 = "0.5.1"
 digest = "0.10"
 newtype-ops = "0.1"

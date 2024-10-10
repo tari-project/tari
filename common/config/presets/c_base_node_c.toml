@@ -319,4 +319,4 @@ database_url = "data/base_node/dht.db"
 #   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
 #                or
 #   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
-excluded_dial_addresses = ["/ip4/127.*.*.*/tcp/*"]
+excluded_dial_addresses = []

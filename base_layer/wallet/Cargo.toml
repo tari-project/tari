@@ -18,7 +18,7 @@ tari_core = { path = "../../base_layer/core", default-features = false, features
     "mempool_proto",
     "base_node_proto",
 ], version = "1.6.0-pre.0" }
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_max_size = { path = "../../infrastructure/max_size" }
 tari_key_manager = { path = "../key_manager", features = [
     "key_manager_service",
@@ -29,7 +29,7 @@ tari_p2p = { path = "../p2p", features = [
 tari_script = { path = "../../infrastructure/tari_script", version = "1.6.0-pre.0" }
 tari_service_framework = { path = "../service_framework", version = "1.6.0-pre.0" }
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.6.0-pre.0" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.1.3"
@@ -41,7 +41,7 @@ async-trait = "0.1.50"
 argon2 = "0.4.1"
 bincode = "1.3.1"
 blake2 = "0.10"
-borsh = "1.2"
+borsh = "1.5"
 sha2 = "0.10"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 derivative = "2.2.0"

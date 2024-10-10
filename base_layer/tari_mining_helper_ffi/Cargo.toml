@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { path = "../../comms/core" }
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_common = { path = "../../common" }
 tari_core = { path = "../core", default-features = false, features = [
     "transactions",
@@ -16,10 +16,10 @@ tari_core = { path = "../core", default-features = false, features = [
     "base_node",
 ] }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.6.0-pre.0" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 libc = "0.2.65"
 thiserror = "1.0.26"
-borsh = "1.2"
+borsh = "1.5"
 tokio = { version = "1.36", features = ["rt"] }
 
 [dev-dependencies]
