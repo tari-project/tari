@@ -100,7 +100,7 @@ async fn run_stress_test(test_params: Params) {
 
     let conn1_2 = node1
         .connectivity()
-        .dial_peer(node2.node_identity().node_id().clone())
+        .dial_peer(node2.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 

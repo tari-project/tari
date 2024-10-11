@@ -71,7 +71,10 @@ impl RpcCommsProvider for RpcCommsBackend {
     }
 
     async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {
-        self.connectivity.dial_peer(node_id.clone()).await.map_err(Into::into)
+        self.connectivity
+            .dial_peer(node_id.clone(), false)
+            .await
+            .map_err(Into::into)
     }
 
     async fn select_connections(&mut self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, RpcError> {

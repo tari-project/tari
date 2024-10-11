@@ -492,7 +492,6 @@ where
                     "NEW SESSION for {} ({} currently active) ", node_id, num_sessions
                 );
             },
-
             Err(err) => {
                 handshake
                     .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
@@ -503,7 +502,6 @@ where
             },
         }
 
-        let version = handshake.perform_server_handshake().await?;
         debug!(
             target: LOG_TARGET,
             "Server negotiated RPC v{} with client node `{}`", version, node_id

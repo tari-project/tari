@@ -273,6 +273,12 @@ impl<TClient> RpcClientBuilder<TClient> {
         self
     }
 
+    /// Old RPC connections will be dropped when a new connection is established.
+    pub fn with_drop_old_connections(mut self, drop_old_connections: bool) -> Self {
+        self.config.drop_old_connections = drop_old_connections;
+        self
+    }
+
     /// Set a signal that indicates if this client should be immediately closed
     pub fn with_terminate_signal(mut self, terminate_signal: OneshotSignal<NodeId>) -> Self {
         self.terminate_signal = Some(terminate_signal);
@@ -306,6 +312,7 @@ pub struct RpcClientConfig {
     pub deadline: Option<Duration>,
     pub deadline_grace_period: Duration,
     pub handshake_timeout: Duration,
+    pub drop_old_connections: bool,
 }
 
 impl RpcClientConfig {
@@ -326,6 +333,7 @@ impl Default for RpcClientConfig {
             deadline: Some(Duration::from_secs(120)),
             deadline_grace_period: Duration::from_secs(60),
             handshake_timeout: Duration::from_secs(90),
+            drop_old_connections: false,
         }
     }
 }
@@ -464,7 +472,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             self.protocol_name()
         );
         let start = Instant::now();
-        let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout());
+        let mut handshake = Handshake::new(&mut self.framed)
+            .with_timeout(self.config.handshake_timeout())
+            .with_drop_old_connections(self.config.drop_old_connections);
         match handshake.perform_client_handshake().await {
             Ok(_) => {
                 let latency = start.elapsed();

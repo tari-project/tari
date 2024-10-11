@@ -277,7 +277,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, HorizonSyncError> {
         let timer = Instant::now();
         debug!(target: LOG_TARGET, "Dialing {} sync peer", node_id);
-        let conn = self.connectivity.dial_peer(node_id.clone()).await?;
+        let conn = self.connectivity.dial_peer(node_id.clone(), false).await?;
         info!(
             target: LOG_TARGET,
             "Successfully dialed sync peer {} in {:.2?}",

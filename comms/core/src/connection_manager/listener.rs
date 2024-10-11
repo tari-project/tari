@@ -423,6 +423,7 @@ where
             muxer,
             peer_addr,
             peer.node_id.clone(),
+            false,
             peer.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,

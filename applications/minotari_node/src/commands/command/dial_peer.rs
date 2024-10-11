@@ -53,7 +53,7 @@ impl CommandContext {
             let start = Instant::now();
             println!("☎️  Dialing peer...");
 
-            match connectivity.dial_peer(dest_node_id).await {
+            match connectivity.dial_peer(dest_node_id, false).await {
                 Ok(connection) => {
                     println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
                     println!("Connection: {}", connection);

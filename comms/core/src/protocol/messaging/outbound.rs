@@ -166,7 +166,7 @@ impl OutboundMessaging {
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
         loop {
-            match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
+            match self.connectivity.dial_peer(self.peer_node_id.clone(), false).await {
                 Ok(conn) => break Ok(conn),
                 Err(ConnectivityError::DialCancelled) => {
                     debug!(

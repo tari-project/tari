@@ -392,7 +392,7 @@ impl WalletConnectivityService {
     }
 
     async fn try_setup_rpc_pool(&mut self, peer_node_id: NodeId) -> Result<bool, WalletConnectivityError> {
-        let conn = match self.try_dial_peer(peer_node_id.clone()).await? {
+        let conn = match self.try_dial_peer(peer_node_id.clone(), true).await? {
             Some(c) => c,
             None => {
                 warn!(target: LOG_TARGET, "Could not dial base node peer '{}'", peer_node_id);
@@ -413,14 +413,18 @@ impl WalletConnectivityService {
         Ok(true)
     }
 
-    async fn try_dial_peer(&mut self, peer: NodeId) -> Result<Option<PeerConnection>, WalletConnectivityError> {
+    async fn try_dial_peer(
+        &mut self,
+        peer: NodeId,
+        drop_old_connections: bool,
+    ) -> Result<Option<PeerConnection>, WalletConnectivityError> {
         tokio::select! {
             biased;
 
             _ = self.base_node_watch_receiver.changed() => {
                 Ok(None)
             }
-            result = self.connectivity.dial_peer(peer) => {
+            result = self.connectivity.dial_peer(peer, drop_old_connections) => {
                 Ok(Some(result?))
             }
         }

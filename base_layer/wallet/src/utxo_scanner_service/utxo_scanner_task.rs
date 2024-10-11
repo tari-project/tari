@@ -184,7 +184,7 @@ where
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
         );
-        match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
+        match self.resources.comms_connectivity.dial_peer(peer.clone(), true).await {
             Ok(conn) => Ok(conn),
             Err(e) => {
                 self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {

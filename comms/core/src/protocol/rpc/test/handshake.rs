@@ -47,8 +47,28 @@ async fn it_performs_the_handshake() {
     let mut handshake_client = Handshake::new(&mut client_framed);
 
     handshake_client.perform_client_handshake().await.unwrap();
-    let v = handshake_result.await.unwrap().unwrap();
+    let (v, drop_old_connections) = handshake_result.await.unwrap().unwrap();
     assert!(SUPPORTED_RPC_VERSIONS.contains(&v));
+    assert!(!drop_old_connections);
+}
+
+#[tokio::test]
+async fn it_performs_the_handshake_with_drop_old_connections() {
+    let (client, server) = MemorySocket::new_pair();
+
+    let handshake_result = task::spawn(async move {
+        let mut server_framed = framing::canonical(server, 1024);
+        let mut handshake_server = Handshake::new(&mut server_framed);
+        handshake_server.perform_server_handshake().await
+    });
+
+    let mut client_framed = framing::canonical(client, 1024);
+    let mut handshake_client = Handshake::new(&mut client_framed).with_drop_old_connections(true);
+
+    handshake_client.perform_client_handshake().await.unwrap();
+    let (v, drop_old_connections) = handshake_result.await.unwrap().unwrap();
+    assert!(SUPPORTED_RPC_VERSIONS.contains(&v));
+    assert!(drop_old_connections);
 }
 
 #[tokio::test]

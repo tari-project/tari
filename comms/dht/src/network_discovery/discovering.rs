@@ -298,7 +298,7 @@ impl Discovering {
             .map(|peer| {
                 let connectivity = self.context.connectivity.clone();
                 let peer = peer.clone();
-                async move { connectivity.dial_peer(peer).await }
+                async move { connectivity.dial_peer(peer, false).await }
             })
             .collect::<FuturesUnordered<_>>();
 

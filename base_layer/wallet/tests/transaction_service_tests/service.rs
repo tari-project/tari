@@ -588,7 +588,7 @@ async fn manage_single_transaction() {
 
     let _peer_connection = bob_comms
         .connectivity()
-        .dial_peer(alice_node_identity.node_id().clone())
+        .dial_peer(alice_node_identity.node_id().clone(), false)
         .await
         .unwrap();
 
@@ -753,7 +753,7 @@ async fn large_interactive_transaction() {
     // Verify that Alice and Bob are connected
     let _peer_connection = bob_comms
         .connectivity()
-        .dial_peer(alice_node_identity.node_id().clone())
+        .dial_peer(alice_node_identity.node_id().clone(), false)
         .await
         .unwrap();
 
@@ -2172,7 +2172,7 @@ async fn manage_multiple_transactions() {
 
     let _peer_connection = bob_comms
         .connectivity()
-        .dial_peer(alice_node_identity.node_id().clone())
+        .dial_peer(alice_node_identity.node_id().clone(), false)
         .await
         .unwrap();
     sleep(Duration::from_secs(3)).await;
@@ -2180,7 +2180,7 @@ async fn manage_multiple_transactions() {
     // Connect alice to carol
     let _peer_connection = alice_comms
         .connectivity()
-        .dial_peer(carol_node_identity.node_id().clone())
+        .dial_peer(carol_node_identity.node_id().clone(), false)
         .await
         .unwrap();
 

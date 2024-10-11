@@ -166,7 +166,7 @@ async fn peer_to_peer_custom_protocols() {
     let mut conn_man_events2 = comms_node2.subscribe_connection_manager_events();
 
     let mut conn1 = conn_man_requester1
-        .dial_peer(node_identity2.node_id().clone())
+        .dial_peer(node_identity2.node_id().clone(), false)
         .await
         .unwrap();
 
@@ -347,7 +347,7 @@ async fn peer_to_peer_messaging_simultaneous() {
 
     comms_node1
         .connectivity()
-        .dial_peer(comms_node2.node_identity().node_id().clone())
+        .dial_peer(comms_node2.node_identity().node_id().clone(), false)
         .await
         .unwrap();
     // Simultaneously send messages between the two nodes

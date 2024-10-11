@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use log::trace;
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection};
@@ -29,6 +30,7 @@ use crate::{
     connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
     peer_manager::NodeId,
 };
+const LOG_TARGET: &str = "comms::connectivity::manager::requester";
 
 /// Requests which are handled by the ConnectionManagerService
 #[derive(Debug)]
@@ -37,6 +39,7 @@ pub enum ConnectionManagerRequest {
     DialPeer {
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        drop_old_connections: bool,
     },
     /// Cancels a pending dial if one exists
     CancelDial(NodeId),
@@ -77,7 +80,7 @@ impl ConnectionManagerRequester {
     /// Attempt to connect to a remote peer
     pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.send_dial_peer(node_id, Some(reply_tx)).await?;
+        self.send_dial_peer(node_id, Some(reply_tx), false).await?;
         reply_rx
             .await
             .map_err(|_| ConnectionManagerError::ActorRequestCanceled)?
@@ -97,9 +100,18 @@ impl ConnectionManagerRequester {
         &mut self,
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        drop_old_connections: bool,
     ) -> Result<(), ConnectionManagerError> {
+        trace!(
+            target: LOG_TARGET, "send_dial_peer: peer: {}, drop_old_connections: {}",
+            node_id.short_str(), drop_old_connections
+        );
         self.sender
-            .send(ConnectionManagerRequest::DialPeer { node_id, reply_tx })
+            .send(ConnectionManagerRequest::DialPeer {
+                node_id,
+                reply_tx,
+                drop_old_connections,
+            })
             .await
             .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         Ok(())

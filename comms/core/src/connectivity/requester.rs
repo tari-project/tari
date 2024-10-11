@@ -90,6 +90,7 @@ pub enum ConnectivityRequest {
     DialPeer {
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        drop_old_connections: bool,
     },
     GetConnectivityStatus(oneshot::Sender<ConnectivityStatus>),
     SelectConnections(
@@ -132,7 +133,11 @@ impl ConnectivityRequester {
     }
 
     /// Dial a single peer
-    pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
+    pub async fn dial_peer(
+        &self,
+        peer: NodeId,
+        drop_old_connections: bool,
+    ) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();
@@ -140,6 +145,7 @@ impl ConnectivityRequester {
                 .send(ConnectivityRequest::DialPeer {
                     node_id: peer.clone(),
                     reply_tx: Some(reply_tx),
+                    drop_old_connections,
                 })
                 .await
                 .map_err(|_| ConnectivityError::ActorDisconnected)?;
@@ -168,7 +174,7 @@ impl ConnectivityRequester {
     ) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + '_ {
         peers
             .into_iter()
-            .map(|peer| self.dial_peer(peer))
+            .map(|peer| self.dial_peer(peer, false))
             .collect::<FuturesUnordered<_>>()
     }
 
@@ -178,6 +184,7 @@ impl ConnectivityRequester {
             self.sender.send(ConnectivityRequest::DialPeer {
                 node_id: peer,
                 reply_tx: None,
+                drop_old_connections: false,
             })
         }))
         .await

@@ -221,11 +221,17 @@ impl ConnectivityManagerActor {
             GetConnectivityStatus(reply) => {
                 let _ = reply.send(self.status);
             },
-            DialPeer { node_id, reply_tx } => {
+            DialPeer {
+                node_id,
+                reply_tx,
+                drop_old_connections,
+            } => {
                 let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "handle_dial_peer");
                 span.follows_from(tracing_id);
-                self.handle_dial_peer(node_id.clone(), reply_tx).instrument(span).await;
+                self.handle_dial_peer(node_id.clone(), reply_tx, drop_old_connections)
+                    .instrument(span)
+                    .await;
             },
             SelectConnections(selection, reply) => {
                 let _result = reply.send(self.select_connections(selection).await);
@@ -304,7 +310,12 @@ impl ConnectivityManagerActor {
         &mut self,
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        drop_old_connections: bool,
     ) {
+        trace!(
+            target: LOG_TARGET,"handle_dial_peer: peer: {}, drop_old_connections: {}",
+            node_id.short_str(), drop_old_connections
+        );
         match self.peer_manager.is_peer_banned(&node_id).await {
             Ok(true) => {
                 if let Some(reply) = reply_tx {
@@ -323,6 +334,7 @@ impl ConnectivityManagerActor {
         match self.pool.get(&node_id) {
             // The connection pool may temporarily contain a connection that is not connected so we need to check this.
             Some(state) if state.is_connected() => {
+                trace!(target: LOG_TARGET,"handle_dial_peer: {}, {:?}", node_id, state.status());
                 if let Some(reply_tx) = reply_tx {
                     let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
                 }
@@ -346,7 +358,11 @@ impl ConnectivityManagerActor {
                     },
                 }
 
-                if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
+                if let Err(err) = self
+                    .connection_manager
+                    .send_dial_peer(node_id, reply_tx, drop_old_connections)
+                    .await
+                {
                     error!(
                         target: LOG_TARGET,
                         "Failed to send dial request to connection manager: {:?}", err
