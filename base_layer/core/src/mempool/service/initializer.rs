@@ -25,7 +25,7 @@ use std::{convert::TryFrom, sync::Arc};
 use futures::{Stream, StreamExt};
 use log::*;
 use tari_network::NetworkHandle;
-use tari_p2p::{message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::{message::DomainMessage, proto::message::TariMessageType};
 use tari_service_framework::{
     async_trait,
     reply_channel,

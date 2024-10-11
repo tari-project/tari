@@ -4,8 +4,8 @@
 syntax = "proto3";
 
 import "base_node/chain_metadata.proto";
-import "types.proto";
-import "transaction.proto";
+import "common/types.proto";
+import "common/transaction.proto";
 
 package tari.base_node;
 
@@ -42,7 +42,7 @@ message TxQueryResponse {
 }
 
 message TxQueryBatchResponse {
-  tari.types.Signature signature = 1;
+  tari.common.Signature signature = 1;
   TxLocation location = 2;
   bytes best_block_hash = 3;
   uint64 confirmations = 4;
@@ -63,7 +63,7 @@ message FetchMatchingUtxos {
 }
 
 message FetchUtxosResponse {
-  repeated tari.types.TransactionOutput outputs = 1;
+  repeated tari.common.TransactionOutput outputs = 1;
   bool is_synced = 2;
 }
 
@@ -96,7 +96,7 @@ message UtxoQueryResponses {
 }
 
 message UtxoQueryResponse {
-  tari.types.TransactionOutput output = 1;
+  tari.common.TransactionOutput output = 1;
   uint64 mined_at_height = 2;
   bytes mined_in_block = 3;
   bytes output_hash = 4;

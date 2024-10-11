@@ -69,33 +69,9 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     let comms_config = P2pConfig {
         override_from: None,
         public_addresses: MultiaddrList::default(),
-        transport: TransportConfig {
-            transport_type: TransportType::Memory,
-            memory: MemoryTransportConfig {
-                listener_address: node_identity.first_public_address().unwrap(),
-            },
-            ..Default::default()
-        },
-        auxiliary_tcp_listener_address: None,
-        datastore_path: tempdir().unwrap().into_path(),
-        peer_database_name: random::string(8),
-        max_concurrent_inbound_tasks: 10,
-        max_concurrent_outbound_tasks: 10,
-        dht: DhtConfig {
-            discovery_request_timeout: Duration::from_secs(1),
-            auto_join: true,
-            saf: SafConfig {
-                auto_request: true,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: StringList::new(),
-        listener_liveness_max_sessions: 0,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
-        listener_self_liveness_check_interval: None,
+        ..Default::default()
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();

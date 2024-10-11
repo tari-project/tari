@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 #[cfg(feature = "auto-update")]
 pub mod auto_update;
 mod config;
@@ -27,7 +26,6 @@ pub mod initialization;
 pub mod message;
 pub mod peer_seeds;
 pub mod proto;
-pub mod tari_message;
 
 pub mod connector;
 mod dns;

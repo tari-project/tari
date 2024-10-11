@@ -57,8 +57,6 @@ pub enum NetworkError {
     MessagingDisabled,
     #[error("Failed to add peer: {details}")]
     FailedToAddPeer { details: String },
-    #[error("Unsupported seed peer multiaddr '{address}'")]
-    UnsupportedSeedPeerMultiaddr { address: Multiaddr },
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {

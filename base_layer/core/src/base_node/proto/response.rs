@@ -83,7 +83,7 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks
                     .into_iter()
-                    .map(proto::core::HistoricalBlock::try_from)
+                    .map(proto::common::HistoricalBlock::try_from)
                     .collect::<Result<_, _>>()?;
 
                 Ok(ProtoNodeCommsResponse::HistoricalBlocks(

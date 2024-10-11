@@ -3,8 +3,8 @@
 
 syntax = "proto3";
 
-import "transaction.proto";
-import "block.proto";
+import "common/transaction.proto";
+import "common/block.proto";
 
 package tari.base_node;
 
@@ -19,7 +19,7 @@ message SyncBlocksRequest {
 // Response that contains the full body of a block
 message BlockBodyResponse {
   bytes hash = 1;
-  tari.types.AggregateBody body = 2;
+  tari.common.AggregateBody body = 2;
 }
 
 // Request message used to initiate a sync
@@ -44,7 +44,7 @@ message FindChainSplitRequest {
 message FindChainSplitResponse {
   // An ordered list of headers starting from next header after the matching
   // hash, up until `FindChainSplitRequest::count`
-  repeated tari.core.BlockHeader headers = 1;
+  repeated tari.common.BlockHeader headers = 1;
   // The index of the hash that matched from
   // `FindChainSplitRequest::block_hashes`. This value could also be used to
   // know how far back a split occurs.
@@ -66,7 +66,7 @@ message SyncUtxosRequest {
 message SyncUtxosResponse {
   oneof txo {
     // The unspent transaction output
-    tari.types.TransactionOutput output = 1;
+    tari.common.TransactionOutput output = 1;
     // If the TXO is spent, the commitment bytes are returned
     bytes commitment = 2;
   }
@@ -79,7 +79,7 @@ message SyncUtxosByBlockRequest {
 }
 
 message SyncUtxosByBlockResponse {
-  repeated tari.types.TransactionOutput outputs = 1;
+  repeated tari.common.TransactionOutput outputs = 1;
   uint64 height = 2;
   bytes header_hash = 3;
   uint64 mined_timestamp = 4;

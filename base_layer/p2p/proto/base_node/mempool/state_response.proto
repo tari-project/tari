@@ -3,14 +3,14 @@
 
 syntax = "proto3";
 
-import "transaction.proto";
-import "types.proto";
+import "common/transaction.proto";
+import "common/types.proto";
 
 package tari.mempool;
 
 message StateResponse{
-    // List of transactions in unconfirmed pool.
-    repeated tari.types.Transaction unconfirmed_pool = 1;
-    // List of transactions in reorg pool.
-    repeated tari.types.Signature reorg_pool = 4;
+  // List of transactions in unconfirmed pool.
+  repeated tari.common.Transaction unconfirmed_pool = 1;
+  // List of transactions in reorg pool.
+  repeated tari.common.Signature reorg_pool = 4;
 }

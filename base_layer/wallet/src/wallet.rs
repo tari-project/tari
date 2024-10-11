@@ -68,12 +68,14 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
+use tari_network::identity;
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
+    Dispatcher,
     PeerSeedsConfig,
     TransportType,
 };
@@ -113,8 +115,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
-/// The minimum buffer size for the wallet pubsub_connector channel
-const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 // Domain separator for signing arbitrary messages with a wallet secret key
 hash_domain!(
@@ -161,7 +161,7 @@ where
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
-        node_identity: Arc<NodeIdentity>,
+        node_identity: Arc<identity::Keypair>,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
@@ -176,9 +176,8 @@ where
         user_agent: String,
     ) -> Result<Self, WalletError> {
         let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
-        let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
-        let (publisher, subscription_factory) = pubsub_connector(buf_size);
-        let peer_message_subscription_factory = Arc::new(subscription_factory);
+
+        let dispatcher = Dispatcher::new();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
@@ -193,7 +192,6 @@ where
                 peer_seeds,
                 config.network,
                 node_identity.clone(),
-                publisher,
             ))
             .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
                 config.output_manager_service_config,
@@ -209,7 +207,7 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,
-                peer_message_subscription_factory.clone(),
+                dispatcher.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 config.network,
@@ -225,11 +223,11 @@ where
                     max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
                     ..Default::default()
                 },
-                peer_message_subscription_factory.clone(),
+                dispatcher.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(
                 contacts_backend,
-                peer_message_subscription_factory,
+                dispatcher.clone(),
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))

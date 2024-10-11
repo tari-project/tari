@@ -40,7 +40,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
         comms_interface::CommsInterfaceError,
@@ -69,10 +68,11 @@ use tari_core::{
     },
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_network::NetworkHandle;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
-use tonic::{Request, Response, Status};
+use tonic::{codegen::Bytes, Request, Response, Status};
 
 use crate::{
     builder::BaseNodeContext,
@@ -107,11 +107,11 @@ const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    network: NetworkConsensus,
+    network_consensus: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
     consensus_rules: ConsensusManager,
     software_updater: SoftwareUpdaterHandle,
-    comms: CommsNode,
+    network: NetworkHandle,
     liveness: LivenessHandle,
     report_grpc_error: bool,
     config: BaseNodeConfig,
@@ -122,11 +122,11 @@ impl BaseNodeGrpcServer {
         Self {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
-            network: ctx.network().into(),
+            network_consensus: ctx.network_consensus().into(),
             state_machine_handle: ctx.state_machine(),
             consensus_rules: ctx.consensus_rules().clone(),
             software_updater: ctx.software_updater(),
-            comms: ctx.network_handle().clone(),
+            network: ctx.network().clone(),
             liveness: ctx.liveness(),
             report_grpc_error: ctx.get_report_grpc_error(),
             config,
@@ -209,7 +209,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
-    type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetSideChainUtxosStream = mpsc::Receiver<Result<tari_rpc::GetSideChainUtxosResponse, Status>>;
     type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::GetTemplateRegistrationResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
@@ -1526,39 +1525,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
-    async fn get_peers(
-        &self,
-        _request: Request<tari_rpc::GetPeersRequest>,
-    ) -> Result<Response<Self::GetPeersStream>, Status> {
-        self.check_method_enabled(GrpcMethod::GetPeers)?;
-        let report_error_flag = self.report_error_flag();
-        trace!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
-
-        let peers = self
-            .comms
-            .peer_manager()
-            .all()
-            .await
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-        let peers: Vec<tari_rpc::Peer> = peers.into_iter().map(|p| p.into()).collect();
-        let (mut tx, rx) = mpsc::channel(peers.len());
-        task::spawn(async move {
-            for peer in peers {
-                let response = tari_rpc::GetPeersResponse { peer: Some(peer) };
-                if tx.send(Ok(response)).await.is_err() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "[get_peers] Request was cancelled while sending a response"
-                    );
-                    return;
-                }
-            }
-        });
-
-        trace!(target: LOG_TARGET, "Sending peers response to client");
-        Ok(Response::new(rx))
-    }
-
     async fn get_blocks(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
@@ -1898,7 +1864,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let block_height = request.into_inner().block_height;
 
-        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+        let consensus_manager = ConsensusManager::builder(self.network_consensus.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -1977,7 +1943,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+        let consensus_manager = ConsensusManager::builder(self.network_consensus.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -2152,11 +2118,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn identify(&self, _: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
         self.check_method_enabled(GrpcMethod::Identify)?;
-        let identity = self.comms.node_identity_ref();
+        let identity = self
+            .network
+            .get_local_peer_info()
+            .await
+            .map_err(|e| obscure_error_if_true(self.report_error_flag(), Status::internal(e.to_string())))?;
         Ok(Response::new(tari_rpc::NodeIdentity {
-            public_key: identity.public_key().to_vec(),
-            public_addresses: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
-            node_id: identity.node_id().to_vec(),
+            public_key: identity.public_key.encode_protobuf(),
+            public_addresses: identity.listen_addrs.iter().map(|a| a.to_string()).collect(),
+            node_id: identity.peer_id.to_bytes(),
         }))
     }
 
@@ -2166,12 +2136,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
         self.check_method_enabled(GrpcMethod::GetNetworkStatus)?;
         let report_error_flag = self.report_error_flag();
-        let status = self
-            .comms
-            .connectivity()
-            .get_connectivity_status()
+        let conns = self
+            .network
+            .get_active_connections()
             .await
             .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
+
+        let status = match conns.len() {
+            x if x == 0 => tari_rpc::ConnectivityStatus::Offline,
+            _ => tari_rpc::ConnectivityStatus::Online,
+        };
 
         let latency = self
             .liveness
@@ -2181,11 +2155,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
         let resp = tari_rpc::NetworkStatusResponse {
-            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            status: status as i32,
             avg_latency_ms: latency
                 .map(|l| u32::try_from(l.as_millis()).unwrap_or(u32::MAX))
                 .unwrap_or(0),
-            num_node_connections: u32::try_from(status.num_connected_nodes()).map_err(|e| {
+            num_node_connections: u32::try_from(conns.len()).map_err(|e| {
                 obscure_error_if_true(
                     report_error_flag,
                     Status::internal(format!("Error converting usize to u32 '{}'", e)),
@@ -2202,31 +2176,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
         self.check_method_enabled(GrpcMethod::ListConnectedPeers)?;
         let report_error_flag = self.report_error_flag();
-        let mut connectivity = self.comms.connectivity();
-        let peer_manager = self.comms.peer_manager();
-        let connected_peers = connectivity
+        let connected_peers = self
+            .network
             .get_active_connections()
             .await
             .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
-        let mut peers = Vec::with_capacity(connected_peers.len());
-        for peer in connected_peers {
-            peers.push(
-                peer_manager
-                    .find_by_node_id(peer.peer_node_id())
-                    .await
-                    .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?
-                    .ok_or_else(|| {
-                        obscure_error_if_true(
-                            report_error_flag,
-                            Status::not_found(format!("Peer {} not found", peer.peer_node_id())),
-                        )
-                    })?,
-            );
-        }
-
         let resp = tari_rpc::ListConnectedPeersResponse {
-            connected_peers: peers.into_iter().map(Into::into).collect(),
+            connected_peers: connected_peers.into_iter().map(Into::into).collect(),
         };
 
         Ok(Response::new(resp))

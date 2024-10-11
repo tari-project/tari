@@ -23,8 +23,9 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_comms::PeerConnection;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
+use tari_network::Connection;
+use tonic::codegen::http::header::USER_AGENT;
 
 use super::{CommandContext, HandleCommand};
 use crate::{table::Table, utils::format_duration_basic};
@@ -41,7 +42,7 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    async fn list_connections_print_table(&mut self, conns: &[PeerConnection]) {
+    async fn list_connections_print_table(&mut self, conns: &[Connection]) {
         let num_connections = conns.len();
         let mut table = Table::new();
         table.set_titles(vec![
@@ -53,44 +54,33 @@ impl CommandContext {
             "User Agent",
             "Info",
         ]);
-        let peer_manager = self.network.peer_manager();
-        for conn in conns {
-            let peer = peer_manager
-                .find_by_node_id(conn.peer_node_id())
-                .await
-                .expect("Unexpected peer database error")
-                .expect("Peer not found");
 
-            let chain_height = peer
-                .get_metadata(1)
-                .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
+        for conn in conns {
+            let chain_height = self
+                .state_machine
+                .get_metadata(conn.peer_id())
+                .await
                 .map(|metadata| format!("height: {}", metadata.metadata.best_block_height()));
 
-            let ua = peer.user_agent;
+            let ua = conn.user_agent.as_ref();
             let rpc_sessions = self
                 .rpc_server
-                .get_num_active_sessions_for(peer.node_id.clone())
+                .get_num_active_sessions_for(conn.peer_id)
                 .await
                 .unwrap_or(0);
             table.add_row(row![
-                peer.node_id,
-                peer.public_key,
+                conn.peer_id,
+                conn.public_key
+                    .as_ref()
+                    .and_then(|pk| pk.clone().try_into_sr25519().ok())
+                    .map_or_else(|| "<unknown>".to_string(), |pk| pk.inner_key().to_string()),
                 conn.address(),
                 conn.direction(),
                 format_duration_basic(conn.age()),
-                {
-                    if ua.is_empty() {
-                        "<unknown>"
-                    } else {
-                        ua.as_ref()
-                    }
-                },
+                ua.map_or("<unknown>", |ua| ua.as_str()),
                 format!(
-                    "{}hnd: {}, ss: {}, rpc: {}",
+                    "{}, rpc: {}",
                     chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),
-                    // Exclude the handle held by list-connections
-                    conn.handle_count().saturating_sub(1),
-                    conn.substream_count(),
                     rpc_sessions
                 ),
             ]);
@@ -105,12 +95,10 @@ impl CommandContext {
 impl CommandContext {
     /// Function to process the list-connections command
     pub async fn list_connections(&mut self) -> Result<(), Error> {
-        let conns = self.network.connectivity().get_active_connections().await?;
-        let (mut nodes, mut clients) = conns
-            .into_iter()
-            .partition::<Vec<_>, _>(|a| a.peer_features().is_node());
-        nodes.sort_by(|a, b| a.peer_node_id().cmp(b.peer_node_id()));
-        clients.sort_by(|a, b| a.peer_node_id().cmp(b.peer_node_id()));
+        let conns = self.network.get_active_connections().await?;
+        let (mut nodes, mut clients) = conns.into_iter().partition::<Vec<_>, _>(|a| !a.is_wallet_user_agent());
+        nodes.sort_by(|a, b| a.peer_id().cmp(b.peer_id()));
+        clients.sort_by(|a, b| a.peer_id().cmp(b.peer_id()));
 
         println!();
         println!("Base Nodes");

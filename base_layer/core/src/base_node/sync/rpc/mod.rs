@@ -50,7 +50,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
 };
 
-#[tari_rpc(protocol_name = "t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
+#[tari_rpc(protocol_name = "/tari/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn sync_blocks(
@@ -62,13 +62,13 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
-    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus>;
+    ) -> Result<Streaming<proto::common::BlockHeader>, RpcStatus>;
 
     #[rpc(method = 3)]
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+    ) -> Result<Response<proto::common::BlockHeader>, RpcStatus>;
 
     #[rpc(method = 4)]
     async fn find_chain_split(
@@ -86,7 +86,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
-    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>;
+    ) -> Result<Streaming<proto::common::TransactionKernel>, RpcStatus>;
 
     #[rpc(method = 8)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;

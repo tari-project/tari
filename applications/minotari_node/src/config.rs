@@ -34,12 +34,12 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
     chain_storage::BlockchainDatabaseConfig,
     mempool::MempoolConfig,
 };
+use tari_network::multiaddr::Multiaddr;
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 
@@ -146,10 +146,6 @@ pub struct BaseNodeConfig {
 
 impl Default for BaseNodeConfig {
     fn default() -> Self {
-        let p2p = P2pConfig {
-            datastore_path: PathBuf::from("peer_db/base_node"),
-            ..Default::default()
-        };
         Self {
             override_from: None,
             network: Network::default(),
@@ -163,7 +159,7 @@ impl Default for BaseNodeConfig {
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: true,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
-            p2p,
+            p2p: P2pConfig::default(),
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
             data_dir: PathBuf::from("data/base_node"),

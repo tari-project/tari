@@ -66,8 +66,8 @@ use tokio::sync::{broadcast, mpsc};
 use self::service::LivenessService;
 use crate::{
     message::TariNodeMessageSpec,
+    proto::message::TariMessageType,
     services::{dispatcher::Dispatcher, liveness::state::LivenessState},
-    tari_message::TariMessageType,
 };
 
 const LOG_TARGET: &str = "p2p::services::liveness";
@@ -75,12 +75,16 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
     config: Option<LivenessConfig>,
+    dispatcher: Dispatcher,
 }
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from the inbound message subscriber
-    pub fn new(config: LivenessConfig) -> Self {
-        Self { config: Some(config) }
+    pub fn new(config: LivenessConfig, dispatcher: Dispatcher) -> Self {
+        Self {
+            config: Some(config),
+            dispatcher,
+        }
     }
 }
 
@@ -95,6 +99,9 @@ impl ServiceInitializer for LivenessInitializer {
         // Register handle before waiting for handles to be ready
         context.register_handle(LivenessHandle::new(sender, publisher.clone()));
 
+        let (ping_tx, ping_rx) = mpsc::unbounded_channel();
+        self.dispatcher.register(TariMessageType::PingPong, ping_tx);
+
         // Saving a clone
         let config = self
             .config
@@ -103,10 +110,6 @@ impl ServiceInitializer for LivenessInitializer {
 
         // Spawn the Liveness service on the executor
         context.spawn_when_ready(|handles| async move {
-            let dispatcher = handles.expect_handle::<Dispatcher>();
-            let (ping_tx, ping_rx) = mpsc::unbounded_channel();
-            dispatcher.register(TariMessageType::PingPong, ping_tx);
-
             let network = handles.expect_handle::<NetworkHandle>();
             let outbound_messaging = handles.expect_handle::<OutboundMessaging<TariNodeMessageSpec>>();
 

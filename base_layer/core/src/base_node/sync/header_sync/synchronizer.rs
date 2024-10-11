@@ -32,7 +32,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_network::{identity::PeerId, NetworkHandle};
 use tari_p2p::proto::{
     base_node::{FindChainSplitRequest, SyncHeadersRequest},
-    core::BlockHeader as ProtoBlockHeader,
+    common::BlockHeader as ProtoBlockHeader,
 };
 use tari_rpc_framework::{RpcClient, RpcConnector, RpcError};
 use tari_utilities::hex::Hex;

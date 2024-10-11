@@ -32,15 +32,15 @@ use crate::proto;
 
 //---------------------------------- Commitment --------------------------------------------//
 
-impl TryFrom<proto::types::Commitment> for Commitment {
+impl TryFrom<proto::common::Commitment> for Commitment {
     type Error = ByteArrayError;
 
-    fn try_from(commitment: proto::types::Commitment) -> Result<Self, Self::Error> {
+    fn try_from(commitment: proto::common::Commitment) -> Result<Self, Self::Error> {
         Commitment::from_canonical_bytes(&commitment.data)
     }
 }
 
-impl From<Commitment> for proto::types::Commitment {
+impl From<Commitment> for proto::common::Commitment {
     fn from(commitment: Commitment) -> Self {
         Self {
             data: commitment.to_vec(),
@@ -49,10 +49,10 @@ impl From<Commitment> for proto::types::Commitment {
 }
 
 //---------------------------------- Signature --------------------------------------------//
-impl TryFrom<proto::types::Signature> for Signature {
+impl TryFrom<proto::common::Signature> for Signature {
     type Error = String;
 
-    fn try_from(sig: proto::types::Signature) -> Result<Self, Self::Error> {
+    fn try_from(sig: proto::common::Signature) -> Result<Self, Self::Error> {
         let public_nonce = PublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
         let signature = PrivateKey::from_canonical_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
@@ -60,7 +60,7 @@ impl TryFrom<proto::types::Signature> for Signature {
     }
 }
 
-impl<T: Borrow<Signature>> From<T> for proto::types::Signature {
+impl<T: Borrow<Signature>> From<T> for proto::common::Signature {
     fn from(sig: T) -> Self {
         Self {
             public_nonce: sig.borrow().get_public_nonce().to_vec(),
@@ -71,10 +71,10 @@ impl<T: Borrow<Signature>> From<T> for proto::types::Signature {
 
 //---------------------------------- ComAndPubSignature --------------------------------------//
 
-impl TryFrom<proto::types::ComAndPubSignature> for ComAndPubSignature {
+impl TryFrom<proto::common::ComAndPubSignature> for ComAndPubSignature {
     type Error = ByteArrayError;
 
-    fn try_from(sig: proto::types::ComAndPubSignature) -> Result<Self, Self::Error> {
+    fn try_from(sig: proto::common::ComAndPubSignature) -> Result<Self, Self::Error> {
         let ephemeral_commitment = Commitment::from_canonical_bytes(&sig.ephemeral_commitment)?;
         let ephemeral_pubkey = PublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)?;
         let u_a = PrivateKey::from_canonical_bytes(&sig.u_a)?;
@@ -85,7 +85,7 @@ impl TryFrom<proto::types::ComAndPubSignature> for ComAndPubSignature {
     }
 }
 
-impl From<ComAndPubSignature> for proto::types::ComAndPubSignature {
+impl From<ComAndPubSignature> for proto::common::ComAndPubSignature {
     fn from(sig: ComAndPubSignature) -> Self {
         Self {
             ephemeral_commitment: sig.ephemeral_commitment().to_vec(),
@@ -99,10 +99,10 @@ impl From<ComAndPubSignature> for proto::types::ComAndPubSignature {
 
 //---------------------------------- HashOutput --------------------------------------------//
 
-impl TryFrom<proto::types::HashOutput> for HashOutput {
+impl TryFrom<proto::common::HashOutput> for HashOutput {
     type Error = String;
 
-    fn try_from(output: proto::types::HashOutput) -> Result<Self, Self::Error> {
+    fn try_from(output: proto::common::HashOutput) -> Result<Self, Self::Error> {
         output
             .data
             .try_into()
@@ -110,7 +110,7 @@ impl TryFrom<proto::types::HashOutput> for HashOutput {
     }
 }
 
-impl From<HashOutput> for proto::types::HashOutput {
+impl From<HashOutput> for proto::common::HashOutput {
     fn from(output: HashOutput) -> Self {
         Self { data: output.to_vec() }
     }
@@ -118,15 +118,15 @@ impl From<HashOutput> for proto::types::HashOutput {
 
 //--------------------------------- PrivateKey -----------------------------------------//
 
-impl TryFrom<proto::types::PrivateKey> for PrivateKey {
+impl TryFrom<proto::common::PrivateKey> for PrivateKey {
     type Error = ByteArrayError;
 
-    fn try_from(offset: proto::types::PrivateKey) -> Result<Self, Self::Error> {
+    fn try_from(offset: proto::common::PrivateKey) -> Result<Self, Self::Error> {
         PrivateKey::from_canonical_bytes(&offset.data)
     }
 }
 
-impl From<PrivateKey> for proto::types::PrivateKey {
+impl From<PrivateKey> for proto::common::PrivateKey {
     fn from(offset: PrivateKey) -> Self {
         Self { data: offset.to_vec() }
     }

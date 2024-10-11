@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
-package tari.contacts.chat;
+package tari.chat;
 
 message Message {
   bytes body = 1;
@@ -29,9 +29,9 @@ message Confirmation {
 }
 
 message MessageDispatch {
-    oneof contents {
-      Message message = 1;
-      Confirmation delivery_confirmation = 2;
-      Confirmation read_confirmation = 3;
-    }
+  oneof contents {
+    Message message = 1;
+    Confirmation delivery_confirmation = 2;
+    Confirmation read_confirmation = 3;
+  }
 }

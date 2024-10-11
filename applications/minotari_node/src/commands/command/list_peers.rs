@@ -45,6 +45,7 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     pub async fn list_peers(&self, _filter: Option<String>) -> Result<(), Error> {
         println!("Not supported");
+        Ok(())
         // let mut query = PeerQuery::new();
         // if let Some(f) = filter {
         //     let filter = f.to_lowercase();

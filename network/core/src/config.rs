@@ -20,16 +20,22 @@ pub struct Config {
     pub known_local_public_address: Vec<Multiaddr>,
 }
 
+impl Config {
+    pub fn default_listen_addrs() -> Vec<Multiaddr> {
+        vec![multiaddr![Ip4(Ipv4Addr::new(0, 0, 0, 0)), Tcp(0u16)], multiaddr![
+            Ip4(Ipv4Addr::new(0, 0, 0, 0)),
+            Udp(0u16),
+            QuicV1
+        ]]
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             swarm: tari_swarm::Config::default(),
             // Listen on /ip4/0.0.0.0 for TCP (os-assigned port) and UDP quic
-            listener_addrs: vec![multiaddr![Ip4(Ipv4Addr::new(0, 0, 0, 0)), Tcp(0u16)], multiaddr![
-                Ip4(Ipv4Addr::new(0, 0, 0, 0)),
-                Udp(0u16),
-                QuicV1
-            ]],
+            listener_addrs: Self::default_listen_addrs(),
             reachability_mode: ReachabilityMode::default(),
             announce: true,
             check_connections_interval: Duration::from_secs(2 * 60 * 60),

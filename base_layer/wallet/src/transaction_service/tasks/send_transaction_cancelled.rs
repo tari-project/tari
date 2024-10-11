@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::transaction::TxId;
 use tari_network::{identity::PeerId, OutboundMessager, OutboundMessaging};
-use tari_p2p::{message::TariNodeMessageSpec, proto::transaction as proto};
+use tari_p2p::{message::TariNodeMessageSpec, proto::transaction_protocol as proto};
 
 use crate::transaction_service::error::TransactionServiceError;
 

@@ -40,7 +40,8 @@ use super::{
     LOG_TARGET,
 };
 use crate::{
-    message::{DomainMessage, TariNodeMessage, TariNodeMessageSpec},
+    message::{DomainMessage, TariNodeMessageSpec},
+    proto::message::TariMessage,
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
 };
 
@@ -48,7 +49,7 @@ use crate::{
 pub struct LivenessService<THandleStream> {
     config: LivenessConfig,
     request_rx: Option<THandleStream>,
-    ping_stream: Option<mpsc::UnboundedReceiver<DomainMessage<TariNodeMessage>>>,
+    ping_stream: Option<mpsc::UnboundedReceiver<DomainMessage<TariMessage>>>,
     state: LivenessState,
     network: NetworkHandle,
     outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
@@ -63,7 +64,7 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
     pub fn new(
         config: LivenessConfig,
         request_rx: TRequestStream,
-        ping_stream: mpsc::UnboundedReceiver<DomainMessage<TariNodeMessage>>,
+        ping_stream: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
         state: LivenessState,
         network: NetworkHandle,
         outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
@@ -135,7 +136,7 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
         }
     }
 
-    async fn handle_incoming_message(&mut self, msg: DomainMessage<TariNodeMessage>) -> Result<(), LivenessError> {
+    async fn handle_incoming_message(&mut self, msg: DomainMessage<TariMessage>) -> Result<(), LivenessError> {
         let DomainMessage::<_> {
             source_peer_id,
             header,

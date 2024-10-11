@@ -22,27 +22,25 @@
 
 #[allow(clippy::all, clippy::pedantic)]
 pub mod liveness {
-    include!(concat!(env!("OUT_DIR"), "/tari.p2p.liveness.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tari.liveness.rs"));
 }
 
 #[allow(clippy::all, clippy::pedantic)]
 pub mod chat {
-    include!(concat!(env!("OUT_DIR"), "/tari.contacts.chat.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tari.chat.rs"));
+}
+
+pub mod message {
+    include!(concat!(env!("OUT_DIR"), "/tari.message.rs"));
 }
 
 #[allow(clippy::all, clippy::pedantic)]
-pub mod core {
-    include!(concat!(env!("OUT_DIR"), "/tari.p2p.message_type.rs"));
-    include!(concat!(env!("OUT_DIR"), "/tari.core.rs"));
+pub mod common {
+    include!(concat!(env!("OUT_DIR"), "/tari.common.rs"));
 }
 
 #[allow(clippy::all, clippy::pedantic)]
-pub mod types {
-    include!(concat!(env!("OUT_DIR"), "/tari.types.rs"));
-}
-
-#[allow(clippy::all, clippy::pedantic)]
-pub mod transaction {
+pub mod transaction_protocol {
     include!(concat!(env!("OUT_DIR"), "/tari.transaction_protocol.rs"));
 }
 

@@ -23,7 +23,10 @@
 use std::{convert::TryInto, time::Instant};
 
 use log::*;
-use tari_p2p::proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse};
+use tari_p2p::{
+    proto,
+    proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
+};
 use tari_rpc_framework::{RpcStatus, RpcStatusResultExt};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
@@ -32,7 +35,6 @@ use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
 };
-use tari_p2p::proto;
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";
 
@@ -41,8 +43,7 @@ pub(crate) struct SyncUtxosByBlockTask<B> {
 }
 
 impl<B> SyncUtxosByBlockTask<B>
-where
-    B: BlockchainBackend + 'static,
+where B: BlockchainBackend + 'static
 {
     pub(crate) fn new(db: AsyncBlockchainDb<B>) -> Self {
         Self { db }
@@ -131,7 +132,7 @@ where
             let outputs = outputs_with_statuses
                 .into_iter()
                 .map(|(output, _spent)| output.try_into())
-                .collect::<Result<Vec<proto::types::TransactionOutput>, String>>()
+                .collect::<Result<Vec<proto::common::TransactionOutput>, String>>()
                 .map_err(|err| RpcStatus::general(&err))?;
 
             debug!(

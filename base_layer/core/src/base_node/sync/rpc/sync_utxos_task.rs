@@ -197,7 +197,7 @@ where B: BlockchainBackend + 'static
                     continue;
                 }
                 if !spent {
-                    match proto::types::TransactionOutput::try_from(output.clone()) {
+                    match proto::common::TransactionOutput::try_from(output.clone()) {
                         Ok(tx_ouput) => {
                             trace!(
                                 target: LOG_TARGET,

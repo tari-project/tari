@@ -25,6 +25,7 @@ use std::{net::SocketAddr, str::FromStr};
 use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
+    conversions::multiaddr::multiaddr_to_socketaddr,
     tari_rpc::{
         base_node_client::BaseNodeClient,
         sha_p2_pool_client::ShaP2PoolClient,
@@ -38,7 +39,7 @@ use tari_common::configuration::{
     Network,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_network::multiaddr::Multiaddr;
 use thiserror::Error;
 use tonic::{codegen::InterceptedService, transport::Channel, Code};
 

@@ -41,6 +41,7 @@ use crate::{
     error::NetworkingHandleError,
     event::NetworkingEvent,
     peer::{Peer, PeerInfo},
+    BannedPeer,
     GossipPublisher,
     GossipSubscription,
     NetworkError,
@@ -118,12 +119,15 @@ pub enum NetworkingRequest {
         peer_id: PeerId,
         reply: Reply<bool>,
     },
+    GetBannedPeers {
+        reply: Reply<Vec<BannedPeer>>,
+    },
     // SetPeerMetadata {
-    //     peer_id: PeerId,
-    //     metadata_key: i32,
-    //     metadata_value: Vec<u8>,
-    //     reply: Reply<()>,
-    // },
+    //         peer_id: PeerId,
+    //         metadata_key: i32,
+    //         metadata_value: Vec<u8>,
+    //         reply: Reply<()>,
+    //     },
 }
 #[derive(Debug)]
 pub struct NetworkHandle {
@@ -335,6 +339,15 @@ impl NetworkHandle {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::IsPeerBanned { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn get_banned_peers(&self) -> Result<Vec<BannedPeer>, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::GetBannedPeers { reply: tx })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?

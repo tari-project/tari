@@ -1,6 +1,8 @@
 //   Copyright 2023 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
+use std::fmt::{Display, Formatter};
+
 use libp2p::{identity, PeerId, StreamProtocol};
 
 #[derive(Debug, Clone)]
@@ -29,5 +31,14 @@ impl ConnectionDirection {
 
     pub fn is_outbound(&self) -> bool {
         matches!(self, ConnectionDirection::Outbound)
+    }
+}
+
+impl Display for ConnectionDirection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionDirection::Inbound => write!(f, "Inbound"),
+            ConnectionDirection::Outbound => write!(f, "Outbound"),
+        }
     }
 }

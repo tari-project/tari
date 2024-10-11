@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::{FixedHash, PrivateKey};
-use tari_p2p::proto::core as proto;
+use tari_p2p::proto::common as proto;
 use tari_utilities::{epoch_time::EpochTime, ByteArray};
 
 use crate::{

@@ -38,13 +38,8 @@ use tari_comms::{
 };
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
 use tari_p2p::{
-    comms_connector::SubscriptionFactory,
     message::DomainMessage,
-    services::{
-        liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
-        utils::map_decode,
-    },
-    tari_message::TariMessageType,
+    services::liveness::{LivenessEvent, LivenessHandle, PingPongEvent},
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -152,7 +147,6 @@ where T: ContactsBackend + 'static
         liveness: LivenessHandle,
         connectivity: ConnectivityRequester,
         dht: Dht,
-        subscription_factory: Arc<SubscriptionFactory>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
         message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
         contacts_auto_ping_interval: Duration,

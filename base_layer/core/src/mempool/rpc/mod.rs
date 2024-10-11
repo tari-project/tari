@@ -23,8 +23,8 @@
 mod service;
 pub use service::MempoolRpcService;
 use tari_p2p::proto::{
+    common::{Signature, Transaction},
     mempool::{StateResponse, StatsResponse, TxStorage},
-    types::{Signature, Transaction},
 };
 use tari_rpc_framework::{Request, Response, RpcStatus};
 use tari_rpc_macros::tari_rpc;
@@ -33,7 +33,7 @@ use tari_rpc_macros::tari_rpc;
 // mod test;
 use crate::mempool::service::MempoolHandle;
 
-#[tari_rpc(protocol_name = "t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
+#[tari_rpc(protocol_name = "/tari/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
 pub trait MempoolService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;

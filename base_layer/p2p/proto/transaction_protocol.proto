@@ -3,11 +3,45 @@
 
 syntax = "proto3";
 
-import "transaction/transaction_metadata.proto";
-import "types.proto";
-import "transaction.proto";
+import "common/transaction.proto";
+import "common/types.proto";
 
 package tari.transaction_protocol;
+
+// This is the message containing the public data that the Receiver will send back to the Sender
+message RecipientSignedMessage {
+  uint64 tx_id = 1;
+  tari.common.TransactionOutput output = 2;
+  bytes public_spend_key = 3;
+  tari.common.Signature partial_signature = 4;
+  // The transaction metadata
+  TransactionMetadata metadata = 5;
+  // offset from recipient
+  bytes offset = 6;
+}
+
+message TransactionCancelledMessage {
+  // The transaction id for the cancelled transaction
+  uint64 tx_id = 1;
+}
+
+message TransactionFinalizedMessage {
+  // The transaction id for the recipient
+  uint64 tx_id = 1;
+  // The actual transaction;
+  tari.common.Transaction transaction = 2;
+}
+
+message TransactionMetadata {
+  // The absolute fee for the transaction
+  uint64 fee = 1;
+  // The earliest block this transaction can be mined
+  uint64 lock_height = 2;
+  // features of the kernel for this transaction
+  uint32 kernel_features = 3;
+  // optional burn commitment if present
+  tari.common.Commitment burned_commitment = 4;
+}
 
 message SingleRoundSenderData {
   // The transaction id for the recipient
@@ -29,7 +63,7 @@ message SingleRoundSenderData {
   // The sender's ephemeral public nonce
   bytes ephemeral_public_nonce = 9;
   // Output features
-  tari.types.OutputFeatures features = 10;
+  tari.common.OutputFeatures features = 10;
   // Covenant
   bytes covenant = 11;
   // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)

@@ -8,8 +8,8 @@ version = "1.6.0-pre.0"
 edition = "2021"
 
 [dependencies]
+tari_network = { workspace = true }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
 tari_crypto = { version = "0.20.3" }
 tari_script = { path = "../../infrastructure/tari_script" }

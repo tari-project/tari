@@ -3,10 +3,10 @@
 
 syntax = "proto3";
 
-import "types.proto";
-import "sidechain_feature.proto";
+import "common/types.proto";
+import "common/sidechain_feature.proto";
 
-package tari.types;
+package tari.common;
 
 // The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 // why it is necessary, refer to the

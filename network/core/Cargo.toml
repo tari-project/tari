@@ -20,3 +20,4 @@ thiserror = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["default", "macros", "sync"] }
 prost = { workspace = true }
+humantime = { workspace = true }

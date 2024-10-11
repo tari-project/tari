@@ -33,7 +33,7 @@ use futures::future;
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
-use tari_p2p::{comms_connector::SubscriptionFactory, services::liveness::LivenessHandle};
+use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{
     async_trait,
     reply_channel,

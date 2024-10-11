@@ -91,6 +91,7 @@ where B: BlockchainBackend + 'static
             status_event_receiver,
             context.get_shutdown_signal(),
         );
+        let peer_metadata = handle.peer_metadata_store();
         context.register_handle(handle);
 
         let factories = self.factories.clone();
@@ -122,6 +123,7 @@ where B: BlockchainBackend + 'static
                 state_event_publisher,
                 randomx_factory,
                 rules,
+                peer_metadata,
                 handles.get_shutdown_signal(),
             );
 

@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, str::FromStr, time::Instant};
+use std::{
+    ops::Deref,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::future;
 use log::*;
@@ -47,6 +52,7 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     connector::InboundMessaging,
+    message::TariNodeMessageSpec,
     peer_seeds::{DnsSeedResolver, SeedPeer},
 };
 
@@ -122,7 +128,7 @@ where
 }
 
 pub fn spawn_network<TMsg: MessageSpec>(
-    identity: identity::Keypair,
+    identity: Arc<identity::Keypair>,
     seed_peers: Vec<SeedPeer>,
     config: tari_network::Config,
     shutdown_signal: ShutdownSignal,
@@ -142,7 +148,7 @@ where
     let (tx_messages, rx_messages) = mpsc::unbounded_channel();
 
     let (network, outbound_messaging, join_handle) = tari_network::spawn(
-        identity,
+        identity.deref().clone(),
         MessagingMode::Enabled { tx_messages },
         config,
         seed_peers.into_iter().map(Into::into).collect(),
@@ -174,26 +180,21 @@ pub async fn add_seed_peers(
     Ok(())
 }
 
-pub struct P2pInitializer<TMsg> {
+pub struct P2pInitializer {
     config: P2pConfig,
     user_agent: String,
     seed_config: PeerSeedsConfig,
     network: Network,
-    identity: identity::Keypair,
-    _mgs_spec: PhantomData<TMsg>,
+    identity: Arc<identity::Keypair>,
 }
 
-impl<TMsg> P2pInitializer<TMsg>
-where
-    TMsg: MessageSpec + 'static,
-    TMsg::Message: prost::Message + Default + Clone + 'static,
-{
+impl P2pInitializer {
     pub fn new(
         config: P2pConfig,
         user_agent: String,
         seed_config: PeerSeedsConfig,
         network: Network,
-        identity: identity::Keypair,
+        identity: Arc<identity::Keypair>,
     ) -> Self {
         Self {
             config,
@@ -201,7 +202,6 @@ where
             seed_config,
             network,
             identity,
-            _mgs_spec: PhantomData,
         }
     }
 
@@ -278,11 +278,7 @@ where
 }
 
 #[async_trait]
-impl<TMsg> ServiceInitializer for P2pInitializer<TMsg>
-where
-    TMsg: MessageSpec + Send + Sync + 'static,
-    TMsg::Message: prost::Message + Default + Clone + Send + Sync + 'static,
-{
+impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         debug!(target: LOG_TARGET, "Initializing P2P");
         let seed_peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
@@ -294,6 +290,11 @@ where
                 Vec::new()
             });
 
+        let mut listener_addrs = self.config.listen_addresses.clone();
+        if listener_addrs.is_empty() {
+            listener_addrs = tari_network::Config::default_listen_addrs();
+        }
+
         let config = tari_network::Config {
             swarm: SwarmConfig {
                 protocol_version: format!("/minotari/{}/1.0.0", self.network.as_key_str()).parse()?,
@@ -302,15 +303,15 @@ where
                 enable_relay: self.config.enable_relay,
                 ..Default::default()
             },
-            listener_addrs: self.config.listen_addresses.clone(),
+            listener_addrs,
             reachability_mode: self.config.reachability_mode,
             announce: true,
-            check_connections_interval: Default::default(),
+            check_connections_interval: Duration::from_secs(2 * 60 * 60),
             known_local_public_address: self.config.public_addresses.to_vec(),
         };
 
         let shutdown = context.get_shutdown_signal();
-        let (network, outbound_messaging, inbound_messaging, _join_handle) = spawn_network::<TMsg>(
+        let (network, outbound_messaging, inbound_messaging, _join_handle) = spawn_network::<TariNodeMessageSpec>(
             self.identity.clone(),
             seed_peers.into_iter().chain(dns_peers).collect(),
             config,

@@ -264,9 +264,7 @@ impl AverageLatency {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_network::{identity, test_utils::random_peer_id};
+    use tari_network::test_utils::random_peer_id;
 
     use super::*;
 

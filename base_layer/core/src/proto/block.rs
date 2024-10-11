@@ -27,7 +27,7 @@ use std::{
 
 use primitive_types::U256;
 use tari_common_types::types::PrivateKey;
-use tari_p2p::proto::core as proto;
+use tari_p2p::proto::common as proto;
 use tari_utilities::ByteArray;
 
 use crate::{

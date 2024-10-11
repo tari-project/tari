@@ -25,7 +25,7 @@ use std::{sync::Arc, time::Duration};
 use futures::future;
 use log::*;
 use tari_network::NetworkHandle;
-use tari_p2p::{tari_message::TariMessageType, Dispatcher};
+use tari_p2p::{message::TariMessageType, Dispatcher};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -59,6 +59,7 @@ pub struct BaseNodeServiceInitializer<T> {
     service_request_timeout: Duration,
     randomx_factory: RandomXFactory,
     base_node_config: BaseNodeStateMachineConfig,
+    dispatcher: Dispatcher,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
@@ -72,6 +73,7 @@ where T: BlockchainBackend
         service_request_timeout: Duration,
         randomx_factory: RandomXFactory,
         base_node_config: BaseNodeStateMachineConfig,
+        dispatcher: Dispatcher,
     ) -> Self {
         Self {
             blockchain_db,
@@ -80,6 +82,7 @@ where T: BlockchainBackend
             service_request_timeout,
             randomx_factory,
             base_node_config,
+            dispatcher,
         }
     }
 }
@@ -103,6 +106,12 @@ where T: BlockchainBackend + 'static
 
         context.register_handle(local_nci);
 
+        let (inbound_msgs_tx, inbound_msgs_rx) = mpsc::unbounded_channel();
+        self.dispatcher
+            .register(TariMessageType::BaseNodeRequest, inbound_msgs_tx.clone());
+        self.dispatcher
+            .register(TariMessageType::BaseNodeResponse, inbound_msgs_tx);
+
         let service_request_timeout = self.service_request_timeout;
         let blockchain_db = self.blockchain_db.clone();
         let mempool = self.mempool.clone();
@@ -119,12 +128,6 @@ where T: BlockchainBackend + 'static
                     return;
                 },
             };
-
-            let dispatcher = handles.expect_handle::<Dispatcher>();
-            let (inbound_msgs_tx, inbound_msgs_rx) = mpsc::unbounded_channel();
-            dispatcher.register(TariMessageType::BaseNodeRequest, inbound_msgs_tx.clone());
-            dispatcher.register(TariMessageType::BaseNodeResponse, inbound_msgs_tx);
-
 
             let state_machine = handles.expect_handle();
             let outbound_messaging = handles.expect_handle();

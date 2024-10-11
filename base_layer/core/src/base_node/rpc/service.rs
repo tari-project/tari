@@ -51,7 +51,7 @@ use tari_p2p::{
             UtxoQueryResponse,
             UtxoQueryResponses,
         },
-        types::{Signature as SignatureProto, Transaction as TransactionProto},
+        common::{Signature as SignatureProto, Transaction as TransactionProto},
     },
 };
 use tari_rpc_framework::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
@@ -549,7 +549,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }))
     }
 
-    async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+    async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::common::BlockHeader>, RpcStatus> {
         let height = request.into_message();
         let header = self
             .db()
@@ -564,7 +564,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+    ) -> Result<Response<proto::common::BlockHeader>, RpcStatus> {
         let height = request.into_message();
         let header = self
             .db()

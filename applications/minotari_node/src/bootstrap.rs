@@ -59,7 +59,10 @@ use tari_p2p::{
     initialization::P2pInitializer,
     message::TariNodeMessageSpec,
     peer_seeds::SeedPeer,
-    services::liveness::{config::LivenessConfig, LivenessInitializer},
+    services::{
+        dispatcher,
+        liveness::{config::LivenessConfig, LivenessInitializer},
+    },
     Dispatcher,
     P2pConfig,
 };
@@ -76,7 +79,7 @@ const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 
 pub struct BaseNodeBootstrapper<'a, B> {
     pub app_config: &'a ApplicationConfig,
-    pub node_identity: identity::Keypair,
+    pub node_identity: Arc<identity::Keypair>,
     pub db: BlockchainDatabase<B>,
     pub mempool: Mempool,
     pub rules: ConsensusManager,
@@ -108,10 +111,9 @@ where B: BlockchainBackend + 'static
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
+        let dispatcher = Dispatcher::new();
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
         let mut handles = StackBuilder::new(self.interrupt_signal)
-            // Register the dispatcher so that services can use it to listen for their respective messages
-            .add_initializer(RegisterHandle::new(Dispatcher::new()))
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
                 user_agent,
@@ -133,19 +135,17 @@ where B: BlockchainBackend + 'static
                 base_node_config.messaging_request_timeout,
                 self.randomx_factory.clone(),
                 base_node_config.state_machine.clone(),
+                dispatcher.clone(),
             ))
-            .add_initializer(MempoolServiceInitializer::new(
-                self.mempool.clone(),
-            ))
-            .add_initializer(
-                MempoolSyncInitializer::new(mempool_config, self.mempool.clone())
-            )
+            .add_initializer(MempoolServiceInitializer::new(self.mempool.clone()))
+            .add_initializer(MempoolSyncInitializer::new(mempool_config, self.mempool.clone()))
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(base_node_config.metadata_auto_ping_interval),
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
+                dispatcher.clone(),
             ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
@@ -161,7 +161,6 @@ where B: BlockchainBackend + 'static
 
         let network = handles.expect_handle::<NetworkHandle>();
 
-        let dispatcher = handles.take_handle::<Dispatcher>().expect("Dispatcher not setup");
         let inbound = handles
             .take_handle::<InboundMessaging<TariNodeMessageSpec>>()
             .expect("InboundMessaging not setup");
@@ -208,5 +207,6 @@ where B: BlockchainBackend + 'static
         handles.register(rpc_server.get_handle());
 
         tokio::spawn(rpc_server.serve(notify_rx));
+        Ok(())
     }
 }

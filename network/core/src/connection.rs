@@ -8,7 +8,7 @@ use std::{
 
 use libp2p::{core::ConnectedPoint, swarm::ConnectionId, PeerId};
 
-use crate::identity::PublicKey;
+use crate::{identity::PublicKey, multiaddr::Multiaddr, ConnectionDirection};
 
 #[derive(Debug, Clone)]
 pub struct Connection {
@@ -31,5 +31,21 @@ impl Connection {
 
     pub fn age(&self) -> Duration {
         self.created_at.elapsed()
+    }
+
+    pub fn address(&self) -> &Multiaddr {
+        self.endpoint.get_remote_address()
+    }
+
+    pub fn direction(&self) -> ConnectionDirection {
+        if self.endpoint.is_dialer() {
+            ConnectionDirection::Outbound
+        } else {
+            ConnectionDirection::Inbound
+        }
+    }
+
+    pub fn is_wallet_user_agent(&self) -> bool {
+        self.user_agent.as_ref().map_or(false, |x| x.contains("wallet"))
     }
 }

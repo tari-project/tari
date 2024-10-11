@@ -44,15 +44,18 @@ use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 pub use grpc_method::GrpcMethod;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    conversions::multiaddr::multiaddr_to_socketaddr,
+    tls::identity::read_identity,
+};
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
-use tari_network::identity;
+use tari_network::{identity, multiaddr::Multiaddr};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
@@ -114,8 +117,8 @@ pub async fn run_base_node_with_cli(
         );
     }
 
-    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
-    log_mdc::insert("node-id", node_identity.node_id().to_string());
+    // log_mdc::insert("node-public-key", node_identity.public().to_string());
+    log_mdc::insert("node-id", node_identity.public().to_peer_id().to_string());
     if let Some(grpc) = config.base_node.grpc_address.as_ref() {
         log_mdc::insert("grpc", grpc.to_string());
     }

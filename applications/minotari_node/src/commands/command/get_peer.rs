@@ -72,11 +72,12 @@ impl CommandContext {
             .await?
             .ok_or(ArgsError::NoPeerMatching { original_str })?;
 
-        let eid = EmojiId::from(&peer.public_key).to_string();
-        println!("Emoji ID: {}", eid);
         match peer.public_key {
             Some(pk) => {
-                println!("Public Key: {}", to_hex(&pk.try_into_sr25519()?.to_bytes()))
+                let pk = pk.try_into_sr25519()?;
+                let eid = EmojiId::from(pk.inner_key()).to_string();
+                println!("Emoji ID: {}", eid);
+                println!("Public Key: {}", pk.inner_key());
             },
             None => {
                 println!("Public Key: Unknown");

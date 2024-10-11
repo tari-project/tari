@@ -20,18 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
+use tari_network::identity::PeerId;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, watch, RwLock};
 
-use crate::base_node::state_machine_service::states::{StateEvent, StatusInfo};
+use crate::base_node::state_machine_service::states::{PeerMetadata, StateEvent, StatusInfo};
+
+pub type PeerMetadataStore = Arc<RwLock<HashMap<PeerId, PeerMetadata>>>;
 
 #[derive(Clone)]
 pub struct StateMachineHandle {
     state_change_event_subscriber: broadcast::Sender<Arc<StateEvent>>,
     status_event_receiver: watch::Receiver<StatusInfo>,
     shutdown_signal: ShutdownSignal,
+    peer_metadata: PeerMetadataStore,
 }
 
 impl StateMachineHandle {
@@ -44,6 +48,7 @@ impl StateMachineHandle {
             state_change_event_subscriber,
             status_event_receiver,
             shutdown_signal,
+            peer_metadata: PeerMetadataStore::default(),
         }
     }
 
@@ -59,6 +64,19 @@ impl StateMachineHandle {
     /// caller.
     pub fn get_status_info_watch(&self) -> watch::Receiver<StatusInfo> {
         self.status_event_receiver.clone()
+    }
+
+    pub(super) fn peer_metadata_store(&self) -> PeerMetadataStore {
+        self.peer_metadata.clone()
+    }
+
+    pub(super) async fn set_peer_metadata(&self, peer_id: PeerId, metadata: PeerMetadata) {
+        self.peer_metadata.write().await.insert(peer_id, metadata);
+    }
+
+    /// Fetches peer metadata if it has been set
+    pub async fn get_metadata(&self, peer_id: &PeerId) -> Option<PeerMetadata> {
+        self.peer_metadata.read().await.get(peer_id).cloned()
     }
 
     pub fn shutdown_signal(&self) -> ShutdownSignal {

@@ -66,13 +66,13 @@ use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
+    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     blocks::ChainHeader,
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
 };
-use tari_network::{ NetworkHandle};
+use tari_network::{BannedPeer, NetworkError, NetworkHandle};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_rpc_framework::RpcServerHandle;
 use tari_shutdown::Shutdown;
@@ -154,6 +154,7 @@ pub struct CommandContext {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
+    state_machine: StateMachineHandle,
     pub software_updater: SoftwareUpdaterHandle,
     last_time_full: Instant,
     pub shutdown: Shutdown,
@@ -166,10 +167,11 @@ impl CommandContext {
             consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
             rpc_server: ctx.rpc_server(),
-            network: ctx.network_handle().clone(),
+            network: ctx.network().clone(),
             liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
+            state_machine: ctx.state_machine(),
             state_machine_info: ctx.get_state_machine_info_channel(),
             software_updater: ctx.software_updater(),
             last_time_full: Instant::now(),
@@ -287,10 +289,8 @@ impl HandleCommand<Command> for CommandContext {
 }
 
 impl CommandContext {
-    async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let pm = self.network.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_banned());
-        pm.perform_query(query).await
+    async fn fetch_banned_peers(&self) -> Result<Vec<BannedPeer>, NetworkError> {
+        self.network.get_banned_peers().await
     }
 
     /// Function to process the get-headers command

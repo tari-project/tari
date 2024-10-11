@@ -1,0 +1,57 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+package tari.message;
+
+import "liveness.proto";
+import "chat/message.proto";
+import "common/transaction.proto";
+import "common/block.proto";
+import "base_node/request.proto";
+import "base_node/response.proto";
+import "transaction_protocol.proto";
+
+
+message TariMessage {
+  oneof message {
+    tari.liveness.PingPongMessage ping_pong = 1;
+    //    tari.common.Transaction new_transaction = 2;
+    //    tari.common.NewBlock new_block = 3;
+    tari.base_node.BaseNodeServiceRequest base_node_request = 4;
+    tari.base_node.BaseNodeServiceResponse base_node_response = 5;
+    tari.transaction_protocol.TransactionSenderMessage sender_partial_transaction = 6;
+    tari.transaction_protocol.RecipientSignedMessage receiver_partial_transaction_reply = 7;
+    tari.transaction_protocol.TransactionFinalizedMessage transaction_finalized = 8;
+    tari.transaction_protocol.TransactionCancelledMessage transaction_cancelled = 9;
+
+    tari.chat.MessageDispatch chat = 10;
+  }
+}
+
+// A tari message type indicates the type of message being received or sent over the network.
+enum TariMessageType {
+  TariMessageTypeNone = 0;
+
+  // -- NetMessages --
+
+  TariMessageTypePingPong = 1;
+  TariMessageTypeChat = 2;
+
+  // -- Blockchain messages --
+
+  TariMessageTypeNewTransaction = 65;
+  TariMessageTypeNewBlock = 66;
+  TariMessageTypeSenderPartialTransaction = 67;
+  TariMessageTypeReceiverPartialTransactionReply = 68;
+  TariMessageTypeBaseNodeRequest = 69;
+  TariMessageTypeBaseNodeResponse = 70;
+  TariMessageTypeTransactionFinalized = 73;
+  TariMessageTypeTransactionCancelled = 74;
+
+  // -- Extended --
+
+  TariMessageTypeText = 225;
+  TariMessageTypeTextAck = 226;
+
+}

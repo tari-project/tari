@@ -12,21 +12,20 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     connector::InboundMessaging,
-    message::{DomainMessage, DomainMessageHeader, MessageTag, TariNodeMessage, TariNodeMessageSpec},
-    tari_message::TariMessageType,
+    message::{tari_message, DomainMessage, DomainMessageHeader, MessageTag, TariMessageType, TariNodeMessageSpec},
+    proto::message::TariMessage,
 };
 
 const LOG_TARGET: &str = "p2p::dispatcher";
 
 #[derive(Debug, Clone)]
 pub struct Dispatcher {
-    // Because we have to share the dispatcher state between multiple tasks, we have to make this needlessly complex
     inner: Arc<Mutex<Option<DispatcherInner>>>,
 }
 
 #[derive(Debug, Clone)]
 struct DispatcherInner {
-    forward: HashMap<TariMessageType, mpsc::UnboundedSender<DomainMessage<TariNodeMessage>>>,
+    forward: HashMap<TariMessageType, mpsc::UnboundedSender<DomainMessage<TariMessage>>>,
 }
 
 impl Dispatcher {
@@ -38,7 +37,7 @@ impl Dispatcher {
         }
     }
 
-    pub fn register(&self, msg_type: TariMessageType, sender: mpsc::UnboundedSender<DomainMessage<TariNodeMessage>>) {
+    pub fn register(&self, msg_type: TariMessageType, sender: mpsc::UnboundedSender<DomainMessage<TariMessage>>) {
         self.inner
             .lock()
             .expect("only occurs if program panics")
@@ -55,7 +54,7 @@ impl Dispatcher {
 }
 
 impl DispatcherInner {
-    fn forward<T: Into<TariNodeMessage>>(&self, message_type: TariMessageType, peer_id: PeerId, msg: T) {
+    fn forward<T: Into<TariMessage>>(&self, message_type: TariMessageType, peer_id: PeerId, msg: T) {
         match self.forward.get(&message_type) {
             Some(sender) => {
                 let msg = DomainMessage {
@@ -76,37 +75,37 @@ impl DispatcherInner {
     }
 
     fn spawn(self, mut inbound: InboundMessaging<TariNodeMessageSpec>) -> task::JoinHandle<()> {
+        #[allow(clippy::enum_glob_use)]
+        use tari_message::Message::*;
         tokio::spawn(async move {
             while let Some((peer_id, msg)) = inbound.next().await {
+                let Some(msg) = msg.message else {
+                    warn!(target: LOG_TARGET, "Peer {peer_id} sent empty message");
+                    continue;
+                };
                 match msg {
-                    TariNodeMessage::PingPong(msg) => {
+                    PingPong(msg) => {
                         self.forward(TariMessageType::PingPong, peer_id, msg);
                     },
-                    TariNodeMessage::NewTransaction(msg) => {
-                        self.forward(TariMessageType::NewTransaction, peer_id, msg);
-                    },
-                    TariNodeMessage::NewBlock(msg) => {
-                        self.forward(TariMessageType::NewBlock, peer_id, msg);
-                    },
-                    TariNodeMessage::BaseNodeRequest(msg) => {
+                    BaseNodeRequest(msg) => {
                         self.forward(TariMessageType::BaseNodeRequest, peer_id, msg);
                     },
-                    TariNodeMessage::BaseNodeResponse(msg) => {
+                    BaseNodeResponse(msg) => {
                         self.forward(TariMessageType::BaseNodeResponse, peer_id, msg);
                     },
-                    TariNodeMessage::SenderPartialTransaction(msg) => {
+                    SenderPartialTransaction(msg) => {
                         self.forward(TariMessageType::SenderPartialTransaction, peer_id, msg);
                     },
-                    TariNodeMessage::ReceiverPartialTransactionReply(msg) => {
+                    ReceiverPartialTransactionReply(msg) => {
                         self.forward(TariMessageType::ReceiverPartialTransactionReply, peer_id, msg);
                     },
-                    TariNodeMessage::TransactionFinalized(msg) => {
+                    TransactionFinalized(msg) => {
                         self.forward(TariMessageType::TransactionFinalized, peer_id, msg);
                     },
-                    TariNodeMessage::TransactionCancelled(msg) => {
+                    TransactionCancelled(msg) => {
                         self.forward(TariMessageType::TransactionCancelled, peer_id, msg);
                     },
-                    TariNodeMessage::Chat(msg) => {
+                    Chat(msg) => {
                         self.forward(TariMessageType::Chat, peer_id, msg);
                     },
                 }

@@ -28,7 +28,6 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_max_size::MaxSizeBytes;
-use tari_p2p::tari_message::TariMessageType;
 use tari_utilities::ByteArray;
 
 use crate::contacts_service::proto;

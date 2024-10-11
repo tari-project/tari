@@ -71,7 +71,7 @@ impl MempoolService for MempoolRpcService {
 
     async fn get_transaction_state_by_excess_sig(
         &self,
-        request: Request<proto::types::Signature>,
+        request: Request<proto::common::Signature>,
     ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let excess_sig = request
             .into_message()
@@ -87,7 +87,7 @@ impl MempoolService for MempoolRpcService {
 
     async fn submit_transaction(
         &self,
-        request: Request<proto::types::Transaction>,
+        request: Request<proto::common::Transaction>,
     ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let peer_id = request.peer_id();
         let message = request.into_message();

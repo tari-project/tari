@@ -542,7 +542,7 @@ impl MempoolPeerProtocol {
 
     async fn validate_and_insert_transaction(
         &mut self,
-        txn: shared_proto::types::Transaction,
+        txn: shared_proto::common::Transaction,
     ) -> Result<(), MempoolProtocolError> {
         let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
             peer: self.peer_id.clone(),
@@ -590,7 +590,7 @@ impl MempoolPeerProtocol {
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
         let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
             .filter_map(|txn| {
-                match shared_proto::types::Transaction::try_from(&*txn) {
+                match shared_proto::common::Transaction::try_from(&*txn) {
                     Ok(txn) =>   Some(proto::TransactionItem {
                         transaction: Some(txn),
                     }),

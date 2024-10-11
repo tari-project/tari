@@ -40,9 +40,9 @@ use tari_network::{
     OutboundMessaging,
 };
 use tari_p2p::{
-    message::{DomainMessage, TariNodeMessage, TariNodeMessageSpec},
+    message::{tari_message, DomainMessage, TariNodeMessageSpec},
     proto,
-    tari_message::TariMessageType,
+    proto::message::TariMessage,
 };
 use tari_service_framework::reply_channel::RequestContext;
 use tari_utilities::hex::Hex;
@@ -75,9 +75,9 @@ pub(super) struct BaseNodeStreams<SOutReq, SLocalReq, SLocalBlock> {
     /// chosen.
     pub outbound_request_stream: SOutReq,
     /// `BaseNodeRequest` and `BaseNodeResponse` messages received from external peers
-    pub inbound_messages: mpsc::UnboundedReceiver<DomainMessage<TariNodeMessage>>,
+    pub inbound_messages: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
     /// `NewBlock` messages received from external peers
-    pub block_subscription: GossipSubscription<proto::core::NewBlock>,
+    pub block_subscription: GossipSubscription<proto::common::NewBlock>,
     /// Incoming local request messages from the LocalNodeCommsInterface and other local services
     pub local_request_stream: SLocalReq,
     /// The stream of blocks sent from local services `LocalCommsNodeInterface::submit_block` e.g. block sync and
@@ -216,15 +216,20 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_request_or_response_message(&self, domain_msg: DomainMessage<TariNodeMessage>) {
-        match domain_msg.inner().as_type() {
-            TariMessageType::BaseNodeRequest => {
+    fn spawn_handle_incoming_request_or_response_message(&self, domain_msg: DomainMessage<TariMessage>) {
+        match domain_msg.inner().message.as_ref() {
+            Some(tari_message::Message::BaseNodeRequest(_)) => {
                 self.spawn_handle_incoming_request(domain_msg.map(|msg| msg.into_base_node_request().expect("checked")))
             },
-            TariMessageType::BaseNodeResponse => self
+            Some(tari_message::Message::BaseNodeResponse(_)) => self
                 .spawn_handle_incoming_response(domain_msg.map(|msg| msg.into_base_node_response().expect("checked"))),
-            _ => {
-                warn!(target: LOG_TARGET, "Base Node Service received unexpected message type {}", domain_msg.payload.as_type().as_str_name())
+            Some(msg) => {
+                // Not possible: Dispatcher would not have sent this service this message
+                error!(target: LOG_TARGET, "Base Node Service received unexpected message type {}", msg.as_type().as_str_name())
+            },
+            None => {
+                // Not possible: Dispatcher would not have sent this service this message
+                error!(target: LOG_TARGET, "Base Node Service received empty")
             },
         }
     }
@@ -300,7 +305,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, new_block: GossipMessage<proto::core::NewBlock>) {
+    fn spawn_handle_incoming_block(&self, new_block: GossipMessage<proto::common::NewBlock>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -547,7 +552,7 @@ fn spawn_request_timeout(timeout_sender: mpsc::Sender<RequestKey>, request_key: 
 
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
-    domain_block_msg: GossipMessage<proto::core::NewBlock>,
+    domain_block_msg: GossipMessage<proto::common::NewBlock>,
 ) -> Result<(), BaseNodeServiceError> {
     let GossipMessage::<_> {
         source,

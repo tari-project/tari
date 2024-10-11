@@ -57,20 +57,10 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerMetadata {
     pub metadata: ChainMetadata,
     pub last_updated: EpochTime,
-}
-
-impl PeerMetadata {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let size = usize::try_from(bincode::serialized_size(self).unwrap())
-            .expect("The serialized size is larger than the platform allows");
-        let mut buf = Vec::with_capacity(size);
-        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
-        buf
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -183,14 +173,15 @@ impl Listening {
                             return FatalError(format!("Error checking if peer is banned: {}", e));
                         },
                     }
-                    // let peer_data = PeerMetadata {
-                    //     metadata: peer_metadata.claimed_chain_metadata().clone(),
-                    //     last_updated: EpochTime::now(),
-                    // };
-                    // let _old_data = shared
-                    //     .network
-                    //     .set_peer_metadata(peer_metadata.peer_id(), 1, peer_data.to_bytes())
-                    //     .await;
+                    let peer_data = PeerMetadata {
+                        metadata: peer_metadata.claimed_chain_metadata().clone(),
+                        last_updated: EpochTime::now(),
+                    };
+                    shared
+                        .peer_metadata
+                        .write()
+                        .await
+                        .insert(*peer_metadata.peer_id(), peer_data);
                     log_mdc::extend(mdc.clone());
 
                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;

@@ -39,14 +39,14 @@ use crate::{
 #[derive(Clone)]
 pub struct OutboundNodeCommsInterface {
     request_sender: SenderService<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: GossipPublisher<proto::core::NewBlock>,
+    block_sender: GossipPublisher<proto::common::NewBlock>,
 }
 
 impl OutboundNodeCommsInterface {
     /// Construct a new OutboundNodeCommsInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<(NodeCommsRequest, PeerId), Result<NodeCommsResponse, CommsInterfaceError>>,
-        block_sender: GossipPublisher<proto::core::NewBlock>,
+        block_sender: GossipPublisher<proto::common::NewBlock>,
     ) -> Self {
         Self {
             request_sender,
@@ -93,7 +93,7 @@ impl OutboundNodeCommsInterface {
 
     /// Transmit a block to remote base nodes, excluding the provided peers.
     pub async fn propagate_block(&self, new_block: NewBlock) -> Result<(), CommsInterfaceError> {
-        let block = proto::core::NewBlock::try_from(new_block).map_err(|e| {
+        let block = proto::common::NewBlock::try_from(new_block).map_err(|e| {
             CommsInterfaceError::InternalError(format!(
                 "propagate_block: local node attempted to generate an invalid NewBlock message: {e}"
             ))

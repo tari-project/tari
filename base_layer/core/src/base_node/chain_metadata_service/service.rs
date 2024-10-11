@@ -225,7 +225,7 @@ impl<TNetwork: NetworkingService> ChainMetadataService<TNetwork> {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryInto, time::Duration};
+    use std::{convert::TryInto, future::Future, time::Duration};
 
     use futures::StreamExt;
     use primitive_types::U256;
@@ -300,6 +300,10 @@ mod test {
             _reason: T,
             _until: Option<Duration>,
         ) -> Result<bool, NetworkError> {
+            Ok(true)
+        }
+
+        async fn unban_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
             Ok(true)
         }
     }

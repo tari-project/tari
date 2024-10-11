@@ -1,7 +1,10 @@
 //   Copyright 2023 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    time::{Duration, Instant},
+};
 
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol};
 use tari_crypto::ristretto::RistrettoPublicKey;
@@ -44,6 +47,36 @@ impl Display for Peer {
             write!(f, "{}, ", addr)?;
         }
         write!(f, "])")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BannedPeer {
+    pub peer_id: PeerId,
+    pub banned_at: Instant,
+    pub ban_duration: Option<Duration>,
+    pub ban_reason: String,
+}
+
+impl BannedPeer {
+    pub fn is_banned(&self) -> bool {
+        self.ban_duration.map_or(true, |d| d >= self.banned_at.elapsed())
+    }
+}
+
+impl Display for BannedPeer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} banned for: ", self.peer_id)?;
+        match self.ban_duration.map(|d| d.saturating_sub(self.banned_at.elapsed())) {
+            Some(d) => {
+                write!(f, "{}", humantime::format_duration(d))?;
+            },
+            None => {
+                write!(f, "∞")?;
+            },
+        }
+        write!(f, ", reason: {}", self.ban_reason)?;
+        Ok(())
     }
 }
 

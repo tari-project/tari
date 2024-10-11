@@ -86,6 +86,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
             let id = identity::Keypair::generate_sr25519();
+            save_identity(identity_file.as_ref(), &id).map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             info!(
                 target: LOG_TARGET,
                 "New node identity [{}] has been created at {}.",
@@ -157,9 +158,15 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
 }
 
 /// Writes bytes to the provided file.
-pub fn write_bytes_to_file<P: AsRef<Path>>(path: P, bytes: &[u8]) -> Result<(), IdentityError> {
+fn write_bytes_to_file<P: AsRef<Path>>(path: P, bytes: &[u8]) -> Result<(), IdentityError> {
     let mut file = File::create(path)?;
     file.write_all(bytes)?;
+    Ok(())
+}
+
+pub fn save_identity<P: AsRef<Path>>(path: P, identity: &identity::Keypair) -> Result<(), IdentityError> {
+    write_bytes_to_file(path.as_ref(), &identity.to_protobuf_encoding()?)?;
+    set_permissions(path, REQUIRED_IDENTITY_PERMS)?;
     Ok(())
 }
 

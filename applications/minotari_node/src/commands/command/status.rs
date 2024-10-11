@@ -100,10 +100,10 @@ impl CommandContext {
 
         let conns = self.network.get_active_connections().await?;
         let (num_nodes, num_clients) = conns.iter().fold((0usize, 0usize), |(nodes, clients), conn| {
-            if conn.user_agent.as_ref().map_or(true, |ua| ua.contains("wallet")) {
-                (nodes + 1, clients)
-            } else {
+            if conn.is_wallet_user_agent() {
                 (nodes, clients + 1)
+            } else {
+                (nodes + 1, clients)
             }
         });
         status_line.add_field("Connections", format!("{}|{}", num_nodes, num_clients));

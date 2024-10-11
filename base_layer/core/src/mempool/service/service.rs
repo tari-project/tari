@@ -25,7 +25,7 @@ use std::{convert::TryFrom, io, sync::Arc};
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use tari_network::{identity::PeerId, GossipMessage, GossipSubscription, OutboundMessaging};
-use tari_p2p::{message::DomainMessage, proto, tari_message::TariMessageType};
+use tari_p2p::{message::DomainMessage, proto, proto::message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
@@ -45,7 +45,7 @@ const LOG_TARGET: &str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SLocalReq> {
-    pub transaction_subscription: GossipSubscription<proto::types::Transaction>,
+    pub transaction_subscription: GossipSubscription<proto::common::Transaction>,
     pub local_request_stream: SLocalReq,
     pub block_event_stream: BlockEventReceiver,
     pub request_receiver: reply_channel::TryReceiver<MempoolRequest, MempoolResponse, MempoolServiceError>,
@@ -138,7 +138,7 @@ impl MempoolService {
         });
     }
 
-    fn handle_incoming_tx(&self, result: io::Result<GossipMessage<proto::types::Transaction>>) {
+    fn handle_incoming_tx(&self, result: io::Result<GossipMessage<proto::common::Transaction>>) {
         let msg = match result {
             Ok(msg) => msg,
             Err(err) => {

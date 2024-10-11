@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 
 use libp2p::{identity::Keypair, PeerId};
+use log::warn;
 use tari_shutdown::ShutdownSignal;
 use tari_swarm::{is_supported_multiaddr, messaging, messaging::prost::ProstCodec};
 use tokio::{
@@ -19,6 +20,8 @@ use crate::{
     NetworkHandle,
     Peer,
 };
+
+const LOG_TARGET: &str = "network::spawn";
 
 pub fn spawn<TMsg>(
     identity: Keypair,
@@ -39,13 +42,27 @@ where
     TMsg::Message: messaging::prost::Message + Default + Clone + 'static,
     TMsg: MessageSpec,
 {
-    for peer in &seed_peers {
-        for addr in &peer.addresses {
-            if !is_supported_multiaddr(addr) {
-                return Err(NetworkError::UnsupportedSeedPeerMultiaddr { address: addr.clone() });
+    // Make everyone aware that onion addresses are not supported :)
+    let seed_peers =seed_peers.into_iter()
+        .map(|mut p| {
+            p.addresses.retain(|addr| {
+                if is_supported_multiaddr(addr) {
+                    true
+                } else {
+                    warn!(target: LOG_TARGET, "⚠️ seed peer has unsupported address {addr}.");
+                    false
+                }
+            });
+            p
+        })
+        .filter(|p| {
+            if p.addresses.is_empty() {
+                warn!(target: LOG_TARGET, "⚠️ seed peer {} will not be used because it has no supported addresses", p.to_peer_id());
+                false
+            } else {
+                true
             }
-        }
-    }
+        }).collect();
 
     config.swarm.enable_relay = config.swarm.enable_relay || !config.reachability_mode.is_private();
     config.swarm.enable_messaging = messaging_mode.is_enabled();

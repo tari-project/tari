@@ -23,7 +23,6 @@
 use std::convert::TryFrom;
 
 use tari_comms_dht::domain_message::OutboundDomainMessage;
-use tari_p2p::tari_message::TariMessageType;
 
 use crate::contacts_service::{
     proto,

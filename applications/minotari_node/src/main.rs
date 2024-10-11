@@ -76,9 +76,6 @@ use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
-use tari_comms::peer_manager::PeerFeatures;
-#[cfg(all(unix, feature = "libtor"))]
-use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 
 const LOG_TARGET: &str = "minotari::base_node::app";

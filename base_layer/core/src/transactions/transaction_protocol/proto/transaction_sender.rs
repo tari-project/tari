@@ -28,8 +28,8 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_p2p::proto::{
-    transaction as proto,
-    transaction::transaction_sender_message::Message as ProtoTxnSenderMessage,
+    transaction_protocol as proto,
+    transaction_protocol::transaction_sender_message::Message as ProtoTxnSenderMessage,
 };
 use tari_script::TariScript;
 use tari_utilities::ByteArray;

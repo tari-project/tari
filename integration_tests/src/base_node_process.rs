@@ -29,7 +29,7 @@ use std::{
     time::Duration,
 };
 
-use minotari_app_utilities::identity_management::{save_as_json, write_bytes_to_file};
+use minotari_app_utilities::identity_management::save_identity;
 use minotari_node::{run_base_node, BaseNodeConfig, GrpcMethod, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::{
@@ -117,11 +117,7 @@ pub async fn spawn_base_node_with_config(
             .join(format!("{}_grpc_port_{}", bn_name.clone(), grpc_port));
 
         base_node_identity = identity::Keypair::generate_sr25519();
-        write_bytes_to_file(
-            temp_dir_path.join("base_node.json"),
-            &base_node_identity.to_protobuf_encoding().unwrap(),
-        )
-        .unwrap();
+        save_identity(temp_dir_path.join("base_node.json"), &base_node_identity).unwrap();
     };
 
     println!("Base node peer id: {}", base_node_identity.public().to_peer_id());

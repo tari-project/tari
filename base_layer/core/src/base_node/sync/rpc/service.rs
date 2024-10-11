@@ -291,7 +291,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
-    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus> {
+    ) -> Result<Streaming<proto::common::BlockHeader>, RpcStatus> {
         let db = self.db();
         let peer_node_id = request.peer_id();
         let message = request.into_message();
@@ -361,7 +361,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             break;
                         },
                         Ok(headers) => {
-                            let headers = headers.into_iter().map(proto::core::BlockHeader::from).map(Ok);
+                            let headers = headers.into_iter().map(proto::common::BlockHeader::from).map(Ok);
                             // Ensure task stops if the peer prematurely stops their RPC session
                             for header in headers {
                                 if tx.send(header).await.is_err()  {
@@ -399,7 +399,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+    ) -> Result<Response<proto::common::BlockHeader>, RpcStatus> {
         let height = request.into_message();
         let header = self
             .db()
@@ -491,7 +491,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
-    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
+    ) -> Result<Streaming<proto::common::TransactionKernel>, RpcStatus> {
         let peer_node_id = request.peer_id();
         let req = request.into_message();
         let (tx, rx) = mpsc::channel(100);
@@ -560,7 +560,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             current_mmr_position + kernels.len() as u64
                         );
                         current_mmr_position += kernels.len() as u64;
-                        let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
+                        let kernels = kernels.into_iter().map(proto::common::TransactionKernel::from).map(Ok);
                         // Ensure task stops if the peer prematurely stops their RPC session
                         for kernel in kernels {
                             if tx.send(kernel).await.is_err() {

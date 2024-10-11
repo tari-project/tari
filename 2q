@@ -1,0 +1,952 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Common Configuration Options (CommonConfig, AutoUpdateConfig, MetricsConfig)                    #
+#                                                                                                                      #
+########################################################################################################################
+
+[common]
+#override_from="stagenet"
+#base_path="<HOME>/.tari"
+
+[stagenet.auto_update]
+# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
+update_uris = ["updates.stagenet.taripulse.com"]
+
+[auto_update]
+# Name server for auto update (default = "1.1.1.1:53/cloudflare.net")
+#name_server = "1.1.1.1:53/cloudflare.net"
+
+# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT
+# records. (default = [])
+#update_uris = []
+
+#use_dnssec = false
+
+#download_base_url = ""
+
+# Customize the location of the update SHA hashes and maintainer-signed signature.
+#hashes_url = "https://<address>/hashes.txt"
+#hashes_sig_url = "https://<address>/hashes.txt.sig"
+
+# This interval in seconds to check for software updates. Setting this to 0 disables checking.
+check_interval = 300
+
+[metrics]
+# server_bind_address = "127.0.0.1:5577"
+# push_endpoint = http://localhost:9091/metrics/job/base-node
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Peer Seeds Configuration Options (PeerSeedsConfig)                                              #
+#                                                                                                                      #
+########################################################################################################################
+
+[nextnet.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+# (Default: peer_seeds = [])
+dns_seeds = ["seeds.nextnet.tari.com"]
+# Custom specified peer seed nodes (Default: peer_seeds = [])
+#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+
+[stagenet.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+# (Default: peer_seeds = [])
+dns_seeds = ["seeds.stagenet.tari.com"]
+# Custom specified peer seed nodes (Default: peer_seeds = [])
+#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+
+[esmeralda.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+# (Default: peer_seeds = [])
+dns_seeds = ["seeds.esmeralda.tari.com"]
+# Custom specified peer seed nodes (Default: peer_seeds = [])
+#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+
+[igor.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+# (Default: peer_seeds = [])
+dns_seeds = ["seeds.igor.tari.com"]
+# Custom specified peer seed nodes (Default: peer_seeds = [])
+#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Base Node Configuration Options (BaseNodeConfig)                                                #
+#                                                                                                                      #
+########################################################################################################################
+
+# If you are not running a Minotari Base node, you can simply leave everything in this section commented out. Base nodes
+# help maintain the security of the Minotari token and are the surest way to preserve your privacy and be 100% sure that
+# no one is cheating you out of your money.
+
+#[igor.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_igor.json"
+#
+#[esmeralda.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_esmeralda.json"
+#
+#[stagenet.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_stagenet.json"
+#
+#[nextnet.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_nextnet.json"
+
+[base_node]
+#mining_enabled = false
+#second_layer_grpc_enabled = false
+# Set to false to disable the base node GRPC server (default = true)
+grpc_enabled = true
+
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
+#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# gRPC authentication method (default = "none")
+#grpc_authentication = { username = "admin", password = "xxxx" }
+
+# Use gRPC over TLS (default = false)
+#grpc_tls_enabled = false
+
+# Uncomment all gRPC server methods that should be allowed (only active when `grpc_enabled = true`)
+grpc_server_allow_methods = [
+    "get_version",
+    #"check_for_updates",
+    #"get_sync_info",
+    #"get_sync_progress",
+    "get_tip_info",
+    "identify",
+    #"get_network_status",
+    "list_headers",
+    #"get_header_by_hash",
+    #"get_blocks",
+    #"get_block_timing",
+    #"get_constants",
+    #"get_block_size",
+    #"get_block_fees",
+    "get_tokens_in_circulation",
+    "get_network_difficulty",
+    "get_new_block_template",
+    "get_new_block",
+    "get_new_block_with_coinbases",
+    "get_new_block_template_with_coinbases",
+    "get_new_block_blob",
+    "submit_block",
+    "submit_block_blob",
+    "submit_transaction",
+    "search_kernels",
+    "search_utxos",
+    "fetch_matching_utxos",
+    #"get_peers",
+    #"get_mempool_transactions",
+    "transaction_state",
+    "list_connected_peers",
+    "get_mempool_stats",
+    "get_active_validator_nodes",
+    "get_shard_key",
+    "get_template_registrations",
+    "get_side_chain_utxos",
+]
+
+# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id.json"
+
+# Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
+# This requires that the base node was built with the optional "libtor" feature flag. (default = true)
+#use_libtor = false
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+# (default = "config/tor_id.json")
+#tor_identity_file = "config/base_node_tor_id.json"
+
+# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
+# almost all use cases. (default = "lmdb")
+#db_type = "lmdb"
+
+# The relative path to store persistent data (default = "data/base_node")
+#data_dir = "data/base_node"
+
+# The relative path to store the lmbd data (default = "db")
+#lmdb_path = "db"
+
+# The maximum amount of VMs that RandomX will be use (default = 5)
+#max_randomx_vms = 5
+
+# Bypass range proof verification to speed up validation (default = false)
+#bypass_range_proof_verification = false
+
+# This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
+# couple of nodes that you always want to have in sync. If set this node will only sync to the nodes in this set.
+# force_sync_peers = ["public_key1::address1", "public_key2::address2",... ]
+
+# The maximum amount of seconds wait for remote base node responses for messaging-based requests.
+#messaging_request_timeout = 60
+
+# The time interval between status line updates in the CLI (default = 5 s)
+#status_line_interval = 5
+
+# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
+# (min value = 30, default value = 1500).
+#buffer_size = 1500
+
+# Liveness meta data auto ping interval between peers (default = 30 s)
+#metadata_auto_ping_interval = 30
+
+# Obscure GRPC error responses (default = false)
+#report_grpc_error = false
+
+[base_node.lmdb]
+#init_size_bytes = 16_777_216 # 16 *1024 * 1024
+#grow_size_bytes = 16_777_216 # 16 *1024 * 1024
+#resize_threshold_bytes = 4_194_304 # 4 *1024 * 1024
+
+[base_node.storage]
+# The maximum number of orphans that can be stored in the Orphan block pool.
+#orphan_storage_capacity = 720
+# The pruning horizon that is set for a default configuration of the blockchain db.
+#pruning_horizon = 0
+# The chain height interval used to determine when a pruned node should perform pruning.
+#pruning_interval = 50
+# Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command. Default = false
+track_reorgs = true
+# Clean out
+#cleanup_orphans_at_startup = false
+
+[base_node.mempool]
+# The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
+#unconfirmed_pool.storage_capacity = 40_000
+# The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+# skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+#unconfirmed_pool.weight_tx_skip_count = 20
+# The minimum fee accepted by the mempool
+#unconfirmed_pool.min_fee = 0,
+
+# The height horizon to clear transactions from the reorg pool.
+#reorg_pool.expiry_height = 5
+
+# Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
+# not initiate any more mempool syncs. Default: 2
+#service.initial_sync_num_peers = 2
+# The maximum number of transactions to sync in a single sync session Default: 10_000
+#service.initial_sync_max_transactions = 10_000
+# The maximum number of blocks added via sync or re-org to triggering a sync
+#service.block_sync_trigger = 5
+
+[base_node.state_machine]
+# The initial max sync latency (seconds). If a peer fails to stream a header/block within this deadline another sync
+# peer will be selected. If there are no further peers the sync will be restarted with an increased by
+# `max_latency_increase`. [default = 240]
+blockchain_sync_config.initial_max_sync_latency = 240
+# If all sync peers exceed latency increase allowed latency by this value (seconds) [default = 10]
+blockchain_sync_config.max_latency_increase = 10
+# Longer ban period (seconds) for potentially malicious infractions (protocol violations etc.) [default = 2 hours]
+#blockchain_sync_config.ban_period = 7_200 # 2 * 60 * 60
+# Short ban period (seconds) for infractions that are likely not malicious (slow to respond spotty connections etc)
+# [default = 4 minutes]
+#blockchain_sync_config.short_ban_period = 240
+# An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty sync peers
+# are chosen based on their advertised chain metadata. [default = []]
+#blockchain_sync_config.forced_sync_peers = []
+# Number of threads to use for validation [default = 6]
+#blockchain_sync_config.validation_concurrency = 6
+# The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
+# [default = 240]
+blockchain_sync_config.rpc_deadline = 240
+
+# The maximum amount of VMs that RandomX will be use (default = 0)
+#max_randomx_vms = 0
+# The amount of blocks this node can be behind a peer before considered to be lagging (to test the block
+# propagation by delaying lagging, but also to give it time to receive the block via propagation, which is more network
+# efficient)
+# Note that time_before_considered_lagging will override this setting if the node sees a stronger chain for longer than
+# that configured time.
+# (default = 1)
+#blocks_behind_before_considered_lagging = 1
+# The amount of time this node can know about a stronger chain before considered to be lagging.
+# This is to give a node time to receive the block via propagation, which is usually less network
+# intensive. Be careful of setting this higher than the block time, which would potentially cause it
+# to always be behind the network (default = 10) (in seconds)
+#time_before_considered_lagging = 10
+#This is the amount of metadata events that a node will wait for before decide to start syncing for a peer, choosing the best peer out of the list
+#initial_sync_peer_count = 5,
+
+[base_node.p2p]
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_addresses will be ignored and an onion address will be
+# automatically configured
+#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with
+#   `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# Path to the LMDB data files
+#datastore_path = "peer_db"
+
+# Name to use for the peer database
+#peer_database_name = "peers"
+
+# The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
+#max_concurrent_inbound_tasks = 4
+
+# The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
+#max_concurrent_outbound_tasks = 4
+
+# Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
+# addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
+# should always be false for non-test nodes.
+#allow_test_addresses = false
+
+# CIDR for addresses allowed to enter into liveness check mode on the listener.
+#listener_liveness_allowlist_cidrs = []
+
+# The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
+# sessions.
+#rpc_max_simultaneous_sessions = 100
+# The maximum comms RPC sessions allowed per peer (default value = 10).
+#rpc_max_sessions_per_peer = 10
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Wallet Configuration Options (WalletConfig)                                                     #
+#                                                                                                                      #
+########################################################################################################################
+
+[wallet]
+# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
+# (min value = 300, default value = 50000).
+#buffer_size = 50000
+
+# The relative path to store persistent data (default = "data/wallet")
+#data_dir = "data/wallet"
+
+# The relative folder to store your local key data and transaction history. (default = "db/console_wallet.db")
+# DO NOT EVER DELETE THIS FILE unless you (a) have backed up your seed phrase and (b) know what you are doing!
+#db_file = "db/console_wallet.db"
+
+# The main wallet db sqlite database backend connection pool size for concurrent reads (default = 16)
+#db_connection_pool_size = 16
+
+# Console wallet password. Should you wish to start your console wallet without typing in your password, the following
+# options are available:
+# 1. Start the console wallet with the --password=secret argument, or
+# 2. Set the environment variable MINOTARI_WALLET_PASSWORD=secret before starting the console wallet, or
+# 3. Set the "password" key in this [wallet] section of the config
+# (default = )
+#password = "secret"
+
+# The auto ping interval to use for contacts liveness data (default = 30 s)
+#contacts_auto_ping_interval = 30
+
+# How long a contact may be not seen before being determined to be offline (default = 30 s)
+#contacts_online_ping_window = 30
+
+# When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
+# for sent transactions.
+# The stages are:
+# - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
+# - "Negotiated" - The recipient replied and the transaction was negotiated.
+# - "Broadcast" - The transaction was broadcast to the base node mempool.
+# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
+# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
+# The default values are: "Broadcast", 300
+#command_send_wait_timeout = 300
+#command_send_wait_stage = "Broadcast"
+
+# Wallets currently will choose the best outputs as inputs when spending, however since a lurking base node can
+# generate a transaction graph of inputs to outputs with relative ease, a wallet may reveal its transaction
+# history by including a (non-stealth address) one-sided payment.
+# If set to `true`, then outputs received via simple one-sided transactions, won't be automatically selected as
+# further transactions, but can still be selected individually as specific outputs.
+#autoignore_onesided_utxos = false
+
+# Set to true to enable grpc. (default = false)
+#grpc_enabled = false
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18143")
+#grpc_address = "/ip4/127.0.0.1/tcp/18143"
+# gRPC authentication method (default = "none")
+#grpc_authentication = { username = "admin", password = "xxxx" }
+
+# A custom base node peer that will be used to obtain metadata from, example
+# "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189"
+# (default = )
+#custom_base_node = "none"
+
+# A list of base node peers that the wallet should use for service requests and tracking chain state in the form
+# ["public_key::net_address", ...] (default = [])
+#base_node_service_peers = []
+
+# The amount of times wallet recovery will be retried before being abandoned (default = 3)
+#recovery_retry_limit = 3
+
+# The default uT fee per gram to use for transaction fees (default = 5)
+#fee_per_gram = 5
+
+# Number of required transaction confirmations used for UI purposes (default = 3)
+#num_required_confirmations = 3
+
+# Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
+# This requires that the base node was built with the optional "libtor" feature flag. (default = true)
+#use_libtor = false
+
+# A path to the file that stores your node identity and secret key (default = "none")
+#identity_file = "none"
+
+# Notification script file for a notifier service. Allows you to execute a script or program when these transaction
+# events are received by the console wallet (default = "none"):
+# - transaction received
+# - transaction sent
+# - transaction cancelled
+# - transaction mined but unconfirmed
+# - transaction mined and confirmed
+# An example script is available here: applications/minotari_console_wallet/src/notifier/notify_example.sh
+#notify_file = "/path/to/script"
+
+# The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
+# For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
+# responsiveness of the wallet with slightly delayed balance updates (default = 5):
+#balance_enquiry_cooldown_period = 5
+
+[wallet.transactions]
+# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
+broadcast_monitoring_timeout = 180
+# This is the timeout period that will be used for chain monitoring tasks (default = 60)
+chain_monitoring_timeout = 60
+# This is the timeout period that will be used for sending transactions directly (default = 20)
+direct_send_timeout = 180
+# This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
+broadcast_send_timeout = 180
+# This is the timeout period that will be used for low power moded polling tasks (default = 300)
+#low_power_polling_timeout = 300
+# This is the timeout period that will be used to resend transactions that did not make any progress (default = 600)
+#transaction_resend_period = 600
+# This is the timeout period that will be used to ignore repeated transactions (default = 300)
+#resend_response_cooldown = 300
+# This is the timeout period that will be used to expire pending transactions (default = 259200)
+#pending_transaction_cancellation_timeout = 259200 # 3 days
+# This is the number of block confirmations required for a transaction to be considered completely mined and
+# confirmed. (default = 3)
+#num_confirmations_required = 3
+# The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+# (default = 20)
+#max_tx_query_batch_size = 20
+# This option specifies the transaction routing mechanism as being directly between wallets, making
+# use of store and forward or using any combination of these.
+# (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
+#transaction_routing_mechanism = "DirectAndStoreAndForward"
+# This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
+transaction_event_channel_size = 25000
+# This is the timeout period that will be used to re-submit transactions not found in the mempool (default = 600)
+#transaction_mempool_resubmission_window = 600
+
+[wallet.outputs]
+# If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than the
+# transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued transactions
+# (default = true).
+prevent_fee_gt_amount = false
+# Ignores dust below this value, value in micro MinoTari, defaults to 100
+# dust_ignore_value: 100,
+# This is the size of the event channel used to communicate output manager events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+event_channel_size = 3500
+# The number of confirmations (difference between tip height and mined height) required for the output to be marked as
+# mined confirmed (default = 3)
+#num_confirmations_required = 3
+# The number of batches the unconfirmed outputs will be divided into before being queried from the base node
+# (default = 100)
+#tx_validator_batch_size = 100
+# Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
+# If you set it to zero, the revalidation will be on every wallet rerun. Default is 3 days.
+#num_of_seconds_to_revalidate_invalid_utxos = 259200
+
+
+[wallet.base_node]
+# Configuration for the wallet's base node service
+# The refresh interval
+#base_node_monitor_max_refresh_interval = 30
+# The RPC client pool size  (default = 5)
+#base_node_rpc_pool_size = 5
+# This is the size of the event channel used to communicate base node events to the wallet. (default = 250).
+#event_channel_size = 250
+
+[wallet.p2p]
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured
+#public_addresses = ["/ip4/172.2.3.4/tcp/18188",]
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with
+#   `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+#auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# Path to the LMDB data files
+#datastore_path = "peer_db"
+
+# Name to use for the peer database
+#peer_database_name = "peers"
+
+# The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
+#max_concurrent_inbound_tasks = 4
+
+# The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
+#max_concurrent_outbound_tasks = 4
+
+# Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
+# addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
+# should always be false for non-test nodes.
+#allow_test_addresses = false
+
+# CIDR for addresses allowed to enter into liveness check mode on the listener.
+#listener_liveness_allowlist_cidrs = []
+# Enables periodic socket-level liveness checks. Default: Disabled
+# listener_self_liveness_check_interval = 15
+
+# User agent string for this node
+#user_agent = ""
+
+# The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
+# sessions.
+#rpc_max_simultaneous_sessions = 100
+# The maximum comms RPC sessions allowed per peer (default value = 10).
+#rpc_max_sessions_per_peer = 10
+
+[wallet.p2p.transport]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable. (default = "tor")
+#type = "tor"
+
+# The address and port to listen for peer connections over TCP. (use: type = "tcp")
+#tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address. (default = )
+#tcp.tor_socks_address =
+# Optional tor SOCKS proxy authentication (default = "none")
+#tcp.tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses. (use: type = "tor")
+# Address of the tor control server
+#tor.control_address = "/ip4/127.0.0.1/tcp/9051"
+# SOCKS proxy auth (default = "none")
+#tor.socks_auth = "none"
+# Use this socks address instead of getting it from the tor proxy. (default = )
+#tor.socks_address_override =
+# Authentication to use for the tor control server (default = "auto")
+#tor.control_auth = "auto" # or "password=xxxxxx"
+# The onion port to use.
+#tor.onion_port = 18141
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
+# made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
+#tor.proxy_bypass_addresses = []
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to 'true' for
+# better network performance for TCP nodes; set it to 'false' for better privacy.
+#tor.proxy_bypass_for_outbound_tcp = true
+# If set, instructs tor to forward traffic the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
+#tor.forward_address =
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+# (use: type = "socks5")
+# The address of the SOCKS5 proxy. Traffic will be forwarded to tcp.listener_address.
+# (Default = "/ip4/127.0.0.1/tcp/8080")
+#socks.proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# SOCKS proxy auth (Default = "none", or assign "username_password=username:xxxxxxx")
+#socks.auth = "none"
+
+# Use a Memory proxy transport. (use: type = "memory")
+#memory.listener_address = "/memory/0"
+
+[wallet.p2p.dht]
+# The `DbConnectionUrl` for the Dht database. Default: In-memory database
+database_url = "data/wallet/dht.db"
+# The size of the buffer (channel) which holds pending outbound message requests. Default: 20
+#outbound_buffer_size = 20
+# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
+num_neighbouring_nodes = 5
+# Number of random peers to include. Default: 4
+num_random_nodes = 1
+# Connections above the configured number of neighbouring and random nodes will be removed (default: false)
+minimize_connections = true
+# Send to this many peers when using the broadcast strategy. Default: 8
+#broadcast_factor = 8
+# Send to this many peers when using the propagate strategy. Default: 4
+#propagation_factor = 4
+
+# The amount of time added to the current time will be used to check if the message has expired or not. Default: 3 hours
+#saf.msg_validity = 10_800 # 3 * 60 * 60 // 3 hours
+# The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 100,000
+#saf.msg_storage_capacity = 100_000
+# A request to retrieve stored messages will be ignored if the requesting node is not within one of this nodes _n_
+# closest nodes. Default 10
+#saf.num_closest_nodes = 10
+# The maximum number of messages to return from a store and forward retrieval request. Default: 100
+#saf.max_returned_messages = 50
+# The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
+# Default: 6 hours
+#saf.low_priority_msg_storage_ttl = 21_600 # 6 * 60 * 60 // 6 hours
+# The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
+# Default: 3 days
+#saf.high_priority_msg_storage_ttl = 259_200 # 3 * 24 * 60 * 60 // 3 days
+# The limit on the message size to store in SAF storage in bytes. Default 500 KiB
+#saf.max_message_size = 524_288 # 512 * 1024
+# When true, store and forward messages are requested from peers on connect (Default: true)
+#saf.auto_request = true
+# The maximum allowed time between asking for a message and accepting a response
+#saf.max_inflight_request_age = 120
+# The maximum number of peer nodes that a message must be closer than to get stored by SAF. Default: 8
+#saf.num_neighbouring_nodes = 8
+
+# The max capacity of the message hash cache. Default: 2,500
+#dedup_cache_capacity = 2_500
+# The periodic trim interval for items in the message hash cache. Default: 300s (5 mins)
+#dedup_cache_trim_interval = 300 # 5 * 60
+# The number of occurrences of a message is allowed to pass through the DHT pipeline before being deduped/discarded
+# Default: 1
+#dedup_allowed_message_occurrences = 1
+# The duration to wait for a peer discovery to complete before giving up. Default: 2 minutes
+#discovery_request_timeout = 120 # 2 * 60
+# Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+#auto_join = true
+# The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
+# enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
+# change happens again after this period, another join will be sent. Default: 10 minutes
+#join_cooldown_interval = 120 # 10 * 60
+
+# The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
+connectivity.update_interval = 300 # 2 * 60
+# The interval to change the random pool peers. Default = 2 hours
+#connectivity.random_pool_refresh_interval = 7_200 # 2 * 60 * 60
+# Length of cooldown when high connection failure rates are encountered. Default: 45s
+#connectivity.high_failure_rate_cooldown = 45
+# The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
+# making sybil attacks costly. This setting does not guarantee this ratio is maintained.
+# Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
+connectivity.minimum_desired_tcpv4_node_ratio = 0.0
+
+# True to enable network discovery, false to disable it. Default: true
+#network_discovery.enabled = true
+# A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
+# more "aggressive" strategy is employed. Default: 50
+network_discovery.min_desired_peers = 16
+# The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
+#network_discovery.idle_period = 1_800 # 30 * 60
+#  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
+#  than `min_desired_peers` then the actual number of rounds performed will exceed this value. Default: 10
+#network_discovery.idle_after_num_rounds = 10
+# Time to idle after a failed round. Default: 5 secs
+#network_discovery.on_failure_idle_period = 5
+# The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
+# Default: 5
+#network_discovery.max_sync_peers = 5
+# The maximum number of peers we allow per round of sync. (Default: 500)
+#network_discovery.max_peers_to_sync_per_round = 500
+# Initial refresh sync peers delay period, when a configured connection needs preference. (Default: Disabled)
+network_discovery.initial_peer_sync_delay = 25
+
+# Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
+#ban_duration = 21_600 # 6 * 60 * 60
+# Length of time to ban a peer for a "short" duration. Default: 60 mins
+#ban_duration_short = 3_600 # 60 * 60
+# The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
+# Default: 100_000 messages
+#flood_ban_max_msg_count = 100_000
+# The timespan over which to calculate the max message rate.
+# `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
+#  Default: 100 seconds
+#flood_ban_timespan = 100
+# Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
+# In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
+# peers that were previously tried. Default: 2 hours
+#offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP range.
+# Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other range)
+#   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
+#                or
+#   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
+excluded_dial_addresses = ["/ip4/127.*.*.*/tcp/*"]
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Miner Configuration Options (MinerConfig)                                                       #
+#                                                                                                                      #
+########################################################################################################################
+
+[miner]
+
+# GRPC address of base node (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+# GRPC authentication for the base node (default = "none")
+#base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+# GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
+#base_node_grpc_tls_domain_name = "localhost"
+
+# Number of mining threads (default: number of logical CPU cores)
+#num_mining_threads = 8
+
+# Start mining only when base node is bootstrapped and current block height is on the tip of network (default = true)
+#mine_on_tip_only = true
+
+# Will check tip with node every N seconds and restart mining if height already taken and option `mine_on_tip_only` is
+# set to true (default = 30 s)
+#validate_tip_timeout_sec = 30
+
+# Stratum Mode configuration - mining pool address (e.g. "miningcore.tari.com:3052")
+#mining_pool_address = "miningcore.tari.com:3052"
+
+# Stratum Mode configuration - mining wallet address/public key
+# (e.g. "20B19870ABEE8ABC6ACC77AE4E6CA169057645B27C35334B74446B4D3EE52150")
+#stratum_mining_wallet_address = "YOUR_WALLET_TARI_ADDRESS"
+
+# Stratum Mode configuration - mining worker name (e.g. "worker1") (default = "")
+#stratum_mining_worker_name = "worker1"
+
+# The extra data to store in the coinbase, usually some data about the mining pool.
+# Note that this data is publicly readable, but it is suggested you populate it so that
+# pool dominance can be seen before any one party has more than 51%.
+#coinbase_extra = "minotari_miner"
+
+# Base node reconnect timeout after any GRPC or miner error (default: 10 s)
+#wait_timeout_on_error = 10
+
+# The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
+# e.g. "78e724f466d202abdee0f23c261289074e4a2fc9eb61e83e0179eead76ce2d3f17"
+#wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"
+# Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
+#range_proof_type = "revealed_value"
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Merge Mining Configuration Options (MergeMiningProxyConfig)                                     #
+#                                                                                                                      #
+########################################################################################################################
+
+[merge_mining_proxy]
+
+
+# Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/) (default: true)
+#use_dynamic_fail_data = true
+
+# The monero fail URL to get the monerod URLs from - must be pointing to the official Monero website.
+# Valid alternatives are:
+# - mainnet:  'https://monero.fail/?chain=monero&network=mainnet&all=true' (default)
+# - stagenet: `https://monero.fail/?chain=monero&network=stagenet&all=true`
+# - testnet:  `https://monero.fail/?chain=monero&network=testnet&all=true`
+#monero_fail_url = "https://monero.fail/?chain=monero&network=mainnet&all=true"
+
+# URL to monerod (you can add your own server here or use public nodes from https://monero.fail/), only if
+# 'use_dynamic_fail_data = false' (default = "")
+
+#monerod_url = [# stagenet
+#    "http://stagenet.xmr-tw.org:38081",
+#    "http://node.monerodevs.org:38089",
+#    "http://node3.monerodevs.org:38089",
+#    "http://xmr-lux.boldsuck.org:38081",
+#    "http://singapore.node.xmr.pm:38081",
+#]
+
+monerod_url = [ # mainnet
+    "http://node1.xmr-tw.org:18081",
+    "https://monero.homeqloud.com:443",
+    "http://monero1.com:18089",
+    "http://node.c3pool.org:18081",
+    "http://xmr-full.p2pool.uk:18089",
+    "https://monero.stackwallet.com:18081",
+    "http://xmr.support:18081",
+    "http://xmr.nthrow.nyc:18081",
+    "https://xmr-01.tari.com",
+]
+
+# Username for curl. (default = "")
+#monerod_username = ""
+
+# Password for curl. (default = "")
+#monerod_password = ""
+
+# If authentication is being used for curl. (default = false)
+#monerod_use_auth = false
+
+# The Minotari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# GRPC authentication for the base node (default = "none")
+#base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+
+# Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
+#listener_address = "/ip4/127.0.0.1/tcp/18081"
+
+# In sole merged mining, the block solution is usually submitted to the Monero blockchain
+# (monerod) as well as to the Minotari blockchain, then this setting should be "true". With pool
+# merged mining, there is no sense in submitting the solution to the Monero blockchain as the
+# pool does that, then this setting should be "false". (default = true)
+#submit_to_origin = true
+
+# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
+# or not. If merge mining starts before the base node has achieved initial sync, those Minotari mined blocks will not be
+# accepted. (default = true)
+#wait_for_initial_sync_at_startup = true
+
+# When mining for minotari, you might want to check the achieved difficulty of the mined minotari block before submitting
+# This setting this can be disabled to allow you to always submit minotari blocks even if the difficulty does not meet the
+# required.  (default = true)
+#check_tari_difficulty_before_submit = true
+
+# The maximum amount of VMs that RandomX will be use (default = 5)
+#max_randomx_vms = 5
+
+# The extra data to store in the coinbase, usually some data about the mining pool.
+# Note that this data is publicly readable, but it is suggested you populate it so that
+# pool dominance can be seen before any one party has more than 51%. (default = "tari_merge_mining_proxy")
+#coinbase_extra = "tari_merge_mining_proxy"
+
+# The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
+# e.g. "78e724f466d202abdee0f23c261289074e4a2fc9eb61e83e0179eead76ce2d3f17"
+#wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"
+# Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
+#range_proof_type = "revealed_value"
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Validator Node Configuration Options (ValidatorNodeConfig)                                      #
+#                                                                                                                      #
+########################################################################################################################
+
+[validator_node]
+
+# A path to the file that stores your node identity and secret key (default = "validator_node_id.json")
+#identity_file = "validator_node_id.json"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport
+# (default = "validator_node_tor_id.json")
+#tor_identity_file = "validator_node_tor_id.json"
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured (default = )
+#public_address =
+
+# The Minotari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
+#base_node_grpc_address = "127.0.0.1/tcp/18142"
+
+# The Minotari console wallet's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
+#wallet_grpc_address = "127.0.0.1/tcp/18143"
+
+# How often do we want to scan the base layer for changes. (default = 10)
+#base_layer_scanning_interval = 10
+
+# The relative path to store persistent data (default = "data/validator_node")
+#data_dir = "data/validator_node"
+
+# JSON-RPC listener address (default = "127.0.0.1:18200")
+#json_rpc_address = "127.0.0.1:18200"
+
+# HTTP UI listener address (default = "127.0.0.1:5000")
+#http_ui_address = "127.0.0.1:5000"
+
+# Set to true to enable auto registration for each epoch (default = true)
+#auto_register = true
+
+[validator_node.p2p]
+#transport = "tor"
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Collectibles Configuration Options (CollectiblesConfig)                                                             #
+#                                                                                                                      #
+########################################################################################################################
+
+[collectibles]
+
+# GRPC address of validator node (default = "/ip4/127.0.0.1/tcp/18144")
+#validator_node_grpc_address = "/ip4/127.0.0.1/tcp/18144"
+
+# GRPC address of base node (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# GRPC address of wallet (default = "/ip4/127.0.0.1/tcp/18143")
+#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                                     Indexer Configuration Options (IndexerConfig)                                    #
+#                                                                                                                      #
+########################################################################################################################
+
+[indexer]
+
+# A path to the file that stores your node identity and secret key (default = "indexer_id.json")
+#identity_file = "indexer_id.json"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport
+# (default = "indexer_tor_id.json")
+#tor_identity_file = "indexer_tor_id.json"
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured (default = )
+#public_address =
+
+# The Minotari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
+#base_node_grpc_address = "127.0.0.1/tcp/18142"
+
+# How often do we want to scan the base layer for changes. (default = 10)
+#base_layer_scanning_interval = 10
+
+# The relative path to store persistent data (default = "data/indexer")
+#data_dir = "data/indexer"
+
+# JSON-RPC listener address (default = "127.0.0.1:18300")
+#json_rpc_address = "127.0.0.1:18300"
+
+# HTTP UI listener address (default = "127.0.0.1:15000")
+#http_ui_address = "127.0.0.1:15000"
+
+# Substate addresses to keep watching
+#address_watchlist=[]
+
+# How often do we want to scan the dan layer for change. (default = 10)
+#dan_layer_scanning_internal=10
+
+[indexer.p2p]
+#transport = "tor"
+
+
+########################################################################################################################
+#                                                                                                                      #
+#                                     DAN Wallet Daemon Configuration Options ()                                       #
+#                                                                                                                      #
+########################################################################################################################
+
+[dan_wallet_daemon]
+# JSON-RPC listener address (default = "127.0.0.1:9000")
+# listen_addr = "127.0.0.1:9000"
+
+# Signaling server address (default = "127.0.0.1:9100")
+# signaling_server_addr = "127.0.0.1:9100"
+
+# Validator node endpoint url (default = "http://127.0.0.1:18200/json_rpc")
+# validator_node_endpoint = "http://127.0.0.1:18200/json_rpc"
+
