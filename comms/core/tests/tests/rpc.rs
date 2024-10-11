@@ -27,13 +27,14 @@ use tari_comms::{
     protocol::rpc::{RpcServer, RpcServerHandle},
     transports::TcpTransport,
     CommsNode,
+    Minimized,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::async_assert_eventually;
 use tokio::time;
 
 use crate::tests::{
-    greeting_service::{GreetingClient, GreetingServer, GreetingService, StreamLargeItemsRequest},
+    greeting_service::{GreetingClient, GreetingServer, GreetingService, SayHelloRequest, StreamLargeItemsRequest},
     helpers::create_comms,
 };
 
@@ -60,6 +61,287 @@ async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, RpcServerHandle) {
         .set_public_addresses(vec![address.bind_address().clone()]);
 
     (comms, rpc_server_hnd)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rpc_server_can_request_drop_sessions() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    let shutdown = Shutdown::new();
+    let numer_of_clients = 3;
+    let (node1, _node2, _conn1_2, mut rpc_server2, mut clients) = {
+        let (node1, _rpc_server1) = spawn_node(shutdown.to_signal()).await;
+        let (node2, rpc_server2) = spawn_node(shutdown.to_signal()).await;
+
+        node1
+            .peer_manager()
+            .add_peer(node2.node_identity().to_peer())
+            .await
+            .unwrap();
+
+        let mut conn1_2 = node1
+            .connectivity()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+
+        let mut clients = Vec::new();
+        for _ in 0..numer_of_clients {
+            clients.push(conn1_2.connect_rpc::<GreetingClient>().await.unwrap());
+        }
+
+        (node1, node2, conn1_2, rpc_server2, clients)
+    };
+
+    // Verify all RPC connections are active
+    let num_sessions = rpc_server2
+        .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert_eq!(num_sessions, 3);
+    for client in &mut clients {
+        assert!(client
+            .say_hello(SayHelloRequest {
+                name: "Bob".to_string(),
+                language: 0
+            })
+            .await
+            .is_ok());
+    }
+
+    // The RPC server closes all RPC connections
+    let num_closed = rpc_server2
+        .close_all_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert_eq!(num_closed, 3);
+
+    // Verify the RPC connections are closed
+    let num_sessions = rpc_server2
+        .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert_eq!(num_sessions, 0);
+    for client in &mut clients {
+        assert!(client
+            .say_hello(SayHelloRequest {
+                name: "Bob".to_string(),
+                language: 0
+            })
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    let shutdown = Shutdown::new();
+    let numer_of_clients = 3;
+    let (node1, _node2, mut conn1_2, mut rpc_server2, mut clients) = {
+        let (node1, _rpc_server1) = spawn_node(shutdown.to_signal()).await;
+        let (node2, rpc_server2) = spawn_node(shutdown.to_signal()).await;
+
+        node1
+            .peer_manager()
+            .add_peer(node2.node_identity().to_peer())
+            .await
+            .unwrap();
+
+        let mut conn1_2 = node1
+            .connectivity()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+
+        let mut clients = Vec::new();
+        for _ in 0..numer_of_clients {
+            clients.push(conn1_2.connect_rpc::<GreetingClient>().await.unwrap());
+        }
+
+        (node1, node2, conn1_2, rpc_server2, clients)
+    };
+
+    // Verify all RPC connections are active
+    let num_sessions = rpc_server2
+        .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert_eq!(num_sessions, 3);
+    for client in &mut clients {
+        assert!(client
+            .say_hello(SayHelloRequest {
+                name: "Bob".to_string(),
+                language: 0
+            })
+            .await
+            .is_ok());
+    }
+
+    // RPC connections are closed when the peer is disconnected
+    conn1_2.disconnect(Minimized::No).await.unwrap();
+
+    // Verify the RPC connections are closed
+    async_assert_eventually!(
+        rpc_server2
+            .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+            .await
+            .unwrap(),
+        expect = 0,
+        max_attempts = 20,
+        interval = Duration::from_millis(1000)
+    );
+    for client in &mut clients {
+        assert!(client
+            .say_hello(SayHelloRequest {
+                name: "Bob".to_string(),
+                language: 0
+            })
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    let shutdown = Shutdown::new();
+    let numer_of_clients = 3;
+    let (node1, _node2, mut conn1_2, mut rpc_server2, mut clients) = {
+        let (node1, _rpc_server1) = spawn_node(shutdown.to_signal()).await;
+        let (node2, rpc_server2) = spawn_node(shutdown.to_signal()).await;
+
+        node1
+            .peer_manager()
+            .add_peer(node2.node_identity().to_peer())
+            .await
+            .unwrap();
+
+        let mut conn1_2 = node1
+            .connectivity()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+
+        let mut clients = Vec::new();
+        for _ in 0..numer_of_clients {
+            clients.push(conn1_2.connect_rpc::<GreetingClient>().await.unwrap());
+        }
+
+        (node1, node2, conn1_2, rpc_server2, clients)
+    };
+
+    // Verify all RPC connections are active
+    let num_sessions = rpc_server2
+        .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert_eq!(num_sessions, 3);
+    for client in &mut clients {
+        assert!(client
+            .say_hello(SayHelloRequest {
+                name: "Bob".to_string(),
+                language: 0
+            })
+            .await
+            .is_ok());
+    }
+
+    // RPC connections are closed when the first peer connection clone is dropped
+    conn1_2.set_force_disconnect_rpc_clients_when_clone_drops();
+    assert!(conn1_2.handle_count() > 1);
+    drop(conn1_2);
+
+    let num_sessions = rpc_server2
+        .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert!(num_sessions >= 1);
+
+    // Verify the RPC connections are closed eventually
+    async_assert_eventually!(
+        rpc_server2
+            .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+            .await
+            .unwrap(),
+        expect = 0,
+        max_attempts = 10,
+        interval = Duration::from_millis(1000)
+    );
+    for client in &mut clients {
+        assert!(client
+            .say_hello(SayHelloRequest {
+                name: "Bob".to_string(),
+                language: 0
+            })
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    let shutdown = Shutdown::new();
+    let numer_of_clients = 3;
+    let (node1, node2, mut rpc_server2) = {
+        let (node1, _rpc_server1) = spawn_node(shutdown.to_signal()).await;
+        let (node2, rpc_server2) = spawn_node(shutdown.to_signal()).await;
+
+        node1
+            .peer_manager()
+            .add_peer(node2.node_identity().to_peer())
+            .await
+            .unwrap();
+
+        (node1, node2, rpc_server2)
+    };
+
+    // Some peer connection clones still exist at the end of this scope, but they are eventually dropped
+    {
+        let mut clients = Vec::new();
+        let mut conn1_2 = node1
+            .connectivity()
+            .dial_peer(node2.node_identity().node_id().clone())
+            .await
+            .unwrap();
+
+        for _ in 0..numer_of_clients {
+            clients.push(conn1_2.connect_rpc::<GreetingClient>().await.unwrap());
+        }
+
+        // Verify all RPC connections are active
+        let num_sessions = rpc_server2
+            .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(num_sessions, 3);
+        for client in &mut clients {
+            assert!(client
+                .say_hello(SayHelloRequest {
+                    name: "Bob".to_string(),
+                    language: 0
+                })
+                .await
+                .is_ok());
+        }
+        assert!(conn1_2.handle_count() > 1);
+    }
+    let num_sessions = rpc_server2
+        .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    assert!(num_sessions >= 1);
+
+    // Verify the RPC connections are eventually closed
+    async_assert_eventually!(
+        rpc_server2
+            .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+            .await
+            .unwrap(),
+        expect = 0,
+        max_attempts = 10,
+        interval = Duration::from_millis(1000)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -116,6 +116,10 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
         borrow.as_ref().cloned()
     }
 
+    async fn disconnect_base_node(&mut self, _node_id: NodeId) {
+        self.send_shutdown();
+    }
+
     fn get_connectivity_status(&mut self) -> OnlineStatus {
         *self.online_status_watch.borrow()
     }

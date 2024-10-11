@@ -264,6 +264,11 @@ impl StoreAndForwardService {
                 warn!(target: LOG_TARGET, "Failed to get the minimize connections threshold: {:?}", err);
                 None
             });
+        if self.ignore_saf_threshold.is_some() {
+            let delay = Duration::from_secs(60);
+            tokio::time::sleep(delay).await;
+            debug!(target: LOG_TARGET, "SAF connectivity starting after delayed for {:.0?}", delay);
+        }
         self.node_id = self.connectivity.get_node_identity().await.map_or_else(
             |err| {
                 warn!(target: LOG_TARGET, "Failed to get the node identity: {:?}", err);

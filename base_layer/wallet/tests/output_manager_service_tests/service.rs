@@ -1927,6 +1927,7 @@ async fn test_txo_validation() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_txo_revalidation() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
 
