@@ -12,10 +12,10 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_crypto = { version = "0.20.3", default-features = false, features = [
+tari_crypto = { version = "0.21.0", default-features = false, features = [
     "borsh",
 ] }
-borsh = { version = "1.2", default-features = false }
+borsh = { version = "1.5", default-features = false }
 digest = { version = "0.10", default-features = false }
 
 [dev-dependencies]

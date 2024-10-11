@@ -18,4 +18,4 @@ serde = { version = "1.0.80", features = ["derive"] }
 
 [dev-dependencies]
 rand = "0.8"
-tari_utilities = { version = "0.7", features = ["borsh"] }
+tari_utilities = { version = "0.8", features = ["borsh"] }

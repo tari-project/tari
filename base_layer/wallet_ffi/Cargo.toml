@@ -15,12 +15,12 @@ tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
 tari_comms = { path = "../../comms/core", features = ["c_integration"] }
 tari_comms_dht = { path = "../../comms/dht", default-features = false }
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_key_manager = { path = "../key_manager" }
 tari_p2p = { path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 minotari_wallet = { path = "../wallet", features = ["c_integration"] }
 tari_contacts = { path = "../../base_layer/contacts" }
 
@@ -58,7 +58,7 @@ tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "base_node",
 ] }
-borsh = "1.2"
+borsh = "1.5"
 env_logger = "0.7.1"
 
 [build-dependencies]

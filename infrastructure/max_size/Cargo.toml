@@ -11,8 +11,8 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 
-borsh = "1.2"
+borsh = "1.5"
 serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"

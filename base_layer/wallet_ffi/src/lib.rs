@@ -181,7 +181,7 @@ use tari_p2p::{
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
-    encoding::Base58,
+    encoding::MBase58,
     hex,
     hex::{Hex, HexError},
     SafePassword,
@@ -2835,7 +2835,7 @@ pub unsafe extern "C" fn seed_words_create_from_cipher(
             return ptr::null_mut();
         },
     };
-    let bytes = match Vec::<u8>::from_base58(&base_58_cipher) {
+    let bytes = match Vec::<u8>::from_monero_base58(&base_58_cipher) {
         Ok(v) => v,
         Err(_) => {
             // code for invalid cipher bytes

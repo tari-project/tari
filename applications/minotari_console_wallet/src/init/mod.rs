@@ -80,7 +80,7 @@ use tari_key_manager::{
 };
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{encoding::Base58, hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
 use crate::{
@@ -972,7 +972,7 @@ pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
     let input = input.trim();
     match PublicKey::from_hex(input) {
         Ok(pk) => Some(pk),
-        Err(_) => match PublicKey::from_base58(input) {
+        Err(_) => match PublicKey::from_monero_base58(input) {
             Ok(pk) => Some(pk),
             Err(_) => None,
         },
