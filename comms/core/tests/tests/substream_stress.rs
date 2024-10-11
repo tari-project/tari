@@ -72,7 +72,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
 
     let mut conn = node1
         .connectivity()
-        .dial_peer(node2.node_identity().node_id().clone())
+        .dial_peer(node2.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 

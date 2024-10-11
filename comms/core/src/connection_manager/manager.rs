@@ -385,11 +385,17 @@ where
         use ConnectionManagerRequest::{CancelDial, DialPeer, NotifyListening};
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer { node_id, reply_tx } => {
+            DialPeer {
+                node_id,
+                reply_tx,
+                drop_old_connections,
+            } => {
                 let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "connection_manager::handle_request");
                 span.follows_from(tracing_id);
-                self.dial_peer(node_id, reply_tx).instrument(span).await
+                self.dial_peer(node_id, reply_tx, drop_old_connections)
+                    .instrument(span)
+                    .await
             },
             CancelDial(node_id) => {
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
@@ -500,10 +506,11 @@ where
         &mut self,
         node_id: NodeId,
         reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        drop_old_connections: bool,
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(Some(peer)) => {
-                self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
+                self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply, drop_old_connections))
                     .await;
             },
             Ok(None) => {

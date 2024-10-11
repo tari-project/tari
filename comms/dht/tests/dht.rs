@@ -141,7 +141,7 @@ async fn test_dht_discover_propagation() {
     node_D
         .comms
         .connectivity()
-        .dial_peer(node_C.comms.node_identity().node_id().clone())
+        .dial_peer(node_C.comms.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 
@@ -328,7 +328,7 @@ async fn test_dht_propagate_dedup() {
         node1
             .comms
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), false)
             .await
             .unwrap();
     }
@@ -463,21 +463,21 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone())
+        .dial_peer(node_B.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_C.node_identity().node_id().clone())
+        .dial_peer(node_C.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 
     node_B
         .comms
         .connectivity()
-        .dial_peer(node_C.node_identity().node_id().clone())
+        .dial_peer(node_C.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 
@@ -627,7 +627,7 @@ async fn test_dht_repropagate() {
         node1
             .comms
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), false)
             .await
             .unwrap();
     }
@@ -731,7 +731,7 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone())
+        .dial_peer(node_B.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 
@@ -836,7 +836,7 @@ async fn test_dht_header_not_malleable() {
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone())
+        .dial_peer(node_B.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 

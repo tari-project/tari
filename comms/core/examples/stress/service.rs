@@ -227,7 +227,7 @@ impl StressTestService {
         self.comms_node.peer_manager().add_peer(peer).await?;
         println!("Dialing peer `{}`...", node_id.short_str());
         let start = Instant::now();
-        let conn = self.comms_node.connectivity().dial_peer(node_id).await?;
+        let conn = self.comms_node.connectivity().dial_peer(node_id, false).await?;
         println!("Dial completed successfully in {:.2?}", start.elapsed());
         let outbound_tx = self.outbound_tx.clone();
         let inbound_rx = self.inbound_rx.clone();

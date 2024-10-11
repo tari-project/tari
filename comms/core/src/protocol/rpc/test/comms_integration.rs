@@ -74,7 +74,7 @@ async fn run_service() {
 
     let mut conn = comms2
         .connectivity()
-        .dial_peer(comms1.node_identity().node_id().clone())
+        .dial_peer(comms1.node_identity().node_id().clone(), false)
         .await
         .unwrap();
 

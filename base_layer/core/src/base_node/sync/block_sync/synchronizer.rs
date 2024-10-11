@@ -217,7 +217,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
-        let connection = self.connectivity.dial_peer(peer).await?;
+        let connection = self.connectivity.dial_peer(peer, false).await?;
         Ok(connection)
     }
 

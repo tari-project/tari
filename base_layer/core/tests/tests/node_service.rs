@@ -420,7 +420,7 @@ async fn propagate_and_forward_invalid_block() {
     alice_node
         .comms
         .connectivity()
-        .dial_peer(bob_node.node_identity.node_id().clone())
+        .dial_peer(bob_node.node_identity.node_id().clone(), false)
         .await
         .unwrap();
     wait_until_online(&[&alice_node, &bob_node, &carol_node, &dan_node]).await;

@@ -235,7 +235,11 @@ impl ConnectivityManagerMock {
         use ConnectivityRequest::*;
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer { node_id, reply_tx } => {
+            DialPeer {
+                node_id,
+                reply_tx,
+                drop_old_connections: _drop_old_connections,
+            } => {
                 self.state.add_dialed_peer(node_id.clone()).await;
                 // No reply, no reason to do anything in the mock
                 if reply_tx.is_none() {
