@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use libp2p::{identity, PeerId, StreamProtocol};
 
 #[derive(Debug, Clone)]
-pub enum NetworkingEvent {
+pub enum NetworkEvent {
     NewIdentifiedPeer {
         peer_id: PeerId,
         public_key: identity::PublicKey,
@@ -15,6 +15,12 @@ pub enum NetworkingEvent {
     PeerConnected {
         peer_id: PeerId,
         direction: ConnectionDirection,
+    },
+    PeerDisconnected {
+        peer_id: PeerId,
+    },
+    PeerBanned {
+        peer_id: PeerId,
     },
 }
 

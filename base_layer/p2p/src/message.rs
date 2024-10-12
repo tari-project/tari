@@ -162,7 +162,7 @@ impl<T> DomainMessage<T> {
         &self.payload
     }
 
-    pub fn into_inner(self) -> T {
+    pub fn into_payload(self) -> T {
         self.payload
     }
 

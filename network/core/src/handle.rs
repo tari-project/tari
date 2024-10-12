@@ -39,7 +39,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use crate::{
     connection::Connection,
     error::NetworkingHandleError,
-    event::NetworkingEvent,
+    event::NetworkEvent,
     peer::{Peer, PeerInfo},
     BannedPeer,
     GossipPublisher,
@@ -115,9 +115,9 @@ pub enum NetworkingRequest {
         peer_id: PeerId,
         reply: Reply<bool>,
     },
-    IsPeerBanned {
+    GetBannedPeer {
         peer_id: PeerId,
-        reply: Reply<bool>,
+        reply: Reply<Option<BannedPeer>>,
     },
     GetBannedPeers {
         reply: Reply<Vec<BannedPeer>>,
@@ -133,14 +133,14 @@ pub enum NetworkingRequest {
 pub struct NetworkHandle {
     tx_request: mpsc::Sender<NetworkingRequest>,
     local_peer_id: PeerId,
-    tx_events: broadcast::Sender<NetworkingEvent>,
+    tx_events: broadcast::Sender<NetworkEvent>,
 }
 
 impl NetworkHandle {
     pub(super) fn new(
         local_peer_id: PeerId,
         tx_request: mpsc::Sender<NetworkingRequest>,
-        tx_events: broadcast::Sender<NetworkingEvent>,
+        tx_events: broadcast::Sender<NetworkEvent>,
     ) -> Self {
         Self {
             tx_request,
@@ -149,7 +149,7 @@ impl NetworkHandle {
         }
     }
 
-    pub fn subscribe_events(&self) -> broadcast::Receiver<NetworkingEvent> {
+    pub fn subscribe_events(&self) -> broadcast::Receiver<NetworkEvent> {
         self.tx_events.subscribe()
     }
 
@@ -335,10 +335,10 @@ impl NetworkHandle {
         Ok(())
     }
 
-    pub async fn is_peer_banned(&self, peer_id: PeerId) -> Result<bool, NetworkError> {
+    pub async fn get_banned_peer(&self, peer_id: PeerId) -> Result<Option<BannedPeer>, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
-            .send(NetworkingRequest::IsPeerBanned { peer_id, reply: tx })
+            .send(NetworkingRequest::GetBannedPeer { peer_id, reply: tx })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?

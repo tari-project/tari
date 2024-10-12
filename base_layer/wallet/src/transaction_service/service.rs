@@ -82,10 +82,15 @@ use tari_network::{
     identity::{Keypair, PeerId},
     NetworkHandle,
     NetworkingService,
+    OutboundMessager,
     OutboundMessaging,
     ToPeerId,
 };
-use tari_p2p::message::{DomainMessage, MessageTag, TariNodeMessageSpec};
+use tari_p2p::{
+    message::{tari_message::Message, DomainMessage, MessageTag, TariNodeMessageSpec},
+    proto,
+    proto::message::TariMessage,
+};
 use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -157,30 +162,16 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
 
-pub struct TransactionService<
-    TTxStream,
-    TTxReplyStream,
-    TTxFinalizedStream,
-    BNResponseStream,
-    TBackend,
-    TTxCancelledStream,
-    TWalletBackend,
-    TWalletConnectivity,
-    TKeyManagerInterface,
-> {
+pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface> {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
-    transaction_stream: Option<TTxStream>,
-    transaction_reply_stream: Option<TTxReplyStream>,
-    transaction_finalized_stream: Option<TTxFinalizedStream>,
-    base_node_response_stream: Option<BNResponseStream>,
-    transaction_cancelled_stream: Option<TTxCancelledStream>,
+    rx_messages: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
     event_publisher: TransactionEventSender,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-    pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
+    pending_transaction_reply_senders: HashMap<TxId, Sender<(PeerId, RecipientSignedMessage)>>,
     base_node_response_senders: HashMap<TxId, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     #[allow(clippy::type_complexity)]
@@ -197,35 +188,9 @@ pub struct TransactionService<
     consensus_manager: ConsensusManager,
 }
 
-impl<
-        TTxStream,
-        TTxReplyStream,
-        TTxFinalizedStream,
-        BNResponseStream,
-        TBackend,
-        TTxCancelledStream,
-        TWalletBackend,
-        TWalletConnectivity,
-        TKeyManagerInterface,
-    >
-    TransactionService<
-        TTxStream,
-        TTxReplyStream,
-        TTxFinalizedStream,
-        BNResponseStream,
-        TBackend,
-        TTxCancelledStream,
-        TWalletBackend,
-        TWalletConnectivity,
-        TKeyManagerInterface,
-    >
+impl<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
 where
-    TTxStream: Stream<Item = DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>>,
-    TTxReplyStream: Stream<Item = DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>>,
-    TTxFinalizedStream: Stream<Item = DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>>,
-    BNResponseStream:
-        Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
-    TTxCancelledStream: Stream<Item = DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>>,
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -239,11 +204,7 @@ where
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
         >,
-        transaction_stream: TTxStream,
-        transaction_reply_stream: TTxReplyStream,
-        transaction_finalized_stream: TTxFinalizedStream,
-        base_node_response_stream: BNResponseStream,
-        transaction_cancelled_stream: TTxCancelledStream,
+        rx_messages: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
         output_manager_service: OutputManagerHandle,
         core_key_manager_service: TKeyManagerInterface,
         outbound_message_service: OutboundMessageRequester,
@@ -301,11 +262,7 @@ where
         Ok(Self {
             config,
             db,
-            transaction_stream: Some(transaction_stream),
-            transaction_reply_stream: Some(transaction_reply_stream),
-            transaction_finalized_stream: Some(transaction_finalized_stream),
-            base_node_response_stream: Some(base_node_response_stream),
-            transaction_cancelled_stream: Some(transaction_cancelled_stream),
+            rx_messages,
             request_stream: Some(request_stream),
             event_publisher,
             resources,
@@ -332,54 +289,13 @@ where
             .expect("Transaction Service initialized without request_stream")
             .fuse();
         pin_mut!(request_stream);
-        let transaction_stream = self
-            .transaction_stream
-            .take()
-            .expect("Transaction Service initialized without transaction_stream")
-            .fuse();
-        pin_mut!(transaction_stream);
-        let transaction_reply_stream = self
-            .transaction_reply_stream
-            .take()
-            .expect("Transaction Service initialized without transaction_reply_stream")
-            .fuse();
-        pin_mut!(transaction_reply_stream);
-        let transaction_finalized_stream = self
-            .transaction_finalized_stream
-            .take()
-            .expect("Transaction Service initialized without transaction_finalized_stream")
-            .fuse();
-        pin_mut!(transaction_finalized_stream);
-        let base_node_response_stream = self
-            .base_node_response_stream
-            .take()
-            .expect("Transaction Service initialized without base_node_response_stream")
-            .fuse();
-        pin_mut!(base_node_response_stream);
-        let transaction_cancelled_stream = self
-            .transaction_cancelled_stream
-            .take()
-            .expect("Transaction Service initialized without transaction_cancelled_stream")
-            .fuse();
-        pin_mut!(transaction_cancelled_stream);
 
         let mut shutdown = self.resources.shutdown_signal.clone();
 
-        let mut send_transaction_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
-        let mut receive_transaction_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
-        let mut transaction_broadcast_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
-        let mut transaction_validation_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        > = FuturesUnordered::new();
+        let mut send_transaction_protocol_handles = FuturesUnordered::new();
+        let mut receive_transaction_protocol_handles = FuturesUnordered::new();
+        let mut transaction_broadcast_protocol_handles = FuturesUnordered::new();
+        let mut transaction_validation_protocol_handles = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
         let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
@@ -422,135 +338,12 @@ where
                         start.elapsed().as_millis()
                     );
                 },
-                // Incoming Transaction messages from the Comms layer
-                Some(msg) = transaction_stream.next() => {
-                    let start = Instant::now();
-                    let message_tag = msg.header.message_tag;
-                    let peer_id=msg.peer_id();
-                    let inner_msg = msg.into_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", message_tag);
 
-                    let result  = self.accept_transaction(
-                        peer_id,
-                        inner_msg,
-                        message_tag,
-                        &mut receive_transaction_protocol_handles,
-                    );
-
-                    match result {
-                        Err(TransactionServiceError::RepeatedMessageError) => {
-                            trace!(target: LOG_TARGET, "A repeated Transaction message was received, Trace: {}", msg.header.message_tag);
-                        }
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
-                                e, self.resources.node_identity.public().to_peer_id(), message_tag);
-                            let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
-                                Transaction Sender message: {:?}", e).to_string())));
-                        }
-                        _ => (),
-                    }
-                    trace!(target: LOG_TARGET,
-                        "Handling Transaction Message, Trace: {}, processed in {}ms",
-                        message_tag,
-                        start.elapsed().as_millis(),
-                    );
-                },
-                 // Incoming Transaction Reply messages from the Comms layer
-                Some(msg) = transaction_reply_stream.next() => {
-                    let start = Instant::now();
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.header.message_tag);
-                    let result = self.accept_recipient_reply(origin_public_key, inner_msg).await;
-
-                    match result {
-                        Err(TransactionServiceError::TransactionDoesNotExistError) => {
-                            trace!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: \
-                            {} due to Transaction not existing. This usually means the message was a repeated message \
-                            from Store and Forward, Trace: {}", self.resources.node_identity.node_id().short_str(),
-                            msg.header.message_tag);
-                        },
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {} \
-                            for NodeId: {}, Trace: {}", e, self.resources.node_identity.node_id().short_str(),
-                            msg.header.message_tag);
-                            let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
-                            Transaction Recipient Reply message".to_string())));
-                        },
-                        Ok(_) => (),
-                    }
-                    trace!(target: LOG_TARGET,
-                        "Handling Transaction Reply Message, Trace: {}, processed in {}ms",
-                        msg.header.message_tag,
-                        start.elapsed().as_millis(),
-                    );
-                },
-               // Incoming Finalized Transaction messages from the Comms layer
-                Some(msg) = transaction_finalized_stream.next() => {
-                    let start = Instant::now();
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET,
-                        "Handling Transaction Finalized Message, Trace: {}",
-                        msg.header.message_tag.as_value()
-                    );
-                    let result = self.accept_finalized_transaction(
-                        origin_public_key,
-                        inner_msg,
-                        &mut receive_transaction_protocol_handles,
-                    ).await;
-
-                    match result {
-                        Err(TransactionServiceError::TransactionDoesNotExistError) => {
-                            trace!(target: LOG_TARGET, "Unable to handle incoming Finalized Transaction message from NodeId: \
-                            {} due to Transaction not existing. This usually means the message was a repeated message \
-                            from Store and Forward, Trace: {}", self.resources.node_identity.node_id().short_str(),
-                            msg.header.message_tag);
-                        },
-                       Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {} \
-                            for NodeID: {}, Trace: {}", e , self.resources.node_identity.node_id().short_str(),
-                            msg.header.message_tag.as_value());
-                            let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
-                            Finalized message".to_string(),)));
-                       },
-                       Ok(_) => ()
-                    }
-                    trace!(target: LOG_TARGET,
-                        "Handling Transaction Finalized Message, Trace: {}, processed in {}ms",
-                        msg.header.message_tag.as_value(),
-                        start.elapsed().as_millis(),
-                    );
-                },
-                // Incoming messages from the Comms layer
-                Some(msg) = base_node_response_stream.next() => {
-                    let start = Instant::now();
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.header.message_tag);
-                    let _result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
-                        NodeID: {}, Trace: {}", origin_public_key, e, self.resources.node_identity.node_id().short_str(),
-                        msg.header.message_tag.as_value());
-                        e
-                    });
-                    trace!(target: LOG_TARGET,
-                        "Handling Base Node Response, Trace: {}, processed in {}ms",
-                        msg.header.message_tag,
-                        start.elapsed().as_millis(),
-                    );
+                // Incoming messages from the network
+                Some(msg) = self.rx_messages.recv() => {
+                    self.handle_message(msg).await;
                 }
-                // Incoming messages from the Comms layer
-                Some(msg) = transaction_cancelled_stream.next() => {
-                    let start = Instant::now();
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.header.message_tag);
-                    if let Err(e) = self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
-                        warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
-                    }
-                    trace!(target: LOG_TARGET,
-                        "Handling Transaction Cancelled message, Trace: {}, processed in {}ms",
-                        msg.header.message_tag,
-                        start.elapsed().as_millis(),
-                    );
-                }
+
                 Some(join_result) = send_transaction_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
                     match join_result {
@@ -596,6 +389,150 @@ where
         }
         info!(target: LOG_TARGET, "Transaction service shut down");
         Ok(())
+    }
+
+    async fn handle_message(
+        &mut self,
+        msg: DomainMessage<TariMessage>,
+        receive_transaction_protocol_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) {
+        let message_tag = msg.header.message_tag;
+        let peer_id = msg.source_peer_id;
+        let Some(msg) = msg.payload.message else {
+            warn!(target: LOG_TARGET, "Message payload message received was empty");
+            return;
+        };
+        match msg {
+            Message::BaseNodeResponse(msg) => {
+                let start = Instant::now();
+                trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", message_tag);
+                match self.handle_base_node_response(msg).await {
+                    Ok(_) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Handling Base Node Response, Trace: {}, processed in {}ms",
+                            message_tag,
+                            start.elapsed().as_millis(),
+                        );
+                    },
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error handling base node service response from {}: {:?} for  NodeID: {}, Trace: {}",
+                            peer_id,
+                            e,
+                            self.resources.node_identity.public().to_peer_id(),
+                            message_tag,
+                        );
+                    },
+                }
+            },
+            Message::SenderPartialTransaction(msg) => {
+                let start = Instant::now();
+                trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", message_tag);
+
+                let result = self.accept_transaction(peer_id, msg, message_tag, receive_transaction_protocol_handles);
+
+                match result {
+                    Err(TransactionServiceError::RepeatedMessageError) => {
+                        trace!(target: LOG_TARGET, "A repeated Transaction message was received, Trace: {}", message_tag);
+                    },
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}", e, self.resources.node_identity.public().to_peer_id(), message_tag);
+                        let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!(
+                            "Error handling Transaction Sender message: {:?}",
+                            e
+                        ))));
+                    },
+                    _ => (),
+                }
+                trace!(
+                target: LOG_TARGET,
+                    "Handling Transaction Message, Trace: {}, processed in {}ms",
+                    message_tag,
+                    start.elapsed().as_millis(),
+                );
+            },
+            Message::ReceiverPartialTransactionReply(msg) => {
+                let start = Instant::now();
+                trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", message_tag);
+                let result = self.accept_recipient_reply(peer_id, msg).await;
+
+                match result {
+                    Err(TransactionServiceError::TransactionDoesNotExistError) => {
+                        trace!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: \
+                            {} due to Transaction not existing. This usually means the message was a repeated message \
+                            from Store and Forward, Trace: {}", self.resources.node_identity.public().to_peer_id(),
+                            message_tag);
+                    },
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {} \
+                            for NodeId: {}, Trace: {}", e, self.resources.node_identity.public().to_peer_id(),
+                            message_tag);
+                        let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(
+                            "Error handling Transaction Recipient Reply message".to_string(),
+                        )));
+                    },
+                    Ok(_) => (),
+                }
+                trace!(target: LOG_TARGET,
+                    "Handling Transaction Reply Message, Trace: {}, processed in {}ms",
+                    message_tag,
+                    start.elapsed().as_millis(),
+                );
+            },
+            Message::TransactionFinalized(msg) => {
+                let start = Instant::now();
+                trace!(target: LOG_TARGET, "Handling Transaction Finalized Message, Trace: {}", message_tag, );
+                let result = self
+                    .accept_finalized_transaction(peer_id, msg, receive_transaction_protocol_handles)
+                    .await;
+
+                match result {
+                    Err(TransactionServiceError::TransactionDoesNotExistError) => {
+                        trace!(target: LOG_TARGET, "Unable to handle incoming Finalized Transaction message from NodeId: \
+                            {} due to Transaction not existing. This usually means the message was a repeated message \
+                            from Store and Forward, Trace: {}", self.resources.node_identity.public().to_peer_id(),
+                            message_tag);
+                    },
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to handle incoming Transaction Finalized message: {} for NodeID: {}, Trace: {}",
+                            e ,
+                            self.resources.node_identity.public().to_peer_id(),
+                            message_tag.as_value(),
+                        );
+                        let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(
+                            "Error handling Transaction Finalized message".to_string(),
+                        )));
+                    },
+                    Ok(_) => (),
+                }
+                trace!(target: LOG_TARGET,
+                    "Handling Transaction Finalized Message, Trace: {}, processed in {}ms",
+                    message_tag.as_value(),
+                    start.elapsed().as_millis(),
+                );
+            },
+            Message::TransactionCancelled(msg) => {
+                let start = Instant::now();
+                trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", message_tag);
+                if let Err(e) = self.handle_transaction_cancelled_message(peer_id, msg).await {
+                    warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
+                }
+                trace!(target: LOG_TARGET,
+                    "Handling Transaction Cancelled message, Trace: {}, processed in {}ms",
+                    message_tag,
+                    start.elapsed().as_millis(),
+                );
+            },
+            msg => {
+                warn!(target: LOG_TARGET, "Unexpected message received: {:?}", msg);
+            },
+        }
     }
 
     /// This handler is called when requests arrive from the various streams
@@ -2482,22 +2419,13 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn accept_recipient_reply(
         &mut self,
-        source_pubkey: CommsPublicKey,
-        recipient_reply: Result<proto::RecipientSignedMessage, prost::DecodeError>,
+        source_peer_id: PeerId,
+        recipient_reply: proto::transaction_protocol::RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
         self.check_recovery_status()?;
 
-        if let Err(e) = recipient_reply {
-            // We should ban but there is no banning in the wallet...
-            return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode RecipientSignedMessage: {:?}",
-                e
-            )));
-        }
-
         let recipient_reply: RecipientSignedMessage = recipient_reply
-            .unwrap()
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
@@ -2527,7 +2455,7 @@ where
 
         if let Ok(ctx) = completed_tx {
             // Check that it is from the same person
-            if ctx.destination_address.comms_public_key() != &source_pubkey {
+            if ctx.destination_address.comms_public_key().to_peer_id() != source_peer_id {
                 return Err(TransactionServiceError::InvalidSourcePublicKey);
             }
             if !check_cooldown(ctx.last_send_timestamp) {
@@ -2542,25 +2470,30 @@ where
                      Transaction Cancelled response is being sent.",
                     tx_id
                 );
-                tokio::spawn(send_transaction_cancelled_message(
+                send_transaction_cancelled_message(
                     tx_id,
-                    source_pubkey,
+                    source_peer_id,
                     self.resources.outbound_message_service.clone(),
-                ));
+                )
+                .await?;
             } else {
                 // Resend the reply
                 debug!(
                     target: LOG_TARGET,
                     "A repeated Transaction Reply (TxId: {}) has been received. Reply is being resent.", tx_id
                 );
-                tokio::spawn(send_finalized_transaction_message(
-                    tx_id,
-                    ctx.transaction,
-                    source_pubkey,
-                    self.resources.outbound_message_service.clone(),
-                    self.resources.config.direct_send_timeout,
-                    self.resources.config.transaction_routing_mechanism,
-                ));
+                let finalized_transaction_message = proto::transaction_protocol::TransactionFinalizedMessage {
+                    tx_id: tx_id.into(),
+                    transaction: Some(
+                        ctx.transaction
+                            .try_into()
+                            .map_err(TransactionServiceError::InvalidMessageError)?,
+                    ),
+                };
+                self.resources
+                    .outbound_message_service
+                    .send_message(source_peer_id, finalized_transaction_message)
+                    .await?;
             }
 
             if let Err(e) = self.resources.db.increment_send_count(tx_id) {
@@ -2574,7 +2507,7 @@ where
 
         if let Ok(otx) = cancelled_outbound_tx {
             // Check that it is from the same person
-            if otx.destination_address.comms_public_key() != &source_pubkey {
+            if otx.destination_address.comms_public_key().to_peer_id() != source_peer_id {
                 return Err(TransactionServiceError::InvalidSourcePublicKey);
             }
             if !check_cooldown(otx.last_send_timestamp) {
@@ -2588,11 +2521,8 @@ where
                  transaction. Transaction Cancelled response is being sent.",
                 tx_id
             );
-            tokio::spawn(send_transaction_cancelled_message(
-                tx_id,
-                source_pubkey,
-                self.resources.outbound_message_service.clone(),
-            ));
+            send_transaction_cancelled_message(tx_id, source_peer_id, self.resources.outbound_message_service.clone())
+                .await?;
 
             if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                 warn!(
@@ -2604,12 +2534,12 @@ where
         }
 
         // Is this a new Transaction Reply for an existing pending transaction?
-        let sender = match self.pending_transaction_reply_senders.get_mut(&tx_id) {
+        let sender = match self.pending_transaction_reply_senders.get(&tx_id) {
             None => return Err(TransactionServiceError::TransactionDoesNotExistError),
             Some(s) => s,
         };
         sender
-            .send((source_pubkey, recipient_reply))
+            .send((source_peer_id, recipient_reply))
             .await
             .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
@@ -2721,25 +2651,15 @@ where
     /// Handle a Transaction Cancelled message received from the Comms layer
     pub async fn handle_transaction_cancelled_message(
         &mut self,
-        source_pubkey: CommsPublicKey,
-        transaction_cancelled: Result<proto::TransactionCancelledMessage, prost::DecodeError>,
+        peer_id: PeerId,
+        transaction_cancelled: proto::transaction_protocol::TransactionCancelledMessage,
     ) -> Result<(), TransactionServiceError> {
-        let transaction_cancelled = match transaction_cancelled {
-            Ok(v) => v,
-            Err(e) => {
-                // Should ban....
-                return Err(TransactionServiceError::InvalidMessageError(format!(
-                    "Could not decode TransactionCancelledMessage: {:?}",
-                    e
-                )));
-            },
-        };
         let tx_id = transaction_cancelled.tx_id.into();
 
         // Check that an inbound transaction exists to be cancelled and that the Source Public key for that transaction
         // is the same as the cancellation message
         if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(tx_id) {
-            if inbound_tx.source_address.comms_public_key() == &source_pubkey {
+            if inbound_tx.source_address.comms_public_key().to_peer_id() == peer_id {
                 self.cancel_pending_transaction(tx_id).await?;
             } else {
                 trace!(
@@ -2826,21 +2746,14 @@ where
     pub fn accept_transaction(
         &mut self,
         source_peer_id: PeerId,
-        sender_message: Result<proto::TransactionSenderMessage, prost::DecodeError>,
+        sender_message: proto::transaction_protocol::TransactionSenderMessage,
         traced_message_tag: MessageTag,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
         self.check_recovery_status()?;
 
-        if let Err(e) = sender_message {
-            return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode TransactionSenderMessage: {:?}",
-                e
-            )));
-        }
         let sender_message: TransactionSenderMessage = sender_message
-            .unwrap()
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
@@ -2976,21 +2889,13 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn accept_finalized_transaction(
         &mut self,
-        source_pubkey: CommsPublicKey,
-        finalized_transaction: Result<proto::TransactionFinalizedMessage, prost::DecodeError>,
+        peer_id: PeerId,
+        finalized_transaction: proto::transaction_protocol::TransactionFinalizedMessage,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
         self.check_recovery_status()?;
 
-        if let Err(e) = finalized_transaction {
-            // Should ban but there is no banning in the wallet...
-            return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode TransactionFinalizedMessage: {:?}",
-                e
-            )));
-        }
-        let finalized_transaction = finalized_transaction.unwrap();
         let tx_id = finalized_transaction.tx_id.into();
         let transaction: Transaction = finalized_transaction
             .transaction
@@ -3006,12 +2911,12 @@ where
                 )
             })?;
 
-        let (source, sender) = match self.finalized_transaction_senders.get_mut(&tx_id) {
+        let (source, sender) = match self.finalized_transaction_senders.get(&tx_id) {
             None => {
                 // First check if perhaps we know about this inbound transaction but it was cancelled
                 match self.db.get_cancelled_pending_inbound_transaction(tx_id) {
                     Ok(t) => {
-                        if t.source_address.comms_public_key() != &source_pubkey {
+                        if t.source_address.comms_public_key().to_peer_id() != peer_id {
                             debug!(
                                 target: LOG_TARGET,
                                 "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: \
@@ -3105,7 +3010,7 @@ where
             },
             Some(s) => s,
         };
-        if source_pubkey != *source.comms_public_key() {
+        if source.comms_public_key().to_peer_id() != peer_id {
             return Err(TransactionServiceError::InvalidSourcePublicKey);
         }
         sender
@@ -3479,18 +3384,10 @@ where
 
     /// Handle an incoming basenode response message
     pub async fn handle_base_node_response(
-        &mut self,
-        response: Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>,
+        &self,
+        response: proto::base_node::BaseNodeServiceResponse,
     ) -> Result<(), TransactionServiceError> {
-        if let Err(e) = response {
-            // Should we switch base nodes?
-            return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode BaseNodeServiceResponse: {:?}",
-                e
-            )));
-        }
-        let response = response.unwrap();
-        let sender = match self.base_node_response_senders.get_mut(&response.request_key.into()) {
+        let sender = match self.base_node_response_senders.get(&response.request_key.into()) {
             None => {
                 trace!(
                     target: LOG_TARGET,
@@ -3502,7 +3399,7 @@ where
             Some((_, s)) => s,
         };
         sender
-            .send(response.clone())
+            .send(response)
             .await
             .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
 
@@ -3700,7 +3597,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_key_manager_service: TKeyManagerInterface,
-    pub outbound_message_service: OutboundMessageRequester,
+    pub outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
     pub interactive_tari_address: TariAddress,

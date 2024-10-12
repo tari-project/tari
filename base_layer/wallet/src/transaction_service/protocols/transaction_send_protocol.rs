@@ -49,7 +49,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_p2p::tari_message::TariMessageType;
+use tari_network::{OutboundMessager, ToPeerId};
+use tari_p2p::{proto, tari_message::TariMessageType};
 use tari_script::TariScript;
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
@@ -507,15 +508,16 @@ where
                 result = &mut cancellation_receiver => {
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
-                        let _ = send_transaction_cancelled_message(
-                            self.id,self.dest_address.comms_public_key().clone(),
-                            self.resources.outbound_message_service.clone(), )
-                        .await.map_err(|e| {
+                        if let Err(e) =  send_transaction_cancelled_message(
+                            self.id,
+                            self.dest_address.comms_public_key(),
+                            self.resources.outbound_message_service.clone(),
+                        ).await {
                             warn!(
                                 target: LOG_TARGET,
                                 "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
                             )
-                        });
+                        }
                         self.resources
                             .db
                             .increment_send_count(self.id)
@@ -937,9 +939,10 @@ where
         &mut self,
         cancel_reason: TxCancellationReason,
     ) -> Result<(), TransactionServiceProtocolError<TxId>> {
+        // they are just courtesy messages
         let _ = send_transaction_cancelled_message(
             self.id,
-            self.dest_address.comms_public_key().clone(),
+            self.dest_address.comms_public_key(),
             self.resources.outbound_message_service.clone(),
         )
         .await

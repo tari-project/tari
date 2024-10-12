@@ -79,7 +79,7 @@ pub use initializer::MempoolSyncInitializer;
 use libp2p_substream::{ProtocolEvent, ProtocolNotification, Substream};
 use log::*;
 use prost::{bytes::Bytes, Message};
-use tari_network::{identity::PeerId, NetworkHandle, NetworkingEvent, StreamProtocol};
+use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, StreamProtocol};
 use tari_p2p::{framing, framing::CanonicalFraming, proto as shared_proto, proto::mempool as proto};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
@@ -158,10 +158,10 @@ impl MempoolSyncProtocol {
         }
     }
 
-    async fn handle_network_event(&mut self, event: NetworkingEvent) {
+    async fn handle_network_event(&mut self, event: NetworkEvent) {
         match event {
             // If this node is connecting to a peer
-            NetworkingEvent::PeerConnected { peer_id, direction } if direction.is_outbound() => {
+            NetworkEvent::PeerConnected { peer_id, direction } if direction.is_outbound() => {
                 if !self.is_synched() {
                     self.spawn_initiator_protocol(peer_id).await;
                 }

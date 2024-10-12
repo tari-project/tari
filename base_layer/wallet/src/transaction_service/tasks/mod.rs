@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod check_faux_transaction_status;
-pub mod send_finalized_transaction;
 pub mod send_transaction_cancelled;
 pub mod send_transaction_reply;
 pub mod wait_on_dial;

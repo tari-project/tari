@@ -62,6 +62,12 @@ impl BannedPeer {
     pub fn is_banned(&self) -> bool {
         self.ban_duration.map_or(true, |d| d >= self.banned_at.elapsed())
     }
+
+    /// Returns None if the ban duration is infinite, otherwise returns the remaining duration of the ban.
+    pub fn remaining_ban(&self) -> Option<Duration> {
+        let d = self.ban_duration?;
+        Some(self.banned_at.elapsed().saturating_sub(d))
+    }
 }
 
 impl Display for BannedPeer {
@@ -140,5 +146,11 @@ impl ToPeerId for PublicKey {
 impl ToPeerId for RistrettoPublicKey {
     fn to_peer_id(&self) -> PeerId {
         PublicKey::from(identity::sr25519::PublicKey::from(self.clone())).to_peer_id()
+    }
+}
+
+impl ToPeerId for &RistrettoPublicKey {
+    fn to_peer_id(&self) -> PeerId {
+        PublicKey::from(identity::sr25519::PublicKey::from((*self).clone())).to_peer_id()
     }
 }

@@ -29,7 +29,7 @@ use std::{
 use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use tari_utilities::ByteArray;
 
 use crate::contacts_service::{
@@ -50,7 +50,7 @@ pub trait ContactsBackend: Send + Sync + Clone {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
     Contact(TariAddress),
-    ContactId(NodeId),
+    ContactId(PeerId),
     Contacts,
     Message(Vec<u8>),
     Messages(TariAddress, i64, i64),
@@ -70,7 +70,7 @@ pub enum DbValue {
 pub enum DbKeyValuePair {
     Contact(TariAddress, Contact),
     MessageConfirmations(Vec<u8>, Option<NaiveDateTime>, Option<NaiveDateTime>),
-    LastSeen(NodeId, NaiveDateTime, Option<i32>),
+    LastSeen(PeerId, NaiveDateTime, Option<i32>),
 }
 
 pub enum WriteOperation {
@@ -136,7 +136,7 @@ where T: ContactsBackend + 'static
     #[allow(clippy::cast_possible_wrap)]
     pub fn update_contact_last_seen(
         &self,
-        node_id: &NodeId,
+        node_id: &PeerId,
         last_seen: NaiveDateTime,
         latency: Option<u32>,
     ) -> Result<TariAddress, ContactsServiceStorageError> {

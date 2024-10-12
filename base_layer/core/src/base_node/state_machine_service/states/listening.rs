@@ -159,8 +159,8 @@ impl Listening {
                     }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
-                    match shared.network.is_peer_banned(*peer_metadata.peer_id()).await {
-                        Ok(true) => {
+                    match shared.network.get_banned_peer(*peer_metadata.peer_id()).await {
+                        Ok(Some(_)) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Ignoring chain metadata from banned peer {}",
@@ -168,7 +168,7 @@ impl Listening {
                             );
                             continue;
                         },
-                        Ok(false) => {},
+                        Ok(None) => {},
                         Err(e) => {
                             return FatalError(format!("Error checking if peer is banned: {}", e));
                         },

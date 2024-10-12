@@ -37,11 +37,13 @@ use tari_core::{
         CryptoFactories,
     },
 };
+use tari_network::identity;
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
-    message::DomainMessage,
+    message::{DomainMessage, TariMessageType},
     services::utils::map_decode,
     tari_message::TariMessageType,
+    Dispatcher,
 };
 use tari_service_framework::{
     async_trait,
@@ -50,7 +52,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
@@ -84,9 +86,9 @@ where
     TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     config: TransactionServiceConfig,
-    subscription_factory: Arc<SubscriptionFactory>,
+    dispatcher: Dispatcher,
     tx_backend: Option<T>,
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Arc<identity::Keypair>,
     network: Network,
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
@@ -103,9 +105,9 @@ where
 {
     pub fn new(
         config: TransactionServiceConfig,
-        subscription_factory: Arc<SubscriptionFactory>,
+        dispatcher: Dispatcher,
         backend: T,
-        node_identity: Arc<NodeIdentity>,
+        node_identity: Arc<identity::Keypair>,
         network: Network,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
@@ -114,7 +116,7 @@ where
     ) -> Self {
         Self {
             config,
-            subscription_factory,
+            dispatcher,
             tx_backend: Some(backend),
             node_identity,
             network,
@@ -124,77 +126,6 @@ where
             wallet_type,
             _phantom_data: Default::default(),
         }
-    }
-
-    /// Get a stream of inbound Text messages
-    fn transaction_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::SenderPartialTransaction
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionSenderMessage>)
-    }
-
-    fn transaction_reply_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::ReceiverPartialTransactionReply
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::RecipientSignedMessage>)
-    }
-
-    fn transaction_finalized_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionFinalized
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionFinalizedMessage>)
-    }
-
-    fn base_node_response_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::BaseNodeResponse
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
-    }
-
-    fn transaction_cancelled_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionCancelled
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionCancelledMessage>)
     }
 }
 
@@ -207,11 +138,18 @@ where
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
-        let transaction_stream = self.transaction_stream();
-        let transaction_reply_stream = self.transaction_reply_stream();
-        let transaction_finalized_stream = self.transaction_finalized_stream();
-        let base_node_response_stream = self.base_node_response_stream();
-        let transaction_cancelled_stream = self.transaction_cancelled_stream();
+        let (tx_messages, rx_messages) = mpsc::unbounded_channel();
+
+        self.dispatcher
+            .register(TariMessageType::SenderPartialTransaction, tx_messages.clone());
+        self.dispatcher
+            .register(TariMessageType::ReceiverPartialTransactionReply, tx_messages.clone());
+        self.dispatcher
+            .register(TariMessageType::TransactionFinalized, tx_messages.clone());
+        self.dispatcher
+            .register(TariMessageType::BaseNodeResponse, tx_messages.clone());
+        self.dispatcher
+            .register(TariMessageType::TransactionCancelled, tx_messages.clone());
 
         let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
 
@@ -249,11 +187,7 @@ where
                 TransactionDatabase::new(tx_backend),
                 wallet_database,
                 receiver,
-                transaction_stream,
-                transaction_reply_stream,
-                transaction_finalized_stream,
-                base_node_response_stream,
-                transaction_cancelled_stream,
+                rx_messages,
                 output_manager_service,
                 core_key_manager_service,
                 outbound_message_service,

@@ -22,18 +22,20 @@
 
 pub mod error;
 pub mod handle;
-pub mod proto;
 pub mod service;
 pub mod storage;
 pub mod types;
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use futures::future;
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_comms_dht::Dht;
-use tari_p2p::services::liveness::LivenessHandle;
+use tari_network::{NetworkHandle, OutboundMessaging};
+use tari_p2p::{
+    message::{TariMessageType, TariNodeMessageSpec},
+    services::liveness::LivenessHandle,
+    Dispatcher,
+};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -41,7 +43,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::contacts_service::{
     handle::ContactsServiceHandle,
@@ -57,7 +59,7 @@ where T: ContactsBackend
     backend: Option<T>,
     contacts_auto_ping_interval: Duration,
     contacts_online_ping_window: usize,
-    subscription_factory: Arc<SubscriptionFactory>,
+    dispatcher: Dispatcher,
 }
 
 impl<T> ContactsServiceInitializer<T>
@@ -65,7 +67,7 @@ where T: ContactsBackend
 {
     pub fn new(
         backend: T,
-        subscription_factory: Arc<SubscriptionFactory>,
+        dispatcher: Dispatcher,
         contacts_auto_ping_interval: Duration,
         online_ping_window: usize,
     ) -> Self {
@@ -73,7 +75,7 @@ where T: ContactsBackend
             backend: Some(backend),
             contacts_auto_ping_interval,
             contacts_online_ping_window: online_ping_window,
-            subscription_factory,
+            dispatcher,
         }
     }
 }
@@ -90,6 +92,9 @@ where T: ContactsBackend + 'static
 
         let contacts_handle = ContactsServiceHandle::new(liveness_tx, publisher.clone(), message_publisher.clone());
 
+        let (messages_tx, messages_rx) = mpsc::unbounded_channel();
+        self.dispatcher.register(TariMessageType::Chat, messages_tx);
+
         // Register handle before waiting for handles to be ready
         context.register_handle(contacts_handle);
 
@@ -102,20 +107,19 @@ where T: ContactsBackend + 'static
 
         let contacts_auto_ping_interval = self.contacts_auto_ping_interval;
         let contacts_online_ping_window = self.contacts_online_ping_window;
-        let subscription_factory = self.subscription_factory.clone();
         context.spawn_when_ready(move |handles| async move {
             let liveness = handles.expect_handle::<LivenessHandle>();
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let dht = handles.expect_handle::<Dht>();
+            let network = handles.expect_handle::<NetworkHandle>();
+            let outbound_messaging = handles.expect_handle::<OutboundMessaging<TariNodeMessageSpec>>();
 
             let service = ContactsService::new(
                 ContactsDatabase::new(backend),
                 liveness_rx,
                 handles.get_shutdown_signal(),
                 liveness,
-                connectivity,
-                dht,
-                subscription_factory,
+                network,
+                outbound_messaging,
+                messages_rx,
                 publisher,
                 message_publisher,
                 contacts_auto_ping_interval,

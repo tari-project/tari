@@ -28,7 +28,7 @@ use std::{
 
 use chrono::{DateTime, Local, NaiveDateTime};
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
@@ -47,7 +47,7 @@ pub static DEFAULT_MESSAGE_PAGE: u64 = 0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
     address: TariAddress,
-    node_id: NodeId,
+    peer_id: PeerId,
     latency: Option<u32>,
     last_seen: Option<NaiveDateTime>,
     message_type: ContactMessageType,
@@ -57,7 +57,7 @@ pub struct ContactsLivenessData {
 impl ContactsLivenessData {
     pub fn new(
         address: TariAddress,
-        node_id: NodeId,
+        peer_id: PeerId,
         latency: Option<u32>,
         last_seen: Option<NaiveDateTime>,
         message_type: ContactMessageType,
@@ -65,7 +65,7 @@ impl ContactsLivenessData {
     ) -> Self {
         Self {
             address,
-            node_id,
+            peer_id,
             latency,
             last_seen,
             message_type,
@@ -77,8 +77,8 @@ impl ContactsLivenessData {
         &self.address
     }
 
-    pub fn node_id(&self) -> &NodeId {
-        &self.node_id
+    pub fn peer_id(&self) -> &PeerId {
+        &self.peer_id
     }
 
     pub fn latency(&self) -> Option<u32> {
@@ -109,7 +109,7 @@ impl Display for ContactsLivenessData {
             "Liveness event '{}' for contact {} ({}) {}",
             self.message_type,
             self.address,
-            self.node_id,
+            self.peer_id,
             if let Some(time) = self.last_seen {
                 let local_time = DateTime::<Local>::from_naive_utc_and_offset(time, Local::now().offset().to_owned())
                     .format("%FT%T")

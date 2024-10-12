@@ -29,7 +29,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{PrivateKey, PublicKey, Signature},
 };
-use tari_network::{identity::PeerId, ToPeerId};
+use tari_network::{identity::PeerId, Peer, ToPeerId};
 use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
@@ -84,6 +84,7 @@ impl From<UniPublicKey> for PublicKey {
 #[derive(Debug, Clone)]
 pub enum UniPeerId {
     PublicKey(PublicKey),
+    PeerId(PeerId),
     TariAddress(TariAddress),
 }
 
@@ -91,6 +92,7 @@ impl ToPeerId for UniPeerId {
     fn to_peer_id(&self) -> PeerId {
         match self {
             UniPeerId::PublicKey(pk) => pk.to_peer_id(),
+            UniPeerId::PeerId(p) => *p,
             UniPeerId::TariAddress(addr) => addr.comms_public_key().to_peer_id(),
         }
     }
@@ -100,8 +102,8 @@ impl ToPeerId for UniPeerId {
 pub enum UniIdError {
     #[error("unknown id type, expected emoji-id, public-key or node-id")]
     UnknownIdType,
-    #[error("impossible convert a value to the expected type")]
-    Nonconvertible,
+    #[error("impossible to convert a value to the expected type")]
+    NotConvertible,
 }
 
 impl FromStr for UniPeerId {
@@ -110,6 +112,8 @@ impl FromStr for UniPeerId {
     fn from_str(key: &str) -> Result<Self, Self::Err> {
         if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
             Ok(Self::PublicKey(PublicKey::from(&emoji_id)))
+        } else if let Ok(peer_id) = PeerId::from_str(key.trim()) {
+            Ok(Self::PeerId(peer_id))
         } else if let Ok(public_key) = PublicKey::from_hex(key) {
             Ok(Self::PublicKey(public_key))
         } else if let Ok(tari_address) = TariAddress::from_str(key) {
@@ -127,6 +131,7 @@ impl TryFrom<UniPeerId> for PublicKey {
         match id {
             UniPeerId::PublicKey(public_key) => Ok(public_key),
             UniPeerId::TariAddress(tari_address) => Ok(tari_address.public_spend_key().clone()),
+            _ => Err(UniIdError::NotConvertible),
         }
     }
 }

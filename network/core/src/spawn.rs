@@ -70,7 +70,7 @@ where
         tari_swarm::create_swarm::<ProstCodec<TMsg::Message>>(identity.clone(), HashSet::new(), config.swarm.clone())?;
     let local_peer_id = *swarm.local_peer_id();
     let (tx_requests, rx_requests) = mpsc::channel(1);
-    let (tx_msg_requests, rx_msg_requests) = mpsc::channel(100);
+    let (tx_msg_requests, rx_msg_requests) = mpsc::channel(1000);
     let (tx_events, _) = broadcast::channel(100);
     let handle = tokio::spawn(
         NetworkingWorker::<TMsg>::new(

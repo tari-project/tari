@@ -53,7 +53,7 @@ use tokio::{
 
 use crate::{
     connection::Connection,
-    event::NetworkingEvent,
+    event::NetworkEvent,
     global_ip::GlobalIp,
     handle::NetworkingRequest,
     messaging::MessagingRequest,
@@ -81,7 +81,7 @@ where
     keypair: identity::Keypair,
     rx_request: mpsc::Receiver<NetworkingRequest>,
     rx_msg_request: mpsc::Receiver<MessagingRequest<TMsg>>,
-    tx_events: broadcast::Sender<NetworkingEvent>,
+    tx_events: broadcast::Sender<NetworkEvent>,
     messaging_mode: MessagingMode<TMsg>,
     active_connections: HashMap<PeerId, Vec<Connection>>,
     pending_substream_requests: HashMap<StreamId, ReplyTx<NegotiatedSubstream<Substream>>>,
@@ -110,7 +110,7 @@ where
         keypair: identity::Keypair,
         rx_request: mpsc::Receiver<NetworkingRequest>,
         rx_msg_request: mpsc::Receiver<MessagingRequest<TMsg>>,
-        tx_events: broadcast::Sender<NetworkingEvent>,
+        tx_events: broadcast::Sender<NetworkEvent>,
         messaging_mode: MessagingMode<TMsg>,
         swarm: TariSwarm<ProstCodec<TMsg::Message>>,
         config: crate::Config,
@@ -376,6 +376,7 @@ where
                     warn!(target: LOG_TARGET, "❓️ Disconnect peer {peer_id} was not connected");
                     let _ignore = reply.send(Ok(false));
                 }
+                self.publish_event(NetworkEvent::PeerBanned { peer_id });
             },
             NetworkingRequest::UnbanPeer { peer_id, reply } => match self.ban_list.remove(&peer_id) {
                 Some(peer) => {
@@ -387,19 +388,25 @@ where
                 },
             },
 
-            NetworkingRequest::IsPeerBanned { peer_id, reply } => match self.ban_list.get(&peer_id) {
-                Some(peer) => {
-                    let is_banned = peer.is_banned();
-                    if !is_banned {
-                        self.ban_list.remove(&peer_id);
-                        shrink_hashmap_if_required(&mut self.ban_list);
-                    }
+            NetworkingRequest::GetBannedPeer { peer_id, reply } => {
+                let mut must_remove = false;
+                match self.ban_list.get(&peer_id) {
+                    Some(peer) => {
+                        let is_banned = peer.is_banned();
+                        if !is_banned {
+                            must_remove = true;
+                        }
 
-                    let _ignore = reply.send(Ok(is_banned));
-                },
-                None => {
-                    let _ignore = reply.send(Ok(false));
-                },
+                        let _ignore = reply.send(Ok(Some(peer.clone())));
+                    },
+                    None => {
+                        let _ignore = reply.send(Ok(None));
+                    },
+                }
+                if must_remove {
+                    self.ban_list.remove(&peer_id);
+                    shrink_hashmap_if_required(&mut self.ban_list);
+                }
             },
             NetworkingRequest::GetBannedPeers { reply } => {
                 self.ban_list.retain(|_, p| p.is_banned());
@@ -575,6 +582,8 @@ where
                     },
                 }
                 shrink_hashmap_if_required(&mut self.active_connections);
+
+                self.publish_event(NetworkEvent::PeerDisconnected { peer_id });
             },
             SwarmEvent::OutgoingConnectionError {
                 peer_id: Some(peer_id),
@@ -884,7 +893,7 @@ where
             let _ignore = waiter.send(Ok(()));
         }
 
-        self.publish_event(NetworkingEvent::PeerConnected {
+        self.publish_event(NetworkEvent::PeerConnected {
             peer_id,
             direction: if is_dialer {
                 ConnectionDirection::Outbound
@@ -967,7 +976,7 @@ where
             self.establish_relay_circuit_on_connect(&peer_id);
         }
 
-        self.publish_event(NetworkingEvent::NewIdentifiedPeer {
+        self.publish_event(NetworkEvent::NewIdentifiedPeer {
             peer_id,
             public_key,
             supported_protocols: protocols,
@@ -1078,7 +1087,7 @@ where
         }
     }
 
-    fn publish_event(&mut self, event: NetworkingEvent) {
+    fn publish_event(&mut self, event: NetworkEvent) {
         if let Ok(num) = self.tx_events.send(event) {
             debug!(target: LOG_TARGET, "📢 Published networking event to {num} subscribers");
         }

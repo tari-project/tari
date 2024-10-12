@@ -100,7 +100,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
-            DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_vec(), &mut conn) {
+            DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_bytes(), &mut conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -156,7 +156,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     }
                 },
                 DbKeyValuePair::Contact(k, c) => {
-                    if ContactSql::find_by_node_id_and_update(&mut conn, &c.node_id.to_vec(), UpdateContact {
+                    if ContactSql::find_by_node_id_and_update(&mut conn, &c.node_id.to_bytes(), UpdateContact {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
@@ -166,12 +166,12 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     {
                         ContactSql::from(c).commit(&mut conn)?;
                     } else {
-                        let stored_contact = ContactSql::find_by_node_id(&c.node_id.to_vec(), &mut conn)?;
+                        let stored_contact = ContactSql::find_by_node_id(&c.node_id.to_bytes(), &mut conn)?;
                         let stored_address = TariAddress::from_bytes(stored_contact.address.as_slice())
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
                         let new_address = TariAddress::combine_addresses(&stored_address, &k)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
-                        ContactSql::set_address_of_node_id(&c.node_id.to_vec(), &new_address.to_vec(), &mut conn)?;
+                        ContactSql::set_address_of_node_id(&c.node_id.to_bytes(), &new_address.to_vec(), &mut conn)?;
                     }
                 },
                 DbKeyValuePair::LastSeen(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
@@ -179,7 +179,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
             WriteOperation::UpdateLastSeen(kvp) => match *kvp {
                 DbKeyValuePair::LastSeen(node_id, date_time, latency) => {
                     let contact =
-                        ContactSql::find_by_node_id_and_update(&mut conn, &node_id.to_vec(), UpdateContact {
+                        ContactSql::find_by_node_id_and_update(&mut conn, &node_id.to_bytes(), UpdateContact {
                             alias: None,
                             last_seen: Some(Some(date_time)),
                             latency: Some(latency),
@@ -203,7 +203,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 },
-                DbKey::ContactId(id) => match ContactSql::find_by_node_id_and_delete(&mut conn, &id.to_vec()) {
+                DbKey::ContactId(id) => match ContactSql::find_by_node_id_and_delete(&mut conn, &id.to_bytes()) {
                     Ok(c) => {
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
                     },

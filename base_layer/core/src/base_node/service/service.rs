@@ -398,7 +398,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     domain_request_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>,
 ) -> Result<(), BaseNodeServiceError> {
     let peer_id = domain_request_msg.source_peer_id;
-    let inner_msg = domain_request_msg.into_inner();
+    let inner_msg = domain_request_msg.into_payload();
 
     let request = inner_msg.request.ok_or_else(|| {
         BaseNodeServiceError::InvalidRequest("Received invalid base node request with no inner request".to_string())
@@ -445,7 +445,7 @@ async fn handle_incoming_response(
         request_key,
         response,
         is_synced,
-    } = domain_msg.into_inner();
+    } = domain_msg.into_payload();
     let response = response
         .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an empty base node response".to_string()))?;
 

@@ -22,13 +22,13 @@
 
 use chrono::NaiveDateTime;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
+use tari_network::{identity::PeerId, ToPeerId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {
     pub alias: String,
     pub address: TariAddress,
-    pub node_id: NodeId,
+    pub node_id: PeerId,
     pub last_seen: Option<NaiveDateTime>,
     pub latency: Option<u32>,
     pub favourite: bool,
@@ -44,7 +44,7 @@ impl Contact {
     ) -> Self {
         Self {
             alias,
-            node_id: NodeId::from_key(address.comms_public_key()),
+            node_id: address.comms_public_key().to_peer_id(),
             address,
             last_seen,
             latency,
@@ -58,7 +58,7 @@ impl From<&TariAddress> for Contact {
         Self {
             alias: address.to_emoji_string(),
             address: address.clone(),
-            node_id: NodeId::from_key(address.public_spend_key()),
+            node_id: address.public_spend_key().to_peer_id(),
             last_seen: None,
             latency: None,
             favourite: false,
