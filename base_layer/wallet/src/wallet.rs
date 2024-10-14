@@ -34,17 +34,6 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
-use tari_comms::{
-    multiaddr::{Error as MultiaddrError, Multiaddr},
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    tor::TorIdentity,
-    types::{CommsPublicKey, CommsSecretKey},
-    CommsNode,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     storage::database::ContactsBackend,
@@ -60,7 +49,11 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
+use tari_crypto::{
+    hash_domain,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    signatures::SchnorrSignatureError,
+};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
@@ -68,16 +61,14 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
-use tari_network::identity;
+use tari_network::{identity, multiaddr::Multiaddr, NetworkHandle, Peer, ToPeerId};
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
-    comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     Dispatcher,
     PeerSeedsConfig,
-    TransportType,
 };
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -127,10 +118,9 @@ hash_domain!(
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
 pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
-    pub network: NetworkConsensus,
-    pub comms: CommsNode,
-    pub dht_service: Dht,
-    pub store_and_forward_requester: StoreAndForwardRequester,
+    pub network_consensus: NetworkConsensus,
+    pub network: NetworkHandle,
+    pub network_public_key: RistrettoPublicKey,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
@@ -142,6 +132,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub db: WalletDatabase<T>,
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
+    pub shutdown_signal: ShutdownSignal,
     wallet_type: Arc<WalletType>,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
@@ -185,7 +176,7 @@ where
             "Transaction sending mechanism is {}", config.transaction_service_config.transaction_routing_mechanism
         );
         trace!(target: LOG_TARGET, "Wallet config: {:?}", config);
-        let stack = StackBuilder::new(shutdown_signal)
+        let stack = StackBuilder::new(shutdown_signal.clone())
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
                 user_agent,
@@ -258,55 +249,12 @@ where
 
         let mut handles = stack.build().await?;
 
+        let network = handles.expect_handle::<NetworkHandle>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
-        let comms = handles
-            .take_handle::<UnspawnedCommsNode>()
-            .expect("P2pInitializer was not added to the stack");
-        let comms = if config.p2p.transport.transport_type == TransportType::Tor {
-            let wallet_db = wallet_database.clone();
-            let node_id = comms.node_identity();
-            let moved_ts_clone = transaction_service_handle.clone();
-            let after_comms = move |identity: TorIdentity| {
-                // we do this so that we dont have to move in a mut ref and making the closure a FnMut.
-                let mut ts = moved_ts_clone.clone();
-                let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
-                if let Err(e) = wallet_db.set_tor_identity(identity) {
-                    error!(target: LOG_TARGET, "Failed to set wallet db tor identity{:?}", e);
-                }
-                let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
-                if result.is_err() {
-                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
-                    return;
-                }
-                let address = result.unwrap();
-                if !node_id.public_addresses().contains(&address) {
-                    node_id.add_public_address(address.clone());
-                }
-                // Persist the comms node address and features after it has been spawned to capture any modifications
-                // made during comms startup. In the case of a Tor Transport the public address could
-                // have been generated
-                let _result = wallet_db.set_node_address(address);
-                thread::spawn(move || {
-                    let result = block_on(ts.restart_transaction_protocols());
-                    if result.is_err() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not restart transaction negotiation protocols: {:?}", result
-                        );
-                    }
-                });
-            };
-            initialization::spawn_network(comms, config.p2p.transport, after_comms).await?
-        } else {
-            let after_comms = |_identity| {};
-            initialization::spawn_network(comms, config.p2p.transport, after_comms).await?
-        };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
-        let dht = handles.expect_handle::<Dht>();
-        let store_and_forward_requester = dht.store_and_forward_requester();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
@@ -329,11 +277,8 @@ where
             e
         })?;
 
-        wallet_database.set_node_features(comms.node_identity().features())?;
-        let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
-        if let Some(identity_sig) = identity_sig {
-            wallet_database.set_comms_identity_signature(identity_sig)?;
-        }
+        // 0 == COMMUNICATION_CLIENT TODO: can be removed?
+        wallet_database.set_node_features(0)?;
 
         // storing current network and version
         if let Err(e) = wallet_database
@@ -342,11 +287,17 @@ where
             warn!("failed to store network and version: {:#?}", e);
         }
 
+        let network_public_key = node_identity
+            .public()
+            .try_into_sr25519()
+            .map_err(|e| WalletError::UnsupportedKeyType { details: e.to_string() })?
+            .inner_key()
+            .clone();
+
         Ok(Self {
-            network: config.network.into(),
-            comms,
-            dht_service: dht,
-            store_and_forward_requester,
+            network_consensus: config.network.into(),
+            network,
+            network_public_key,
             output_manager_service: output_manager_handle,
             key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,
@@ -359,6 +310,7 @@ where
             output_db: output_manager_database,
             factories,
             wallet_type,
+            shutdown_signal,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
@@ -368,14 +320,14 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.to_owned().wait_until_shutdown().await;
+        self.network.wait_until_shutdown().await;
     }
 
     /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
     /// monitor the base node state.
     pub async fn set_base_node_peer(
         &mut self,
-        public_key: CommsPublicKey,
+        public_key: PublicKey,
         address: Option<Multiaddr>,
         backup_peers: Option<Vec<Peer>>,
     ) -> Result<(), WalletError> {
@@ -385,73 +337,28 @@ where
         );
 
         if let Some(current_node) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
-            self.comms
-                .connectivity()
-                .remove_peer_from_allow_list(current_node)
-                .await?;
+            self.network.remove_peer_from_allow_list(current_node).await?;
         }
 
-        let peer_manager = self.comms.peer_manager();
-        let mut connectivity = self.comms.connectivity();
         let mut backup_peers = backup_peers.unwrap_or_default();
-        if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
-            // Only invalidate the identity signature if addresses are different
-            if address.is_some() {
-                let add = address.unwrap();
-                if !current_peer.addresses.contains(&add) {
-                    info!(
-                        target: LOG_TARGET,
-                        "Address for base node differs from storage. Was {}, setting to {}",
-                        current_peer.addresses,
-                        add
-                    );
-
-                    current_peer.addresses.add_address(&add, &PeerAddressSource::Config);
-                    peer_manager.add_peer(current_peer.clone()).await?;
-                }
-            }
-            connectivity
-                .add_peer_to_allow_list(current_peer.node_id.clone())
-                .await?;
-            let mut peer_list = vec![current_peer];
-            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
-                backup_peers.remove(pos);
-            }
-            peer_list.append(&mut backup_peers);
-            self.wallet_connectivity
-                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
-        } else {
-            let node_id = NodeId::from_key(&public_key);
-            if address.is_none() {
-                debug!(
-                    target: LOG_TARGET,
-                    "Trying to add new peer without an address",
-                );
-                return Err(WalletError::ArgumentError {
-                    argument: "set_base_node_peer, address".to_string(),
-                    value: "{Missing}".to_string(),
-                    message: "New peers need the address filled in".to_string(),
-                });
-            }
-            let peer = Peer::new(
-                public_key.clone(),
-                node_id,
-                MultiaddressesWithStats::from_addresses_with_source(vec![address.unwrap()], &PeerAddressSource::Config),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                Default::default(),
-                String::new(),
-            );
-            peer_manager.add_peer(peer.clone()).await?;
-            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-            let mut peer_list = vec![peer];
-            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
-                backup_peers.remove(pos);
-            }
-            peer_list.append(&mut backup_peers);
-            self.wallet_connectivity
-                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
+        let peer_id = public_key.to_peer_id();
+        let known_addresses = self.network.get_known_peer_addresses(peer_id).await?;
+        let mut peer = Peer::new(
+            identity::PublicKey::from(identity::sr25519::PublicKey::from(public_key.clone())),
+            known_addresses.unwrap_or_default(),
+        );
+        if let Some(address) = address {
+            peer.add_address(address);
+            self.network.add_peer(peer.clone()).await?;
         }
+        self.network.add_peer_to_allow_list(peer_id).await?;
+        let mut peer_list = vec![peer];
+        if let Some(pos) = backup_peers.iter().position(|p| p.peer_id() == peer_id) {
+            backup_peers.swap_remove(pos);
+        }
+        peer_list.extend(backup_peers);
+        self.wallet_connectivity
+            .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
 
         Ok(())
     }
@@ -502,7 +409,7 @@ where
         Ok(TariAddress::new_dual_address(
             view_key.pub_key,
             comms_key.pub_key,
-            self.network.as_network(),
+            self.network_consensus.as_network(),
             features,
         ))
     }
@@ -513,7 +420,7 @@ where
         Ok(TariAddress::new_dual_address(
             view_key.pub_key,
             spend_key.pub_key,
-            self.network.as_network(),
+            self.network_consensus.as_network(),
             TariAddressFeatures::create_one_sided_only(),
         ))
     }
@@ -522,7 +429,7 @@ where
         let address_interactive = self.get_wallet_interactive_address().await?;
         let address_one_sided = self.get_wallet_one_sided_address().await?;
         Ok(WalletIdentity::new(
-            self.comms.node_identity(),
+            self.network_public_key.clone(),
             address_interactive,
             address_one_sided,
         ))
@@ -840,7 +747,7 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
     }
 }
 
-pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
+pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<RistrettoSecretKey, WalletError> {
     let comms_key_manager =
         KeyManager::<PublicKey, KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
     Ok(comms_key_manager.derive_key(0)?.key)

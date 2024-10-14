@@ -22,7 +22,7 @@
 
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_comms::peer_manager::Peer;
+use tari_network::Peer;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -88,7 +88,7 @@ impl<B: Backend> App<B> {
             .await
             .map_err(WalletError::KeyManagerServiceError)?;
         let wallet_id = WalletIdentity::new(
-            wallet.comms.node_identity(),
+            wallet.network_public_key.clone(),
             wallet_address_interactive,
             wallet_address_one_sided,
         );

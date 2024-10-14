@@ -41,7 +41,7 @@ pub mod test_helpers;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod base_node;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
+mod proto;
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;

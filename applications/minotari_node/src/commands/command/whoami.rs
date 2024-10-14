@@ -54,6 +54,9 @@ impl CommandContext {
                 .collect::<Vec<_>>()
                 .join("::")
         );
+
+        println!("{}", peer);
+        println!();
         let network = self.config.network();
         let qr_link = format!(
             "tari://{}/base_nodes/add?name={}&peer={}",

@@ -22,18 +22,17 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
-use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
     transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
 };
-use tari_network::identity;
+use tari_network::{identity, OutboundMessaging};
 use tari_p2p::{
-    message::{DomainMessage, TariMessageType},
+    message::{DomainMessage, TariMessageType, TariNodeMessageSpec},
     proto::{base_node as base_node_proto, transaction_protocol as proto},
     Dispatcher,
 };
@@ -168,7 +167,7 @@ where
         let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
-            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+            let outbound_message_service = handles.expect_handle::<OutboundMessaging<TariNodeMessageSpec>>();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();

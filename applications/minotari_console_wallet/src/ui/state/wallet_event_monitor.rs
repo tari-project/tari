@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use log::*;
 use minotari_wallet::{
@@ -31,8 +31,8 @@ use minotari_wallet::{
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::transaction::TxId;
-use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_contacts::contacts_service::handle::ContactsLivenessEvent;
+use tari_network::{NetworkEvent, Peer};
 use tokio::sync::{broadcast, RwLock};
 
 use crate::{
@@ -69,7 +69,7 @@ impl WalletEventMonitor {
             .await
             .get_output_manager_service_event_stream();
 
-        let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
+        let mut network_events = self.app_state_inner.read().await.get_network_events();
         let wallet_connectivity = self.app_state_inner.read().await.get_wallet_connectivity();
         let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch();
         let mut base_node_changed = wallet_connectivity.get_current_base_node_watcher();
@@ -200,14 +200,14 @@ impl WalletEventMonitor {
                     //         )).await;
                     //     }
                     // },
-                    result = connectivity_events.recv() => {
+                    result = network_events.recv() => {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg
                             );
                             match msg {
-                                ConnectivityEvent::PeerConnected(_) |
-                                ConnectivityEvent::PeerDisconnected(..) => {
+                                NetworkEvent::PeerConnected{..} |
+                                NetworkEvent::PeerDisconnected{..} => {
                                     self.trigger_peer_state_refresh().await;
                                 },
                                 // Only the above variants trigger state refresh
@@ -244,7 +244,7 @@ impl WalletEventMonitor {
                 _ = base_node_changed.changed() => {
                     let peer = base_node_changed.borrow().as_ref().cloned();
                     if let Some(peer) = peer {
-                        self.trigger_base_node_peer_refresh(peer.get_current_peer()).await;
+                        self.trigger_base_node_peer_refresh(peer.get_current_peer().clone()).await;
                         self.trigger_balance_refresh();
                     }
                 }
@@ -279,7 +279,7 @@ impl WalletEventMonitor {
                 event = contacts_liveness_events.recv() => {
                     match event {
                         Ok(liveness_event) => {
-                            match liveness_event.deref() {
+                            match &*liveness_event {
                                 ContactsLivenessEvent::StatusUpdated(data) => {
                                     trace!(target: LOG_TARGET,
                                         "Contacts Liveness Service event 'StatusUpdated': {}",
@@ -371,10 +371,7 @@ impl WalletEventMonitor {
 
     async fn trigger_base_node_peer_refresh(&mut self, peer: Peer) {
         let mut inner = self.app_state_inner.write().await;
-
-        if let Err(e) = inner.refresh_base_node_peer(peer).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
-        }
+        inner.update_base_node_peer(peer);
     }
 
     fn trigger_balance_refresh(&mut self) {

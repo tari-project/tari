@@ -39,6 +39,7 @@ use tari_core::{
     blocks::BlockHeader,
 };
 use tari_p2p::proto::{base_node::Signatures as SignaturesProto, common::Signature as SignatureProto};
+use tari_rpc_framework::RpcError;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -332,8 +333,8 @@ where
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
                 match &rpc_error {
-                    RequestFailed(status) => {
-                        if status.as_status_code() == NotFound {
+                    RpcError::RequestFailed(status) => {
+                        if status.is_not_found() {
                             return Ok(None);
                         } else {
                             return Err(rpc_error.into());

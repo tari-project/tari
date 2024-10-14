@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use tari_network::{identity::PeerId, Peer};
 use tari_rpc_framework::pool::RpcClientLease;
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -60,7 +61,7 @@ impl WalletConnectivityHandle {
 impl WalletConnectivityInterface for WalletConnectivityHandle {
     fn set_base_node(&mut self, base_node_peer_manager: BaseNodePeerManager) {
         if let Some(selected_peer) = self.base_node_watch.borrow().as_ref() {
-            if selected_peer.get_current_peer().public_key == base_node_peer_manager.get_current_peer().public_key {
+            if selected_peer.get_current_peer_id() == base_node_peer_manager.get_current_peer_id() {
                 return;
             }
         }
@@ -72,7 +73,10 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
     }
 
     fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)> {
-        self.base_node_watch.borrow().as_ref().map(|p| p.get_state().clone())
+        self.base_node_watch.borrow().as_ref().map(|p| {
+            let (count, list) = p.get_state();
+            (count, list.to_vec())
+        })
     }
 
     /// Obtain a BaseNodeWalletRpcClient.
@@ -129,18 +133,8 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
             .map(|p| p.get_current_peer().clone())
     }
 
-    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().public_key.clone())
-    }
-
-    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().node_id.clone())
+    fn get_current_base_node_peer_node_id(&self) -> Option<PeerId> {
+        self.base_node_watch.borrow().as_ref().map(|p| p.get_current_peer_id())
     }
 
     fn is_base_node_set(&self) -> bool {

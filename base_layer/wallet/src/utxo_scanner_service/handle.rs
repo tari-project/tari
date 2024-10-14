@@ -22,18 +22,18 @@
 
 use std::time::Duration;
 
-use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_network::identity::PeerId;
 use tokio::sync::{broadcast, watch};
 
 use crate::util::watch::Watch;
 
 #[derive(Debug, Clone)]
 pub enum UtxoScannerEvent {
-    ConnectingToBaseNode(NodeId),
-    ConnectedToBaseNode(NodeId, Duration),
+    ConnectingToBaseNode(PeerId),
+    ConnectedToBaseNode(PeerId, Duration),
     ConnectionFailedToBaseNode {
-        peer: NodeId,
+        peer: PeerId,
         num_retries: usize,
         retry_limit: usize,
         error: String,

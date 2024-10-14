@@ -4,7 +4,11 @@
 use std::collections::HashMap;
 
 use log::*;
-use tari_comms::peer_manager::Peer;
+use tari_network::{
+    identity::{sr25519::PublicKey, OtherVariantError},
+    public_key_to_string,
+    Peer,
+};
 use tari_utilities::hex::Hex;
 use tokio::runtime::Handle;
 use tui::{
@@ -43,7 +47,7 @@ pub struct NetworkTab {
 
 impl NetworkTab {
     pub fn new(base_node_selected: Peer) -> Self {
-        let public_key = base_node_selected.public_key.to_hex();
+        let public_key = public_key_to_string(base_node_selected.public_key());
         let address = display_address(&base_node_selected);
 
         Self {
@@ -102,14 +106,17 @@ impl NetworkTab {
         .collect();
 
         for (peer_type, peer) in base_node_list {
-            let selected = peer == selected_peer;
+            let selected = peer.peer_id() == selected_peer.peer_id();
             let style = styles
                 .get(&selected)
                 .unwrap_or(&Style::default().fg(Color::Reset))
                 .to_owned();
             column0_items.push(ListItem::new(Span::styled(peer_type, style)));
-            column1_items.push(ListItem::new(Span::styled(peer.node_id.to_string(), style)));
-            column2_items.push(ListItem::new(Span::styled(peer.public_key.to_string(), style)));
+            column1_items.push(ListItem::new(Span::styled(peer.peer_id().to_string(), style)));
+            column2_items.push(ListItem::new(Span::styled(
+                public_key_to_string(peer.public_key()),
+                style,
+            )));
         }
 
         self.base_node_list_state.set_num_items(capacity);
@@ -163,8 +170,12 @@ impl NetworkTab {
                 .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)].as_ref())
                 .split(columns[1]);
 
-            let node_id = Span::styled(format!("{}", peer.node_id), Style::default().fg(Color::White));
-            let public_key = Span::styled(peer.public_key.to_hex(), Style::default().fg(Color::White));
+            let node_id = Span::styled(format!("{}", peer.peer_id()), Style::default().fg(Color::White));
+            let public_key_str = match peer.public_key().clone().try_into_sr25519() {
+                Ok(pk) => pk.inner_key().to_string(),
+                Err(_) => "<not Ristretto>".to_string(),
+            };
+            let public_key = Span::styled(public_key_str, Style::default().fg(Color::White));
             let address = Span::styled(display_address(peer), Style::default().fg(Color::White));
 
             let paragraph = Paragraph::new(node_id).wrap(Wrap { trim: true });
@@ -194,9 +205,15 @@ impl NetworkTab {
         let mut column1_items = Vec::with_capacity(peers.len());
         let mut column2_items = Vec::with_capacity(peers.len());
         for p in peers {
-            column0_items.push(ListItem::new(Span::raw(p.node_id.to_string())));
-            column1_items.push(ListItem::new(Span::raw(p.public_key.to_string())));
-            column2_items.push(ListItem::new(Span::raw(p.user_agent.clone())));
+            column0_items.push(ListItem::new(Span::raw(p.peer_id.to_string())));
+            let public_key = match p.public_key.as_ref().map(|pk| pk.clone().try_into_sr25519()) {
+                Some(Ok(pk)) => pk.inner_key().to_string(),
+                Some(Err(_)) => "<not Ristretto>".to_string(),
+                None => "<unknown>".to_string(),
+            };
+            column1_items.push(ListItem::new(Span::raw(public_key)));
+            let ua = p.user_agent.as_ref().map_or("<unknown>", |u| u.as_str());
+            column2_items.push(ListItem::new(Span::raw(ua)));
         }
         let column_list = MultiColumnList::new()
             .heading_style(Style::default().fg(Color::Magenta))
@@ -246,7 +263,7 @@ impl NetworkTab {
         let (public_key, style) = match self.base_node_edit_mode {
             BaseNodeInputMode::PublicKey => (self.public_key_field.clone(), Style::default().fg(Color::Magenta)),
             BaseNodeInputMode::Address => (self.public_key_field.clone(), Style::default()),
-            _ => (peer.public_key.to_hex(), Style::default()),
+            _ => (public_key_to_string(peer.public_key()), Style::default()),
         };
 
         let pubkey_input = Paragraph::new(public_key)
@@ -283,7 +300,7 @@ impl NetworkTab {
                 self.previous_public_key_field = self.public_key_field.clone();
                 self.previous_address_field = self.address_field.clone();
                 let base_node_previous = app_state.get_previous_base_node().clone();
-                let public_key = base_node_previous.public_key.to_hex();
+                let public_key = public_key_to_string(base_node_previous.public_key());
                 let public_address = display_address(&base_node_previous);
                 self.public_key_field = public_key;
                 self.address_field = public_address;
@@ -436,8 +453,8 @@ impl<B: Backend> Component<B> for NetworkTab {
             's' => {
                 // set the currently selected base node as a custom base node
                 let base_node = app_state.get_selected_base_node();
-                let public_key = base_node.public_key.to_hex();
-                let address = base_node.addresses.best().map(|a| a.to_string()).unwrap_or_default();
+                let public_key = public_key_to_string(base_node.public_key());
+                let address = base_node.addresses().first().map(|a| a.to_string()).unwrap_or_default();
 
                 match Handle::current().block_on(app_state.set_custom_base_node(public_key, address)) {
                     Ok(peer) => {

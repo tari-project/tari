@@ -26,12 +26,16 @@ use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    conversions::multiaddr::multiaddr_to_socketaddr,
+    tls::identity::read_identity,
+};
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_network::{multiaddr::Multiaddr, Peer};
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tui::backend::CrosstermBackend;

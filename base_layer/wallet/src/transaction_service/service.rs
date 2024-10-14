@@ -29,7 +29,7 @@ use std::{
 
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
@@ -42,7 +42,6 @@ use tari_common_types::{
     types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey, Signature},
     wallet_types::WalletType,
 };
-use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
@@ -60,6 +59,11 @@ use tari_core::{
             TransactionOutput,
             WalletOutputBuilder,
         },
+        transaction_protocol::{
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
+            TransactionMetadata,
+        },
         CryptoFactories,
         ReceiverTransactionProtocol,
     },
@@ -70,24 +74,11 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
-use tari_network::{
-    identity,
-    identity::{Keypair, PeerId},
-    NetworkHandle,
-    NetworkingService,
-    OutboundMessager,
-    OutboundMessaging,
-    ToPeerId,
-};
+use tari_network::{identity, identity::PeerId, NetworkHandle, OutboundMessager, OutboundMessaging, ToPeerId};
 use tari_p2p::{
     message::{tari_message::Message, DomainMessage, MessageTag, TariNodeMessageSpec},
-    proto::{
-        base_node as base_node_proto,
-        base_node::FetchMatchingUtxos,
-        message::TariMessage,
-        transaction_protocol as proto,
-        transaction_protocol::{RecipientSignedMessage, TransactionMetadata, TransactionSenderMessage},
-    },
+    proto,
+    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos, message::TariMessage},
 };
 use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
 use tari_service_framework::reply_channel;
@@ -134,6 +125,7 @@ use crate::{
         },
         tasks::{
             check_faux_transaction_status::check_detected_transactions,
+            send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
         },
@@ -180,8 +172,6 @@ pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKe
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
-    network: NetworkHandle,
-    outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
     consensus_manager: ConsensusManager,
 }
 
@@ -204,7 +194,7 @@ where
         rx_messages: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
         output_manager_service: OutputManagerHandle,
         core_key_manager_service: TKeyManagerInterface,
-        outbound_message_service: OutboundMessageRequester,
+        outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
         node_identity: Arc<identity::Keypair>,
@@ -237,7 +227,7 @@ where
             db: db.clone(),
             output_manager_service,
             transaction_key_manager_service: core_key_manager_service,
-            outbound_message_service,
+            outbound_message_service: outbound_message_service.clone(),
             connectivity,
             event_publisher: event_publisher.clone(),
             interactive_tari_address,
@@ -338,7 +328,7 @@ where
 
                 // Incoming messages from the network
                 Some(msg) = self.rx_messages.recv() => {
-                    self.handle_message(msg).await;
+                    self.handle_message(msg, &mut receive_transaction_protocol_handles).await;
                 }
 
                 Some(join_result) = send_transaction_protocol_handles.next() => {
@@ -1833,14 +1823,15 @@ where
         )
         .await?;
 
-        tokio::spawn(send_finalized_transaction_message(
+        send_finalized_transaction_message(
             tx_id,
             tx.clone(),
-            dest_address.comms_public_key().clone(),
+            dest_address.comms_public_key().to_peer_id(),
             self.resources.outbound_message_service.clone(),
             self.resources.config.direct_send_timeout,
             self.resources.config.transaction_routing_mechanism,
-        ));
+        )
+        .await?;
 
         Ok(tx_id)
     }
@@ -2319,7 +2310,7 @@ where
     pub async fn register_validator_node(
         &mut self,
         amount: MicroMinotari,
-        validator_node_public_key: CommsPublicKey,
+        validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
@@ -2479,18 +2470,15 @@ where
                     target: LOG_TARGET,
                     "A repeated Transaction Reply (TxId: {}) has been received. Reply is being resent.", tx_id
                 );
-                let finalized_transaction_message = proto::transaction_protocol::TransactionFinalizedMessage {
-                    tx_id: tx_id.into(),
-                    transaction: Some(
-                        ctx.transaction
-                            .try_into()
-                            .map_err(TransactionServiceError::InvalidMessageError)?,
-                    ),
-                };
-                self.resources
-                    .outbound_message_service
-                    .send_message(source_peer_id, finalized_transaction_message)
-                    .await?;
+                send_finalized_transaction_message(
+                    tx_id,
+                    ctx.transaction,
+                    source_peer_id,
+                    self.resources.outbound_message_service.clone(),
+                    self.resources.config.direct_send_timeout,
+                    self.resources.config.transaction_routing_mechanism,
+                )
+                .await?;
             }
 
             if let Err(e) = self.resources.db.increment_send_count(tx_id) {
@@ -2779,7 +2767,7 @@ where
                 tokio::spawn(send_transaction_cancelled_message(
                     tx.tx_id,
                     source_peer_id,
-                    self.outbound_messaging.clone(),
+                    self.resources.outbound_message_service.clone(),
                 ));
 
                 return Ok(());
@@ -3210,7 +3198,7 @@ where
                     },
                     _ = base_node_watch.changed() => {
                          if let Some(selected_peer) = base_node_watch.borrow().as_ref() {
-                            if selected_peer.get_current_peer().node_id != current_base_node {
+                            if selected_peer.get_current_peer_id() != current_base_node {
                                 debug!(target: LOG_TARGET, "Base node changed, exiting transaction validation protocol");
                                 return Err(TransactionServiceProtocolError::new(id, TransactionServiceError::BaseNodeChanged {
                                     task_name: "transaction validation_protocol",
@@ -3599,7 +3587,7 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub event_publisher: TransactionEventSender,
     pub interactive_tari_address: TariAddress,
     pub one_sided_tari_address: TariAddress,
-    pub node_identity: Arc<Keypair>,
+    pub node_identity: Arc<identity::Keypair>,
     pub consensus_manager: ConsensusManager,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,

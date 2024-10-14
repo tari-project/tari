@@ -20,16 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, fmt::Display, sync::Arc};
+use std::{fmt, fmt::Display};
 
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeIdentity;
 use tari_core::transactions::key_manager::TariKeyId;
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_network::{identity::PeerId, ToPeerId};
 
 #[derive(Clone, Debug)]
 pub struct WalletIdentity {
-    pub node_identity: Arc<NodeIdentity>,
+    pub public_key: RistrettoPublicKey,
+    pub peer_id: PeerId,
     pub address_interactive: TariAddress,
     pub address_one_sided: TariAddress,
     pub wallet_node_key_id: TariKeyId,
@@ -37,15 +39,16 @@ pub struct WalletIdentity {
 
 impl WalletIdentity {
     pub fn new(
-        node_identity: Arc<NodeIdentity>,
+        public_key: RistrettoPublicKey,
         address_interactive: TariAddress,
         address_one_sided: TariAddress,
     ) -> Self {
         let wallet_node_key_id = TariKeyId::Imported {
-            key: node_identity.public_key().clone(),
+            key: public_key.clone(),
         };
         WalletIdentity {
-            node_identity,
+            peer_id: public_key.to_peer_id(),
+            public_key,
             address_interactive,
             address_one_sided,
             wallet_node_key_id,
@@ -59,7 +62,8 @@ impl WalletIdentity {
 
 impl Display for WalletIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.node_identity)?;
+        writeln!(f, "PublicKey: {}", self.public_key)?;
+        writeln!(f, "PeerId: {}", self.peer_id)?;
         writeln!(f, "Tari Address interactive: {}", self.address_interactive)?;
         writeln!(f, "Tari Address one-sided: {}", self.address_one_sided)?;
         writeln!(f, "Network: {:?}", self.address_interactive.network())?;

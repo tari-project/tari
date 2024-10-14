@@ -22,7 +22,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, PeerId, StreamProtocol};
+use libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, Multiaddr, PeerId, StreamProtocol};
 use log::*;
 use tari_rpc_framework::{
     framing,
@@ -42,6 +42,10 @@ use crate::{
     event::NetworkEvent,
     peer::{Peer, PeerInfo},
     BannedPeer,
+    DialError,
+    DialWaiter,
+    DiscoveredPeer,
+    DiscoveryResult,
     GossipPublisher,
     GossipSubscription,
     NetworkError,
@@ -49,20 +53,19 @@ use crate::{
     Waiter,
 };
 
-const LOG_TARGET: &str = "tari::network::handle";
+const LOG_TARGET: &str = "network::handle";
 
 pub(super) type Reply<T> = oneshot::Sender<Result<T, NetworkError>>;
 
 pub enum NetworkingRequest {
     DialPeer {
         dial_opts: DialOpts,
-        reply_tx: Reply<Waiter<()>>,
+        reply_tx: Reply<DialWaiter<()>>,
     },
     DisconnectPeer {
         peer_id: PeerId,
         reply: Reply<bool>,
     },
-
     PublishGossip {
         topic: IdentTopic,
         message: Vec<u8>,
@@ -115,6 +118,10 @@ pub enum NetworkingRequest {
         peer_id: PeerId,
         reply: Reply<bool>,
     },
+    GetKnownPeerAddresses {
+        peer_id: PeerId,
+        reply: Reply<Option<Vec<Multiaddr>>>,
+    },
     GetBannedPeer {
         peer_id: PeerId,
         reply: Reply<Option<BannedPeer>>,
@@ -122,12 +129,18 @@ pub enum NetworkingRequest {
     GetBannedPeers {
         reply: Reply<Vec<BannedPeer>>,
     },
-    // SetPeerMetadata {
-    //         peer_id: PeerId,
-    //         metadata_key: i32,
-    //         metadata_value: Vec<u8>,
-    //         reply: Reply<()>,
-    //     },
+    AddPeerToAllowList {
+        peer_id: PeerId,
+        reply: Reply<()>,
+    },
+    RemovePeerFromAllowList {
+        peer_id: PeerId,
+        reply: Reply<bool>,
+    },
+    DiscoverClosestPeers {
+        peer_id: PeerId,
+        reply: Reply<Waiter<DiscoveryResult>>,
+    },
 }
 #[derive(Debug)]
 pub struct NetworkHandle {
@@ -269,6 +282,15 @@ impl NetworkHandle {
         rx.await?
     }
 
+    pub async fn get_known_peer_addresses(&self, peer_id: PeerId) -> Result<Option<Vec<Multiaddr>>, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::GetKnownPeerAddresses { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
     pub async fn publish_gossip<TTopic: Into<String> + Send>(
         &self,
         topic: TTopic,
@@ -352,6 +374,37 @@ impl NetworkHandle {
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?
     }
+
+    pub async fn add_peer_to_allow_list(&self, peer_id: PeerId) -> Result<(), NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::AddPeerToAllowList { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn remove_peer_from_allow_list(&self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::RemovePeerFromAllowList { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn discover_peer(&self, peer_id: PeerId) -> Result<Waiter<DiscoveryResult>, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::DiscoverClosestPeers { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn wait_until_shutdown(&self) {
+        self.tx_request.closed().await;
+    }
 }
 
 impl NetworkingService for NetworkHandle {
@@ -362,7 +415,7 @@ impl NetworkingService for NetworkHandle {
     async fn dial_peer<T: Into<DialOpts> + Send + 'static>(
         &mut self,
         dial_opts: T,
-    ) -> Result<Waiter<()>, NetworkError> {
+    ) -> Result<DialWaiter<()>, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::DialPeer {

@@ -7,9 +7,10 @@ use libp2p::{identity, PeerId, StreamProtocol};
 
 #[derive(Debug, Clone)]
 pub enum NetworkEvent {
-    NewIdentifiedPeer {
+    IdentifiedPeer {
         peer_id: PeerId,
         public_key: identity::PublicKey,
+        agent_version: String,
         supported_protocols: Vec<StreamProtocol>,
     },
     PeerConnected {

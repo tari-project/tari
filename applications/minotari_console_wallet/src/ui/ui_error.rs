@@ -25,8 +25,8 @@ use minotari_wallet::{
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
-use tari_comms::connectivity::ConnectivityError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
+use tari_network::NetworkError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 
@@ -38,8 +38,6 @@ pub enum UiError {
     OutputManager(#[from] OutputManagerError),
     #[error(transparent)]
     ContactsService(#[from] ContactsServiceError),
-    #[error(transparent)]
-    Connectivity(#[from] ConnectivityError),
     #[error("Conversion: `{0}`")]
     HexError(String),
     #[error(transparent)]
@@ -58,6 +56,8 @@ pub enum UiError {
     SendError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(String),
+    #[error("Network error: `{0}`")]
+    NetworkError(#[from] NetworkError),
     #[error("Couldn't read wallet type")]
     WalletTypeError,
 }

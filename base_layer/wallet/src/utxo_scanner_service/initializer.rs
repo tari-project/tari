@@ -26,8 +26,8 @@ use futures::future;
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
-use tari_comms::connectivity::ConnectivityRequester;
 use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
+use tari_network::NetworkHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 
@@ -99,7 +99,7 @@ where
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
-            let comms_connectivity = handles.expect_handle::<ConnectivityRequester>();
+            let network_handle = handles.expect_handle::<NetworkHandle>();
             let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
@@ -125,7 +125,7 @@ where
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources::<T, WalletConnectivityHandle, TKeyManagerInterface>(
                     backend,
-                    comms_connectivity,
+                    network_handle,
                     wallet_connectivity.clone(),
                     output_manager_service,
                     transaction_service,

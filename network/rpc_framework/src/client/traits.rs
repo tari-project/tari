@@ -34,7 +34,7 @@ pub trait RpcConnector: Send {
     ) -> RpcClientPool<Self, T>
     where
         Self: Clone,
-        T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone + Send,
+        T: From<RpcClient> + NamedProtocolService + RpcPoolClient + Clone + Send,
     {
         RpcClientPool::new(self.clone(), max_sessions, client_config)
     }

@@ -43,13 +43,9 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, PeerFeatures},
-    tor::TorIdentity,
-};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_key_manager::cipher_seed::CipherSeed;
+use tari_network::multiaddr::Multiaddr;
 use tari_utilities::{
     hex::{from_hex, Hex},
     hidden_type,
@@ -301,48 +297,47 @@ impl WalletSqliteDatabase {
         }
     }
 
-    fn get_comms_features(&self, conn: &mut SqliteConnection) -> Result<Option<PeerFeatures>, WalletStorageError> {
+    fn get_comms_features(&self, conn: &mut SqliteConnection) -> Result<Option<u32>, WalletStorageError> {
         if let Some(key_str) = WalletSettingSql::get(&DbKey::CommsFeatures, conn)? {
             let features = u32::from_str(&key_str).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-            let peer_features = PeerFeatures::from_bits(features);
-            Ok(peer_features)
+            Ok(Some(features))
         } else {
             Ok(None)
         }
     }
 
-    fn set_tor_id(&self, tor: TorIdentity, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
+    // fn set_tor_id(&self, tor: TorIdentity, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
+    //     let cipher = acquire_read_lock!(self.cipher);
+    //
+    //     let bytes =
+    //         Hidden::hide(bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?);
+    //     let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(),
+    // bytes)         .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+    //
+    //     WalletSettingSql::new(DbKey::TorId, ciphertext_integral_nonce.to_hex()).set(conn)?;
+    //
+    //     Ok(())
+    // }
 
-        let bytes =
-            Hidden::hide(bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?);
-        let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), bytes)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
-
-        WalletSettingSql::new(DbKey::TorId, ciphertext_integral_nonce.to_hex()).set(conn)?;
-
-        Ok(())
-    }
-
-    fn get_tor_id(&self, conn: &mut SqliteConnection) -> Result<Option<DbValue>, WalletStorageError> {
-        let cipher = acquire_read_lock!(self.cipher);
-        if let Some(key_str) = WalletSettingSql::get(&DbKey::TorId, conn)? {
-            let id = {
-                // we must zeroize decrypted_key_bytes, as this contains sensitive data,
-                // including private key informations
-                let decrypted_key_bytes = Hidden::hide(
-                    decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(&key_str)?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
-                );
-
-                bincode::deserialize(decrypted_key_bytes.reveal())
-                    .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
-            };
-            Ok(Some(DbValue::TorId(id)))
-        } else {
-            Ok(None)
-        }
-    }
+    // fn get_tor_id(&self, conn: &mut SqliteConnection) -> Result<Option<DbValue>, WalletStorageError> {
+    //     let cipher = acquire_read_lock!(self.cipher);
+    //     if let Some(key_str) = WalletSettingSql::get(&DbKey::TorId, conn)? {
+    //         let id = {
+    //             // we must zeroize decrypted_key_bytes, as this contains sensitive data,
+    //             // including private key informations
+    //             let decrypted_key_bytes = Hidden::hide(
+    //                 decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(&key_str)?)
+    //                     .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
+    //             );
+    //
+    //             bincode::deserialize(decrypted_key_bytes.reveal())
+    //                 .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
+    //         };
+    //         Ok(Some(DbValue::TorId(id)))
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
 
     fn set_chain_metadata(&self, chain: ChainMetadata, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         let bytes = bincode::serialize(&chain).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
@@ -371,10 +366,10 @@ impl WalletSqliteDatabase {
                 kvp_text = "MasterSeed";
                 self.set_master_seed(&seed, &mut conn)?;
             },
-            DbKeyValuePair::TorId(node_id) => {
-                kvp_text = "TorId";
-                self.set_tor_id(node_id, &mut conn)?;
-            },
+            // DbKeyValuePair::TorId(node_id) => {
+            //     kvp_text = "TorId";
+            //     self.set_tor_id(node_id, &mut conn)?;
+            // },
             DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
                 kvp_text = "BaseNodeChainMetadata";
                 self.set_chain_metadata(metadata, &mut conn)?;
@@ -409,12 +404,7 @@ impl WalletSqliteDatabase {
             },
             DbKeyValuePair::CommsFeatures(cf) => {
                 kvp_text = "CommsFeatures";
-                WalletSettingSql::new(DbKey::CommsFeatures, cf.bits().to_string()).set(&mut conn)?;
-            },
-            DbKeyValuePair::CommsIdentitySignature(identity_sig) => {
-                kvp_text = "CommsIdentitySignature";
-                WalletSettingSql::new(DbKey::CommsIdentitySignature, identity_sig.to_bytes().to_hex())
-                    .set(&mut conn)?;
+                WalletSettingSql::new(DbKey::CommsFeatures, cf.to_string()).set(&mut conn)?;
             },
             DbKeyValuePair::NetworkAndVersion((network, version)) => {
                 kvp_text = "NetworkAndVersion";
@@ -455,9 +445,9 @@ impl WalletSqliteDatabase {
                     return Ok(Some(DbValue::ValueCleared));
                 }
             },
-            DbKey::TorId => {
-                let _ = WalletSettingSql::clear(&DbKey::TorId, &mut conn)?;
-            },
+            // DbKey::TorId => {
+            //     let _ = WalletSettingSql::clear(&DbKey::TorId, &mut conn)?;
+            // },
             DbKey::CommsFeatures |
             DbKey::CommsAddress |
             DbKey::BaseNodeChainMetadata |
@@ -467,7 +457,6 @@ impl WalletSqliteDatabase {
             DbKey::SecondaryKeyHash |
             DbKey::WalletBirthday |
             DbKey::WalletType |
-            DbKey::CommsIdentitySignature |
             DbKey::LastAccessedNetwork |
             DbKey::LastAccessedVersion => {
                 return Err(WalletStorageError::OperationNotSupported);
@@ -508,7 +497,7 @@ impl WalletBackend for WalletSqliteDatabase {
                 },
             },
             DbKey::CommsAddress => self.get_comms_address(&mut conn)?.map(DbValue::CommsAddress),
-            DbKey::TorId => self.get_tor_id(&mut conn)?,
+            // DbKey::TorId => self.get_tor_id(&mut conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&mut conn)?.map(DbValue::CommsFeatures),
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&mut conn)?.map(DbValue::BaseNodeChainMetadata),
             DbKey::EncryptedMainKey => WalletSettingSql::get(key, &mut conn)?.map(DbValue::EncryptedMainKey),
@@ -521,11 +510,6 @@ impl WalletBackend for WalletSqliteDatabase {
             },
             DbKey::LastAccessedNetwork => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedNetwork),
             DbKey::LastAccessedVersion => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedVersion),
-            DbKey::CommsIdentitySignature => WalletSettingSql::get(key, &mut conn)?
-                .and_then(|s| from_hex(&s).ok())
-                .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())
-                .map(Box::new)
-                .map(DbValue::CommsIdentitySignature),
         };
         if start.elapsed().as_millis() > 0 {
             trace!(

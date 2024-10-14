@@ -30,7 +30,7 @@ impl PeerStore {
     }
 
     pub fn insert(&mut self, peer: Peer) {
-        let peer_id = peer.to_peer_id();
+        let peer_id = peer.peer_id();
         self.public_key_to_peer_id.insert(peer.public_key().clone(), peer_id);
         self.store.insert(peer_id, PeerRecord {
             peer,

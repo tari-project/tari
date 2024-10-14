@@ -282,3 +282,9 @@ impl From<RpcError> for RpcClientPoolError {
 pub trait RpcPoolClient {
     fn is_connected(&self) -> bool;
 }
+
+impl RpcPoolClient for RpcClient {
+    fn is_connected(&self) -> bool {
+        RpcClient::is_connected(self)
+    }
+}

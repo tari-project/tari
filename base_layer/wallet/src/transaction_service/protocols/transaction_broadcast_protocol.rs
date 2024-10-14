@@ -139,9 +139,9 @@ where
                             if let Some(selected_peer) = &*current_base_node_watcher.borrow() {
                                 info!(
                                     target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})",
-                                    self.tx_id, selected_peer.get_current_peer().public_key,
-                                    selected_peer.get_current_peer().node_id,
+                                    "Transaction Broadcast protocol (TxId: {}) Base Node Peer updated to {}",
+                                    self.tx_id,
+                                    selected_peer.get_current_peer_id(),
                                 );
                             }
                             self.last_rejection = None;

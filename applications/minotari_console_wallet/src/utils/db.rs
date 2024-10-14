@@ -23,12 +23,7 @@
 use log::*;
 use minotari_wallet::{error::WalletStorageError, WalletSqlite};
 use tari_common_types::types::PublicKey;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
-};
+use tari_network::{identity, multiaddr::Multiaddr, Peer};
 use tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "wallet::utils::db";
@@ -71,16 +66,8 @@ pub fn get_custom_base_node_peer_from_db(wallet: &WalletSqlite) -> Option<Peer> 
                 },
             };
 
-            let node_id = NodeId::from_key(&pub_key);
-            Some(Peer::new(
-                pub_key,
-                node_id,
-                MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config),
-                PeerFlags::default(),
-                PeerFeatures::COMMUNICATION_NODE,
-                Default::default(),
-                Default::default(),
-            ))
+            let pub_key = identity::PublicKey::from(identity::sr25519::PublicKey::from(pub_key));
+            Some(Peer::new(pub_key, vec![address]))
         },
         (_, _) => None,
     }
@@ -89,7 +76,7 @@ pub fn get_custom_base_node_peer_from_db(wallet: &WalletSqlite) -> Option<Peer> 
 /// Sets the base node peer in the database
 pub fn set_custom_base_node_peer_in_db(
     wallet: &mut WalletSqlite,
-    base_node_public_key: &CommsPublicKey,
+    base_node_public_key: &PublicKey,
     base_node_address: &Multiaddr,
 ) -> Result<(), WalletStorageError> {
     wallet.db.set_client_key_value(

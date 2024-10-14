@@ -2,7 +2,7 @@
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 edition = "2021"
 
 [workspace]
@@ -61,7 +61,7 @@ tari_network = { path = "network/core" }
 tari_rpc_framework = { path = "network/rpc_framework" }
 tari_rpc_macros = { path = "network/rpc_macros" }
 tari_swarm = { path = "network/swarm" }
-tari_crypto = "0.20.3"
+tari_crypto = "0.21.0"
 
 libp2p-messaging = { path = "network/libp2p-messaging" }
 libp2p-peersync = { path = "network/libp2p-peersync" }
@@ -72,9 +72,9 @@ tari_shutdown = { path = "infrastructure/shutdown" }
 tari_metrics = { path = "infrastructure/metrics" }
 
 # Use Tari's libp2p fork that adds support for Schnorr-Ristretto
-libp2p-identity = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "2d5af69071ea6345f71b9db32c74b9d8e27f4b25" }
-libp2p = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "2d5af69071ea6345f71b9db32c74b9d8e27f4b25", default-features = false }
-multiaddr = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "2d5af69071ea6345f71b9db32c74b9d8e27f4b25" }
+libp2p-identity = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "93fa716b55648051f0e4fc43d01554cab03cab23" }
+libp2p = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "93fa716b55648051f0e4fc43d01554cab03cab23", default-features = false }
+multiaddr = { git = "https://github.com/tari-project/rust-libp2p.git", rev = "93fa716b55648051f0e4fc43d01554cab03cab23" }
 
 anyhow = "1.0.89"
 async-trait = "0.1.83"

@@ -100,7 +100,7 @@ where
             .base_node_watch
             .borrow()
             .as_ref()
-            .map(|p| p.get_current_peer().node_id.clone())
+            .map(|p| p.get_current_peer_id())
             .ok_or_else(|| OutputManagerProtocolError::new(self.operation_id, OutputManagerError::BaseNodeChanged))?;
         debug!(
             target: LOG_TARGET,

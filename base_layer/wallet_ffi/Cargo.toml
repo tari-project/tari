@@ -7,14 +7,13 @@ version = "1.7.0-pre.0"
 edition = "2018"
 
 [dependencies]
+tari_network = { workspace = true }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "tari_mmr",
     "transactions",
 ] }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
-tari_comms = { path = "../../comms/core", features = ["c_integration"] }
-tari_comms_dht = { path = "../../comms/dht", default-features = false }
 tari_crypto = { version = "0.21.0" }
 tari_key_manager = { path = "../key_manager" }
 tari_p2p = { path = "../p2p" }

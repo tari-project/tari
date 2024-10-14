@@ -83,7 +83,7 @@ pub mod framing;
 
 mod not_found;
 mod notify;
-mod optional;
+pub mod optional;
 
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro
 pub mod __macro_reexports {
@@ -97,7 +97,7 @@ pub mod __macro_reexports {
     pub use crate::{
         framing::CanonicalFraming,
         message::{Request, Response},
-        // pool::RpcPoolClient,
+        pool::RpcPoolClient,
         server::{NamedProtocolService, RpcServerError},
         Body,
         ClientStreaming,

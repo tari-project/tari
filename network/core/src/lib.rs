@@ -4,7 +4,7 @@
 mod worker;
 
 mod error;
-pub use error::NetworkError;
+pub use error::{DialError, NetworkError};
 
 mod config;
 mod connection;

@@ -233,8 +233,8 @@ mod test {
         identity::PeerId,
         swarm::dial_opts::DialOpts,
         test_utils::random_peer_id,
+        DialWaiter,
         NetworkError,
-        Waiter,
     };
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
@@ -286,7 +286,7 @@ mod test {
         async fn dial_peer<T: Into<DialOpts> + Send + 'static>(
             &mut self,
             _dial_opts: T,
-        ) -> Result<Waiter<()>, NetworkError> {
+        ) -> Result<DialWaiter<()>, NetworkError> {
             unimplemented!()
         }
 

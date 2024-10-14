@@ -22,12 +22,9 @@
 
 use std::time::Duration;
 
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    protocol::rpc::RpcClientLease,
-    types::CommsPublicKey,
-};
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use tari_network::{identity::PeerId, Peer};
+use tari_rpc_framework::pool::RpcClientLease;
 use tokio::sync::watch;
 
 use crate::connectivity_service::{BaseNodePeerManager, OnlineStatus};
@@ -70,9 +67,7 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
 
     fn get_current_base_node_peer(&self) -> Option<Peer>;
 
-    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey>;
-
-    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId>;
+    fn get_current_base_node_peer_node_id(&self) -> Option<PeerId>;
 
     fn is_base_node_set(&self) -> bool;
 

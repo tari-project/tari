@@ -11,7 +11,7 @@
 #  timestamp [target] LEVEL message
 refresh_rate: 30 seconds
 appenders:
-# An appender named "stdout" that writes to file.
+  # An appender named "stdout" that writes to file.
   stdout:
     kind: rolling_file
     path: "{{log_dir}}/log/wallet/stdout.log"
@@ -28,7 +28,7 @@ appenders:
         limit: 10mb
       roller:
         kind: delete
-        
+
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
@@ -128,6 +128,11 @@ loggers:
       - other
     additive: false
   # network
+  network:
+    level: debug
+    appenders:
+      - network
+    additive: false
   comms:
     level: debug
     appenders:

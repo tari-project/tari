@@ -2,47 +2,70 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
+    fmt,
     fmt::{Display, Formatter},
     time::{Duration, Instant},
 };
 
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol};
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex};
 
-use crate::identity::PublicKey;
+use crate::identity::{KeyType, PublicKey};
 
 #[derive(Debug, Clone)]
 pub struct Peer {
     pub(crate) public_key: PublicKey,
+    pub(crate) peer_id: PeerId,
     pub(crate) addresses: Vec<Multiaddr>,
 }
 
 impl Peer {
     pub fn new(public_key: PublicKey, addresses: Vec<Multiaddr>) -> Self {
-        Self { public_key, addresses }
+        Self {
+            peer_id: public_key.to_peer_id(),
+            public_key,
+            addresses,
+        }
     }
 
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
     }
 
+    pub fn into_public_key_and_addresses(self) -> (PublicKey, Vec<Multiaddr>) {
+        (self.public_key, self.addresses)
+    }
+
     pub fn addresses(&self) -> &[Multiaddr] {
         &self.addresses
     }
 
-    pub fn to_peer_id(&self) -> PeerId {
-        self.public_key.to_peer_id()
+    pub fn add_address(&mut self, address: Multiaddr) -> &mut Self {
+        if !self.addresses.contains(&address) {
+            self.addresses.push(address);
+        }
+        self
+    }
+
+    pub fn peer_id(&self) -> PeerId {
+        self.peer_id
+    }
+}
+
+pub fn public_key_to_string(public_key: &PublicKey) -> String {
+    match public_key.key_type() {
+        KeyType::Sr25519 => public_key.clone().try_into_sr25519().unwrap().inner_key().to_string(),
+        KeyType::Ed25519 => {
+            let pk = public_key.clone().try_into_ed25519().unwrap();
+            hex::to_hex(&pk.to_bytes())
+        },
+        KeyType::RSA | KeyType::Secp256k1 | KeyType::Ecdsa => "<notsupported>".to_string(),
     }
 }
 
 impl Display for Peer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Peer({}, {}, [",
-            self.public_key.to_peer_id(),
-            self.public_key.key_type()
-        )?;
+        write!(f, "Peer({}, {}, [", self.peer_id, self.public_key.key_type())?;
         for addr in &self.addresses {
             write!(f, "{}, ", addr)?;
         }
@@ -84,6 +107,18 @@ impl Display for BannedPeer {
         write!(f, ", reason: {}", self.ban_reason)?;
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct DiscoveredPeer {
+    pub peer_id: PeerId,
+    pub addresses: Vec<Multiaddr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiscoveryResult {
+    pub peers: Vec<DiscoveredPeer>,
+    pub did_timeout: bool,
 }
 
 #[derive(Debug, Clone)]

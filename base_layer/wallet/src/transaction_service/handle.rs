@@ -34,10 +34,8 @@ use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
-use tari_comms::types::CommsPublicKey;
 use tari_core::{
     mempool::FeePerGramStat,
-    proto,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
@@ -53,6 +51,7 @@ use tari_core::{
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
+use tari_p2p::proto;
 use tari_script::CheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -131,7 +130,7 @@ pub enum TransactionServiceRequest {
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
-        validator_node_public_key: CommsPublicKey,
+        validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,

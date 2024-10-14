@@ -22,10 +22,16 @@
 
 use std::io;
 
-use libp2p::{gossipsub, gossipsub::SubscriptionError, swarm::DialError, Multiaddr, TransportError};
+use libp2p::{gossipsub, gossipsub::SubscriptionError, Multiaddr, TransportError};
 use tari_rpc_framework::RpcError;
 use tari_swarm::{messaging, substream, TariSwarmError};
 use tokio::sync::{mpsc, oneshot};
+
+use crate::{
+    identity::PeerId,
+    swarm,
+    swarm::{derive_prelude::ConnectedPoint, dial_opts},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NetworkError {
@@ -35,14 +41,12 @@ pub enum NetworkError {
     GossipPublishError(#[from] gossipsub::PublishError),
     #[error("Failed to send message to peer: {0}")]
     SwarmError(#[from] TariSwarmError),
-    #[error("Service has shutdown")]
+    #[error("Failed to invoke handle: {0}")]
     NetworkingHandleError(#[from] NetworkingHandleError),
     #[error("Failed to subscribe to topic: {0}")]
     SubscriptionError(#[from] SubscriptionError),
     #[error("Dial failed: {0}")]
-    DialError(#[from] DialError),
-    #[error("Failed to dial peer: {0}")]
-    OutgoingConnectionError(String),
+    DialError(#[from] swarm::DialError),
     #[error("Messaging error: {0}")]
     MessagingError(#[from] messaging::Error),
     #[error("Failed to open substream: {0}")]
@@ -68,6 +72,49 @@ impl From<oneshot::error::RecvError> for NetworkError {
 impl<T> From<mpsc::error::SendError<T>> for NetworkError {
     fn from(e: mpsc::error::SendError<T>) -> Self {
         Self::NetworkingHandleError(e.into())
+    }
+}
+
+/// This is a mirror of libp2p DialError that we can:
+/// 1. clone - needed for service responses
+/// 2. impl thiserror
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum DialError {
+    #[error("The peer identity obtained on the connection matches the local peer.")]
+    LocalPeerId { endpoint: ConnectedPoint },
+    #[error(
+        "No addresses have been provided by [`NetworkBehaviour::handle_pending_outbound_connection`] and [`DialOpts`]."
+    )]
+    NoAddresses,
+    #[error("The provided [`dial_opts::PeerCondition`] {0:?} evaluated to false and thus the dial was aborted.")]
+    DialPeerConditionFalse(dial_opts::PeerCondition),
+    #[error("Pending connection attempt has been aborted.")]
+    Aborted,
+    #[error("The peer identity obtained ({obtained}) on the connection did not match the one that was expected.")]
+    WrongPeerId { obtained: PeerId, endpoint: ConnectedPoint },
+    #[error("One of the [`NetworkBehaviour`]s rejected the outbound connection: {cause}.")]
+    Denied { cause: String },
+    #[error("An error occurred while negotiating the transport protocol(s) on a connection. {}", .0.iter().map(|(a, err)| format!("{a}: {err}")).collect::<Vec<_>>().join(""))]
+    Transport(Vec<(Multiaddr, String)>),
+    #[error("Internal service was shutdown before the new connection could be established")]
+    ServiceHasShutDown,
+}
+
+impl From<swarm::DialError> for DialError {
+    fn from(value: swarm::DialError) -> Self {
+        match value {
+            swarm::DialError::LocalPeerId { endpoint } => DialError::LocalPeerId { endpoint },
+            swarm::DialError::NoAddresses => DialError::NoAddresses,
+            swarm::DialError::DialPeerConditionFalse(cond) => DialError::DialPeerConditionFalse(cond),
+            swarm::DialError::Aborted => DialError::Aborted,
+            swarm::DialError::WrongPeerId { obtained, endpoint } => DialError::WrongPeerId { obtained, endpoint },
+            swarm::DialError::Denied { cause } => DialError::Denied {
+                cause: cause.to_string(),
+            },
+            swarm::DialError::Transport(errs) => {
+                DialError::Transport(errs.into_iter().map(|(addr, err)| (addr, err.to_string())).collect())
+            },
+        }
     }
 }
 

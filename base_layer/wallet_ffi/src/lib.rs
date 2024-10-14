@@ -166,6 +166,7 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
+use tari_network::identity;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     transport::MemoryTransportConfig,
@@ -5504,8 +5505,8 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
         return ptr::null_mut();
     }
 
-    let mut connectivity = (*wallet).wallet.comms.connectivity();
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
+    let mut connectivity = (*wallet).wallet.network.connectivity();
+    let peer_manager = (*wallet).wallet.network.peer_manager();
 
     #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
@@ -6027,75 +6028,36 @@ pub unsafe extern "C" fn wallet_create(
 
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
     let mut comms_config = (*config).clone();
-    if let TransportType::Tor = comms_config.transport.transport_type {
-        comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
-    }
-
-    let result = runtime.block_on(async {
-        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
-            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)
-            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-
-        let node_features = wallet_database.get_node_features()?.unwrap_or_default();
-        let node_addresses = if comms_config.public_addresses.is_empty() {
-            match wallet_database.get_node_address()? {
-                Some(addr) => MultiaddrList::from(vec![addr]),
-                None => MultiaddrList::default(),
-            }
-        } else {
-            comms_config.public_addresses.clone()
-        };
-        debug!(target: LOG_TARGET, "We have the following addresses");
-        for address in &node_addresses {
-            debug!(target: LOG_TARGET, "Address: {}", address);
-        }
-        let identity_sig = wallet_database.get_comms_identity_signature()?;
-
-        // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
-        // to None
-        let identity_sig = identity_sig.filter(|sig| {
-            let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-            sig.is_valid(&comms_public_key, node_features, &node_addresses)
-        });
-
-        // SAFETY: we are manually checking the validity of this signature before adding Some(..)
-        let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-            comms_secret_key,
-            node_addresses.to_vec(),
-            node_features,
-            identity_sig,
-        ));
-        if !node_identity.is_signed() {
-            node_identity.sign();
-            // unreachable panic: signed above
-            let sig = node_identity
-                .identity_signature_read()
-                .as_ref()
-                .expect("unreachable panic")
-                .clone();
-            wallet_database.set_comms_identity_signature(sig)?;
-        }
-        Ok((master_seed, node_identity))
-    });
-
-    let (master_seed, node_identity) = match result {
-        Ok(tuple) => tuple,
+    let master_seed = match read_or_create_master_seed(recovery_seed, &wallet_database) {
+        Ok(seed) => seed,
         Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
+                e.to_string(),
+            )))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let comms_secret_key = match derive_comms_secret_key(&master_seed) {
+        Ok(s) => s,
+        Err(e) => {
+            let e = WalletStorageError::RecoverySeedError(e.to_string());
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
     };
 
+    let keypair = Arc::new(identity::Keypair::from(identity::sr25519::Keypair::from(
+        comms_secret_key,
+    )));
+
     let shutdown = Shutdown::new();
     let wallet_config = WalletConfig {
         override_from: None,
         p2p: comms_config,
-        transaction_service_config: TransactionServiceConfig {
-            direct_send_timeout: (*config).dht.discovery_request_timeout,
-            ..Default::default()
-        },
+        transaction_service_config: TransactionServiceConfig { ..Default::default() },
         base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
         ..Default::default()
@@ -6130,7 +6092,7 @@ pub unsafe extern "C" fn wallet_create(
         wallet_config,
         peer_seeds,
         auto_update,
-        node_identity,
+        keypair,
         consensus_manager,
         factories,
         wallet_database,
@@ -6157,7 +6119,7 @@ pub unsafe extern "C" fn wallet_create(
             };
 
             // Lets set the base node peers
-            let peer_manager = w.comms.peer_manager();
+            let peer_manager = w.network.peer_manager();
             let query = PeerQuery::new().select_where(|p| p.is_seed());
             let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
 
@@ -6193,7 +6155,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.output_manager_service.clone(),
                 utxo_scanner.get_event_receiver(),
                 w.dht_service.subscribe_dht_events(),
-                w.comms.shutdown_signal(),
+                w.network.shutdown_signal(),
                 wallet_address,
                 w.wallet_connectivity.get_connectivity_status_watch(),
                 w.contacts_service.get_contacts_liveness_event_stream(),
@@ -6846,7 +6808,7 @@ pub unsafe extern "C" fn wallet_sign_message(
         return result.into_raw();
     }
 
-    let secret = (*wallet).wallet.comms.node_identity().secret_key().clone();
+    let secret = (*wallet).wallet.network.node_identity().secret_key().clone();
     let message = CStr::from_ptr(msg)
         .to_str()
         .expect("CString should not fail here.")
@@ -7062,7 +7024,7 @@ pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
+    let peer_manager = (*wallet).wallet.network.peer_manager();
     let query = PeerQuery::new().select_where(|p| p.is_seed());
     #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
@@ -9173,7 +9135,7 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
         debug!(target: LOG_TARGET, "Wallet pointer not yet destroyed, shutting down now");
         let mut w = Box::from_raw(wallet);
-        let wallet_comms = w.wallet.comms.clone();
+        let wallet_comms = w.wallet.network.clone();
         w.shutdown.trigger();
         w.runtime.block_on(w.wallet.wait_until_shutdown());
         // The wallet should be shutdown by now; these are just additional confirmations
@@ -12605,7 +12567,7 @@ mod test {
             // Add some peers
             // - Wallet peer for Alice (add Bob as a base node peer; not how it will be done in production but good
             //   enough for the test as we just need to make sure the wallet can connect to a peer)
-            let bob_wallet_comms = (*bob_wallet_ptr).wallet.comms.clone();
+            let bob_wallet_comms = (*bob_wallet_ptr).wallet.network.clone();
             let bob_node_identity = bob_wallet_comms.node_identity();
             let bob_peer_public_key_ptr = Box::into_raw(Box::new(bob_node_identity.public_key().clone()));
             let bob_peer_address_ptr =
@@ -12620,7 +12582,7 @@ mod test {
             string_destroy(bob_peer_address_ptr as *mut c_char);
             let _destroyed = Box::from_raw(bob_peer_public_key_ptr);
             // - Wallet peer for Bob (add Alice as a base node peer; same as above)
-            let alice_wallet_comms = (*alice_wallet_ptr).wallet.comms.clone();
+            let alice_wallet_comms = (*alice_wallet_ptr).wallet.network.clone();
             let alice_node_identity = alice_wallet_comms.node_identity();
             let alice_peer_public_key_ptr = Box::into_raw(Box::new(alice_node_identity.public_key().clone()));
             let alice_peer_address_ptr = CString::into_raw(

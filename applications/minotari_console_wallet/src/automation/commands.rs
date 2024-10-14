@@ -66,13 +66,6 @@ use tari_common_types::{
     types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
     wallet_types::WalletType,
 };
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
-    multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerQuery},
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     blocks::pre_mine::get_pre_mine_items,
     covenants::Covenant,
@@ -106,12 +99,21 @@ use tari_key_manager::{
     key_manager_service::{KeyId, KeyManagerInterface},
     SeedWords,
 };
+use tari_network::{
+    multiaddr::Multiaddr,
+    DiscoveryResult,
+    NetworkEvent,
+    NetworkHandle,
+    NetworkingService,
+    Peer,
+    ToPeerId,
+};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{broadcast, mpsc, oneshot::error::RecvError},
     time::{sleep, timeout},
 };
 
@@ -387,17 +389,17 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
-    let mut connectivity = connectivity_requester.get_event_subscription();
+async fn wait_for_comms(network: &NetworkHandle) -> Result<(), CommandError> {
+    let mut events = network.subscribe_events();
     print!("Waiting for connectivity... ");
     let timeout = sleep(Duration::from_secs(30));
     tokio::pin!(timeout);
     let mut timeout = timeout.fuse();
     loop {
         tokio::select! {
-            // Wait for the first base node connection
-            Ok(ConnectivityEvent::PeerConnected(conn)) = connectivity.recv() => {
-                if conn.peer_features().is_node() {
+            // Wait for the first base node to identify
+            Ok(NetworkEvent::IdentifiedPeer { agent_version, .. }) = events.recv() => {
+                if agent_version.contains("basenode") {
                     println!("✅");
                     return Ok(());
                 }
@@ -414,7 +416,7 @@ async fn set_base_node_peer(
     mut wallet: WalletSqlite,
     public_key: PublicKey,
     address: Multiaddr,
-) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
+) -> Result<(PublicKey, Multiaddr), CommandError> {
     println!("Setting base node peer...");
     println!("{}::{}", public_key, address);
     wallet
@@ -423,29 +425,49 @@ async fn set_base_node_peer(
     Ok((public_key, address))
 }
 
-pub async fn discover_peer(
-    mut dht_service: DhtDiscoveryRequester,
-    dest_public_key: PublicKey,
-) -> Result<(), CommandError> {
+pub async fn discover_peer(network: NetworkHandle, dest_public_key: PublicKey) {
     let start = Instant::now();
     println!("🌎 Peer discovery started.");
-    match dht_service
-        .discover_peer(
-            dest_public_key.clone(),
-            NodeDestination::PublicKey(Box::new(dest_public_key)),
-        )
-        .await
-    {
-        Ok(peer) => {
-            println!("⚡️ Discovery succeeded in {}ms.", start.elapsed().as_millis());
-            println!("{}", peer);
+    let peer_id = dest_public_key.to_peer_id();
+    match network.discover_peer(peer_id).await {
+        Ok(waiter) => {
+            match waiter.await {
+                Ok(result) => {
+                    println!("⚡️ Discovery succeeded in {}ms.", start.elapsed().as_millis());
+                    if result.did_timeout {
+                        println!(
+                            "Discovery timed out: {} peer(s) were found within the timeout",
+                            result.peers.len()
+                        )
+                    }
+
+                    match result.peers.into_iter().find(|p| p.peer_id == peer_id) {
+                        Some(peer) => {
+                            println!(
+                                "Peer: {} Addresses: {}",
+                                peer.peer_id,
+                                peer.addresses
+                                    .iter()
+                                    .map(ToString::to_string)
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
+                        },
+                        None => {
+                            println!("☹️ Peer not found on DHT");
+                        },
+                    }
+                },
+                // Channel closed early - can only happen if network has been terminated
+                Err(_) => {
+                    println!("💀 Discovery failed: 'network shutdown'");
+                },
+            }
         },
         Err(err) => {
             println!("💀 Discovery failed: '{:?}'", err);
         },
     }
-
-    Ok(())
 }
 // casting here is okay. If the txns per second for this primary debug tool is a bit off its okay.
 #[allow(clippy::cast_possible_truncation)]
@@ -731,8 +753,6 @@ pub async fn command_runner(
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
-    let dht_service = wallet.dht_service.discovery_service_requester().clone();
-    let connectivity_requester = wallet.comms.connectivity();
     let key_manager_service = wallet.key_manager_service.clone();
     let mut online = false;
 
@@ -742,12 +762,10 @@ pub async fn command_runner(
     println!("Command Runner");
     println!("==============");
 
-    let (_current_index, mut peer_list) =
-        if let Some((index, list)) = wallet.wallet_connectivity.get_base_node_peer_manager_state() {
-            (index, list)
-        } else {
-            (0, vec![])
-        };
+    let (_current_index, mut peer_list) = wallet
+        .wallet_connectivity
+        .get_base_node_peer_manager_state()
+        .unwrap_or_default();
     let mut unban_peer_manager_peers = false;
 
     #[allow(clippy::enum_glob_use)]
@@ -764,7 +782,7 @@ pub async fn command_runner(
             },
             DiscoverPeer(args) => {
                 if !online {
-                    match wait_for_comms(&connectivity_requester).await {
+                    match wait_for_comms(&wallet.network).await {
                         Ok(..) => {
                             online = true;
                         },
@@ -774,9 +792,7 @@ pub async fn command_runner(
                         },
                     }
                 }
-                if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
-                    eprintln!("DiscoverPeer error! {}", e);
-                }
+                discover_peer(wallet.network.clone(), args.dest_public_key.into()).await;
             },
             BurnMinotari(args) => {
                 match burn_tari(
@@ -1180,7 +1196,7 @@ pub async fn command_runner(
                     },
                 }
 
-                temp_ban_peers(&wallet, &mut peer_list).await;
+                temp_ban_peers(&wallet, &peer_list).await;
                 unban_peer_manager_peers = true;
 
                 // Read session info
@@ -1259,7 +1275,7 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        lift_temp_ban_peers(&wallet, &mut peer_list).await;
+                        lift_temp_ban_peers(&wallet, &peer_list).await;
                         return Ok(true);
                     },
                 };
@@ -2347,7 +2363,7 @@ pub async fn command_runner(
                 let mut receiver = utxo_scanner.get_event_receiver();
 
                 if !online {
-                    match wait_for_comms(&connectivity_requester).await {
+                    match wait_for_comms(&wallet.network).await {
                         Ok(..) => {
                             online = true;
                         },
@@ -2484,6 +2500,7 @@ pub async fn command_runner(
                     .parent()
                     .ok_or(CommandError::General("No parent".to_string()))?
                     .join("temp");
+
                 println!("saving temp wallet in: {:?}", temp_path);
                 {
                     let passphrase = if args.passphrase.is_empty() {
@@ -2533,16 +2550,6 @@ pub async fn command_runner(
                     )
                     .await
                     .map_err(|e| CommandError::General(e.to_string()))?;
-                    // config
-
-                    let query = PeerQuery::new().select_where(|p| p.is_seed());
-                    let peer_seeds = wallet
-                        .comms
-                        .peer_manager()
-                        .perform_query(query)
-                        .await
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    // config
                     let base_node_peers = config
                         .base_node_service_peers
                         .iter()
@@ -2557,17 +2564,28 @@ pub async fn command_runner(
                         None => get_custom_base_node_peer_from_db(&wallet),
                     };
 
-                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
+                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, vec![]);
 
                     let base_nodes = peer_config
                         .get_base_node_peers()
                         .map_err(|e| CommandError::General(e.to_string()))?;
+                    if base_nodes.is_empty() {
+                        return Err(CommandError::Config("No base node peers".to_string()));
+                    }
+                    let base_node_pk = match base_nodes[0].public_key().clone().try_into_sr25519() {
+                        Ok(pk) => pk.inner_key().clone(),
+                        Err(err) => {
+                            return Err(CommandError::Config(format!("Unsupported key type: {err}")));
+                        },
+                    };
                     new_wallet
                         .set_base_node_peer(
-                            base_nodes[0].public_key.clone(),
+                            base_node_pk,
                             Some(
                                 base_nodes[0]
-                                    .last_address_used()
+                                    .addresses()
+                                    .first()
+                                    .cloned()
                                     .ok_or(CommandError::General("No address found".to_string()))?,
                             ),
                             Some(base_nodes),
@@ -2650,7 +2668,7 @@ pub async fn command_runner(
         }
     }
     if unban_peer_manager_peers {
-        lift_temp_ban_peers(&wallet, &mut peer_list).await;
+        lift_temp_ban_peers(&wallet, &peer_list).await;
         return Ok(true);
     }
 
@@ -2692,41 +2710,25 @@ pub async fn command_runner(
     Ok(unban_peer_manager_peers)
 }
 
-async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
+async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &[Peer]) {
     for peer in peer_list {
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .remove_peer_from_allow_list(peer.node_id.clone())
-            .await;
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .ban_peer_until(
-                peer.node_id.clone(),
-                Duration::from_secs(24 * 60 * 60),
+        let _ignore = wallet.network.remove_peer_from_allow_list(peer.peer_id()).await;
+        let _ignore = wallet
+            .network
+            .clone()
+            .ban_peer(
+                peer.peer_id(),
                 "Busy with pre-mine spend".to_string(),
+                Some(Duration::from_secs(24 * 60 * 60)),
             )
             .await;
     }
 }
 
-async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
+async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &[Peer]) {
     for peer in peer_list {
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .ban_peer_until(
-                peer.node_id.clone(),
-                Duration::from_millis(1),
-                "Busy with pre-mine spend".to_string(),
-            )
-            .await;
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .add_peer_to_allow_list(peer.node_id.clone())
-            .await;
+        // This will unban them
+        let _unused = wallet.network.add_peer_to_allow_list(peer.peer_id()).await;
     }
 }
 

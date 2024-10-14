@@ -143,7 +143,7 @@ impl<B: Backend> Component<B> for BaseNode {
         let base_node_id = Spans::from(vec![
             Span::styled(" Connected Base Node ID: ", Style::default().fg(Color::Magenta)),
             Span::styled(
-                format!("{}", app_state.get_selected_base_node().node_id.clone()),
+                app_state.get_selected_base_node().peer_id().to_string(),
                 Style::default().fg(base_node_id_color),
             ),
             Span::styled(" ", Style::default().fg(Color::White)),

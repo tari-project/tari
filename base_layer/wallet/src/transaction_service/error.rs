@@ -29,8 +29,6 @@ use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
     types::FixedHashSizeError,
 };
-use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
-use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
@@ -113,8 +111,6 @@ pub enum TransactionServiceError {
     UnexpectedBaseNodeResponse,
     #[error("The current transaction has been cancelled")]
     TransactionCancelled,
-    #[error("DHT outbound error: `{0}`")]
-    DhtOutboundError(#[from] DhtOutboundError),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Transport channel error: `{0}`")]

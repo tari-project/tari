@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, HashSet},
     hash::Hash,
     sync::Arc,
     time::{Duration, Instant},
@@ -18,7 +18,8 @@ use libp2p::{
     gossipsub::{IdentTopic, MessageId, TopicHash},
     identify,
     identity,
-    kad::RoutingUpdate,
+    kad,
+    kad::{store::RecordStore, GetClosestPeersError, GetClosestPeersResult, QueryId, QueryResult, RoutingUpdate},
     mdns,
     multiaddr::Protocol,
     ping,
@@ -61,13 +62,16 @@ use crate::{
     relay_state::RelayState,
     BannedPeer,
     ConnectionDirection,
+    DialWaiter,
+    DiscoveredPeer,
+    DiscoveryResult,
     MessageSpec,
     MessagingMode,
     NetworkError,
     Peer,
 };
 
-const LOG_TARGET: &str = "tari::network::service::worker";
+const LOG_TARGET: &str = "network::service::worker";
 
 type ReplyTx<T> = oneshot::Sender<Result<T, NetworkError>>;
 
@@ -85,11 +89,13 @@ where
     messaging_mode: MessagingMode<TMsg>,
     active_connections: HashMap<PeerId, Vec<Connection>>,
     pending_substream_requests: HashMap<StreamId, ReplyTx<NegotiatedSubstream<Substream>>>,
-    pending_dial_requests: HashMap<PeerId, Vec<ReplyTx<()>>>,
+    pending_dial_requests: HashMap<PeerId, Vec<oneshot::Sender<Result<(), crate::error::DialError>>>>,
+    pending_kad_queries: HashMap<QueryId, oneshot::Sender<DiscoveryResult>>,
     substream_notifiers: Notifiers<Substream>,
     swarm: TariSwarm<ProstCodec<TMsg::Message>>,
     // TODO: we'll replace this with a proper libp2p behaviour if needed
     ban_list: HashMap<PeerId, BannedPeer>,
+    allow_list: HashSet<PeerId>,
     gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<(PeerId, gossipsub::Message)>>,
     gossipsub_outbound_tx: mpsc::Sender<(IdentTopic, Vec<u8>)>,
     gossipsub_outbound_rx: Option<mpsc::Receiver<(IdentTopic, Vec<u8>)>>,
@@ -129,10 +135,12 @@ where
             active_connections: HashMap::new(),
             pending_substream_requests: HashMap::new(),
             pending_dial_requests: HashMap::new(),
+            pending_kad_queries: HashMap::new(),
             relays: RelayState::new(known_relay_nodes),
             seed_peers,
             swarm,
             ban_list: HashMap::new(),
+            allow_list: HashSet::new(),
             gossipsub_subscriptions: HashMap::new(),
             gossipsub_outbound_tx,
             gossipsub_outbound_rx: Some(gossipsub_outbound_rx),
@@ -336,8 +344,14 @@ where
             },
             NetworkingRequest::AddPeer { peer, reply } => {
                 info!(target: LOG_TARGET, "Adding {peer}");
+                if peer.addresses.is_empty() {
+                    let _ignore = reply.send(Err(NetworkError::FailedToAddPeer {
+                        details: format!("AddPeer: No addresses provided for peer {}. Nothing to do.", peer),
+                    }));
+                    return Ok(());
+                }
                 let num_addresses = peer.addresses().len();
-                let peer_id = peer.to_peer_id();
+                let peer_id = peer.peer_id();
                 let mut failed = 0usize;
                 for address in peer.addresses {
                     let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, address);
@@ -356,6 +370,21 @@ where
                     }));
                 }
             },
+            NetworkingRequest::GetKnownPeerAddresses { peer_id, reply } => {
+                let addresses = self
+                    .swarm
+                    .behaviour_mut()
+                    .kad
+                    .kbucket(peer_id)
+                    .map(|b| {
+                        b.iter()
+                            .find(|e| *e.node.key.preimage() == peer_id)
+                            .map(|a| a.node.value.clone().into_vec())
+                    })
+                    .flatten();
+
+                let _ignore = reply.send(Ok(addresses));
+            },
             NetworkingRequest::BanPeer {
                 peer_id,
                 reason,
@@ -363,6 +392,11 @@ where
                 reply,
             } => {
                 info!(target: LOG_TARGET, "🎯Banning peer {peer_id} for {ban_duration:?}: {reason}");
+                if self.allow_list.contains(&peer_id) {
+                    info!(target: LOG_TARGET, "Not banning peer because it is on the allow list");
+                    return Ok(());
+                }
+
                 // TODO: mark the peer as banned and prevent connections,messages from coming through
                 self.ban_list.insert(peer_id, BannedPeer {
                     peer_id,
@@ -413,6 +447,23 @@ where
                 let banned = self.ban_list.values().cloned().collect();
                 let _ignore = reply.send(Ok(banned));
                 shrink_hashmap_if_required(&mut self.ban_list);
+            },
+            NetworkingRequest::AddPeerToAllowList { peer_id, reply } => {
+                if self.ban_list.remove(&peer_id).is_some() {
+                    shrink_hashmap_if_required(&mut self.ban_list);
+                }
+                self.allow_list.insert(peer_id);
+                let _ignore = reply.send(Ok(()));
+            },
+            NetworkingRequest::RemovePeerFromAllowList { peer_id, reply } => {
+                let _ignore = reply.send(Ok(self.allow_list.remove(&peer_id)));
+            },
+            NetworkingRequest::DiscoverClosestPeers { peer_id, reply } => {
+                let query = self.swarm.behaviour_mut().kad.get_closest_peers(peer_id);
+                info!(target: LOG_TARGET, "🌐 Started peer discovery qid={}", query);
+                let (tx_waiter, rx_waiter) = oneshot::channel();
+                self.pending_kad_queries.insert(query, tx_waiter);
+                let _ignore = reply.send(Ok(rx_waiter.into()));
             },
         }
 
@@ -597,17 +648,18 @@ where
                 };
                 shrink_hashmap_if_required(&mut self.pending_dial_requests);
 
+                let err = crate::error::DialError::from(error);
                 for waiter in waiters {
-                    let _ignore = waiter.send(Err(NetworkError::OutgoingConnectionError(error.to_string())));
+                    let _ignore = waiter.send(Err(err.clone()));
                 }
 
-                if matches!(error, DialError::NoAddresses) {
-                    self.swarm
-                        .behaviour_mut()
-                        .peer_sync
-                        .add_want_peers(Some(peer_id))
-                        .await?;
-                }
+                // if matches!(error, DialError::NoAddresses) {
+                //     self.swarm
+                //         .behaviour_mut()
+                //         .peer_sync
+                //         .add_want_peers(Some(peer_id))
+                //         .await?;
+                // }
             },
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 info!(target: LOG_TARGET, "🌍️ External address confirmed: {}", address);
@@ -740,6 +792,41 @@ where
             },
             PeerSync(event) => {
                 info!(target: LOG_TARGET, "ℹ️ PeerSync event: {:?}", event);
+            },
+            Kad(kad::Event::OutboundQueryProgressed {
+                id,
+                result: QueryResult::GetClosestPeers(result),
+                stats,
+                step,
+            }) => {
+                info!(
+                    target: LOG_TARGET,
+                    "🌐 Kad event: OutboundQueryProgressed({}, {}, {}/{}, fail:{}, {} queried)",
+                    id,
+                    result.as_ref().map(|_| "Ok").unwrap_or("Timeout"),
+                    stats.num_successes(),
+                    stats.num_pending(),
+                    stats.num_failures(),
+                    step.count,
+                );
+                if step.last {
+                    if let Some(reply) = self.pending_kad_queries.remove(&id) {
+                        let (peers, did_timeout) = match result {
+                            Ok(peers) => (peers.peers, false),
+                            Err(GetClosestPeersError::Timeout { peers, .. }) => (peers, true),
+                        };
+
+                        debug!(target: LOG_TARGET, "Responding to query {id} with {} peer(s)", peers.len());
+                        let peers = peers
+                            .into_iter()
+                            .map(|p| DiscoveredPeer {
+                                peer_id: p.peer_id,
+                                addresses: p.addrs,
+                            })
+                            .collect();
+                        let _ = reply.send(DiscoveryResult { peers, did_timeout });
+                    }
+                }
             },
             Kad(event) => {
                 info!(target: LOG_TARGET, "🌐 Kad event: {:?}", event);
@@ -927,7 +1014,7 @@ where
             ..
         } = info;
 
-        self.update_connected_peers(&peer_id, public_key.clone(), agent_version);
+        self.update_connected_peers(&peer_id, public_key.clone(), agent_version.clone());
 
         let is_relay = protocols.iter().any(|p| *p == relay::HOP_PROTOCOL_NAME);
 
@@ -976,9 +1063,10 @@ where
             self.establish_relay_circuit_on_connect(&peer_id);
         }
 
-        self.publish_event(NetworkEvent::NewIdentifiedPeer {
+        self.publish_event(NetworkEvent::IdentifiedPeer {
             peer_id,
             public_key,
+            agent_version,
             supported_protocols: protocols,
         });
         Ok(())

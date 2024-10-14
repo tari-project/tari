@@ -10,7 +10,7 @@ use std::{
 use libp2p::{swarm::dial_opts::DialOpts, PeerId};
 use tokio::sync::oneshot;
 
-use crate::{messaging::MulticastDestination, MessageSpec, NetworkError};
+use crate::{error::DialError, messaging::MulticastDestination, MessageSpec, NetworkError};
 
 pub trait NetworkingService {
     fn local_peer_id(&self) -> &PeerId;
@@ -18,7 +18,7 @@ pub trait NetworkingService {
     fn dial_peer<T: Into<DialOpts> + Send + 'static>(
         &mut self,
         dial_opts: T,
-    ) -> impl Future<Output = Result<Waiter<()>, NetworkError>> + Send;
+    ) -> impl Future<Output = Result<DialWaiter<()>, NetworkError>> + Send;
     fn disconnect_peer(&mut self, peer_id: PeerId) -> impl Future<Output = Result<bool, NetworkError>> + Send;
 
     fn ban_peer<T: Into<String> + Send>(
@@ -47,20 +47,40 @@ pub trait OutboundMessager<TMsg: MessageSpec> {
     ) -> impl Future<Output = Result<usize, NetworkError>> + Send;
 }
 
-pub struct Waiter<T> {
-    rx: oneshot::Receiver<Result<T, NetworkError>>,
+pub struct DialWaiter<T> {
+    rx: oneshot::Receiver<Result<T, DialError>>,
 }
 
-impl<T> From<oneshot::Receiver<Result<T, NetworkError>>> for Waiter<T> {
-    fn from(rx: oneshot::Receiver<Result<T, NetworkError>>) -> Self {
+impl<T> From<oneshot::Receiver<Result<T, DialError>>> for DialWaiter<T> {
+    fn from(rx: oneshot::Receiver<Result<T, DialError>>) -> Self {
+        Self { rx }
+    }
+}
+
+impl<T> Future for DialWaiter<T> {
+    type Output = Result<T, DialError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.get_mut().rx)
+            .poll(cx)
+            .map_err(|_| DialError::ServiceHasShutDown)?
+    }
+}
+
+pub struct Waiter<T> {
+    rx: oneshot::Receiver<T>,
+}
+
+impl<T> From<oneshot::Receiver<T>> for Waiter<T> {
+    fn from(rx: oneshot::Receiver<T>) -> Self {
         Self { rx }
     }
 }
 
 impl<T> Future for Waiter<T> {
-    type Output = Result<T, NetworkError>;
+    type Output = Result<T, oneshot::error::RecvError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(&mut self.get_mut().rx).poll(cx)?
+        Pin::new(&mut self.get_mut().rx).poll(cx)
     }
 }

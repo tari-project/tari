@@ -44,7 +44,7 @@ use tari_core::{
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_network::identity::PeerId;
 use tari_p2p::proto::base_node::SyncUtxosByBlockRequest;
-use tari_rpc_framework::pool::RpcClientLease;
+use tari_rpc_framework::{optional::OrOptional, pool::RpcClientLease, RpcConnector};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -172,33 +172,7 @@ where
         Ok(())
     }
 
-    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
-        debug!(
-            target: LOG_TARGET,
-            "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
-        );
-        match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
-            Ok(conn) => Ok(conn),
-            Err(e) => {
-                self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                    peer: peer.clone(),
-                    num_retries: self.num_retries,
-                    retry_limit: self.retry_limit,
-                    error: e.to_string(),
-                });
-
-                if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
-                    if connection.clone().disconnect(Minimized::No).await.is_ok() {
-                        debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
-                    }
-                }
-
-                Err(e.into())
-            },
-        }
-    }
-
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+    async fn attempt_sync(&mut self, peer: PeerId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
@@ -315,9 +289,10 @@ where
         &mut self,
         peer: &PeerId,
     ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
-        let mut connection = self.connect_to_peer(peer.clone()).await?;
-        let client = connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
+        let client = self
+            .resources
+            .network
+            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder(*peer).with_deadline(Duration::from_secs(60)))
             .await?;
         Ok(RpcClientLease::new(client))
     }

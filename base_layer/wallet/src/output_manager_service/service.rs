@@ -634,7 +634,7 @@ where
                     },
                     _ = base_node_watch.changed() => {
                         if let Some(peer) = base_node_watch.borrow().as_ref() {
-                            if peer.get_current_peer().node_id != current_base_node {
+                            if peer.get_current_peer_id() != current_base_node {
                                 debug!(
                                     target: LOG_TARGET,
                                     "TXO Validation Protocol (Id: {}) cancelled because base node changed", id

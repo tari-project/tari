@@ -57,7 +57,7 @@ where
         })
         .filter(|p| {
             if p.addresses.is_empty() {
-                warn!(target: LOG_TARGET, "⚠️ seed peer {} will not be used because it has no supported addresses", p.to_peer_id());
+                warn!(target: LOG_TARGET, "⚠️ seed peer {} will not be used because it has no supported addresses", p.peer_id());
                 false
             } else {
                 true
