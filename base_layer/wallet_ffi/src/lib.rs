@@ -114,9 +114,8 @@ use minotari_wallet::{
 use num_traits::FromPrimitive;
 use rand::{prelude::SliceRandom, rngs::OsRng};
 use tari_common::{
-    configuration::{MultiaddrList, StringList},
+    configuration::{DnsNameServerList, MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
-    DnsNameServer,
 };
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
@@ -2810,27 +2809,30 @@ pub unsafe extern "C" fn seed_words_create_from_cipher(
     passphrase: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariSeedWords {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
     let passphrase = if passphrase.is_null() {
         None
     } else {
         match CStr::from_ptr(passphrase).to_str() {
             Ok(v) => Some(SafePassword::from(v.to_owned())),
             _ => {
-                let mut error = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
+                error = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
         }
     };
     if cipher_bytes.is_null() {
-        let mut error = LibWalletError::from(InterfaceError::NullError("cipher_bytes".to_string())).code;
+        error = LibWalletError::from(InterfaceError::NullError("cipher_bytes".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
     let base_58_cipher = match CStr::from_ptr(cipher_bytes).to_str() {
         Ok(v) => v.to_owned(),
         _ => {
-            let mut error = LibWalletError::from(InterfaceError::PointerError("cipher_bytes".to_string())).code;
+            error = LibWalletError::from(InterfaceError::PointerError("cipher_bytes".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
@@ -2839,7 +2841,7 @@ pub unsafe extern "C" fn seed_words_create_from_cipher(
         Ok(v) => v,
         Err(_) => {
             // code for invalid cipher bytes
-            let mut error = 420;
+            error = 420;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
@@ -2848,7 +2850,7 @@ pub unsafe extern "C" fn seed_words_create_from_cipher(
         Ok(v) => v,
         Err(_) => {
             // code for invalid cipher bytes
-            let mut error = 421;
+            error = 421;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
@@ -2858,7 +2860,7 @@ pub unsafe extern "C" fn seed_words_create_from_cipher(
         Ok(v) => v,
         Err(_) => {
             // code for invalid cipher bytes
-            let mut error = 420;
+            error = 420;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
@@ -5762,6 +5764,8 @@ unsafe fn init_logging(
 /// `seed_passphrase` - an optional string, if present this will derypt the seed words
 /// `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
 /// If this is null, then a new master key is created for the wallet.
+/// `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
+/// `use_dns_sec` - Use DNSSEC when querying the DNS servers.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
 /// called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function
@@ -5853,8 +5857,9 @@ pub unsafe extern "C" fn wallet_create(
     seed_passphrase: *const c_char,
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
-    peer_seed_str: *const c_char,
-    dns_sec: bool,
+    dns_seeds_str: *const c_char,
+    dns_seed_name_servers_str: *const c_char,
+    use_dns_sec: bool,
 
     callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
@@ -5930,16 +5935,32 @@ pub unsafe extern "C" fn wallet_create(
         SafePassword::from(pf)
     };
 
-    let peer_seed = if peer_seed_str.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("peer seed dns".to_string())).code;
+    let dns_seeds = if dns_seeds_str.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("peer seeds".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     } else {
-        let peer_seed = CStr::from_ptr(peer_seed_str)
+        let peer_seed = CStr::from_ptr(dns_seeds_str)
             .to_str()
             .expect("A non-null peer seed should be able to be converted to string");
-        info!(target: LOG_TARGET, "peer seed dns {}", peer_seed);
+        info!(target: LOG_TARGET, "peer seed dns '{}'", peer_seed);
         peer_seed
+    };
+
+    let dns_seed_name_servers = if dns_seed_name_servers_str.is_null() {
+        PeerSeedsConfig::default().dns_seed_name_servers
+    } else {
+        let list = CStr::from_ptr(dns_seed_name_servers_str)
+            .to_str()
+            .expect("A non-null peer seed should be able to be converted to string");
+        match DnsNameServerList::from_str(list) {
+            Ok(dns) => dns,
+            Err(e) => {
+                error = LibWalletError::from(InterfaceError::InvalidArgument(format!("dns_list_str: {}", e))).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
     };
 
     let seed_passphrase = if seed_passphrase.is_null() {
@@ -6109,9 +6130,9 @@ pub unsafe extern "C" fn wallet_create(
     ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
 
     let peer_seeds = PeerSeedsConfig {
-        dns_seeds_name_server: DnsNameServer::System,
-        dns_seeds_use_dnssec: dns_sec,
-        dns_seeds: StringList::from(vec![peer_seed.to_string()]),
+        dns_seed_name_servers,
+        dns_seeds_use_dnssec: use_dns_sec,
+        dns_seeds: StringList::from(vec![dns_seeds.to_string()]),
         ..Default::default()
     };
 
@@ -9560,7 +9581,7 @@ mod test {
     use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
     use tari_script::script;
     use tari_test_utils::random;
-    use tari_utilities::encoding::Base58;
+    use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 
     use crate::*;
@@ -9935,7 +9956,7 @@ mod test {
         unsafe {
             let cipher = CipherSeed::new();
             let ciper_bytes = cipher.encipher(None).unwrap();
-            let cipher_string = ciper_bytes.to_base58();
+            let cipher_string = ciper_bytes.to_monero_base58();
 
             let cipher_cstring = CString::new(cipher_string).unwrap();
             let cipher_char: *const c_char = CString::into_raw(cipher_cstring) as *const c_char;
@@ -10524,7 +10545,8 @@ mod test {
                 ptr::null(),
                 alice_network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10574,7 +10596,8 @@ mod test {
                 ptr::null(),
                 alice_network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10694,7 +10717,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10925,7 +10949,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -10997,7 +11022,8 @@ mod test {
                 seed_words,
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11080,7 +11106,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11261,7 +11288,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11403,7 +11431,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11626,7 +11655,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11856,7 +11886,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12120,7 +12151,8 @@ mod test {
                 ptr::null(),
                 network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12504,7 +12536,8 @@ mod test {
                 ptr::null(),
                 alice_network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12572,7 +12605,8 @@ mod test {
                 ptr::null(),
                 bob_network_str,
                 dns_string,
-                false,
+                ptr::null(),
+                true,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,

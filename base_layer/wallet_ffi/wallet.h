@@ -2889,6 +2889,8 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * `seed_passphrase` - an optional string, if present this will derypt the seed words
  * `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
  * If this is null, then a new master key is created for the wallet.
+ * `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
+ * `use_dns_sec` - Use DNSSEC when querying the DNS servers.
  * `callback_received_transaction` - The callback function pointer matching the function signature. This will be
  * called when an inbound transaction is received.
  * `callback_received_transaction_reply` - The callback function
@@ -2977,8 +2979,9 @@ struct TariWallet *wallet_create(void *context,
                                  const char *seed_passphrase,
                                  const struct TariSeedWords *seed_words,
                                  const char *network_str,
-                                 const char *peer_seed_str,
-                                 bool dns_sec,
+                                 const char *dns_seeds_str,
+                                 const char *dns_seed_name_servers_str,
+                                 bool use_dns_sec,
                                  void (*callback_received_transaction)(void *context,
                                                                        TariPendingInboundTransaction*),
                                  void (*callback_received_transaction_reply)(void *context,
