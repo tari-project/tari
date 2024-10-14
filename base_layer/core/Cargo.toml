@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 edition = "2021"
 
 [features]
@@ -34,20 +34,20 @@ libp2p-substream = { workspace = true }
 tari_network = { workspace = true }
 tari_rpc_framework = { workspace = true }
 tari_rpc_macros = { workspace = true }
-tari_crypto = { version = "0.20.3", features = ["borsh"] }
+tari_crypto = { version = "0.21.0", features = ["borsh"] }
 tari_max_size = { path = "../../infrastructure/max_size" }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.6.0-pre.0" }
-tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.6.0-pre.0" }
-tari_p2p = { path = "../../base_layer/p2p", version = "1.6.0-pre.0" }
-tari_script = { path = "../../infrastructure/tari_script", version = "1.6.0-pre.0" }
-tari_service_framework = { path = "../service_framework", version = "1.6.0-pre.0" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.6.0-pre.0" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.6.0-pre.0" }
-tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.6.0-pre.0" }
-tari_utilities = { version = "0.7", features = ["borsh"] }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.7.0-pre.0" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.7.0-pre.0" }
+tari_p2p = { path = "../../base_layer/p2p", version = "1.7.0-pre.0" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.7.0-pre.0" }
+tari_service_framework = { path = "../service_framework", version = "1.7.0-pre.0" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.7.0-pre.0" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.7.0-pre.0" }
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.7.0-pre.0" }
+tari_utilities = { version = "0.8", features = ["borsh"] }
 tari_key_manager = { path = "../key_manager", features = [
     "key_manager_service",
-], version = "1.6.0-pre.0" }
+], version = "1.7.0-pre.0" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_hashing = { path = "../../hashing" }
 
@@ -55,7 +55,7 @@ async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
-borsh = { version = "1.2", features = ["derive"] }
+borsh = { version = "1.5", features = ["derive"] }
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }

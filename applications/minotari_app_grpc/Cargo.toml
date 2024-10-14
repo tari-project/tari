@@ -4,21 +4,21 @@ authors = ["The Tari Development Community"]
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 edition = "2021"
 
 [dependencies]
 tari_network = { workspace = true }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_max_size = { path = "../../infrastructure/max_size" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
-borsh = "1.2"
+borsh = "1.5"
 chrono = { version = "0.4.19", default-features = false }
 log = "0.4"
 prost = "0.13.3"
@@ -32,7 +32,7 @@ tonic = { version = "0.12.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.6.0-pre.0" }
+tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.0" }
 tonic-build = "0.12.3"
 
 [package.metadata.cargo-machete]

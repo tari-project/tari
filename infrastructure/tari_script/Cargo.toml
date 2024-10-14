@@ -1,6 +1,6 @@
 [package]
 name = "tari_script"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 edition = "2021"
 description = "Tari script library"
 authors = ["The Tari Development Community"]
@@ -11,12 +11,12 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_max_size = { path = "../../infrastructure/max_size" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 
 blake2 = "0.10"
-borsh = "1.2"
+borsh = "1.5"
 digest = "0.10"
 integer-encoding = "3.0.2"
 serde = "1.0.136"

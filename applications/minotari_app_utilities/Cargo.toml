@@ -1,6 +1,6 @@
 [package]
 name = "minotari_app_utilities"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -9,7 +9,7 @@ license = "BSD-3-Clause"
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_network = { workspace = true }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 minotari_app_grpc = { path = "../minotari_app_grpc", optional = true }
 
 clap = { version = "3.2", features = ["derive", "env"] }
@@ -30,7 +30,7 @@ tari_common = { path = "../../common", features = [
     "build",
     "static-application-info",
 ] }
-tari_features = { path = "../../common/tari_features", version = "1.6.0-pre.0" }
+tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.0" }
 
 [features]
 miner_input = ["minotari_app_grpc"]

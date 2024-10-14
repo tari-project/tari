@@ -31,7 +31,7 @@ use digest::crypto_common::rand_core::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::keys::SecretKey;
-use tari_utilities::encoding::Base58;
+use tari_utilities::encoding::MBase58;
 
 use crate::automation::{
     commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
@@ -133,7 +133,7 @@ fn append_to_json_file<P: AsRef<Path>, T: Serialize>(file: P, data: T) -> Result
 
 /// Create a unique session-based output directory
 pub(crate) fn create_pre_mine_output_dir(alias: Option<&str>) -> Result<(String, PathBuf), CommandError> {
-    let mut session_id = PrivateKey::random(&mut OsRng).to_base58();
+    let mut session_id = PrivateKey::random(&mut OsRng).to_monero_base58();
     session_id.truncate(if alias.is_some() { 8 } else { 16 });
     if let Some(alias) = alias {
         session_id.push('_');

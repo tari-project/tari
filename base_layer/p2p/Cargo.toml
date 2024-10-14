@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -13,11 +13,11 @@ edition = "2021"
 tari_network = { workspace = true }
 tari_common = { path = "../../common", version = "1.6.0-pre.0" }
 tari_common_types = { path = "../common_types", version = "1.6.0-pre.0" }
-tari_crypto = { version = "0.20.3" }
+tari_crypto = { version = "0.21.0" }
 tari_service_framework = { path = "../service_framework", version = "1.6.0-pre.0" }
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.6.0-pre.0" }
 tari_storage = { path = "../../infrastructure/storage", version = "1.6.0-pre.0" }
-tari_utilities = { version = "0.7" }
+tari_utilities = { version = "0.8" }
 
 anyhow = "1.0.53"
 fs2 = "0.4.0"
@@ -54,7 +54,7 @@ tempfile = "3.1.0"
 [build-dependencies]
 tari_common = { path = "../../common", features = [
     "build",
-], version = "1.6.0-pre.0" }
+], version = "1.7.0-pre.0" }
 
 [features]
 test-mocks = []

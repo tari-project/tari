@@ -1,20 +1,20 @@
 [package]
 name = "minotari_ledger_wallet"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.3", default-features = false, features = [
+tari_crypto = { version = "0.21.0", default-features = false, features = [
     "borsh",
 ] }
-tari_hashing = { path = "../../../hashing", version = "1.6.0-pre.0" }
+tari_hashing = { path = "../../../hashing", version = "1.7.0-pre.0" }
 
 minotari_ledger_wallet_common = { path = "../common" }
 
 blake2 = { version = "0.10", default-features = false }
-borsh = { version = "1.2", default-features = false }
+borsh = { version = "1.5", default-features = false }
 digest = { version = "0.10", default-features = false }
 include_gif = "1.0.1"
 ledger_device_sdk = "1.15"

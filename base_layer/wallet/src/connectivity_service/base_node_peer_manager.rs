@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
 use tari_comms::peer_manager::Peer;
 use tari_utilities::hex::Hex;
@@ -34,6 +37,13 @@ pub struct BaseNodePeerManager {
     current_peer_index: usize,
     // The other base nodes that the wallet can connect to if the selected peer is not available
     peer_list: Vec<Peer>,
+    last_connection_attempt: Option<LastConnectionAttempt>,
+}
+
+#[derive(Clone, Debug)]
+pub struct LastConnectionAttempt {
+    pub peer_index: usize,
+    pub attempt_time: Instant,
 }
 
 impl BaseNodePeerManager {
@@ -49,6 +59,7 @@ impl BaseNodePeerManager {
         Ok(Self {
             current_peer_index: preferred_peer_index,
             peer_list,
+            last_connection_attempt: None,
         })
     }
 
@@ -70,14 +81,40 @@ impl BaseNodePeerManager {
     pub fn get_state(&self) -> (usize, Vec<Peer>) {
         (self.current_peer_index, self.peer_list.clone())
     }
+
+    /// Set the last connection attempt stats
+    pub fn set_last_connection_attempt(&mut self) {
+        self.last_connection_attempt = Some(LastConnectionAttempt {
+            peer_index: self.current_peer_index,
+            attempt_time: Instant::now(),
+        })
+    }
+
+    /// Get the last connection attempt stats
+    pub fn time_since_last_connection_attempt(&self) -> Option<Duration> {
+        if let Some(stats) = self.last_connection_attempt.clone() {
+            if stats.peer_index == self.current_peer_index {
+                Some(stats.attempt_time.elapsed())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for BaseNodePeerManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let last_connection_attempt = match self.time_since_last_connection_attempt() {
+            Some(stats) => format!("{:?}", stats.as_secs()),
+            None => "Never".to_string(),
+        };
         write!(
             f,
-            "BaseNodePeerManager {{ current_peer_index: {}, peer_list: {:?} }}",
+            "BaseNodePeerManager {{ current index: {}, last attempt (s): {}, peer list: {:?} }}",
             self.current_peer_index,
+            last_connection_attempt,
             self.peer_list
                 .iter()
                 .map(|p| (p.node_id.to_hex(), p.public_key.to_hex()))

@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
-## [1.6.0-rc.0](https://github.com/tari-project/tari/compare/v1.5.1-rc.0...v1.6.0-rc.0) (2024-10-08)
+## [1.7.0-rc.0](https://github.com/tari-project/tari/compare/v1.5.1-rc.0...v1.7.0-rc.0) (2024-10-08)
 
 
 ### ⚠ BREAKING CHANGES
@@ -31,6 +31,12 @@ All notable changes to this project will be documented in this file. See [standa
 * update pre_mine specification ([#6606](https://github.com/tari-project/tari/issues/6606)) ([755bf3e](https://github.com/tari-project/tari/commit/755bf3ed51f0c0336ad90f701546fa00ff78b53e))
 * update pre-mine specification and allow multiple spends ([#6590](https://github.com/tari-project/tari/issues/6590)) ([6d998c7](https://github.com/tari-project/tari/commit/6d998c7212e9c77bda1590571015c23bc1a55676))
 * **p2pool:** add coinbase extra field to p2pool proto ([#6570](https://github.com/tari-project/tari/issues/6570)) ([fd41ba4](https://github.com/tari-project/tari/commit/fd41ba490470ff43fb3dc7e31fc6fc77266f264e))
+* add FFI function to create seed words from Mbase58 encrypted cipher seed ([#6620](https://github.com/tari-project/tari/issues/6620)) ([845a9b2](https://github.com/tari-project/tari/commit/845a9b23c41cc7fe638623d1c3f6695891531d4d))
+* exit logic for pre-mine spend ([#6615](https://github.com/tari-project/tari/issues/6615)) ([b3ea19a](https://github.com/tari-project/tari/commit/b3ea19ae09bfcac007b3491ce299379df33ddd31))
+* improve base node connection from the wallet ([#6619](https://github.com/tari-project/tari/issues/6619)) ([8bc8166](https://github.com/tari-project/tari/commit/8bc8166a48973632f2748c495e61d738f44c55a3))
+* improve mempool error msg when mempool out of sync ([#6618](https://github.com/tari-project/tari/issues/6618)) ([8f1b888](https://github.com/tari-project/tari/commit/8f1b8883e4119ba8caf63e0e9ff4b56a502753d3))
+* update pre-mine specification ([#6622](https://github.com/tari-project/tari/issues/6622)) ([8d04689](https://github.com/tari-project/tari/commit/8d046899ddbe14aaaea26e056874f410daad160d))
+* upgrade utils ([#6621](https://github.com/tari-project/tari/issues/6621)) ([cf8f15c](https://github.com/tari-project/tari/commit/cf8f15c5aeb23ebe4f2443a4c241615968356198))
 
 
 ### Bug Fixes
@@ -38,6 +44,7 @@ All notable changes to this project will be documented in this file. See [standa
 * **core:** reduce block messages with many connections ([#6602](https://github.com/tari-project/tari/issues/6602)) ([b7c8810](https://github.com/tari-project/tari/commit/b7c8810ac6a5bc41888fc653ae4d2d1e2dd6d743))
 * **dns:** fix Display impl to match from_str ([#6605](https://github.com/tari-project/tari/issues/6605)) ([ab59801](https://github.com/tari-project/tari/commit/ab598017292d54c70bb047b94d3aebaf131abbc9))
 * ffi wallet seed behaviour ([#6599](https://github.com/tari-project/tari/issues/6599)) ([0408e09](https://github.com/tari-project/tari/commit/0408e09821e433c49e5fb84f6b8a52bb54b543c4))
+* example mainnet config seed section ([#6624](https://github.com/tari-project/tari/issues/6624)) ([1e9dcce](https://github.com/tari-project/tari/commit/1e9dcceafbc424e44f77fe3a0a5381f5a0cf016f))
 
 ### [1.5.1-rc.0](https://github.com/tari-project/tari/compare/v1.5.0-rc.1...v1.5.1-rc.0) (2024-09-23)
 

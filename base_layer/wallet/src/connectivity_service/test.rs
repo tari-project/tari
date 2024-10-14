@@ -103,6 +103,7 @@ async fn it_dials_peer_when_base_node_is_set() {
 
 #[tokio::test]
 async fn it_resolves_many_pending_rpc_session_requests() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
     let base_node_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let conn = mock_server.create_mockimpl_connection(base_node_peer.to_peer()).await;
@@ -132,7 +133,8 @@ async fn it_resolves_many_pending_rpc_session_requests() {
 }
 
 #[tokio::test]
-async fn it_changes_to_a_new_base_node() {
+async fn it_changes_to_a_new_base_node_if_online() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
     let base_node_peer1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let conn1 = mock_server.create_mockimpl_connection(base_node_peer1.to_peer()).await;
@@ -221,6 +223,7 @@ async fn it_changes_to_a_new_base_node_if_preferred_is_offline() {
 
 #[tokio::test]
 async fn it_gracefully_handles_connect_fail_reconnect() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
     let base_node_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let mut conn = mock_server.create_mockimpl_connection(base_node_peer.to_peer()).await;

@@ -1,20 +1,20 @@
 [package]
 name = "minotari_ledger_wallet_comms"
-version = "1.6.0-pre.0"
+version = "1.7.0-pre.0"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.20.2", default-features = false }
-tari_utilities = { version = "0.7" }
+tari_crypto = { version = "0.21.0", default-features = false }
+tari_utilities = { version = "0.8" }
 tari_common = { path = "../../../common" }
 tari_common_types = { path = "../../../base_layer/common_types" }
 tari_script = { path = "../../../infrastructure/tari_script" }
 
 minotari_ledger_wallet_common = { path = "../common" }
 semver = "1.0"
-borsh = "1.2"
+borsh = "1.5"
 dialoguer = { version = "0.11" }
 ledger-transport = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
 ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs", rev = "20e2a20" }
