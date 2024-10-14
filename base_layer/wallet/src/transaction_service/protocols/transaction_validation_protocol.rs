@@ -31,15 +31,14 @@ use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::{BlockHash, Signature},
 };
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
         rpc::BaseNodeWalletRpcClient,
     },
     blocks::BlockHeader,
-    proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
+use tari_p2p::proto::{base_node::Signatures as SignaturesProto, common::Signature as SignatureProto};
 use tari_utilities::hex::Hex;
 
 use crate::{

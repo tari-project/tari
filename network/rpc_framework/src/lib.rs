@@ -89,7 +89,7 @@ mod optional;
 pub mod __macro_reexports {
     pub use bytes::Bytes;
     pub use futures::{future, future::BoxFuture};
-    pub use libp2p::StreamProtocol;
+    pub use libp2p::{PeerId, StreamProtocol};
     pub use prost;
     pub use tokio::io::{AsyncRead, AsyncWrite};
     pub use tower::Service;

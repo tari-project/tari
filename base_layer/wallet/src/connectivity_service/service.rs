@@ -23,13 +23,6 @@
 use std::{mem, time::Duration};
 
 use log::*;
-use tari_comms::{
-    connectivity::{ConnectivityError, ConnectivityRequester},
-    peer_manager::NodeId,
-    protocol::rpc::{RpcClientLease, RpcClientPool},
-    Minimized,
-    PeerConnection,
-};
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::{
     sync::{mpsc, oneshot, watch},

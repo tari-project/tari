@@ -33,24 +33,18 @@ use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    traits::OrOptional,
-    types::CommsPublicKey,
-    Minimized,
-    PeerConnection,
-};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
-    proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
+use tari_network::identity::PeerId;
+use tari_p2p::proto::base_node::SyncUtxosByBlockRequest;
+use tari_rpc_framework::pool::RpcClientLease;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -76,7 +70,7 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
-    pub(crate) peer_seeds: Vec<CommsPublicKey>,
+    pub(crate) peer_seeds: Vec<PeerId>,
     pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
@@ -319,7 +313,7 @@ where
 
     async fn establish_new_rpc_connection(
         &mut self,
-        peer: &NodeId,
+        peer: &PeerId,
     ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
         let mut connection = self.connect_to_peer(peer.clone()).await?;
         let client = connection
@@ -737,8 +731,8 @@ where
         Ok(tx_id)
     }
 
-    fn get_next_peer(&mut self) -> Option<NodeId> {
-        let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
+    fn get_next_peer(&mut self) -> Option<PeerId> {
+        let peer = self.peer_seeds.get(self.peer_index).copied();
         self.peer_index += 1;
         peer
     }
@@ -752,16 +746,13 @@ where
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
 
-        let block_height = match client.get_height_at_time(epoch_time).await {
-            Ok(b) => b,
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Problem requesting `height_at_time` from Base Node: {}", e
-                );
-                0
-            },
-        };
+        let block_height = client.get_height_at_time(epoch_time).await.unwrap_or_else(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Problem requesting `height_at_time` from Base Node: {}", e
+            );
+            0
+        });
         let header = client.get_header_by_height(block_height).await?;
         let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
         let header_hash = header.hash();

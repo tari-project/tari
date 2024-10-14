@@ -20,12 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    protocol::rpc::RpcClientLease,
-    types::CommsPublicKey,
-};
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use tari_rpc_framework::pool::RpcClientLease;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use super::service::OnlineStatus;

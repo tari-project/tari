@@ -32,7 +32,6 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::types::CommsDHKE;
 use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
@@ -42,10 +41,9 @@ use tari_core::{
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
     },
-    proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
+        key_manager::{RistrettoDiffieHellmanSharedSecret, TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -68,6 +66,7 @@ use tari_core::{
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
 use tari_key_manager::key_manager_service::{KeyAndId, KeyId, SerializedKeyString};
+use tari_p2p::proto::base_node::FetchMatchingUtxos;
 use tari_script::{
     inputs,
     push_pubkey_script,
@@ -1468,7 +1467,7 @@ where
                 )
                 .await?;
             key_sum = key_sum + &PublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
-            CommsDHKE::from_canonical_bytes(key_sum.as_bytes())?
+            RistrettoDiffieHellmanSharedSecret::from_canonical_bytes(key_sum.as_bytes())?
         };
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created dh shared secret");
 

@@ -26,7 +26,7 @@ use chrono::NaiveDateTime;
 use futures::{future, StreamExt};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;
@@ -47,7 +47,7 @@ const LOG_TARGET: &str = "wallet::base_node_service::service";
 /// State determined from Base Node Service Requests
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BaseNodeState {
-    pub node_id: Option<NodeId>,
+    pub node_id: Option<PeerId>,
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
     pub updated: Option<NaiveDateTime>,

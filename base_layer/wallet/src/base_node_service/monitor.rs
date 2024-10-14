@@ -32,14 +32,11 @@ use chrono::Utc;
 use futures::{future, future::Either};
 use log::*;
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
-use tari_comms::{
-    backoff::{Backoff, ExponentialBackoff},
-    protocol::rpc::RpcError,
-};
 use tokio::{sync::RwLock, time};
 
 use crate::{
     base_node_service::{
+        backoff::ExponentialBackoff,
         handle::{BaseNodeEvent, BaseNodeEventSender},
         service::BaseNodeState,
     },

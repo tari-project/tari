@@ -26,23 +26,15 @@ use futures::{Stream, StreamExt};
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
-use tari_comms::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
-    proto::base_node as base_node_proto,
-    transactions::{
-        key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::proto::protocol as proto,
-        CryptoFactories,
-    },
+    transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
 };
 use tari_network::identity;
 use tari_p2p::{
-    comms_connector::SubscriptionFactory,
     message::{DomainMessage, TariMessageType},
-    services::utils::map_decode,
-    tari_message::TariMessageType,
+    proto::{base_node as base_node_proto, transaction_protocol as proto},
     Dispatcher,
 };
 use tari_service_framework::{

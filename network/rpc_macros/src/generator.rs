@@ -202,10 +202,10 @@ impl RpcCodeGenerator {
             //     Ok(Self { inner })
             // }
             //
-            // pub fn builder(peer_id: #dep_mod::PeerId) -> #dep_mod::RpcClientBuilder<Self> {
-            //     use #dep_mod::NamedProtocolService;
-            //     #dep_mod::RpcClientBuilder::new(peer_id).with_protocol_id(Self::PROTOCOL_NAME.into())
-            // }
+            pub fn builder(peer_id: #dep_mod::PeerId) -> #dep_mod::RpcClientBuilder<Self> {
+                use #dep_mod::NamedProtocolService;
+                #dep_mod::RpcClientBuilder::new(peer_id).with_protocol_id(#dep_mod::StreamProtocol::new(Self::PROTOCOL_NAME))
+            }
 
             #client_methods
 

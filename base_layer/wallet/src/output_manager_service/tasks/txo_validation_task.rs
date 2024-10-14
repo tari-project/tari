@@ -28,12 +28,9 @@ use std::{
 use chrono::{Duration, Utc};
 use log::*;
 use tari_common_types::types::{BlockHash, FixedHash};
-use tari_comms::protocol::rpc::RpcError::RequestFailed;
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
-    proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
-};
+use tari_core::{base_node::rpc::BaseNodeWalletRpcClient, blocks::BlockHeader};
+use tari_p2p::proto::base_node::{QueryDeletedRequest, UtxoQueryRequest};
+use tari_rpc_framework::RpcError;
 use tari_utilities::hex::Hex;
 use tokio::sync::watch;
 
@@ -501,7 +498,7 @@ where
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
                 match &rpc_error {
-                    RequestFailed(status) => {
+                    RpcError::RequestFailed(status) => {
                         if status.as_status_code().is_not_found() {
                             return Ok(None);
                         } else {

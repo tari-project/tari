@@ -4822,6 +4822,7 @@ dependencies = [
  "tari_max_size",
  "tari_network",
  "tari_p2p",
+ "tari_rpc_framework",
  "tari_script",
  "tari_service_framework",
  "tari_shutdown",

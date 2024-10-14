@@ -42,14 +42,12 @@ use tari_common_types::{
     types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey, Signature},
     wallet_types::WalletType,
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
@@ -62,12 +60,6 @@ use tari_core::{
             TransactionOutput,
             WalletOutputBuilder,
         },
-        transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
-            TransactionMetadata,
-        },
         CryptoFactories,
         ReceiverTransactionProtocol,
     },
@@ -79,6 +71,7 @@ use tari_crypto::{
 };
 use tari_key_manager::key_manager_service::KeyId;
 use tari_network::{
+    identity,
     identity::{Keypair, PeerId},
     NetworkHandle,
     NetworkingService,
@@ -88,11 +81,16 @@ use tari_network::{
 };
 use tari_p2p::{
     message::{tari_message::Message, DomainMessage, MessageTag, TariNodeMessageSpec},
-    proto,
-    proto::message::TariMessage,
+    proto::{
+        base_node as base_node_proto,
+        base_node::FetchMatchingUtxos,
+        message::TariMessage,
+        transaction_protocol as proto,
+        transaction_protocol::{RecipientSignedMessage, TransactionMetadata, TransactionSenderMessage},
+    },
 };
 use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
@@ -136,7 +134,6 @@ use crate::{
         },
         tasks::{
             check_faux_transaction_status::check_detected_transactions,
-            send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
         },
@@ -200,7 +197,7 @@ where
         config: TransactionServiceConfig,
         db: TransactionDatabase<TBackend>,
         wallet_db: WalletDatabase<TWalletBackend>,
-        request_stream: Receiver<
+        request_stream: reply_channel::Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
         >,
@@ -210,7 +207,7 @@ where
         outbound_message_service: OutboundMessageRequester,
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
-        node_identity: Arc<NodeIdentity>,
+        node_identity: Arc<identity::Keypair>,
         network: Network,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
