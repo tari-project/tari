@@ -267,23 +267,15 @@ where
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
                 let birthday_height_hash = match self.resources.db.get_wallet_type()? {
-                    Some(wallet_type) => {
-                        match wallet_type {
-                            // View-only wallets always start at the genesis block
-                            WalletType::ProvidedKeys(_) => {
-                                let header_proto = client.get_header_by_height(0).await?;
-                                let header =
-                                    BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
-                                HeightHash {
-                                    height: 0,
-                                    header_hash: header.hash(),
-                                }
-                            },
-                            // Other wallets use the birthday
-                            _ => self.get_birthday_header_height_hash(&mut client).await?,
+                    Some(WalletType::ProvidedKeys(_)) => {
+                        let header_proto = client.get_header_by_height(0).await?;
+                        let header = BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
+                        HeightHash {
+                            height: 0,
+                            header_hash: header.hash(),
                         }
                     },
-                    None => self.get_birthday_header_height_hash(&mut client).await?,
+                    _ => self.get_birthday_header_height_hash(&mut client).await?,
                 };
 
                 ScannedBlock {
