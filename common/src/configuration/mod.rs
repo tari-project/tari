@@ -44,15 +44,18 @@ mod network;
 pub use network::Network;
 mod common_config;
 mod config_list;
+mod dns_name_server_list;
 mod multiaddr_list;
 pub mod name_server;
 pub mod serializers;
 mod string_list;
 pub mod utils;
+
 use std::{iter::FromIterator, net::SocketAddr};
 
 pub use common_config::CommonConfig;
 pub use config_list::ConfigList;
+pub use dns_name_server_list::{deserialize_dns_name_server_list, DnsNameServerList};
 use libp2p::multiaddr::{Error, Multiaddr, Protocol};
 pub use multiaddr_list::MultiaddrList;
 pub use string_list::StringList;

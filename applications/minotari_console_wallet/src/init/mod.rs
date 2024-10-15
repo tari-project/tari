@@ -604,7 +604,7 @@ pub async fn start_wallet(
             None => {
                 return Err(ExitError::new(
                     ExitCode::WalletError,
-                    "No base nodes configured to connect to",
+                    "No base nodes configured and no base node connections in 10s",
                 ));
             },
         }

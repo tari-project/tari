@@ -30,8 +30,9 @@ use std::{
 use futures::future;
 use log::*;
 use tari_common::{
-    configuration::Network,
+    configuration::{DnsNameServerList, Network},
     exit_codes::{ExitCode, ExitError},
+    DnsNameServer,
 };
 use tari_network::{
     identity,
@@ -53,6 +54,7 @@ use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     connector::InboundMessaging,
     message::TariNodeMessageSpec,
+    dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
 };
 
@@ -218,8 +220,9 @@ impl P2pInitializer {
 
         debug!(
             target: LOG_TARGET,
-            "Resolving DNS seeds (NS:{}, addresses: {})...",
-            config.dns_seeds_name_server,
+            "Resolving DNS seeds (DNSSEC is enabled: {}, name servers: {}, addresses: {}) ...",
+            config.dns_seeds_use_dnssec,
+            config.dns_seed_name_servers,
             config
                 .dns_seeds
                 .iter()
@@ -229,19 +232,8 @@ impl P2pInitializer {
         );
         let start = Instant::now();
 
-        let resolver = if config.dns_seeds_use_dnssec {
-            debug!(
-                target: LOG_TARGET,
-                "Using {} to resolve DNS seeds. DNSSEC is enabled", config.dns_seeds_name_server
-            );
-            DnsSeedResolver::connect_secure(config.dns_seeds_name_server.clone()).await?
-        } else {
-            debug!(
-                target: LOG_TARGET,
-                "Using {} to resolve DNS seeds. DNSSEC is disabled", config.dns_seeds_name_server
-            );
-            DnsSeedResolver::connect(config.dns_seeds_name_server.clone()).await?
-        };
+        let resolver =
+            P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
         let resolving = config.dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
             async move { (resolver.resolve(addr).await, addr) }
@@ -271,6 +263,44 @@ impl P2pInitializer {
             .collect();
 
         Ok(peers)
+    }
+
+    async fn get_dns_seed_resolver(
+        dns_seeds_use_dnssec: bool,
+        dns_seed_name_servers: &DnsNameServerList,
+    ) -> Result<DnsSeedResolver, ServiceInitializationError> {
+        if dns_seed_name_servers.is_empty() {
+            return Err(ServiceInitializationError::from(DnsClientError::Connection(
+                "No DNS name servers configured!".to_string(),
+            )));
+        }
+        let mut dns_errors = Vec::new();
+        for dns in dns_seed_name_servers {
+            let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
+                (true, false) => DnsSeedResolver::connect_secure(dns.clone()).await,
+                (_, _) => DnsSeedResolver::connect(dns.clone()).await,
+            };
+            match res {
+                Ok(val) => {
+                    trace!(target: LOG_TARGET, "Found DNS client at '{}'", dns);
+                    return Ok(val);
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seed_name_servers' in \
+                        the config file. (Error: {})",
+                        dns,
+                        err.to_string(),
+                    );
+                    dns_errors.push(err.to_string())
+                },
+            }
+        }
+        Err(ServiceInitializationError::from(DnsClientError::Connection(format!(
+            "{:?}",
+            dns_errors
+        ))))
     }
 }
 

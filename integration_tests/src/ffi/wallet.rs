@@ -211,6 +211,7 @@ impl Wallet {
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
                 CString::new("").unwrap().into_raw(),
+                ptr::null(),
                 false,
                 callback_received_transaction,
                 callback_received_transaction_reply,
