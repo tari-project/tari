@@ -23,14 +23,12 @@
 use std::{fs, fs::File, io, io::Write, path::Path, sync::Arc};
 
 use log::*;
-use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_common::{
     configuration::bootstrap::prompt,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_network::{identity, multiaddr::Multiaddr};
-use tari_utilities::hex::Hex;
+use tari_network::identity;
 
 pub const LOG_TARGET: &str = "minotari_application";
 

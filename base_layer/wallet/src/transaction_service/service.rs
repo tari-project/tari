@@ -74,7 +74,7 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
-use tari_network::{identity, identity::PeerId, NetworkHandle, OutboundMessager, OutboundMessaging, ToPeerId};
+use tari_network::{identity, identity::PeerId, OutboundMessaging, ToPeerId};
 use tari_p2p::{
     message::{tari_message::Message, DomainMessage, MessageTag, TariNodeMessageSpec},
     proto,
@@ -150,7 +150,6 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// recipient
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
-
 pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface> {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
@@ -378,6 +377,7 @@ where
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_message(
         &mut self,
         msg: DomainMessage<TariMessage>,

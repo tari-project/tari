@@ -77,7 +77,6 @@ pub struct WalletOutput {
 
 impl WalletOutput {
     /// Creates a new wallet output
-
     #[allow(clippy::too_many_arguments)]
     pub async fn new<KM: TransactionKeyManagerInterface>(
         version: TransactionOutputVersion,

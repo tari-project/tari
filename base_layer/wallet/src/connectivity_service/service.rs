@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, mem, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    mem,
+    time::Duration,
+};
 
 use log::*;
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
@@ -96,6 +100,7 @@ impl WalletConnectivityService {
             time::interval_at(time::Instant::now() + Duration::from_secs(5), Duration::from_secs(5));
         self.set_online_status(OnlineStatus::Offline);
         check_connection.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
         loop {
             tokio::select! {
                 // BIASED: select branches are in order of priority
@@ -125,21 +130,19 @@ impl WalletConnectivityService {
         if let Some(peer_manager) = self.get_base_node_peer_manager() {
             let current_base_node = peer_manager.get_current_peer_id();
             trace!(target: LOG_TARGET, "check_connection: has current_base_node");
-            if let Ok(Some(_)) = self.network_handle.get_connection(current_base_node.clone()).await {
+            if let Ok(Some(_)) = self.network_handle.get_connection(current_base_node).await {
                 trace!(target: LOG_TARGET, "check_connection: has connection");
                 trace!(target: LOG_TARGET, "check_connection: is connected");
-                if let Some(pool) = self.pools.get(&current_base_node) {
+                if self.pools.contains_key(&current_base_node) {
                     trace!(target: LOG_TARGET, "check_connection: has rpc pool");
-                    if pool.base_node_wallet_rpc_client.is_connected().await {
-                        trace!(target: LOG_TARGET, "check_connection: rpc pool is already connected");
-                        self.set_online_status(OnlineStatus::Online);
-                        return;
-                    }
-                    debug!(
-                        target: LOG_TARGET,
-                        "Peer RPC connection '{:?}' lost. Attempting to reconnect...",
-                        self.current_base_node()
-                    );
+                    trace!(target: LOG_TARGET, "check_connection: rpc pool is already connected");
+                    self.set_online_status(OnlineStatus::Online);
+                    return;
+                    // debug!(
+                    //     target: LOG_TARGET,
+                    //     "Peer RPC connection '{:?}' lost. Attempting to reconnect...",
+                    //     self.current_base_node()
+                    // );
                 }
                 trace!(target: LOG_TARGET, "check_connection: no rpc pool for connection");
                 trace!(target: LOG_TARGET, "check_connection: current base node has connection but not connected");
@@ -153,7 +156,7 @@ impl WalletConnectivityService {
             self.setup_base_node_connection().await;
         } else {
             self.set_online_status(OnlineStatus::Offline);
-            debug!(target: LOG_TARGET, "Base node peer manger has not been set, cannot connect");
+            debug!(target: LOG_TARGET, "Base node peer manager has not been set, cannot connect");
         }
     }
 
@@ -280,13 +283,12 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self) {
-        let mut peer_manager = if let Some(val) = self.get_base_node_peer_manager() {
-            val
-        } else {
+        let Some(mut peer_manager) = self.get_base_node_peer_manager() else {
+            debug!(target: LOG_TARGET, "No base node peer manager set");
             return;
         };
         loop {
-            let node_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
+            let peer_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
                 if time < Duration::from_secs(COOL_OFF_PERIOD) &&
                     peer_manager.get_current_peer_id().to_peer_id() == peer_manager.get_next_peer_id().to_peer_id()
                 {
@@ -302,21 +304,21 @@ impl WalletConnectivityService {
 
             debug!(
                 target: LOG_TARGET,
-                "Attempting base node peer '{}'... (last attempt {:?})",
-                node_id,
+                "Attempting to connect to base node peer '{}'... (last attempt {:?})",
+                peer_id,
                 peer_manager.time_since_last_connection_attempt()
             );
-            self.pools.remove(&node_id);
-            match self.try_setup_rpc_pool(node_id.clone()).await {
+            self.pools.remove(&peer_id);
+            match self.try_setup_rpc_pool(peer_id).await {
                 Ok(true) => {
-                    if self.peer_list_change_detected(&peer_manager) {
-                        debug!(
-                            target: LOG_TARGET,
-                            "The peer list has changed while connecting, aborting connection attempt."
-                        );
-                        self.set_online_status(OnlineStatus::Offline);
-                        break;
-                    }
+                    // if self.peer_list_change_detected(&peer_manager) {
+                    //     debug!(
+                    //         target: LOG_TARGET,
+                    //         "The peer list has changed while connecting, aborting connection attempt."
+                    //     );
+                    //     self.set_online_status(OnlineStatus::Offline);
+                    //     break;
+                    // }
                     self.base_node_watch.send(Some(peer_manager.clone()));
                     if let Err(e) = self.notify_pending_requests().await {
                         warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
@@ -324,7 +326,7 @@ impl WalletConnectivityService {
                     self.set_online_status(OnlineStatus::Online);
                     debug!(
                         target: LOG_TARGET,
-                        "Wallet is ONLINE and connected to base node '{}'", node_id
+                        "Wallet is ONLINE and connected to base node '{}'", peer_id
                     );
                     break;
                 },
@@ -344,8 +346,8 @@ impl WalletConnectivityService {
                 },
                 Err(e) => {
                     warn!(target: LOG_TARGET, "{}", e);
-                    if self.current_base_node().as_ref() == Some(&node_id) {
-                        self.disconnect_base_node(node_id).await;
+                    if self.current_base_node().as_ref() == Some(&peer_id) {
+                        self.disconnect_base_node(peer_id).await;
                         time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     }
                 },
@@ -366,9 +368,17 @@ impl WalletConnectivityService {
             let (_, current_list) = current.get_state();
             let (_, list) = peer_manager.get_state();
 
-            current_list.len() != list.len() ||
-                current_list.iter().map(|p| p.peer_id()).collect::<Vec<_>>() !=
-                    list.iter().map(|p| p.peer_id()).collect::<Vec<_>>()
+            if current_list.len() != list.len() {
+                return true;
+            }
+            // Check the lists are the same, disregarding ordering
+            let mut c = current_list.iter().map(|p| p.peer_id()).collect::<HashSet<_>>();
+            for p in list {
+                if !c.remove(&p.peer_id()) {
+                    return true;
+                }
+            }
+            !c.is_empty()
         } else {
             true
         }
@@ -379,21 +389,24 @@ impl WalletConnectivityService {
     }
 
     async fn try_setup_rpc_pool(&mut self, peer_id: PeerId) -> Result<bool, WalletConnectivityError> {
-        let waiter = self.network_handle.dial_peer(peer_id).await?;
-        waiter.await?;
-        debug!(
-            target: LOG_TARGET,
-            "Successfully established peer connection to base node '{}'",
-            peer_id
-        );
-        self.pools.insert(peer_id.clone(), ClientPoolContainer {
+        let container = ClientPoolContainer {
             base_node_sync_rpc_client: self
                 .network_handle
                 .create_rpc_client_pool(1, RpcClient::builder(peer_id)),
             base_node_wallet_rpc_client: self
                 .network_handle
                 .create_rpc_client_pool(self.config.base_node_rpc_pool_size, RpcClient::builder(peer_id)),
-        });
+        };
+        match container.base_node_wallet_rpc_client.get().await {
+            Ok(a) => a,
+            Err(err) => {
+                error!(target: LOG_TARGET, "{err}");
+                return Ok(false);
+            },
+        };
+
+        self.pools.insert(peer_id, container);
+
         debug!(target: LOG_TARGET, "Successfully established RPC connection to base node '{}'", peer_id);
         Ok(true)
     }

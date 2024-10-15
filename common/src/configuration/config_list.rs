@@ -3,6 +3,7 @@
 
 use std::{
     fmt::{Display, Formatter},
+    iter::FromIterator,
     ops::Deref,
     slice,
     str::FromStr,
@@ -124,6 +125,12 @@ impl<'a, T> IntoIterator for &'a ConfigList<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_slice().iter()
+    }
+}
+
+impl<T> FromIterator<T> for ConfigList<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
     }
 }
 

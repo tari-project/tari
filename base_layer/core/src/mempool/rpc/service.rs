@@ -101,7 +101,7 @@ impl MempoolService for MempoolRpcService {
                     err
                 );
                 // These error messages are safe to send back to the requester
-                return Err(RpcStatus::bad_request(&format!("Malformed transaction: {}", err)));
+                return Err(RpcStatus::bad_request(format!("Malformed transaction: {}", err)));
             },
         };
         let tx_storage = self.mempool().submit_transaction(tx).await.map_err(to_internal_error)?;

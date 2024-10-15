@@ -93,7 +93,7 @@ impl HeaderSyncState {
                     if sync_peer.claimed_chain_metadata().accumulated_difficulty() <=
                         best_block_metadata.accumulated_difficulty()
                     {
-                        remove.push(sync_peer.peer_id().clone());
+                        remove.push(*sync_peer.peer_id());
                     }
                 }
                 for node_id in remove {

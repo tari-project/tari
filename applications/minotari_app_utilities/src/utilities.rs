@@ -29,7 +29,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{PrivateKey, PublicKey, Signature},
 };
-use tari_network::{identity::PeerId, Peer, ToPeerId};
+use tari_network::{identity::PeerId, ToPeerId};
 use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};

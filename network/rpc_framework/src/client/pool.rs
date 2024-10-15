@@ -39,7 +39,7 @@ use crate::{
     RpcHandshakeError,
 };
 
-const LOG_TARGET: &str = "comms::protocol::rpc::client_pool";
+const LOG_TARGET: &str = "network::protocol::rpc::client_pool";
 
 #[derive(Clone)]
 pub struct RpcClientPool<C, T> {
@@ -62,11 +62,6 @@ where
     pub async fn get(&self) -> Result<RpcClientLease<T>, RpcClientPoolError> {
         let mut pool = self.pool.lock().await;
         pool.get_least_used_or_connect().await
-    }
-
-    pub async fn is_connected(&self) -> bool {
-        let pool = self.pool.lock().await;
-        pool.is_connected()
     }
 }
 
@@ -93,20 +88,21 @@ where
 
     pub async fn get_least_used_or_connect(&mut self) -> Result<RpcClientLease<T>, RpcClientPoolError> {
         loop {
-            self.check_peer_connection()?;
-
             let client = match self.get_next_lease() {
                 Some(c) => c,
-                None => match self.add_new_client_session().await {
-                    Ok(c) => c,
-                    // This is an edge case where the remote node does not have any further sessions available. This is
-                    // gracefully handled by returning one of the existing used sessions.
-                    Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => self
-                        .get_least_used()
-                        .ok_or(RpcClientPoolError::NoMoreRemoteRpcSessions)?,
-                    Err(err) => {
-                        return Err(err);
-                    },
+                None => {
+                    debug!(target: LOG_TARGET, "No existing client for lease. Creating a new one.");
+                    match self.add_new_client_session().await {
+                        Ok(c) => c,
+                        // This is an edge case where the remote node does not have any further sessions available. This
+                        // is gracefully handled by returning one of the existing used sessions.
+                        Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => self
+                            .get_least_used()
+                            .ok_or(RpcClientPoolError::NoMoreRemoteRpcSessions)?,
+                        Err(err) => {
+                            return Err(err);
+                        },
+                    }
                 },
             };
 
@@ -120,25 +116,15 @@ where
         }
     }
 
-    pub fn is_connected(&self) -> bool {
-        // We assume a connection if any of the clients are connected.
-        self.clients.iter().any(|lease| lease.is_connected())
-    }
+    // pub fn is_connected(&self) -> bool {
+    //     // We assume a connection if any of the clients are connected.
+    //     self.clients.iter().any(|lease| lease.is_connected())
+    // }
 
     #[allow(dead_code)]
     pub(super) fn refresh_num_active_connections(&mut self) -> usize {
         self.prune();
         self.clients.len()
-    }
-
-    fn check_peer_connection(&self) -> Result<(), RpcClientPoolError> {
-        if self.is_connected() {
-            Ok(())
-        } else {
-            Err(RpcClientPoolError::PeerConnectionDropped {
-                peer: *self.client_config.peer_id(),
-            })
-        }
     }
 
     /// Return the next client that is not in use. If all clients are in use and there are still more slots open in the
@@ -191,6 +177,7 @@ where
             .connect_rpc_using_builder(self.client_config.clone())
             .await
             .map_err(|e| RpcClientPoolError::FailedToConnect(e.to_string()))?;
+        debug!(target: LOG_TARGET, "New RPC pool session for {}", self.client_config.peer_id());
         let client = RpcClientLease::new(client);
         self.clients.push(client);
         Ok(self.clients.last().unwrap())

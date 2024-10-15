@@ -127,6 +127,7 @@ impl Default for WalletConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             enable_relay: false,
+            enable_mdns: true,
             ..Default::default()
         };
         Self {

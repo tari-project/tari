@@ -46,21 +46,23 @@ pub struct NetworkTab {
 }
 
 impl NetworkTab {
-    pub fn new(base_node_selected: Peer) -> Self {
-        let public_key = public_key_to_string(base_node_selected.public_key());
-        let address = display_address(&base_node_selected);
+    pub fn new(base_node_selected: Option<Peer>) -> Self {
+        let public_key = base_node_selected
+            .as_ref()
+            .map(|p| public_key_to_string(p.public_key()));
+        let address = base_node_selected.as_ref().map(display_address);
 
         Self {
             balance: Balance::new(),
             base_node_edit_mode: BaseNodeInputMode::None,
-            public_key_field: public_key.clone(),
-            previous_public_key_field: public_key,
-            address_field: address.clone(),
-            previous_address_field: address,
+            public_key_field: public_key.clone().unwrap_or_default(),
+            previous_public_key_field: public_key.unwrap_or_default(),
+            address_field: address.clone().unwrap_or_default(),
+            previous_address_field: address.unwrap_or_default(),
             error_message: None,
             confirmation_dialog: false,
             base_node_list_state: WindowedListState::new(),
-            detailed_base_node: Some(base_node_selected),
+            detailed_base_node: base_node_selected,
         }
     }
 
@@ -106,7 +108,7 @@ impl NetworkTab {
         .collect();
 
         for (peer_type, peer) in base_node_list {
-            let selected = peer.peer_id() == selected_peer.peer_id();
+            let selected = selected_peer.as_ref().map_or(false, |p| peer.peer_id() == p.peer_id());
             let style = styles
                 .get(&selected)
                 .unwrap_or(&Style::default().fg(Color::Reset))
@@ -129,7 +131,7 @@ impl NetworkTab {
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
             .add_column(Some("Type"), Some(17), column0_items)
-            .add_column(Some("NodeID"), Some(27), column1_items)
+            .add_column(Some("NodeID"), Some(57), column1_items)
             .add_column(Some("Public Key"), Some(65), column2_items);
         column_list.render(f, areas[1], &mut base_node_list_state);
     }
@@ -263,7 +265,12 @@ impl NetworkTab {
         let (public_key, style) = match self.base_node_edit_mode {
             BaseNodeInputMode::PublicKey => (self.public_key_field.clone(), Style::default().fg(Color::Magenta)),
             BaseNodeInputMode::Address => (self.public_key_field.clone(), Style::default()),
-            _ => (public_key_to_string(peer.public_key()), Style::default()),
+            _ => (
+                peer.as_ref()
+                    .map(|p| public_key_to_string(p.public_key()))
+                    .unwrap_or_default(),
+                Style::default(),
+            ),
         };
 
         let pubkey_input = Paragraph::new(public_key)
@@ -274,7 +281,7 @@ impl NetworkTab {
         let (public_address, style) = match self.base_node_edit_mode {
             BaseNodeInputMode::PublicKey => (self.address_field.clone(), Style::default()),
             BaseNodeInputMode::Address => (self.address_field.clone(), Style::default().fg(Color::Magenta)),
-            _ => (display_address(peer), Style::default()),
+            _ => (peer.map(display_address).unwrap_or_default(), Style::default()),
         };
 
         let address_input = Paragraph::new(public_address)
@@ -300,10 +307,10 @@ impl NetworkTab {
                 self.previous_public_key_field = self.public_key_field.clone();
                 self.previous_address_field = self.address_field.clone();
                 let base_node_previous = app_state.get_previous_base_node().clone();
-                let public_key = public_key_to_string(base_node_previous.public_key());
-                let public_address = display_address(&base_node_previous);
-                self.public_key_field = public_key;
-                self.address_field = public_address;
+                let public_key = base_node_previous.map(|p| public_key_to_string(p.public_key()));
+                let public_address = base_node_previous.map(display_address);
+                self.public_key_field = public_key.unwrap_or_default();
+                self.address_field = public_address.unwrap_or_default();
                 self.confirmation_dialog = false;
                 self.base_node_edit_mode = BaseNodeInputMode::Selection;
                 return KeyHandled::Handled;
@@ -320,7 +327,7 @@ impl NetworkTab {
                 BaseNodeInputMode::PublicKey => match c {
                     '\n' => {
                         self.previous_address_field = self.address_field.clone();
-                        self.address_field = "".to_string();
+                        self.address_field = String::new();
                         self.base_node_edit_mode = BaseNodeInputMode::Address;
                         return KeyHandled::Handled;
                     },
@@ -452,7 +459,9 @@ impl<B: Backend> Component<B> for NetworkTab {
             },
             's' => {
                 // set the currently selected base node as a custom base node
-                let base_node = app_state.get_selected_base_node();
+                let Some(base_node) = app_state.get_selected_base_node() else {
+                    return;
+                };
                 let public_key = public_key_to_string(base_node.public_key());
                 let address = base_node.addresses().first().map(|a| a.to_string()).unwrap_or_default();
 
@@ -496,7 +505,7 @@ impl<B: Backend> Component<B> for NetworkTab {
             _ => {
                 self.base_node_list_state.select(None);
                 self.base_node_edit_mode = BaseNodeInputMode::None;
-                self.detailed_base_node = Some(app_state.get_selected_base_node().clone());
+                self.detailed_base_node = app_state.get_selected_base_node().cloned();
             },
         }
     }
@@ -507,7 +516,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                 .set_num_items(app_state.get_base_node_list().len());
             self.base_node_list_state.next();
             self.detailed_base_node = match self.base_node_list_state.selected() {
-                None => Some(app_state.get_selected_base_node().clone()),
+                None => app_state.get_selected_base_node().cloned(),
                 Some(i) => {
                     let (_, peer) = match app_state.get_base_node_list().get(i) {
                         None => ("".to_string(), None),
@@ -525,7 +534,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                 .set_num_items(app_state.get_base_node_list().len());
             self.base_node_list_state.previous();
             self.detailed_base_node = match self.base_node_list_state.selected() {
-                None => Some(app_state.get_selected_base_node().clone()),
+                None => app_state.get_selected_base_node().cloned(),
                 Some(i) => {
                     let (_, peer) = match app_state.get_base_node_list().get(i) {
                         None => ("".to_string(), None),

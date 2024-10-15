@@ -41,8 +41,8 @@ impl PeerBanManager {
         Self { config, network }
     }
 
-    pub async fn ban_peer_if_required(&mut self, peer_id: &PeerId, ban_reason: String, ban_duration: Duration) {
-        if self.config.forced_sync_peers.contains(peer_id) {
+    pub async fn ban_peer_if_required(&mut self, peer_id: PeerId, ban_reason: String, ban_duration: Duration) {
+        if self.config.forced_sync_peers.contains(&peer_id) {
             debug!(
                 target: LOG_TARGET,
                 "Not banning peer that is on the allow list for sync. Ban reason = {}", ban_reason
@@ -53,7 +53,7 @@ impl PeerBanManager {
 
         match self
             .network
-            .ban_peer(peer_id.clone(), ban_reason.clone(), Some(ban_duration))
+            .ban_peer(peer_id, ban_reason.clone(), Some(ban_duration))
             .await
         {
             Ok(_) => {

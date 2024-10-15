@@ -111,9 +111,14 @@ impl From<swarm::DialError> for DialError {
             swarm::DialError::Denied { cause } => DialError::Denied {
                 cause: cause.to_string(),
             },
-            swarm::DialError::Transport(errs) => {
-                DialError::Transport(errs.into_iter().map(|(addr, err)| (addr, err.to_string())).collect())
-            },
+            swarm::DialError::Transport(errs) => DialError::Transport(
+                errs.into_iter()
+                    .map(|(addr, err)| match err {
+                        err @ TransportError::MultiaddrNotSupported(_) => (addr, err.to_string()),
+                        TransportError::Other(err) => (addr, err.to_string()),
+                    })
+                    .collect(),
+            ),
         }
     }
 }

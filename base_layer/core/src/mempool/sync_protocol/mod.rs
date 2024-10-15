@@ -83,7 +83,6 @@ use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, StreamProtocol
 use tari_p2p::{framing, framing::CanonicalFraming, proto as shared_proto, proto::mempool as proto};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
     sync::{mpsc, Semaphore},
     task,
     time,
@@ -234,7 +233,7 @@ impl MempoolSyncProtocol {
         let permits = self.permits.clone();
         let num_synched = self.num_synched.clone();
         let config = self.config.clone();
-        let mut network = self.network.clone();
+        let network = self.network.clone();
         task::spawn(async move {
             // Only initiate this protocol with a single peer at a time
             let _permit = permits.acquire().await;
@@ -507,7 +506,7 @@ impl MempoolPeerProtocol {
             let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
                 MempoolProtocolError::DecodeFailed {
                     source: err,
-                    peer: self.peer_id.clone(),
+                    peer: self.peer_id,
                 }
             })?;
 
@@ -545,12 +544,12 @@ impl MempoolPeerProtocol {
         txn: shared_proto::common::Transaction,
     ) -> Result<(), MempoolProtocolError> {
         let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
-            peer: self.peer_id.clone(),
+            peer: self.peer_id,
             message: err,
         })?;
         let excess_sig = txn
             .first_kernel_excess_sig()
-            .ok_or_else(|| MempoolProtocolError::ExcessSignatureMissing(self.peer_id.clone()))?;
+            .ok_or_else(|| MempoolProtocolError::ExcessSignatureMissing(self.peer_id))?;
         let excess_sig_hex = excess_sig.get_signature().to_hex();
 
         debug!(
@@ -612,11 +611,11 @@ impl MempoolPeerProtocol {
         let msg = time::timeout(Duration::from_secs(10), self.framed.next())
             .await
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
-            .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_id.clone()))??;
+            .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_id))??;
 
         T::decode(&mut msg.freeze()).map_err(|err| MempoolProtocolError::DecodeFailed {
             source: err,
-            peer: self.peer_id.clone(),
+            peer: self.peer_id,
         })
     }
 

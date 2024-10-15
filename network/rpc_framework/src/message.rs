@@ -27,7 +27,7 @@ impl Request<Bytes> {
     pub fn decode<T: prost::Message + Default>(mut self) -> Result<Request<T>, RpcError> {
         let message = T::decode(&mut self.inner.message)?;
         Ok(Request {
-            peer_id: self.peer_id.clone(),
+            peer_id: self.peer_id,
             inner: BaseRequest::new(self.inner.method, message),
         })
     }

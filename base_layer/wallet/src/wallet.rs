@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, marker::PhantomData, sync::Arc, thread};
+use std::{marker::PhantomData, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U32;
-use futures::executor::block_on;
 use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
@@ -64,8 +63,9 @@ use tari_key_manager::{
 use tari_network::{identity, multiaddr::Multiaddr, NetworkHandle, Peer, ToPeerId};
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
-    initialization,
+    connector::InboundMessaging,
     initialization::P2pInitializer,
+    message::TariNodeMessageSpec,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     Dispatcher,
     PeerSeedsConfig,
@@ -249,6 +249,11 @@ where
 
         let mut handles = stack.build().await?;
 
+        let inbound = handles
+            .take_handle::<InboundMessaging<TariNodeMessageSpec>>()
+            .expect("InboundMessaging not setup");
+        dispatcher.spawn(inbound);
+
         let network = handles.expect_handle::<NetworkHandle>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
 
@@ -363,7 +368,7 @@ where
         Ok(())
     }
 
-    pub async fn get_base_node_peer(&mut self) -> Option<Peer> {
+    pub fn get_base_node_peer(&mut self) -> Option<Peer> {
         self.wallet_connectivity.get_current_base_node_peer()
     }
 

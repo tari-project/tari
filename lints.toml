@@ -53,11 +53,11 @@ deny = [
     # Precision loss is almost always competely fine and is only useful as a sanity check.
     # https://rust-lang.github.io/rust-clippy/master/index.html#cast_precision_loss
     # 'clippy::cast_precision_loss',
-#    'clippy::cast_sign_loss'
+    #    'clippy::cast_sign_loss'
     'clippy::unnecessary_to_owned',
     'clippy::nonminimal_bool',
     'clippy::needless_question_mark',
-     # dbg! macro is intended as a debugging tool. It should not be in version control.
+    # dbg! macro is intended as a debugging tool. It should not be in version control.
     'clippy::dbg_macro'
 ]
 
@@ -70,4 +70,6 @@ allow = [
     # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
     'clippy::bool-assert-comparison',
     'clippy::blocks_in_conditions',
+    # A lot of these are present in the code
+    "clippy::too_long_first_doc_paragraph",
 ]

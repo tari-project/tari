@@ -23,9 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_core::base_node::state_machine_service::states::PeerMetadata;
 use tari_network::Connection;
-use tonic::codegen::http::header::USER_AGENT;
 
 use super::{CommandContext, HandleCommand};
 use crate::{table::Table, utils::format_duration_basic};

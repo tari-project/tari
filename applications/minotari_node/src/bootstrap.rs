@@ -20,10 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use log::*;
-use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
+use minotari_app_utilities::consts;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -44,30 +44,19 @@ use tari_core::{
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
-use tari_network::{
-    identity,
-    multiaddr::{Error as MultiaddrError, Multiaddr},
-    MessageSpec,
-    NetworkError,
-    NetworkHandle,
-    Peer,
-};
+use tari_network::{identity, NetworkError, NetworkHandle, Peer};
 use tari_p2p::{
     auto_update::SoftwareUpdaterService,
     connector::InboundMessaging,
-    initialization,
     initialization::P2pInitializer,
     message::TariNodeMessageSpec,
     peer_seeds::SeedPeer,
-    services::{
-        dispatcher,
-        liveness::{config::LivenessConfig, LivenessInitializer},
-    },
+    services::liveness::{config::LivenessConfig, LivenessInitializer},
     Dispatcher,
     P2pConfig,
 };
 use tari_rpc_framework::RpcServer;
-use tari_service_framework::{RegisterHandle, ServiceHandles, StackBuilder};
+use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 

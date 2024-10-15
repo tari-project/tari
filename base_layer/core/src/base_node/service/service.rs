@@ -32,7 +32,6 @@ use tari_common_types::types::BlockHash;
 use tari_network::{
     identity::PeerId,
     GossipMessage,
-    GossipPublisher,
     GossipSubscription,
     NetworkHandle,
     NetworkingService,

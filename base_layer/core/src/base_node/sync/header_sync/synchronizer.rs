@@ -141,7 +141,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         &mut self,
         max_latency: Duration,
     ) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
-        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).cloned().collect::<Vec<_>>();
+        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).copied().collect::<Vec<_>>();
         info!(
             target: LOG_TARGET,
             "Attempting to sync headers ({} sync peers)",
@@ -160,7 +160,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             BanPeriod::Long => self.config.ban_period,
                         };
                         self.peer_ban_manager
-                            .ban_peer_if_required(&peer_id, reason.reason, duration)
+                            .ban_peer_if_required(peer_id, reason.reason, duration)
                             .await;
                     }
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
@@ -321,7 +321,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     peer_node_id,
                     NUM_CHAIN_SPLIT_HEADERS * MAX_CHAIN_SPLIT_ITERS,
                 );
-                return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
+                return Err(BlockHeaderSyncError::ChainSplitNotFound(*peer_node_id));
             }
 
             let block_hashes = self
@@ -345,7 +345,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     peer_node_id,
                     NUM_CHAIN_SPLIT_HEADERS * MAX_CHAIN_SPLIT_ITERS,
                 );
-                return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
+                return Err(BlockHeaderSyncError::ChainSplitNotFound(*peer_node_id));
             }
 
             let request = FindChainSplitRequest {
@@ -365,7 +365,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             peer_node_id,
                             NUM_CHAIN_SPLIT_HEADERS * MAX_CHAIN_SPLIT_ITERS,
                         );
-                        return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
+                        return Err(BlockHeaderSyncError::ChainSplitNotFound(*peer_node_id));
                     }
                     // Chain split not found, let's go further back
                     offset = NUM_CHAIN_SPLIT_HEADERS * iter_count;
@@ -689,7 +689,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             if let Some(avg_latency) = last_avg_latency {
                 if avg_latency > max_latency {
                     return Err(BlockHeaderSyncError::MaxLatencyExceeded {
-                        peer: sync_peer.peer_id().clone(),
+                        peer: *sync_peer.peer_id(),
                         latency: avg_latency,
                         max_latency,
                     });

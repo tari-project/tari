@@ -107,7 +107,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
     fn from(source: BlockHeaderAccumulatedData) -> Self {
         let accumulated_randomx_difficulty = source.accumulated_randomx_difficulty.to_be_bytes();
         let accumulated_sha3x_difficulty = source.accumulated_sha3x_difficulty.to_be_bytes();
-        let mut total_accumulated_difficulty = source.total_accumulated_difficulty.to_big_endian();
+        let total_accumulated_difficulty = source.total_accumulated_difficulty.to_big_endian();
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
             accumulated_randomx_difficulty,

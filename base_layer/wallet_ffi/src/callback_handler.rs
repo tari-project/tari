@@ -58,7 +58,6 @@ use minotari_wallet::{
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
-use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -100,7 +99,6 @@ where TBackend: TransactionBackend + 'static
     output_manager_service_event_stream: OutputManagerEventReceiver,
     output_manager_service: OutputManagerHandle,
     utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
-    dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_address: TariAddress,
     balance_cache: Balance,
@@ -121,7 +119,6 @@ where TBackend: TransactionBackend + 'static
         output_manager_service_event_stream: OutputManagerEventReceiver,
         output_manager_service: OutputManagerHandle,
         utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
-        dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_address: TariAddress,
         connectivity_status_watch: watch::Receiver<OnlineStatus>,
@@ -248,7 +245,6 @@ where TBackend: TransactionBackend + 'static
             output_manager_service_event_stream,
             output_manager_service,
             utxo_scanner_service_events,
-            dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_address,
             balance_cache: Balance::zero(),
@@ -383,18 +379,6 @@ where TBackend: TransactionBackend + 'static
                             error!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
                         },
                 },
-
-                result = self.dht_event_stream.recv() => {
-                    match result {
-                        Ok(msg) => {
-                            trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
-                            if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
-                                self.saf_messages_received_event();
-                            }
-                        },
-                        Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
-                    }
-                }
 
                 Ok(_) = self.connectivity_status_watch.changed() => {
                     let status  = *self.connectivity_status_watch.borrow();

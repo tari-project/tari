@@ -22,7 +22,6 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use futures::StreamExt;
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
@@ -32,8 +31,7 @@ use tari_core::{
 };
 use tari_network::{identity, OutboundMessaging};
 use tari_p2p::{
-    message::{DomainMessage, TariMessageType, TariNodeMessageSpec},
-    proto::{base_node as base_node_proto, transaction_protocol as proto},
+    message::{TariMessageType, TariNodeMessageSpec},
     Dispatcher,
 };
 use tari_service_framework::{
@@ -68,7 +66,6 @@ pub mod tasks;
 mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
-const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
 pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface>
 where

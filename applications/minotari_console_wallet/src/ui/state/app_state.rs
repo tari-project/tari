@@ -100,7 +100,7 @@ impl AppState {
     pub fn new(
         wallet_identity: &WalletIdentity,
         wallet: WalletSqlite,
-        base_node_selected: Peer,
+        base_node_selected: Option<Peer>,
         base_node_config: PeerConfig,
         wallet_config: WalletConfig,
     ) -> Self {
@@ -207,7 +207,9 @@ impl AppState {
         if self.get_custom_base_node().is_none() &&
             self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
         {
-            let current = self.get_selected_base_node();
+            let Some(current) = self.get_selected_base_node() else {
+                return;
+            };
             let list = self.get_base_node_list().clone();
             let mut index: usize = list
                 .iter()
@@ -566,12 +568,12 @@ impl AppState {
         self.wallet_connectivity.clone()
     }
 
-    pub fn get_selected_base_node(&self) -> &Peer {
-        &self.cached_data.base_node_selected
+    pub fn get_selected_base_node(&self) -> Option<&Peer> {
+        self.cached_data.base_node_selected.as_ref()
     }
 
-    pub fn get_previous_base_node(&self) -> &Peer {
-        &self.cached_data.base_node_previous
+    pub fn get_previous_base_node(&self) -> Option<&Peer> {
+        self.cached_data.base_node_previous.as_ref()
     }
 
     pub fn get_custom_base_node(&self) -> &Option<Peer> {
@@ -659,7 +661,7 @@ impl AppStateInner {
     pub fn new(
         wallet_identity: &WalletIdentity,
         wallet: WalletSqlite,
-        base_node_selected: Peer,
+        base_node_selected: Option<Peer>,
         base_node_config: PeerConfig,
     ) -> Self {
         let data = AppStateData::new(wallet_identity, base_node_selected, base_node_config);
@@ -966,7 +968,7 @@ impl AppStateInner {
     }
 
     pub fn update_base_node_peer(&mut self, peer: Peer) {
-        self.data.base_node_selected = peer;
+        self.data.base_node_selected = Some(peer);
         self.updated = true;
     }
 
@@ -1034,7 +1036,7 @@ impl AppStateInner {
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
-        self.data.base_node_selected = peer;
+        self.data.base_node_selected = Some(peer);
         self.updated = true;
 
         Ok(())
@@ -1060,7 +1062,7 @@ impl AppStateInner {
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
-        self.data.base_node_selected = peer.clone();
+        self.data.base_node_selected = Some(peer.clone());
         self.data.base_node_peer_custom = Some(peer.clone());
         self.data
             .base_node_list
@@ -1087,7 +1089,10 @@ impl AppStateInner {
     }
 
     pub async fn clear_custom_base_node_peer(&mut self) -> Result<(), UiError> {
-        let previous = self.data.base_node_previous.clone();
+        let Some(previous) = self.data.base_node_previous.clone() else {
+            // No previous
+            return Ok(());
+        };
         let pk = previous
             .public_key()
             .clone()
@@ -1107,7 +1112,7 @@ impl AppStateInner {
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
-        self.data.base_node_selected = previous;
+        self.data.base_node_selected = Some(previous);
         self.data.base_node_list.remove(0);
         self.updated = true;
 
@@ -1258,8 +1263,8 @@ struct AppStateData {
     connected_peers: Vec<Connection>,
     balance: Balance,
     base_node_state: BaseNodeState,
-    base_node_selected: Peer,
-    base_node_previous: Peer,
+    base_node_selected: Option<Peer>,
+    base_node_previous: Option<Peer>,
     base_node_list: Vec<(String, Peer)>,
     base_node_peer_custom: Option<Peer>,
     all_events: VecDeque<EventListItem>,
@@ -1275,7 +1280,11 @@ pub struct EventListItem {
 }
 
 impl AppStateData {
-    pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
+    pub fn new(
+        wallet_identity: &WalletIdentity,
+        base_node_selected: Option<Peer>,
+        base_node_config: PeerConfig,
+    ) -> Self {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network(),

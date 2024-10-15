@@ -99,7 +99,7 @@ where
                 return Ok(());
             }
             match self.get_next_peer() {
-                Some(peer) => match self.attempt_sync(peer.clone()).await {
+                Some(peer) => match self.attempt_sync(peer).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
@@ -173,7 +173,7 @@ where
     }
 
     async fn attempt_sync(&mut self, peer: PeerId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
-        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
+        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
         let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
@@ -188,10 +188,7 @@ where
         };
 
         let latency = client.get_last_request_latency();
-        self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
-            peer.clone(),
-            latency.unwrap_or_default(),
-        ));
+        self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(peer, latency.unwrap_or_default()));
 
         let timer = Instant::now();
         loop {

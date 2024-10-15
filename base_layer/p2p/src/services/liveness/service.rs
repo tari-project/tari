@@ -197,7 +197,7 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
 
     async fn send_ping(&mut self, peer_id: PeerId) -> Result<(), LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-        self.state.add_inflight_ping(msg.nonce, peer_id.clone());
+        self.state.add_inflight_ping(msg.nonce, peer_id);
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", peer_id);
         self.outbound_messaging.send_message(peer_id, msg).await?;
         Ok(())

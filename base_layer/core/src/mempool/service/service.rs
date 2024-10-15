@@ -24,11 +24,11 @@ use std::{convert::TryFrom, io, sync::Arc};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
-use tari_network::{identity::PeerId, GossipMessage, GossipSubscription, OutboundMessaging};
-use tari_p2p::{message::DomainMessage, proto, proto::message::TariMessageType};
+use tari_network::{GossipMessage, GossipSubscription};
+use tari_p2p::proto;
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_utilities::hex::Hex;
-use tokio::{sync::mpsc, task};
+use tokio::task;
 
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},

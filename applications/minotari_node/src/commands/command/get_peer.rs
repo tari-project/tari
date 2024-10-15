@@ -26,7 +26,6 @@ use clap::Parser;
 use minotari_app_utilities::utilities::{parse_emoji_id_or_public_key, UniPeerId};
 use tari_common_types::emoji::EmojiId;
 use tari_network::ToPeerId;
-use tari_utilities::hex::{to_hex, Hex};
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};

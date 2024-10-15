@@ -16,7 +16,7 @@ mod message;
 mod messaging;
 mod notify;
 mod peer;
-mod peer_store;
+// mod peer_store;
 mod relay_state;
 mod service_trait;
 mod spawn;

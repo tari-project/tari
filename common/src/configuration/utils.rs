@@ -121,6 +121,8 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     Ok(cfg)
 }
 
+/// Prompts to create a new node config
+///
 /// Returns a new configuration file template in parts from the embedded presets. If non_interactive is false, the user
 /// is prompted to select if they would like to select a base node configuration that enables mining or not.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
@@ -132,6 +134,8 @@ pub fn prompt_default_config() -> [&'static str; 12] {
     get_default_config(mine)
 }
 
+/// Returns the default configuration file parts
+///
 /// Returns the default configuration file template in parts from the embedded presets. If use_mining_config is true,
 /// the base node configuration that enables mining is returned, otherwise the non-mining configuration is returned.
 pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {

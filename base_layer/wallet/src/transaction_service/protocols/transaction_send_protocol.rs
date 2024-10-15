@@ -28,7 +28,6 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
 };
 use tari_core::{
     covenants::Covenant,
@@ -649,26 +648,18 @@ where
         &mut self,
         msg: SingleRoundSenderData,
     ) -> Result<SendResult, TransactionServiceProtocolError<TxId>> {
-        let mut result = SendResult {
-            direct_send_result: false,
-            store_and_forward_send_result: false,
-            transaction_status: TransactionStatus::Queued,
-        };
-
         match self.resources.config.transaction_routing_mechanism {
             TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
-                result = self.send_transaction_direct(msg.clone()).await?;
+                self.send_transaction_direct(msg.clone()).await
             },
             TransactionRoutingMechanism::StoreAndForwardOnly => {
-                result = self.send_transaction_direct(msg.clone()).await?;
+                self.send_transaction_direct(msg.clone()).await
                 // result.store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 // if result.store_and_forward_send_result {
                 //     result.transaction_status = TransactionStatus::Pending;
                 // }
             },
-        };
-
-        Ok(result)
+        }
     }
 
     /// Attempt to send the transaction to the recipient both directly and via Store-and-forward. If both fail to send

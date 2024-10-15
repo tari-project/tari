@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
+use tari_metrics::{IntCounter, IntGauge};
 
 pub fn inbound_transactions() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {

@@ -22,7 +22,6 @@
 
 use std::time::Duration;
 
-use libp2p_substream::{ProtocolNotification, Substream};
 use log::*;
 use tari_network::NetworkHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};

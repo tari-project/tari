@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use futures::future;
 use log::*;
@@ -49,7 +49,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
-const SUBSCRIPTION_LABEL: &str = "Base Node";
 
 /// Initializer for the Base Node service handle and service future.
 pub struct BaseNodeServiceInitializer<T> {

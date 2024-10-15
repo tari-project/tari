@@ -19,7 +19,7 @@ use libp2p::{
     identify,
     identity,
     kad,
-    kad::{store::RecordStore, GetClosestPeersError, GetClosestPeersResult, QueryId, QueryResult, RoutingUpdate},
+    kad::{GetClosestPeersError, QueryId, QueryResult, RoutingUpdate},
     mdns,
     multiaddr::Protocol,
     ping,
@@ -62,7 +62,6 @@ use crate::{
     relay_state::RelayState,
     BannedPeer,
     ConnectionDirection,
-    DialWaiter,
     DiscoveredPeer,
     DiscoveryResult,
     MessageSpec,
@@ -74,8 +73,6 @@ use crate::{
 const LOG_TARGET: &str = "network::service::worker";
 
 type ReplyTx<T> = oneshot::Sender<Result<T, NetworkError>>;
-
-const PEER_ANNOUNCE_TOPIC: &str = "peer-announce";
 
 pub struct NetworkingWorker<TMsg>
 where
@@ -103,7 +100,6 @@ where
     relays: RelayState,
     seed_peers: Vec<Peer>,
     is_initial_bootstrap_complete: bool,
-    has_sent_announce: bool,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -146,7 +142,6 @@ where
             gossipsub_outbound_rx: Some(gossipsub_outbound_rx),
             config,
             is_initial_bootstrap_complete: false,
-            has_sent_announce: false,
             shutdown_signal,
         }
     }
@@ -179,10 +174,6 @@ where
 
         let mut check_connections_interval = time::interval(self.config.check_connections_interval);
 
-        self.swarm
-            .behaviour_mut()
-            .gossipsub
-            .subscribe(&IdentTopic::new(PEER_ANNOUNCE_TOPIC))?;
         let mut gossipsub_outbound = self.gossipsub_outbound_rx.take().expect("Only taken once");
 
         loop {
@@ -371,17 +362,11 @@ where
                 }
             },
             NetworkingRequest::GetKnownPeerAddresses { peer_id, reply } => {
-                let addresses = self
-                    .swarm
-                    .behaviour_mut()
-                    .kad
-                    .kbucket(peer_id)
-                    .map(|b| {
-                        b.iter()
-                            .find(|e| *e.node.key.preimage() == peer_id)
-                            .map(|a| a.node.value.clone().into_vec())
-                    })
-                    .flatten();
+                let addresses = self.swarm.behaviour_mut().kad.kbucket(peer_id).and_then(|b| {
+                    b.iter()
+                        .find(|e| *e.node.key.preimage() == peer_id)
+                        .map(|a| a.node.value.clone().into_vec())
+                });
 
                 let _ignore = reply.send(Ok(addresses));
             },
@@ -561,7 +546,7 @@ where
     }
 
     async fn bootstrap(&mut self) -> Result<(), NetworkError> {
-        if !self.is_initial_bootstrap_complete {
+        if !self.is_initial_bootstrap_complete && !self.config.known_local_public_address.is_empty() {
             self.swarm
                 .behaviour_mut()
                 .peer_sync
@@ -648,18 +633,18 @@ where
                 };
                 shrink_hashmap_if_required(&mut self.pending_dial_requests);
 
+                if matches!(error, DialError::NoAddresses) {
+                    self.swarm
+                        .behaviour_mut()
+                        .peer_sync
+                        .add_want_peers(Some(peer_id))
+                        .await?;
+                }
+
                 let err = crate::error::DialError::from(error);
                 for waiter in waiters {
                     let _ignore = waiter.send(Err(err.clone()));
                 }
-
-                // if matches!(error, DialError::NoAddresses) {
-                //     self.swarm
-                //         .behaviour_mut()
-                //         .peer_sync
-                //         .add_want_peers(Some(peer_id))
-                //         .await?;
-                // }
             },
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 info!(target: LOG_TARGET, "🌍️ External address confirmed: {}", address);
@@ -777,15 +762,7 @@ where
                 self.on_autonat_event(event)?;
             },
             PeerSync(peersync::Event::LocalPeerRecordUpdated { record }) => {
-                info!(target: LOG_TARGET, "🧑‍🧑‍🧒‍🧒 Local peer record updated: {:?} announce enabled = {}, has_sent_announce = {}",record, self.config.announce, self.has_sent_announce);
-                if self.config.announce && !self.has_sent_announce && record.is_signed() {
-                    info!(target: LOG_TARGET, "📣 Sending local peer announce with {} address(es)", record.addresses().len());
-                    self.swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .publish(IdentTopic::new(PEER_ANNOUNCE_TOPIC), record.encode_to_proto()?)?;
-                    self.has_sent_announce = true;
-                }
+                info!(target: LOG_TARGET, "🧑‍🧑‍🧒‍🧒 Local peer record updated: {:?}",record);
             },
             PeerSync(peersync::Event::PeerBatchReceived { new_peers, from_peer }) => {
                 info!(target: LOG_TARGET, "🧑‍🧑‍🧒‍🧒 Peer batch received: from_peer={}, new_peers={}", from_peer, new_peers);
@@ -824,7 +801,7 @@ where
                                 addresses: p.addrs,
                             })
                             .collect();
-                        let _ = reply.send(DiscoveryResult { peers, did_timeout });
+                        let _ignore = reply.send(DiscoveryResult { peers, did_timeout });
                     }
                 }
             },

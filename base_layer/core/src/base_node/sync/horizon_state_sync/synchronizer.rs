@@ -173,7 +173,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     async fn sync(&mut self, to_header: &BlockHeader) -> Result<(), HorizonSyncError> {
-        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).cloned().collect::<Vec<_>>();
+        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).copied().collect::<Vec<_>>();
         info!(
             target: LOG_TARGET,
             "Attempting to sync horizon state ({} sync peers)",
@@ -194,7 +194,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         };
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, reason.reason, duration)
+                            .ban_peer_if_required(node_id, reason.reason, duration)
                             .await;
                     }
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
@@ -395,7 +395,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Ok(());
         }
 
-        let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Kernels {
+        let info = HorizonSyncInfo::new(vec![*sync_peer.peer_id()], HorizonSyncStatus::Kernels {
             current: local_num_kernels,
             total: remote_num_kernels,
             sync_peer: sync_peer.clone(),
@@ -515,7 +515,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer.set_latency(latency);
             sync_peer.add_sample(last_sync_timer.elapsed());
             if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
-                let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Kernels {
+                let info = HorizonSyncInfo::new(vec![*sync_peer.peer_id()], HorizonSyncStatus::Kernels {
                     current: mmr_position,
                     total: self.num_kernels,
                     sync_peer: sync_peer.clone(),
@@ -580,7 +580,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         }
 
-        let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Outputs {
+        let info = HorizonSyncInfo::new(vec![*sync_peer.peer_id()], HorizonSyncStatus::Outputs {
             current: 0,
             total: self.num_outputs,
             sync_peer: sync_peer.clone(),
@@ -719,7 +719,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             if utxo_counter % 100 == 0 {
-                let info = HorizonSyncInfo::new(vec![sync_peer.peer_id().clone()], HorizonSyncStatus::Outputs {
+                let info = HorizonSyncInfo::new(vec![*sync_peer.peer_id()], HorizonSyncStatus::Outputs {
                     current: utxo_counter,
                     total: self.num_outputs,
                     sync_peer: sync_peer.clone(),
@@ -796,7 +796,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(target: LOG_TARGET, "Validating horizon state");
 
         self.hooks.call_on_progress_horizon_hooks(HorizonSyncInfo::new(
-            vec![sync_peer.peer_id().clone()],
+            vec![*sync_peer.peer_id()],
             HorizonSyncStatus::Finalizing,
         ));
 

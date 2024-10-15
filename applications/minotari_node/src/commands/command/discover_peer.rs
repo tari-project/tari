@@ -20,15 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Deref, time::Instant};
+use std::time::Instant;
 
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
 use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_network::{DiscoveryResult, ToPeerId};
-use tokio::{sync::oneshot::error::RecvError, task};
+use tari_network::ToPeerId;
+use tokio::task;
 
 use super::{CommandContext, HandleCommand};
 

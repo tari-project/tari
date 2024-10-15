@@ -229,6 +229,6 @@ fn noise_config(keypair: &Keypair) -> Result<noise::Config, noise::Error> {
 }
 
 fn noise_prologue() -> Vec<u8> {
-    const PROLOGUE: &str = "com.tari";
+    const PROLOGUE: &str = "com.tari.base_layer";
     PROLOGUE.as_bytes().to_vec()
 }

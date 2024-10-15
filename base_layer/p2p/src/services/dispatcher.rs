@@ -18,12 +18,12 @@ use crate::{
 
 const LOG_TARGET: &str = "p2p::dispatcher";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Dispatcher {
     inner: Arc<Mutex<Option<DispatcherInner>>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct DispatcherInner {
     forward: HashMap<TariMessageType, mpsc::UnboundedSender<DomainMessage<TariMessage>>>,
 }

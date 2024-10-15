@@ -32,17 +32,9 @@ use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
-use tari_network::{
-    identity::PeerId,
-    NetworkEvent,
-    NetworkHandle,
-    NetworkingService,
-    OutboundMessager,
-    OutboundMessaging,
-    ToPeerId,
-};
+use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, OutboundMessager, OutboundMessaging, ToPeerId};
 use tari_p2p::{
-    message::{DomainMessage, TariMessageType, TariNodeMessageSpec},
+    message::{DomainMessage, TariNodeMessageSpec},
     proto,
     proto::{liveness::MetadataKey, message::TariMessage},
     services::liveness::{LivenessEvent, LivenessHandle, PingPongEvent},
@@ -249,24 +241,22 @@ where T: ContactsBackend + 'static
             ContactsServiceRequest::GetContact(address) => {
                 let result = self.db.get_contact(address.clone());
                 if let Ok(ref contact) = result {
-                    self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
+                    self.liveness.check_add_monitored_peer(contact.peer_id).await?;
                 };
                 Ok(result.map(ContactsServiceResponse::Contact)?)
             },
             ContactsServiceRequest::UpsertContact(c) => {
                 self.db.upsert_contact(c.clone())?;
-                self.liveness.check_add_monitored_peer(c.node_id.clone()).await?;
+                self.liveness.check_add_monitored_peer(c.peer_id).await?;
                 info!(
                     target: LOG_TARGET,
-                    "Contact Saved: \nAlias: {}\nAddress: {}\nNodeId: {}", c.alias, c.address, c.node_id
+                    "Contact Saved: \nAlias: {}\nAddress: {}\nNodeId: {}", c.alias, c.address, c.peer_id
                 );
                 Ok(ContactsServiceResponse::ContactSaved)
             },
             ContactsServiceRequest::RemoveContact(pk) => {
                 let result = self.db.remove_contact(pk.clone())?;
-                self.liveness
-                    .check_remove_monitored_peer(result.node_id.clone())
-                    .await?;
+                self.liveness.check_remove_monitored_peer(result.peer_id).await?;
                 info!(
                     target: LOG_TARGET,
                     "Contact Removed: \nAlias: {}\nAddress: {} ", result.alias, result.address
@@ -349,7 +339,7 @@ where T: ContactsBackend + 'static
 
     async fn add_contacts_to_liveness_service(&mut self, contacts: &[Contact]) -> Result<(), ContactsServiceError> {
         for contact in contacts {
-            self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
+            self.liveness.check_add_monitored_peer(contact.peer_id).await?;
         }
         Ok(())
     }
@@ -397,7 +387,7 @@ where T: ContactsBackend + 'static
                         }
                         let data = ContactsLivenessData::new(
                             contact.address.clone(),
-                            contact.node_id.clone(),
+                            contact.peer_id,
                             contact.latency,
                             contact.last_seen,
                             ContactMessageType::NoMessage,
@@ -437,7 +427,7 @@ where T: ContactsBackend + 'static
 
     async fn get_online_status(&self, contact: &Contact) -> Result<ContactOnlineStatus, ContactsServiceError> {
         let mut online_status = ContactOnlineStatus::NeverSeen;
-        if let Some(peer) = self.network.get_banned_peer(contact.node_id).await? {
+        if let Some(peer) = self.network.get_banned_peer(contact.peer_id).await? {
             let msg = format!(
                 "Until {} ({})",
                 peer.remaining_ban()
@@ -492,11 +482,11 @@ where T: ContactsBackend + 'static
             }
             let this_public_key = self
                 .db
-                .update_contact_last_seen(&event.peer_id, last_seen.naive_utc(), latency)?;
+                .update_contact_last_seen(event.peer_id, last_seen.naive_utc(), latency)?;
 
             let data = ContactsLivenessData::new(
                 this_public_key,
-                event.peer_id.clone(),
+                event.peer_id,
                 latency,
                 Some(last_seen.naive_utc()),
                 message_type,

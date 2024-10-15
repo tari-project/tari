@@ -56,9 +56,7 @@ impl<T: prost::Message + Default> GossipSubscription<T> {
     }
 
     pub async fn next_message(&mut self) -> Option<Result<GossipMessage<T>, io::Error>> {
-        let Some((source, raw_msg)) = self.receiver.recv().await else {
-            return None;
-        };
+        let (source, raw_msg) = self.receiver.recv().await?;
 
         match self.codec.decode_from(&mut raw_msg.data.as_slice()).await {
             Ok((len, msg)) => Some(Ok(GossipMessage {

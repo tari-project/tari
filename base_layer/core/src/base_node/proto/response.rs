@@ -22,7 +22,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    iter::FromIterator,
     sync::Arc,
 };
 
@@ -30,10 +29,7 @@ use tari_common_types::types::PrivateKey;
 pub use tari_p2p::{proto, proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse};
 use tari_utilities::{convert::try_convert_all, ByteArray};
 
-use crate::{
-    base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse},
-    blocks::{Block, BlockHeader, HistoricalBlock},
-};
+use crate::base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse};
 
 impl TryFrom<ProtoNodeCommsResponse> for NodeCommsResponse {
     type Error = String;

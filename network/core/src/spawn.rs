@@ -23,20 +23,19 @@ use crate::{
 
 const LOG_TARGET: &str = "network::spawn";
 
+pub type NetworkHandles<TMsg> = (
+    NetworkHandle,
+    OutboundMessaging<TMsg>,
+    JoinHandle<Result<(), NetworkError>>,
+);
+
 pub fn spawn<TMsg>(
     identity: Keypair,
     messaging_mode: MessagingMode<TMsg>,
     mut config: crate::Config,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<
-    (
-        NetworkHandle,
-        OutboundMessaging<TMsg>,
-        JoinHandle<Result<(), NetworkError>>,
-    ),
-    NetworkError,
->
+) -> Result<NetworkHandles<TMsg>, NetworkError>
 where
     TMsg: MessageSpec + 'static,
     TMsg::Message: messaging::prost::Message + Default + Clone + 'static,

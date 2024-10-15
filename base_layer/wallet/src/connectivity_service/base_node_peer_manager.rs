@@ -52,7 +52,11 @@ impl BaseNodePeerManager {
             return Err(WalletConnectivityError::PeerIndexOutOfBounds(format!(
                 "Preferred index: {}, Max index: {}",
                 preferred_peer_index,
-                peer_list.len() - 1
+                peer_list
+                    .len()
+                    .checked_sub(1)
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "<empty>".to_string())
             )));
         }
         Ok(Self {

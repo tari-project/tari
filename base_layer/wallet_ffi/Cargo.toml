@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
 version = "1.7.0-pre.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 tari_network = { workspace = true }

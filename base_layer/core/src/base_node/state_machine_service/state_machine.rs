@@ -37,7 +37,7 @@ use crate::{
         state_machine_service::{
             handle::PeerMetadataStore,
             states,
-            states::{BaseNodeState, HeaderSyncState, PeerMetadata, StateEvent, StateInfo, StatusInfo, SyncStatus},
+            states::{BaseNodeState, HeaderSyncState, StateEvent, StateInfo, StatusInfo, SyncStatus},
         },
         sync::{BlockchainSyncConfig, SyncValidators},
     },

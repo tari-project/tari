@@ -201,7 +201,7 @@ impl<TNetwork: NetworkingService> ChainMetadataService<TNetwork> {
             .ok_or(ChainMetadataSyncError::NoChainMetadata)?;
 
         let chain_metadata = ChainMetadata::try_from(proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?)
-            .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(event.peer_id.clone(), err))?;
+            .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(event.peer_id, err))?;
         debug!(
             target: LOG_TARGET,
             "Received chain metadata from PeerId '{}' #{}, Acc_diff {}",
@@ -225,7 +225,7 @@ impl<TNetwork: NetworkingService> ChainMetadataService<TNetwork> {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryInto, future::Future, time::Duration};
+    use std::{convert::TryInto, time::Duration};
 
     use futures::StreamExt;
     use primitive_types::U256;
@@ -290,7 +290,7 @@ mod test {
             unimplemented!()
         }
 
-        async fn disconnect_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        async fn disconnect_peer(&mut self, _peer_id: PeerId) -> Result<bool, NetworkError> {
             Ok(true)
         }
 
@@ -303,11 +303,12 @@ mod test {
             Ok(true)
         }
 
-        async fn unban_peer(&mut self, peer_id: PeerId) -> Result<bool, NetworkError> {
+        async fn unban_peer(&mut self, _peer_id: PeerId) -> Result<bool, NetworkError> {
             Ok(true)
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn setup() -> (
         ChainMetadataService<NopNetwork>,
         LivenessMockState,

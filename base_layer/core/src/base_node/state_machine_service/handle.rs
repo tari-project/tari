@@ -70,10 +70,6 @@ impl StateMachineHandle {
         self.peer_metadata.clone()
     }
 
-    pub(super) async fn set_peer_metadata(&self, peer_id: PeerId, metadata: PeerMetadata) {
-        self.peer_metadata.write().await.insert(peer_id, metadata);
-    }
-
     /// Fetches peer metadata if it has been set
     pub async fn get_metadata(&self, peer_id: &PeerId) -> Option<PeerMetadata> {
         self.peer_metadata.read().await.get(peer_id).cloned()

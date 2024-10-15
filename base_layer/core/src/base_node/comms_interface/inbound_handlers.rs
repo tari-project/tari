@@ -675,7 +675,7 @@ where B: BlockchainBackend + 'static
                 not_found,
             } = self
                 .outbound_nci
-                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
+                .request_transactions_by_excess_sig(source_peer, missing_excess_sigs)
                 .await?;
 
             // Add returned transactions to unconfirmed pool
@@ -748,7 +748,7 @@ where B: BlockchainBackend + 'static
     ) -> Result<Block, CommsInterfaceError> {
         match self
             .outbound_nci
-            .request_blocks_by_hashes_from_peer(block_hash, source_peer.clone())
+            .request_blocks_by_hashes_from_peer(block_hash, source_peer)
             .await
         {
             Ok(Some(block)) => Ok(block),

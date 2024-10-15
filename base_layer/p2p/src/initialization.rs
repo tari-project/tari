@@ -108,7 +108,6 @@ where
             ..Default::default()
         },
         reachability_mode: ReachabilityMode::Private,
-        announce: true,
         ..Default::default()
     };
 
@@ -127,20 +126,18 @@ where
     Ok((network, outbound_messaging, inbound_messaging, join_handle))
 }
 
-pub fn spawn_network<TMsg: MessageSpec>(
+pub type P2pHandles<TMsg> = (
+    NetworkHandle,
+    OutboundMessaging<TMsg>,
+    InboundMessaging<TMsg>,
+    JoinHandle<Result<(), NetworkError>>,
+);
+pub fn spawn_network<TMsg>(
     identity: Arc<identity::Keypair>,
     seed_peers: Vec<SeedPeer>,
     config: tari_network::Config,
     shutdown_signal: ShutdownSignal,
-) -> Result<
-    (
-        NetworkHandle,
-        OutboundMessaging<TMsg>,
-        InboundMessaging<TMsg>,
-        JoinHandle<Result<(), NetworkError>>,
-    ),
-    CommsInitializationError,
->
+) -> Result<P2pHandles<TMsg>, CommsInitializationError>
 where
     TMsg: MessageSpec + 'static,
     TMsg::Message: prost::Message + Default + Clone + 'static,
@@ -305,7 +302,6 @@ impl ServiceInitializer for P2pInitializer {
             },
             listener_addrs,
             reachability_mode: self.config.reachability_mode,
-            announce: true,
             check_connections_interval: Duration::from_secs(2 * 60 * 60),
             known_local_public_address: self.config.public_addresses.to_vec(),
         };

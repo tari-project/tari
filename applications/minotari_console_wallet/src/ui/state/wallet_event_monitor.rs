@@ -208,7 +208,7 @@ impl WalletEventMonitor {
                             match msg {
                                 NetworkEvent::PeerConnected{..} |
                                 NetworkEvent::PeerDisconnected{..} => {
-                                    self.trigger_peer_state_refresh().await;
+                                    // self.trigger_peer_state_refresh().await;
                                 },
                                 // Only the above variants trigger state refresh
                                 _ => (),

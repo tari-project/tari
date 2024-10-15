@@ -23,7 +23,8 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_network::identity::PeerId;
+use tari_network::{identity::PeerId, GossipPublisher};
+use tari_p2p::proto;
 use tari_utilities::hex::Hex;
 
 #[cfg(feature = "metrics")]
@@ -46,12 +47,16 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 #[derive(Clone)]
 pub struct MempoolInboundHandlers {
     mempool: Mempool,
+    gossip_publisher: GossipPublisher<proto::common::Transaction>,
 }
 
 impl MempoolInboundHandlers {
     /// Construct the MempoolInboundHandlers.
-    pub fn new(mempool: Mempool) -> Self {
-        Self { mempool }
+    pub fn new(mempool: Mempool, gossip_publisher: GossipPublisher<proto::common::Transaction>) -> Self {
+        Self {
+            mempool,
+            gossip_publisher,
+        }
     }
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
@@ -123,12 +128,24 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
+
         match self.mempool.insert(tx.clone()).await {
             Ok(tx_storage) => {
-                #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
+                    #[cfg(feature = "metrics")]
                     metrics::inbound_transactions().inc();
+
+                    // Gossip the transaction
+                    let msg =
+                        proto::common::Transaction::try_from(&*tx).map_err(MempoolServiceError::ConversionError)?;
+                    if let Err(err) = self.gossip_publisher.publish(msg).await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error publishing transaction {}: {}.", kernel_excess_sig, err
+                        );
+                    }
                 } else {
+                    #[cfg(feature = "metrics")]
                     metrics::rejected_inbound_transactions().inc();
                 }
                 self.update_pool_size_metrics().await;

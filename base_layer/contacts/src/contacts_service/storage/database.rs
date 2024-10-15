@@ -136,18 +136,18 @@ where T: ContactsBackend + 'static
     #[allow(clippy::cast_possible_wrap)]
     pub fn update_contact_last_seen(
         &self,
-        node_id: &PeerId,
+        peer_id: PeerId,
         last_seen: NaiveDateTime,
         latency: Option<u32>,
     ) -> Result<TariAddress, ContactsServiceStorageError> {
         let result = self
             .db
             .write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
-                node_id.clone(),
+                peer_id,
                 last_seen,
                 latency.map(|val| val as i32),
             ))))?
-            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
+            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(peer_id)))?;
         match result {
             DbValue::TariAddress(k) => Ok(*k),
             _ => Err(ContactsServiceStorageError::UnexpectedResult(

@@ -350,7 +350,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
+            .map_err(|_| RpcStatus::bad_request("Malformed block hash received"))?;
         let utxos = db
             .fetch_outputs_with_spend_status_at_tip(hashes)
             .await
@@ -380,7 +380,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }
         const MAX_ALLOWED_QUERY_SIZE: usize = 512;
         if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
-            return Err(RpcStatus::bad_request(&format!(
+            return Err(RpcStatus::bad_request(format!(
                 "Exceeded maximum allowed query hashes. Max: {}",
                 MAX_ALLOWED_QUERY_SIZE
             )));
@@ -398,7 +398,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
+            .map_err(|_| RpcStatus::bad_request("Malformed block hash received"))?;
         trace!(
             target: LOG_TARGET,
             "UTXO hashes queried from wallet: {:?}",
@@ -454,15 +454,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
         let message = request.into_message();
         if message.hashes.len() > MAX_QUERY_DELETED_HASHES {
-            return Err(RpcStatus::bad_request(
-                &"Received more hashes than we allow".to_string(),
-            ));
+            return Err(RpcStatus::bad_request("Received more hashes than we allow"));
         }
         let chain_include_header = message.chain_must_include_header;
         if !chain_include_header.is_empty() {
             let hash = chain_include_header
                 .try_into()
-                .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
+                .map_err(|_| RpcStatus::bad_request("Malformed block hash received"))?;
             if self
                 .db
                 .fetch_header_by_block_hash(hash)
@@ -480,7 +478,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .into_iter()
             .map(|hash| hash.try_into())
             .collect::<Result<_, _>>()
-            .map_err(|_| RpcStatus::bad_request(&"Malformed utxo hash received".to_string()))?;
+            .map_err(|_| RpcStatus::bad_request("Malformed utxo hash received"))?;
         let mut return_data = Vec::with_capacity(hashes.len());
         let utxos = self
             .db
@@ -556,7 +554,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
     }
@@ -571,7 +569,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
     }
@@ -605,7 +603,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height))
+                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height))
                 })?;
             let before_mid_header = self
                 .db()
@@ -613,7 +611,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height - 1))
+                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height - 1))
                 })?;
             if requested_epoch_time < mid_header.timestamp.as_u64() &&
                 requested_epoch_time >= before_mid_header.timestamp.as_u64()

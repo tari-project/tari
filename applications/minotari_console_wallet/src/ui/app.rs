@@ -75,7 +75,7 @@ impl<B: Backend> App<B> {
         title: String,
         wallet: WalletSqlite,
         wallet_config: WalletConfig,
-        base_node_selected: Peer,
+        base_node_selected: Option<Peer>,
         base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Result<Self, ExitError> {

@@ -106,7 +106,6 @@ impl Difficulty {
 /// - `Div for Difficulty` `/` must not be used at all; difficulties should only be added to or subtracted from
 /// - `From<u64> for Difficulty` `Difficulty::from<u64>` must not be used, use `from_u64(value)` instead; to prevent
 ///   assignment `< MIN_DIFFICULTY`
-
 impl Default for Difficulty {
     fn default() -> Self {
         Difficulty::min()

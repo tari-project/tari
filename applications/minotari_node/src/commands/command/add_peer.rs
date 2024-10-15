@@ -24,7 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
-use tari_network::{identity::PeerId, multiaddr::Multiaddr, swarm::dial_opts::DialOpts, NetworkingService, ToPeerId};
+use tari_network::{multiaddr::Multiaddr, swarm::dial_opts::DialOpts, NetworkingService, ToPeerId};
 
 use super::{CommandContext, HandleCommand};
 

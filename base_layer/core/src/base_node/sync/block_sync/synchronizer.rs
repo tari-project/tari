@@ -28,7 +28,7 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use tari_network::{identity::PeerId, NetworkHandle, NetworkingService};
+use tari_network::{identity::PeerId, NetworkHandle};
 use tari_p2p::proto::base_node::SyncBlocksRequest;
 use tari_rpc_framework::{RpcClient, RpcConnector};
 use tari_utilities::hex::Hex;
@@ -136,7 +136,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
-        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).cloned().collect::<Vec<_>>();
+        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.peer_id()).copied().collect::<Vec<_>>();
         info!(
             target: LOG_TARGET,
             "Attempting to sync blocks({} sync peers)",
@@ -186,7 +186,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         };
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(&peer_id, reason.reason, duration)
+                            .ban_peer_if_required(peer_id, reason.reason, duration)
                             .await;
                     }
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
@@ -390,7 +390,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             if let Some(avg_latency) = last_avg_latency {
                 if avg_latency > max_latency {
                     return Err(BlockSyncError::MaxLatencyExceeded {
-                        peer: sync_peer.peer_id().clone(),
+                        peer: *sync_peer.peer_id(),
                         latency: avg_latency,
                         max_latency,
                     });

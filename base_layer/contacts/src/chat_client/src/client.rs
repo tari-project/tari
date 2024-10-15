@@ -29,17 +29,17 @@ use std::{
 
 use async_trait::async_trait;
 use log::debug;
-use rand::rngs::OsRng;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{peer_manager::PeerFeatures, CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactOnlineStatus,
     types::{Message, MessageBuilder, MessageId, MessageMetadata, MetadataData, MetadataKey},
 };
+use tari_network::{identity, NetworkHandle};
 use tari_shutdown::Shutdown;
+use tokio::time::sleep;
 
-use crate::{config::ApplicationConfig, error::Error, networking, networking::Multiaddr};
+use crate::{config::ApplicationConfig, error::Error, networking};
 
 const LOG_TARGET: &str = "contacts::chat_client";
 
@@ -62,7 +62,7 @@ pub struct Client {
     pub config: ApplicationConfig,
     pub user_agent: String,
     pub contacts: Option<ContactsServiceHandle>,
-    pub identity: Arc<NodeIdentity>,
+    pub identity: Arc<identity::Keypair>,
     pub shutdown: Shutdown,
     pub address: TariAddress,
 }
@@ -85,7 +85,7 @@ impl Drop for Client {
 
 impl Client {
     pub fn new(
-        identity: Arc<NodeIdentity>,
+        identity: Arc<identity::Keypair>,
         address: TariAddress,
         config: ApplicationConfig,
         user_agent: String,
@@ -107,11 +107,7 @@ impl Client {
         address: TariAddress,
     ) -> Self {
         // Create a placeholder ID. It won't be written or used when sideloaded.
-        let identity = Arc::new(NodeIdentity::random(
-            &mut OsRng,
-            Multiaddr::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-        ));
+        let identity = Arc::new(identity::Keypair::generate_sr25519());
 
         Self {
             config,
@@ -255,10 +251,12 @@ impl ChatClient for Client {
     }
 }
 
-pub async fn wait_for_connectivity(comms: CommsNode) -> anyhow::Result<()> {
-    comms
-        .connectivity()
-        .wait_for_connectivity(Duration::from_secs(30))
-        .await?;
-    Ok(())
+pub async fn wait_for_connectivity(comms: NetworkHandle) -> anyhow::Result<()> {
+    loop {
+        let conns = comms.get_active_connections().await?;
+        if conns.iter().any(|c| !c.is_wallet_user_agent()) {
+            return Ok(());
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
 }

@@ -15,7 +15,6 @@ pub struct Config {
     pub swarm: tari_swarm::Config,
     pub listener_addrs: Vec<Multiaddr>,
     pub reachability_mode: ReachabilityMode,
-    pub announce: bool,
     pub check_connections_interval: Duration,
     pub known_local_public_address: Vec<Multiaddr>,
 }
@@ -37,7 +36,6 @@ impl Default for Config {
             // Listen on /ip4/0.0.0.0 for TCP (os-assigned port) and UDP quic
             listener_addrs: Self::default_listen_addrs(),
             reachability_mode: ReachabilityMode::default(),
-            announce: true,
             check_connections_interval: Duration::from_secs(2 * 60 * 60),
             known_local_public_address: vec![],
         }

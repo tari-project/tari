@@ -141,7 +141,7 @@ impl TryFrom<ContactSql> for Contact {
         let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
             // Public key must always be the master data source for node ID here
-            node_id: address.public_spend_key().to_peer_id(),
+            peer_id: address.public_spend_key().to_peer_id(),
             address,
             alias: o.alias,
             last_seen: o.last_seen,

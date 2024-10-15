@@ -565,38 +565,71 @@ pub async fn start_wallet(
 ) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Setting base node peer");
 
-    if base_nodes.is_empty() {
-        return Err(ExitError::new(
-            ExitCode::WalletError,
-            "No base nodes configured to connect to",
-        ));
-    }
-    let selected_base_node = base_nodes.choose(&mut OsRng).expect("base_nodes is not empty");
-    let net_address = selected_base_node.addresses();
-    if net_address.is_empty() {
-        return Err(ExitError::new(
-            ExitCode::ConfigError,
-            "Configured base node has no address!",
-        ));
-    }
+    if let Some(selected_base_node) = base_nodes.choose(&mut OsRng) {
+        let pk = selected_base_node
+            .public_key()
+            .clone()
+            .try_into_sr25519()
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid key type: {}", e)))?
+            .inner_key()
+            .clone();
 
-    let pk = selected_base_node
-        .public_key()
-        .clone()
-        .try_into_sr25519()
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid key type: {}", e)))?
-        .inner_key()
-        .clone();
-
-    wallet
-        .set_base_node_peer(pk, Some(net_address[0].clone()), Some(base_nodes.to_vec()))
-        .await
-        .map_err(|e| {
-            ExitError::new(
-                ExitCode::WalletError,
-                format!("Error setting wallet base node peer. {}", e),
+        wallet
+            .set_base_node_peer(
+                pk,
+                selected_base_node.addresses().first().cloned(),
+                Some(base_nodes.to_vec()),
             )
-        })?;
+            .await
+            .map_err(|e| {
+                ExitError::new(
+                    ExitCode::WalletError,
+                    format!("Error setting wallet base node peer. {}", e),
+                )
+            })?;
+    } else {
+        let mut remaining_time = 10usize;
+        loop {
+            let conns = wallet.network.get_active_connections().await.map_err(|e| {
+                ExitError::new(
+                    ExitCode::WalletError,
+                    format!("Error setting wallet base node peer. {}", e),
+                )
+            })?;
+            if let Some(conn) = conns
+                .iter()
+                .find(|c| c.public_key.is_some() && !c.is_wallet_user_agent())
+            {
+                wallet
+                    .set_base_node_peer(
+                        conn.public_key
+                            .clone()
+                            .unwrap()
+                            .try_into_sr25519()
+                            .unwrap()
+                            .inner_key()
+                            .clone(),
+                        None,
+                        Some(base_nodes.to_vec()),
+                    )
+                    .await
+                    .map_err(|e| {
+                        ExitError::new(
+                            ExitCode::WalletError,
+                            format!("Error setting wallet base node peer. {}", e),
+                        )
+                    })?;
+                break;
+            }
+            if remaining_time == 0 {
+                warn!(target: LOG_TARGET, "No base node peer connections within 10s. Please configure a base node.");
+                break;
+            }
+            debug!(target: LOG_TARGET, "Waiting for active base node connections");
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            remaining_time -= 1;
+        }
+    }
 
     // Restart transaction protocols if not running in script or command modes
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {

@@ -27,7 +27,7 @@ use std::{
 };
 
 use tari_common_types::types::BlockHash;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -38,7 +38,7 @@ use crate::{
 #[derive(Debug)]
 pub struct TariBaseNodeState {
     /// The ID of the base node this wallet is connected to
-    pub node_id: Option<NodeId>,
+    pub node_id: Option<PeerId>,
 
     /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
     pub best_block_height: u64,
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn basenode_state_get_node_id(
 
     match (*ptr).node_id {
         None => ptr::null_mut(),
-        Some(ref node_id) => Box::into_raw(Box::new(ByteVector(node_id.to_vec()))),
+        Some(ref node_id) => Box::into_raw(Box::new(ByteVector(node_id.to_bytes()))),
     }
 }
 
@@ -332,15 +332,15 @@ pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState,
 
 #[cfg(test)]
 mod tests {
-    use tari_common_types::types::FixedHash;
-    use tari_comms::types::CommsPublicKey;
+    use tari_common_types::types::{FixedHash, PublicKey};
+    use tari_network::ToPeerId;
 
     use super::*;
 
     #[test]
     fn test_basenode_state_ffi_accessors() {
         let mut error_code = 0;
-        let original_node_id = NodeId::from_key(&CommsPublicKey::new_generator("test").unwrap());
+        let original_node_id = PublicKey::new_generator("test").unwrap().to_peer_id();
         let original_best_block = BlockHash::zero();
 
         let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
@@ -363,7 +363,7 @@ mod tests {
 
             assert_eq!(
                 original_node_id,
-                NodeId::from_canonical_bytes((*wrapped_node_id).0.as_bytes()).unwrap()
+                PeerId::from_bytes((*wrapped_node_id).0.as_bytes()).unwrap()
             );
             assert_eq!(error_code, 0);
 

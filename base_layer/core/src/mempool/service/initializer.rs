@@ -20,12 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc};
-
-use futures::{Stream, StreamExt};
 use log::*;
 use tari_network::NetworkHandle;
-use tari_p2p::{message::DomainMessage, proto::message::TariMessageType};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -33,7 +29,6 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::mpsc;
 
 use crate::{
     base_node::comms_interface::LocalNodeCommsInterface,
@@ -46,13 +41,10 @@ use crate::{
             MempoolHandle,
         },
     },
-    proto,
     topics::TRANSACTION_TOPIC,
-    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
-const SUBSCRIPTION_LABEL: &str = "Mempool";
 
 /// Initializer for the Mempool service and service future.
 pub struct MempoolServiceInitializer {
@@ -76,21 +68,22 @@ impl ServiceInitializer for MempoolServiceInitializer {
 
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let local_mp_interface = LocalMempoolService::new(local_request_sender_service);
-        let inbound_handlers = MempoolInboundHandlers::new(self.mempool.clone());
 
         context.register_handle(local_mp_interface);
+        let mempool = self.mempool.clone();
 
         context.spawn_until_shutdown(move |handles| async move {
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
-            let mut network = handles.expect_handle::<NetworkHandle>();
-            // Mempool does not publish transactions, they are gossiped by the network and published by wallets.
-            let (_publisher, subscriber) = match network.subscribe_topic(TRANSACTION_TOPIC).await {
+            let network = handles.expect_handle::<NetworkHandle>();
+            let (publisher, subscriber) = match network.subscribe_topic(TRANSACTION_TOPIC).await {
                 Ok(x) => x,
                 Err(err) => {
                     error!(target: LOG_TARGET, "⚠️ Failed to subscribe to transactions: {}. THE MEMPOOL SERVICE WILL NOT START.", err);
                     return ;
                 },
             };
+
+            let inbound_handlers = MempoolInboundHandlers::new(mempool, publisher);
 
             let streams = MempoolStreams {
                 transaction_subscription: subscriber,

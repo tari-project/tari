@@ -2,7 +2,6 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
-    fmt,
     fmt::{Display, Formatter},
     time::{Duration, Instant},
 };
