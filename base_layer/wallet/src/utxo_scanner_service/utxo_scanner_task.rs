@@ -32,6 +32,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::HashOutput,
+    wallet_types::WalletType,
 };
 use tari_comms::{
     peer_manager::NodeId,
@@ -204,6 +205,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
@@ -264,7 +266,25 @@ where
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
-                let birthday_height_hash = self.get_birthday_header_height_hash(&mut client).await?;
+                let birthday_height_hash = match self.resources.db.get_wallet_type()? {
+                    Some(wallet_type) => {
+                        match wallet_type {
+                            // View-only wallets always start at the genesis block
+                            WalletType::ProvidedKeys(_) => {
+                                let header_proto = client.get_header_by_height(0).await?;
+                                let header =
+                                    BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
+                                HeightHash {
+                                    height: 0,
+                                    header_hash: header.hash(),
+                                }
+                            },
+                            // Other wallets use the birthday
+                            _ => self.get_birthday_header_height_hash(&mut client).await?,
+                        }
+                    },
+                    None => return Err(UtxoScannerError::UtxoImportError("Wallet type not found".to_string())),
+                };
 
                 ScannedBlock {
                     height: birthday_height_hash.height,
