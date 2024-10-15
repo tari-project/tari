@@ -86,7 +86,7 @@ mod tests {
 
     #[derive(Deserialize, Debug)]
     struct Test {
-        #[serde(deserialize_with = "deserialize_dns_name_server_list")]
+        #[serde(default, deserialize_with = "deserialize_dns_name_server_list")]
         something: DnsNameServerList,
     }
 
@@ -149,8 +149,13 @@ mod tests {
 
     #[test]
     fn it_deserializes_from_toml() {
-        let config_str = r#"" 127.0.0.1:8080/my_dns", 'SYSTEM', 1.1.1.1:853/cloudflare-dns.COM ""#;
-        DnsNameServerList::from_str(config_str).unwrap();
+        let config_str = r#"#"#;
+        let test = toml::from_str::<Test>(config_str).unwrap();
+        assert_eq!(test.something.into_vec(), vec![]);
+
+        let config_str = r#"something = []"#;
+        let test = toml::from_str::<Test>(config_str).unwrap();
+        assert_eq!(test.something.into_vec(), vec![]);
 
         let config_str = r#"something = ["127.0.0.1:8080/my_dns", "system", "1.1.1.1:853/cloudflare-dns.com"]"#;
         let test = toml::from_str::<Test>(config_str).unwrap();

@@ -227,14 +227,14 @@ mod test {
         let config_str = r#"
             dns_seeds = ["seeds.esmeralda.tari.com"]
             peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
-            dns_seed_name_servers = ""
+            dns_seed_name_servers = "111"
             #dns_seeds_use_dnssec = false
          "#;
         match toml::from_str::<PeerSeedsConfig>(config_str) {
             Ok(_) => panic!("Should fail"),
             Err(e) => assert_eq!(
                 e.to_string(),
-                "invalid socket address syntax for key `dns_seeds_name_server` at line 4 column 37"
+                "invalid socket address syntax for key `dns_seed_name_servers` at line 4 column 37"
             ),
         }
 
@@ -258,23 +258,20 @@ mod test {
         let config_str = r#"
             #dns_seeds = []
             #peer_seeds = []
-            #dns_seed_name_servers = ["system", "1.1.1.1:853/cloudflare-dns.com"]
+            #dns_seed_name_servers = []
             #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
         assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![
-            DnsNameServer::from_str("system").unwrap(),
-            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
-        ]);
+        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![]);
         assert!(!config.dns_seeds_use_dnssec);
 
         // System
         let config_str = r#"
             #dns_seeds = []
             #peer_seeds = []
-            dns_seeds_name_server = "system"
+            dns_seed_name_servers = "system"
             #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
