@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.7.0-pre.1](https://github.com/tari-project/tari/compare/v1.7.0-pre.0...v1.7.0-pre.1) (2024-10-15)
+
+
+### Features
+
+* add checked_sub ([#6628](https://github.com/tari-project/tari/issues/6628)) ([2d0ccb1](https://github.com/tari-project/tari/commit/2d0ccb121bb13990cac422fe72945cced06c1f74))
+* add dns resiliency ([#6629](https://github.com/tari-project/tari/issues/6629)) ([8dd919f](https://github.com/tari-project/tari/commit/8dd919f4188c4936d5c8ab9f7e328ec79179bdfb))
+
 ## [1.7.0-pre.0](https://github.com/tari-project/tari/compare/v1.6.0-pre.0...v1.7.0-pre.0) (2024-10-11)
 
 
