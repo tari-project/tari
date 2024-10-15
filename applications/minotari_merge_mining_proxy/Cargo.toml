@@ -39,7 +39,7 @@ config = { version = "0.14.0" }
 crossterm = { version = "0.25.0" }
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hyper = { version ="0.14.12", features = ["full"] }
+hyper = { version ="0.14.12", features = ["default"] }
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
 monero = { version = "0.21.0" }
@@ -58,3 +58,4 @@ tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.1" }
 
 [dev-dependencies]
 markup5ever = "0.11.0"
+hyper = { version ="0.14.12", features = ["full"] }
