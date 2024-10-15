@@ -588,30 +588,11 @@ pub async fn start_wallet(
                 )
             })?;
     } else {
-        let mut remaining_time = 10usize;
-        loop {
-            let conns = wallet.network.get_active_connections().await.map_err(|e| {
-                ExitError::new(
-                    ExitCode::WalletError,
-                    format!("Error setting wallet base node peer. {}", e),
-                )
-            })?;
-            if let Some(conn) = conns
-                .iter()
-                .find(|c| c.public_key.is_some() && !c.is_wallet_user_agent())
-            {
+        // Set the first base node connection we get - this is typically a local base node via mDNS
+        match wait_for_first_base_node_connection(&wallet).await? {
+            Some(pk) => {
                 wallet
-                    .set_base_node_peer(
-                        conn.public_key
-                            .clone()
-                            .unwrap()
-                            .try_into_sr25519()
-                            .unwrap()
-                            .inner_key()
-                            .clone(),
-                        None,
-                        Some(base_nodes.to_vec()),
-                    )
+                    .set_base_node_peer(pk, None, Some(base_nodes.to_vec()))
                     .await
                     .map_err(|e| {
                         ExitError::new(
@@ -619,15 +600,13 @@ pub async fn start_wallet(
                             format!("Error setting wallet base node peer. {}", e),
                         )
                     })?;
-                break;
-            }
-            if remaining_time == 0 {
-                warn!(target: LOG_TARGET, "No base node peer connections within 10s. Please configure a base node.");
-                break;
-            }
-            debug!(target: LOG_TARGET, "Waiting for active base node connections");
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            remaining_time -= 1;
+            },
+            None => {
+                return Err(ExitError::new(
+                    ExitCode::WalletError,
+                    "No base nodes configured to connect to",
+                ));
+            },
         }
     }
 
@@ -659,6 +638,38 @@ pub async fn start_wallet(
     Ok(())
 }
 
+async fn wait_for_first_base_node_connection(wallet: &WalletSqlite) -> Result<Option<PublicKey>, ExitError> {
+    let mut remaining_time = 10usize;
+    loop {
+        let conns = wallet.network.get_active_connections().await.map_err(|e| {
+            ExitError::new(
+                ExitCode::WalletError,
+                format!("Error setting wallet base node peer. {}", e),
+            )
+        })?;
+        if let Some(conn) = conns
+            .iter()
+            .find(|c| c.public_key.is_some() && !c.is_wallet_user_agent())
+        {
+            break Ok(Some(
+                conn.public_key
+                    .clone()
+                    .unwrap()
+                    .try_into_sr25519()
+                    .unwrap()
+                    .inner_key()
+                    .clone(),
+            ));
+        }
+        if remaining_time == 0 {
+            warn!(target: LOG_TARGET, "No base node peer connections within 10s. Please configure a base node.");
+            break Ok(None);
+        }
+        debug!(target: LOG_TARGET, "Waiting for active base node connections");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        remaining_time -= 1;
+    }
+}
 async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Starting TXO validations.");
 
