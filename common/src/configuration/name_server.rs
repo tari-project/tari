@@ -27,9 +27,9 @@ use std::{
 };
 
 use anyhow::anyhow;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum DnsNameServer {
     #[default]
     System,
@@ -66,11 +66,17 @@ impl FromStr for DnsNameServer {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s
+            .to_string()
+            .replace(" ", "")
+            .replace("\"", "")
+            .replace("'", "")
+            .to_ascii_lowercase();
         let mut split = s.splitn(2, '/');
         let addr = split
             .next()
             .ok_or_else(|| anyhow!("failed to parse DNS name server 'addr'"))?;
-        if addr.to_ascii_lowercase() == "system" {
+        if addr == "system" {
             return Ok(Self::System);
         }
         let dns_name = split.next();
@@ -99,6 +105,10 @@ mod test {
         assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
 
         // from str
+        let new_dns = DnsNameServer::from_str("'127.0.0.1:8080/my_dns'").unwrap();
+        assert_eq!(new_dns, dns);
+        let new_dns = DnsNameServer::from_str("\"127.0.0.1:8080/my_dns\"").unwrap();
+        assert_eq!(new_dns, dns);
         let new_dns = DnsNameServer::from_str("127.0.0.1:8080/my_dns").unwrap();
         assert_eq!(new_dns, dns);
 

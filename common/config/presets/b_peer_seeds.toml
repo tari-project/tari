@@ -5,6 +5,24 @@
 #                                                                                                                      #
 ########################################################################################################################
 
+[p2p.seeds]
+# DNS name servers to use for DNS seeds, in order of preference.
+# (default: dns_seed_name_servers = [
+#    "system",
+#    "1.1.1.1:853/cloudflare-dns.com",
+#    "8.8.8.8:853/dns.google",
+#    "9.9.9.9:853/dns.quad9.net"
+#]
+#dns_seed_name_servers = [
+#    "system",
+#    "1.1.1.1:853/cloudflare-dns.com",
+#    "8.8.8.8:853/dns.google",
+#    "9.9.9.9:853/dns.quad9.net"
+#]
+
+# All DNS seed records must pass DNSSEC validation (default: dns_seeds_use_dnssec = false)
+#dns_seeds_use_dnssec = false
+
 [nextnet.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
 # (Default: peer_seeds = [])

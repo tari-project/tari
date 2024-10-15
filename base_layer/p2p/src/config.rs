@@ -22,19 +22,21 @@
 
 use std::{
     path::{Path, PathBuf},
+    str::FromStr,
     time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
+        deserialize_dns_name_server_list,
         serializers,
-        utils::{deserialize_string_or_struct, serialize_string},
+        utils::serialize_string,
+        DnsNameServerList,
         MultiaddrList,
         Network,
         StringList,
     },
-    DnsNameServer,
     SubConfigPath,
 };
 use tari_comms::multiaddr::Multiaddr;
@@ -54,13 +56,13 @@ pub struct PeerSeedsConfig {
     /// peer list.
     #[serde(default)]
     pub dns_seeds: StringList,
+    /// DNS name server to use for DNS seeds.
     #[serde(
         default,
-        deserialize_with = "deserialize_string_or_struct",
+        deserialize_with = "deserialize_dns_name_server_list",
         serialize_with = "serialize_string"
     )]
-    /// DNS name server to use for DNS seeds.
-    pub dns_seeds_name_server: DnsNameServer,
+    pub dns_seed_name_servers: DnsNameServerList,
     /// All DNS seed records must pass DNSSEC validation
     #[serde(default)]
     pub dns_seeds_use_dnssec: bool,
@@ -76,7 +78,10 @@ impl Default for PeerSeedsConfig {
                 Network::get_current_or_user_setting_or_default().as_key_str()
             )]
             .into(),
-            dns_seeds_name_server: DnsNameServer::default(),
+            dns_seed_name_servers: DnsNameServerList::from_str(
+                "system, 1.1.1.1:853/cloudflare-dns.com, 8.8.8.8:853/dns.google, 9.9.9.9:853/dns.quad9.net",
+            )
+            .expect("string is valid"),
             dns_seeds_use_dnssec: false,
         }
     }
@@ -180,9 +185,22 @@ impl P2pConfig {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use tari_common::DnsNameServer;
 
     use crate::PeerSeedsConfig;
+
+    #[test]
+    fn default_dns_seed_name_servers_test() {
+        let dns_seed_name_servers = PeerSeedsConfig::default().dns_seed_name_servers;
+        assert_eq!(dns_seed_name_servers.into_vec(), vec![
+            DnsNameServer::from_str("system").unwrap(),
+            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
+            DnsNameServer::from_str("8.8.8.8:853/dns.google").unwrap(),
+            DnsNameServer::from_str("9.9.9.9:853/dns.quad9.net").unwrap()
+        ]);
+    }
 
     #[test]
     fn it_deserializes_from_toml() {
@@ -190,7 +208,7 @@ mod test {
         let config_str = r#"
             dns_seeds = ["seeds.esmeralda.tari.com"]
             peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
-            dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+            dns_seed_name_servers = ["1.1.1.1:853/cloudflare-dns.com"]
             dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
@@ -200,7 +218,7 @@ mod test {
              e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"
         ]);
         assert_eq!(
-            config.dns_seeds_name_server.to_string(),
+            config.dns_seed_name_servers.to_string(),
             "1.1.1.1:853/cloudflare-dns.com".to_string()
         );
         assert!(!config.dns_seeds_use_dnssec);
@@ -209,14 +227,14 @@ mod test {
         let config_str = r#"
             dns_seeds = ["seeds.esmeralda.tari.com"]
             peer_seeds = ["20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"]
-            dns_seeds_name_server = ""
+            dns_seed_name_servers = "111"
             #dns_seeds_use_dnssec = false
          "#;
         match toml::from_str::<PeerSeedsConfig>(config_str) {
             Ok(_) => panic!("Should fail"),
             Err(e) => assert_eq!(
                 e.to_string(),
-                "invalid socket address syntax for key `dns_seeds_name_server` at line 4 column 37"
+                "invalid socket address syntax for key `dns_seed_name_servers` at line 4 column 37"
             ),
         }
 
@@ -224,39 +242,42 @@ mod test {
         let config_str = r#"
             dns_seeds = []
             peer_seeds = []
-            dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+            dns_seed_name_servers = ["system", "1.1.1.1:853/cloudflare-dns.com"]
             dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
         assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert_eq!(
-            config.dns_seeds_name_server.to_string(),
-            "1.1.1.1:853/cloudflare-dns.com".to_string()
-        );
+        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![
+            DnsNameServer::from_str("system").unwrap(),
+            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
+        ]);
         assert!(!config.dns_seeds_use_dnssec);
 
         // Omitted config fields
         let config_str = r#"
             #dns_seeds = []
             #peer_seeds = []
-            #dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+            #dns_seed_name_servers = []
             #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
         assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert!(matches!(config.dns_seeds_name_server, DnsNameServer::System));
+        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![]);
         assert!(!config.dns_seeds_use_dnssec);
 
         // System
         let config_str = r#"
             #dns_seeds = []
             #peer_seeds = []
-            dns_seeds_name_server = "system"
+            dns_seed_name_servers = "system"
             #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert!(matches!(config.dns_seeds_name_server, DnsNameServer::System));
+        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![DnsNameServer::from_str(
+            "system"
+        )
+        .unwrap(),]);
     }
 }
