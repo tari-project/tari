@@ -282,11 +282,10 @@ mod test {
                 vec![]
             },
             Err(err) => {
-                if !err.to_string().contains("Failed to send request to monerod") {
-                    panic!("Unexpected error: {}", err);
-                } else {
+                if err.to_string().contains("Failed to send request to monerod") {
                     return;
                 }
+                panic!("Unexpected error: {}", err);
             },
         };
         for (i, entry) in entries.iter().enumerate() {
@@ -339,11 +338,10 @@ mod test {
         let html_content = match get_monerod_html(&config.monero_fail_url).await {
             Ok(val) => val,
             Err(err) => {
-                if !err.to_string().contains("Failed to send request to monerod") {
-                    panic!("Unexpected error: {}", err);
-                } else {
+                if err.to_string().contains("Failed to send request to monerod") {
                     return;
                 }
+                panic!("Unexpected error: {}", err);
             },
         };
 
