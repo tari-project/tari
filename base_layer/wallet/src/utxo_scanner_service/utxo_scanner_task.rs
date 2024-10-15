@@ -283,7 +283,7 @@ where
                             _ => self.get_birthday_header_height_hash(&mut client).await?,
                         }
                     },
-                    None => return Err(UtxoScannerError::UtxoImportError("Wallet type not found".to_string())),
+                    None => self.get_birthday_header_height_hash(&mut client).await?,
                 };
 
                 ScannedBlock {
