@@ -562,7 +562,7 @@ impl P2pInitializer {
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seeds_name_servers' in \
+                        "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seed_name_servers' in \
                         the config file. (Error: {})",
                         dns,
                         err.to_string(),
