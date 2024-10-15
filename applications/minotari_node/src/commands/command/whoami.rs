@@ -24,7 +24,6 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use qrcode::{render::unicode, QrCode};
-use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
 

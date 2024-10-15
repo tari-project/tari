@@ -53,8 +53,7 @@ use std::{
     ffi::{CStr, CString},
     fmt::{Display, Formatter},
     mem::ManuallyDrop,
-    num::NonZeroU16,
-    path::PathBuf,
+    path::{Path, PathBuf},
     slice,
     str::FromStr,
     sync::Arc,
@@ -157,7 +156,6 @@ use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
     encoding::MBase58,
-    hex,
     hex::{Hex, HexError},
     SafePassword,
 };
@@ -5289,8 +5287,6 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
-    database_name: *const c_char,
-    datastore_path: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
     let mut error = 0;
@@ -5307,42 +5303,6 @@ pub unsafe extern "C" fn comms_config_create(
             },
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("public_address".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    let database_name_string;
-    if database_name.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(database_name).to_str() {
-            Ok(v) => {
-                database_name_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("database_name".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    let datastore_path_string;
-    if datastore_path.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(datastore_path).to_str() {
-            Ok(v) => {
-                datastore_path_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("datastore_path".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
@@ -5765,6 +5725,8 @@ unsafe fn init_logging(
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_create(
     context: *mut c_void,
+    database_name: *const c_char,
+    datastore_path: *const c_char,
     config: *mut TariCommsConfig,
     log_path: *const c_char,
     log_verbosity: c_int,
@@ -5815,6 +5777,43 @@ pub unsafe extern "C" fn wallet_create(
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+
+    let database_name_string;
+    if database_name.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(database_name).to_str() {
+            Ok(v) => {
+                database_name_string = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("database_name".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+
+    let datastore_path_string;
+    if datastore_path.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(datastore_path).to_str() {
+            Ok(v) => {
+                datastore_path_string = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("datastore_path".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+
     if config.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -5904,24 +5903,24 @@ pub unsafe extern "C" fn wallet_create(
         }
     };
 
-    let network = if network_str.is_null() {
+    if network_str.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
-    } else {
-        let network = CStr::from_ptr(network_str)
-            .to_str()
-            .expect("A non-null network should be able to be converted to string");
-        info!(target: LOG_TARGET, "network set to {}", network);
+    }
 
-        match Network::from_str(network) {
-            Ok(n) => n,
-            Err(_) => {
-                error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
+    let network = CStr::from_ptr(network_str)
+        .to_str()
+        .expect("A non-null network should be able to be converted to string");
+    info!(target: LOG_TARGET, "network set to {}", network);
+
+    let network = match Network::from_str(network) {
+        Ok(n) => n,
+        Err(_) => {
+            error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
     };
     // Set the static network variable according to the user chosen network (for use with
     // `get_current_or_user_setting_or_default()`) -
@@ -5948,9 +5947,8 @@ pub unsafe extern "C" fn wallet_create(
         transaction_service_config: TransactionServiceConfig { ..Default::default() },
         base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
-        // TODO: This needs to be provided by mobile
-        // data_dir: ???
-        // db_file: ???
+        data_dir: PathBuf::from(datastore_path_string),
+        db_file: PathBuf::from(database_name_string),
         ..Default::default()
     };
 
@@ -5999,7 +5997,7 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let keypair = Arc::new(identity::Keypair::from(identity::sr25519::Keypair::from(
-        comms_secret_key,
+        identity::sr25519::SecretKey::from(comms_secret_key),
     )));
 
     let shutdown = Shutdown::new();
@@ -6059,28 +6057,33 @@ pub unsafe extern "C" fn wallet_create(
                 },
             };
 
-            // Lets set the base node peers
-            let peer_manager = w.network.peer_manager();
-            let query = PeerQuery::new().select_where(|p| p.is_seed());
-            let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
+            // Let's set the base node peers
+            let peers = match runtime.block_on(w.network.get_seed_peers()) {
+                Ok(p) => p,
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return ptr::null_mut();
+                },
+            };
 
             if !peers.is_empty() {
                 let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
-                let net_address = selected_base_node.addresses.best().expect("No addresses for base node");
-                match runtime.block_on(async {
-                    w.set_base_node_peer(
-                        selected_base_node.public_key.clone(),
-                        Some(net_address.address().clone()),
-                        Some(peers.to_vec()),
-                    )
-                    .await
-                }) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        error = LibWalletError::from(e).code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return ptr::null_mut();
-                    },
+                if let Some(pk) = selected_base_node
+                    .public_key()
+                    .clone()
+                    .try_into_sr25519()
+                    .ok()
+                    .map(|pk| pk.inner_key().clone())
+                {
+                    match runtime.block_on(async { w.set_base_node_peer(pk, None, Some(peers.to_vec())).await }) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            error = LibWalletError::from(e).code;
+                            ptr::swap(error_out, &mut error as *mut c_int);
+                            return ptr::null_mut();
+                        },
+                    }
                 }
             }
 
@@ -6150,18 +6153,23 @@ pub unsafe extern "C" fn wallet_create(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn wallet_get_last_version(
+    datastore_path: *const c_char,
+    database_name: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    if config.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
+    let Some(datastore_path) = c_char_ptr_to_string(datastore_path, "datastore_path", error_out) else {
+        return ptr::null_mut();
+    };
+    let Some(database_name) = c_char_ptr_to_string(database_name, "database_name", error_out) else {
+        return ptr::null_mut();
+    };
+
+    let sql_database_path = PathBuf::from(datastore_path)
+        .join(database_name)
         .with_extension("sqlite3");
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
@@ -6177,6 +6185,26 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
     }
 }
 
+/// Utility function for the common case of converting a string pointer to a String
+unsafe fn c_char_ptr_to_string<T: Into<String>>(
+    ptr: *const c_char,
+    field_name: T,
+    error_out: *mut c_int,
+) -> Option<String> {
+    if ptr.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError(field_name.into())).code;
+        None
+    } else {
+        match CStr::from_ptr(ptr).to_str() {
+            Ok(v) => Some(v.to_string()),
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError(field_name.into())).code;
+                None
+            },
+        }
+    }
+}
+
 /// Retrieves the network of an app that last accessed the wallet database
 ///
 /// ## Arguments
@@ -6189,19 +6217,20 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if config.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
+pub unsafe extern "C" fn wallet_get_last_network(
+    datastore_path: *const c_char,
+    database_name: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    *error_out = 0;
+    let Some(datastore_path) = c_char_ptr_to_string(datastore_path, "datastore_path", error_out) else {
         return ptr::null_mut();
-    }
+    };
+    let Some(database_name) = c_char_ptr_to_string(database_name, "database_name", error_out) else {
+        return ptr::null_mut();
+    };
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+    let sql_database_path = Path::new(&datastore_path).join(database_name).with_extension("sqlite3");
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -6209,8 +6238,7 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
             network.into_raw()
         },
         Err(e) => {
-            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
+            *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::null_mut()
         },
     }

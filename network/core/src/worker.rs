@@ -15,7 +15,7 @@ use libp2p::{
     dcutr,
     futures::StreamExt,
     gossipsub,
-    gossipsub::{IdentTopic, MessageId, TopicHash},
+    gossipsub::{IdentTopic, MessageId, PublishError, TopicHash},
     identify,
     identity,
     kad,
@@ -201,7 +201,11 @@ where
                 Some((topic, msg)) = gossipsub_outbound.recv() => {
                     debug!(target: LOG_TARGET, "📣 Gossip publish {topic} {} bytes", msg.len());
                     if let Err(err) = self.swarm.behaviour_mut().gossipsub.publish(topic, msg) {
-                        error!(target: LOG_TARGET, "🚨 Failed to publish gossip message: {}", err);
+                        if matches!(err, PublishError::Duplicate) {
+                            debug!(target: LOG_TARGET, "Published duplicate: {}", err);
+                        } else {
+                            error!(target: LOG_TARGET, "🚨 Failed to publish gossip message: {}", err);
+                        }
                     }
                 }
 
@@ -247,7 +251,11 @@ where
                     let _ignore = reply_tx.send(Ok(()));
                 },
                 Err(err) => {
-                    debug!(target: LOG_TARGET, "🚨 Failed to publish gossipsub message: {}", err);
+                    if matches!(err, PublishError::Duplicate) {
+                        debug!(target: LOG_TARGET, "Published duplicate: {}", err);
+                    } else {
+                        error!(target: LOG_TARGET, "🚨 Failed to publish gossip message: {}", err);
+                    }
                     let _ignore = reply_tx.send(Err(err.into()));
                 },
             },
@@ -450,6 +458,9 @@ where
                 self.pending_kad_queries.insert(query, tx_waiter);
                 let _ignore = reply.send(Ok(rx_waiter.into()));
             },
+            NetworkingRequest::GetSeedPeers { reply } => {
+                let _ignore = reply.send(Ok(self.seed_peers.clone()));
+            },
         }
 
         Ok(())
@@ -529,11 +540,11 @@ where
     }
 
     fn add_all_seed_peers(&mut self) {
-        for peer in self.seed_peers.drain(..) {
+        for peer in &self.seed_peers {
             info!(target: LOG_TARGET, "Adding seed peer {peer}");
             let peer_id = peer.public_key.to_peer_id();
-            for addr in peer.addresses {
-                let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
+            for addr in &peer.addresses {
+                let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
                 if matches!(update, RoutingUpdate::Failed) {
                     warn!(target: LOG_TARGET, "Failed to add seed peer {peer_id}");
                 }

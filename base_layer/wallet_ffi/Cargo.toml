@@ -54,9 +54,7 @@ tari_key_manager = { path = "../key_manager" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_test_utils = { path = "../../infrastructure/test_utils" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = [
-    "base_node",
-] }
+tari_core = { path = "../../base_layer/core", default-features = false, features = ["base_node"] }
 borsh = "1.5"
 env_logger = "0.7.1"
 

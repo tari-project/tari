@@ -296,6 +296,8 @@ fn kernel_hash() {
     let r = PublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
     let sig = Signature::new(r, s);
     let excess = Commitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
+    // If none of the features are active, k is unused
+    #[allow(unused_variables)]
     let k = KernelBuilder::new()
         .with_signature(sig)
         .with_fee(100.into())

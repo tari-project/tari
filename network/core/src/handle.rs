@@ -139,6 +139,9 @@ pub enum NetworkingRequest {
         peer_id: PeerId,
         reply: Reply<Waiter<DiscoveryResult>>,
     },
+    GetSeedPeers {
+        reply: Reply<Vec<Peer>>,
+    },
 }
 #[derive(Debug)]
 pub struct NetworkHandle {
@@ -162,6 +165,15 @@ impl NetworkHandle {
 
     pub fn subscribe_events(&self) -> broadcast::Receiver<NetworkEvent> {
         self.tx_events.subscribe()
+    }
+
+    pub async fn get_seed_peers(&self) -> Result<Vec<Peer>, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::GetSeedPeers { reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
     }
 
     pub async fn is_subscribed_to_topic<T: Into<String>>(&self, topic: T) -> Result<bool, NetworkError> {
