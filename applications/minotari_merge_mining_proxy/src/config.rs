@@ -69,8 +69,9 @@ pub struct MergeMiningProxyConfig {
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
-    /// the Minotari blockchain, then this setting should be "true". With pool merged mining, there is no sense in
-    /// submitting the solution to the Monero blockchain as thepool does that, then this setting should be "false".
+    /// the Minotari blockchain, then this setting should be "true". With Monero pool merged mining, there is no sense
+    /// in submitting the solution to the Monero blockchain as the Monero pool does that, then this setting should be
+    /// "false".
     pub submit_to_origin: bool,
     /// The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables
     /// mining, or not. If merge mining starts before the base node has achieved initial sync, those Minotari mined

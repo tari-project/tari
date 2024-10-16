@@ -211,7 +211,8 @@ pub struct BlockTemplateData {
     pub tari_block: grpc::Block,
     pub tari_miner_data: grpc::MinerData,
     pub monero_difficulty: u64,
-    pub tari_difficulty: u64,
+    pub tari_target_difficulty: u64,
+    pub p2pool_target_difficulty: Option<u64>,
     pub tari_merge_mining_hash: FixedHash,
     #[allow(dead_code)]
     pub aux_chain_hashes: AuxChainHashes,
@@ -226,7 +227,8 @@ pub struct BlockTemplateDataBuilder {
     tari_block: Option<grpc::Block>,
     tari_miner_data: Option<grpc::MinerData>,
     monero_difficulty: Option<u64>,
-    tari_difficulty: Option<u64>,
+    tari_target_difficulty: Option<u64>,
+    p2pool_target_difficulty: Option<Option<u64>>,
     tari_merge_mining_hash: Option<FixedHash>,
     aux_chain_hashes: AuxChainHashes,
 }
@@ -256,8 +258,13 @@ impl BlockTemplateDataBuilder {
         self
     }
 
-    pub fn tari_difficulty(mut self, difficulty: u64) -> Self {
-        self.tari_difficulty = Some(difficulty);
+    pub fn tari_target_difficulty(mut self, difficulty: u64) -> Self {
+        self.tari_target_difficulty = Some(difficulty);
+        self
+    }
+
+    pub fn p2pool_target_difficulty(mut self, difficulty: Option<u64>) -> Self {
+        self.p2pool_target_difficulty = Some(difficulty);
         self
     }
 
@@ -289,9 +296,12 @@ impl BlockTemplateDataBuilder {
         let monero_difficulty = self
             .monero_difficulty
             .ok_or_else(|| MmProxyError::MissingDataError("monero_difficulty not provided".to_string()))?;
-        let tari_difficulty = self
-            .tari_difficulty
-            .ok_or_else(|| MmProxyError::MissingDataError("tari_difficulty not provided".to_string()))?;
+        let tari_target_difficulty = self
+            .tari_target_difficulty
+            .ok_or_else(|| MmProxyError::MissingDataError("tari_target_difficulty not provided".to_string()))?;
+        let p2pool_target_difficulty = self
+            .p2pool_target_difficulty
+            .ok_or_else(|| MmProxyError::MissingDataError("p2pool_target_difficulty not provided".to_string()))?;
         let tari_merge_mining_hash = self
             .tari_merge_mining_hash
             .ok_or_else(|| MmProxyError::MissingDataError("tari_hash not provided".to_string()))?;
@@ -304,7 +314,8 @@ impl BlockTemplateDataBuilder {
             tari_block,
             tari_miner_data,
             monero_difficulty,
-            tari_difficulty,
+            tari_target_difficulty,
+            p2pool_target_difficulty,
             tari_merge_mining_hash,
             aux_chain_hashes: self.aux_chain_hashes,
         })
@@ -332,7 +343,8 @@ pub mod test {
         let hash = block.hash();
         let miner_data = grpc::MinerData {
             reward: 10000,
-            target_difficulty: 600000,
+            tari_target_difficulty: 600000,
+            p2pool_target_difficulty: None,
             total_fees: 100,
             algo: Some(grpc::PowAlgo { pow_algo: 0 }),
         };
@@ -341,7 +353,8 @@ pub mod test {
             .tari_block(block.try_into().unwrap())
             .tari_miner_data(miner_data)
             .monero_difficulty(123456)
-            .tari_difficulty(12345)
+            .tari_target_difficulty(12345)
+            .p2pool_target_difficulty(None)
             .tari_merge_mining_hash(hash)
             .aux_hashes(AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap());
         let block_template_data = btdb.build().unwrap();
@@ -398,7 +411,8 @@ pub mod test {
         // With monero seed, block, miner data
         let miner_data = grpc::MinerData {
             reward: 10000,
-            target_difficulty: 600000,
+            tari_target_difficulty: 600000,
+            p2pool_target_difficulty: None,
             total_fees: 100,
             algo: Some(grpc::PowAlgo { pow_algo: 0 }),
         };
@@ -416,7 +430,7 @@ pub mod test {
             .tari_miner_data(miner_data)
             .monero_difficulty(123456);
         assert!(
-            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"tari_difficulty not provided")
+            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"tari_target_difficulty not provided")
         );
     }
 
@@ -425,9 +439,11 @@ pub mod test {
         let build = create_block_template_data();
         assert!(build.template.monero_seed.is_empty());
         assert_eq!(build.template.tari_block.header.unwrap().version, 100);
-        assert_eq!(build.template.tari_miner_data.target_difficulty, 600000);
+        assert_eq!(build.template.tari_miner_data.tari_target_difficulty, 600000);
+        assert_eq!(build.template.tari_miner_data.p2pool_target_difficulty, None);
         assert_eq!(build.template.monero_difficulty, 123456);
-        assert_eq!(build.template.tari_difficulty, 12345);
+        assert_eq!(build.template.tari_target_difficulty, 12345);
+        assert_eq!(build.template.p2pool_target_difficulty, None);
         assert_eq!(build.blockhashing_blob, "no blockhashing_blob data".to_string());
         assert_eq!(build.blocktemplate_blob, "no blocktemplate_blob data".to_string());
         assert_eq!(build.target_difficulty, Difficulty::from_u64(12345).unwrap());

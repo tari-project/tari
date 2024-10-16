@@ -639,7 +639,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let response = tari_rpc::NewBlockTemplateResponse {
             miner_data: Some(tari_rpc::MinerData {
                 reward: new_template.reward.into(),
-                target_difficulty: new_template.target_difficulty.as_u64(),
+                tari_target_difficulty: new_template.target_difficulty.as_u64(),
+                p2pool_target_difficulty: None,
                 total_fees: new_template.total_fees.into(),
                 algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
             }),
@@ -743,7 +744,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let miner_data = tari_rpc::MinerData {
             reward: new_template.reward.into(),
-            target_difficulty: new_template.target_difficulty.as_u64(),
+            tari_target_difficulty: new_template.target_difficulty.as_u64(),
+            p2pool_target_difficulty: None,
             total_fees: fees.as_u64(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
@@ -814,7 +816,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let miner_data = tari_rpc::MinerData {
             reward: new_template.reward.into(),
-            target_difficulty: new_template.target_difficulty.as_u64(),
+            tari_target_difficulty: new_template.target_difficulty.as_u64(),
+            p2pool_target_difficulty: None,
             total_fees: new_template.total_fees.into(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
@@ -1213,7 +1216,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let miner_data = tari_rpc::MinerData {
             reward: new_template.reward.into(),
-            target_difficulty: new_template.target_difficulty.as_u64(),
+            tari_target_difficulty: new_template.target_difficulty.as_u64(),
+            p2pool_target_difficulty: None,
             total_fees: fees.as_u64(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
