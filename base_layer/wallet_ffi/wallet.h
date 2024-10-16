@@ -417,7 +417,6 @@ void destroy_tari_vector(struct TariVector *v);
 void destroy_tari_coin_preview(struct TariCoinPreview *p);
 
 /**
- * -------------------------------- Strings ------------------------------------------------ ///
  * Frees memory for a char array
  *
  * ## Arguments
@@ -1333,8 +1332,6 @@ struct ByteVector *range_proof_get_bytes(TariRangeProof *proof_ptr,
 void range_proof_destroy(TariRangeProof *proof_ptr);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * --------------------------------------- Covenant --------------------------------------------///
  * Creates a TariCovenant from a ByteVector containing the covenant bytes
  *
  * ## Arguments
@@ -1844,8 +1841,6 @@ const char *liveness_data_get_online_status(TariContactsLivenessData *liveness_d
 void liveness_data_destroy(TariContactsLivenessData *liveness_data);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- CompletedTransactions ----------------------------------- ///
  * Gets the length of a TariCompletedTransactions
  *
  * ## Arguments

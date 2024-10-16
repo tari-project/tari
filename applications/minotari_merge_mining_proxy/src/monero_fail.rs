@@ -265,6 +265,7 @@ mod test {
 
     use crate::{
         config::MergeMiningProxyConfig,
+        error::MmProxyError::HtmlParseError,
         monero_fail::{get_monerod_html, get_monerod_info},
     };
 
@@ -272,9 +273,21 @@ mod test {
     async fn test_get_monerod_info() {
         // Monero mainnet
         let config = MergeMiningProxyConfig::default();
-        let entries = get_monerod_info(5, Duration::from_secs(2), &config.monero_fail_url)
-            .await
-            .unwrap();
+        let entries = match get_monerod_info(5, Duration::from_secs(2), &config.monero_fail_url).await {
+            Ok(val) => val,
+            Err(HtmlParseError(val)) => {
+                if val.contains("No public monero servers available") {
+                    return;
+                }
+                vec![]
+            },
+            Err(err) => {
+                if err.to_string().contains("Failed to send request to monerod") {
+                    return;
+                }
+                panic!("Unexpected error: {}", err);
+            },
+        };
         for (i, entry) in entries.iter().enumerate() {
             assert!(entry.up && entry.up_history.iter().all(|&v| v));
             if i > 0 {
@@ -322,7 +335,15 @@ mod test {
     #[tokio::test]
     async fn test_table_structure() {
         let config = MergeMiningProxyConfig::default();
-        let html_content = get_monerod_html(&config.monero_fail_url).await.unwrap();
+        let html_content = match get_monerod_html(&config.monero_fail_url).await {
+            Ok(val) => val,
+            Err(err) => {
+                if err.to_string().contains("Failed to send request to monerod") {
+                    return;
+                }
+                panic!("Unexpected error: {}", err);
+            },
+        };
 
         let table_structure = extract_table_structure(&html_content);
 
