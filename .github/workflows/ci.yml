@@ -22,7 +22,7 @@ env:
   PROTOC: protoc
   TERM: unknown
   ## Must be a JSon string
-  TS_FEATURES: '["default","safe","grpc","ledger","libtor","metrics","miner_input"]'
+  TS_FEATURES: '["default","safe","grpc","ledger","metrics","miner_input"]'
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
@@ -32,7 +32,7 @@ concurrency:
 jobs:
   clippy:
     name: clippy
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -78,7 +78,7 @@ jobs:
   machete:
     # Checks for unused dependencies.
     name: machete
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -122,7 +122,7 @@ jobs:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
     name: cargo check with stable
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    runs-on: [ self-hosted, ubuntu-high-cpu ]
     env:
       RUSTUP_PERMIT_COPY_RENAME: true
     steps:
@@ -183,7 +183,7 @@ jobs:
 
   licenses:
     name: file licenses
-    runs-on: [ubuntu-20.04]
+    runs-on: [ ubuntu-20.04 ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -198,7 +198,7 @@ jobs:
 
   test:
     name: test
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    runs-on: [ self-hosted, ubuntu-high-cpu ]
     permissions:
       checks: write
       pull-requests: write
@@ -263,7 +263,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: pr_2_artifact
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: Save the PR number in an artifact
         shell: bash
@@ -280,7 +280,7 @@ jobs:
   # needed for test results
   event_file:
     name: "Upload Event File for Test Results"
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: Upload
         uses: actions/upload-artifact@v4

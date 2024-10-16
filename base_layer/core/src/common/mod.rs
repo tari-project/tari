@@ -36,7 +36,6 @@ pub mod one_sided;
 pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;
-#[cfg(feature = "base_node")]
 pub(crate) mod waiting_requests;
 
 /// Hasher used in the DAN to derive masks and encrypted value keys

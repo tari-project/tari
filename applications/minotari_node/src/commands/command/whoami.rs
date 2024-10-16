@@ -24,6 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use qrcode::{render::unicode, QrCode};
+use tari_network::multiaddr::{Multiaddr, Protocol};
 
 use super::{CommandContext, HandleCommand};
 
@@ -49,6 +50,7 @@ impl CommandContext {
             peer_info
                 .listen_addrs
                 .iter()
+                .filter(|addr| !is_loopback(addr))
                 .map(|addr| addr.to_string())
                 .collect::<Vec<_>>()
                 .join("::")
@@ -72,5 +74,13 @@ impl CommandContext {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         println!("{}", image);
         Ok(())
+    }
+}
+
+fn is_loopback(addr: &Multiaddr) -> bool {
+    match addr.iter().next() {
+        Some(Protocol::Ip4(ip)) => ip.is_loopback(),
+        Some(Protocol::Ip6(ip)) => ip.is_loopback(),
+        _ => false,
     }
 }
