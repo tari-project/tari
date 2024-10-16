@@ -8901,7 +8901,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
-/// `base_node_public_key` - The TariPublicKey pointer of the Base Node the recovery process will use
+/// `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
 /// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
 /// progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
 /// ```
@@ -8955,7 +8955,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
-    base_node_public_key: *mut TariPublicKey,
+    base_node_public_keys: *mut TariPublicKeys,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
     recovered_output_message: *const c_char,
     error_out: *mut c_int,
@@ -8970,7 +8970,28 @@ pub unsafe extern "C" fn wallet_start_recovery(
     }
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let peer_public_keys = if base_node_public_keys.is_null() {
+        let peer_manager = (*wallet).wallet.comms.peer_manager();
+        let query = PeerQuery::new().select_where(|p| p.is_seed());
+        #[allow(clippy::blocks_in_conditions)]
+        match (*wallet).runtime.block_on(async move {
+            let peers = peer_manager.perform_query(query).await?;
+            let mut public_keys = Vec::with_capacity(peers.len());
+            for peer in peers {
+                public_keys.push(peer.public_key);
+            }
+            Result::<_, WalletError>::Ok(public_keys)
+        }) {
+            Ok(public_keys) => public_keys,
+            Err(e) => {
+                error = LibWalletError::from(InterfaceError::NullError(format!("{}", e))).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return false;
+            },
+        }
+    } else {
+        (*base_node_public_keys).0.clone()
+    };
     let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
     if !recovered_output_message.is_null() {
