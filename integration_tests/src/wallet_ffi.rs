@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    ffi::CString,
     path::PathBuf,
     ptr::null,
     sync::{Arc, Mutex},
@@ -63,11 +62,9 @@ pub struct WalletFFI {
 impl WalletFFI {
     fn spawn(name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
         let port = get_port(18000..18499).unwrap();
-        let transport_config =
-            ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
         let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, port));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir);
+        let comms_config = ffi::CommsConfig::create(port);
         let log_path = base_dir_path
             .join("logs")
             .join("ffi_wallet.log")
@@ -75,7 +72,7 @@ impl WalletFFI {
             .to_str()
             .unwrap()
             .into();
-        let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
+        let wallet = ffi::Wallet::create(comms_config, base_dir, log_path, seed_words_ptr);
         Self {
             name,
             port,
@@ -179,13 +176,11 @@ impl WalletFFI {
     pub fn restart(&mut self) {
         self.wallet.lock().unwrap().destroy();
         let port = get_port(18000..18499).unwrap();
-        let transport_config =
-            ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
         let now: DateTime<Utc> = SystemTime::now().into();
+        let comms_config = ffi::CommsConfig::create(port);
         let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
         let log_path = format!("{}/log/ffi_wallet.log", base_dir);
-        self.wallet = ffi::Wallet::create(comms_config, log_path, null());
+        self.wallet = ffi::Wallet::create(comms_config, base_dir, log_path, null());
     }
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
