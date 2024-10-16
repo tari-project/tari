@@ -26,7 +26,12 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPeerId;
-use tari_network::{identity::PeerId, NetworkingService, ToPeerId};
+use tari_network::{
+    identity::PeerId,
+    swarm::dial_opts::{DialOpts, PeerCondition},
+    NetworkingService,
+    ToPeerId,
+};
 use tokio::task;
 
 use super::{CommandContext, HandleCommand};
@@ -53,7 +58,10 @@ impl CommandContext {
             let start = Instant::now();
             println!("☎️  Dialing peer...");
 
-            match network.dial_peer(dest_peer_id).await {
+            match network
+                .dial_peer(DialOpts::peer_id(dest_peer_id).condition(PeerCondition::Always).build())
+                .await
+            {
                 Ok(waiter) => match waiter.await {
                     Ok(_) => {
                         println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
