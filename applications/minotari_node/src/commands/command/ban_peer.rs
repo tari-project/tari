@@ -83,7 +83,7 @@ impl CommandContext {
 
         if must_ban {
             self.network
-                .ban_peer(peer_id.clone(), "UI manual ban".to_string(), Some(duration))
+                .ban_peer(peer_id, "UI manual ban".to_string(), Some(duration))
                 .await?;
             println!("Peer was banned in base node.");
         } else {

@@ -589,7 +589,7 @@ pub async fn start_wallet(
             })?;
     } else {
         // Set the first base node connection we get - this is typically a local base node via mDNS
-        match wait_for_first_base_node_connection(&wallet).await? {
+        match wait_for_first_base_node_connection(wallet).await? {
             Some(pk) => {
                 wallet
                     .set_base_node_peer(pk, None, Some(base_nodes.to_vec()))

@@ -175,8 +175,8 @@ mod callback_handler;
 mod enums;
 mod error;
 mod ffi_basenode_state;
-#[cfg(test)]
-mod output_manager_service_mock;
+// #[cfg(test)]
+// mod output_manager_service_mock;
 mod tasks;
 
 mod consts {
@@ -599,7 +599,7 @@ pub unsafe extern "C" fn destroy_tari_coin_preview(p: *mut TariCoinPreview) {
     }
 }
 
-/// -------------------------------- Strings ------------------------------------------------ ///
+// -------------------------------- Strings ------------------------------------------------ ///
 
 /// Frees memory for a char array
 ///
@@ -618,9 +618,8 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Transaction Kernel ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Transaction Kernel ------------------------------------- ///
 
 /// Gets the excess for a TariTransactionKernel
 ///
@@ -741,9 +740,8 @@ pub unsafe extern "C" fn transaction_kernel_destroy(x: *mut TariTransactionKerne
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- ByteVector ------------------------------------------------ ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- ByteVector ------------------------------------------------ ///
 
 /// Creates a ByteVector
 ///
@@ -864,9 +862,8 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
     (*vec).0.len() as c_uint
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Public Key ------------------------------------------------ ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Public Key ------------------------------------------------ ///
 
 /// Creates a TariPublicKey from a ByteVector
 ///
@@ -1067,9 +1064,8 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Tari Address ---------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Tari Address ---------------------------------------------- ///
 
 /// Creates a TariWalletAddress from a ByteVector
 ///
@@ -1502,9 +1498,9 @@ pub unsafe extern "C" fn byte_to_emoji(byte: u8) -> *mut c_char {
     CString::into_raw(result)
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-///
-/// ------------------------------- ComAndPubSignature Signature ---------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+//
+// ------------------------------- ComAndPubSignature Signature ---------------------------------------///
 
 /// Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
 /// ByteVectors
@@ -1645,9 +1641,8 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Unblinded utxo -------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Unblinded utxo -------------------------------------------- ///
 
 /// Creates an unblinded output
 ///
@@ -1925,9 +1920,8 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- TariUnblindedOutputs ------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- TariUnblindedOutputs ------------------------------------///
 
 /// Gets the length of TariUnblindedOutputs
 ///
@@ -2158,8 +2152,8 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         },
     }
 }
-/// -------------------------------------------------------------------------------------------- ///
-/// -------------------------------- Private Key ----------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Private Key ----------------------------------------------- ///
 
 /// Creates a TariPrivateKey from a ByteVector
 ///
@@ -2305,8 +2299,8 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// -------------------------------- Range Proof ----------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Range Proof ----------------------------------------------- ///
 
 /// Creates a default TariRangeProof
 ///
@@ -2487,8 +2481,8 @@ pub unsafe extern "C" fn range_proof_destroy(proof_ptr: *mut TariRangeProof) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// --------------------------------------- Covenant --------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// --------------------------------------- Covenant --------------------------------------------///
 
 /// Creates a TariCovenant from a ByteVector containing the covenant bytes
 ///
@@ -2544,8 +2538,8 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// --------------------------------------- EncryptedOpenings --------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// --------------------------------------- EncryptedOpenings --------------------------------------------///
 
 /// Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
 ///
@@ -2634,8 +2628,8 @@ pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncrypt
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// ---------------------------------- Output Features ------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ---------------------------------- Output Features ------------------------------------------///
 
 /// Creates a TariOutputFeatures from byte values
 ///
@@ -2743,9 +2737,8 @@ pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutpu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Seed Words ----------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Seed Words ----------------------------------------------///
 
 /// Create an empty instance of TariSeedWords
 ///
@@ -3154,9 +3147,8 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Contact -------------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Contact -------------------------------------------------///
 
 /// Creates a TariContact
 ///
@@ -3315,9 +3307,8 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Contacts -------------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Contacts -------------------------------------------------///
 
 /// Gets the length of TariContacts
 ///
@@ -3402,9 +3393,8 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Contacts Liveness Data ----------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Contacts Liveness Data ----------------------------------///
 
 /// Gets the public_key from a TariContactsLivenessData
 ///
@@ -3449,7 +3439,6 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
 /// memory leak
-
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_latency(
     liveness_data: *mut TariContactsLivenessData,
@@ -3611,9 +3600,8 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
         drop(Box::from_raw(liveness_data))
     }
 }
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- CompletedTransactions ----------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- CompletedTransactions ----------------------------------- ///
 
 /// Gets the length of a TariCompletedTransactions
 ///
@@ -3628,7 +3616,6 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
 ///
 /// # Safety
 /// None
-// casting here is okay as we wont have more than u32 transctions
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_length(
@@ -3644,6 +3631,7 @@ pub unsafe extern "C" fn completed_transactions_get_length(
     } else {
         len = (*transactions).0.len();
     }
+    // casting here is okay as we wont have more than u32 transctions
     len as c_uint
 }
 
@@ -3703,9 +3691,8 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- OutboundTransactions ------------------------------------ ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- OutboundTransactions ------------------------------------ ///
 
 /// Gets the length of a TariPendingOutboundTransactions
 ///
@@ -3796,9 +3783,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- InboundTransactions ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- InboundTransactions ------------------------------------- ///
 
 /// Gets the length of a TariPendingInboundTransactions
 ///
@@ -3888,9 +3874,8 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- CompletedTransaction ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- CompletedTransaction ------------------------------------- ///
 
 /// Gets the TransactionID of a TariCompletedTransaction
 ///
@@ -4454,9 +4439,8 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- OutboundTransaction ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- OutboundTransaction ------------------------------------- ///
 
 /// Gets the TransactionId of a TariPendingOutboundTransaction
 ///
@@ -4688,9 +4672,9 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-///
-/// ----------------------------------- InboundTransaction ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+//
+// ----------------------------------- InboundTransaction ------------------------------------- ///
 
 /// Gets the TransactionId of a TariPendingInboundTransaction
 ///
@@ -4896,9 +4880,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Transport Send Status -----------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Transport Send Status -----------------------------------///
 
 /// Decode the transaction send status of a TariTransactionSendStatus
 ///
@@ -5256,9 +5239,8 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 //     }
 // }
 
-/// ---------------------------------------------------------------------------------------------///
-
-/// ----------------------------------- CommsConfig ---------------------------------------------///
+// ---------------------------------------------------------------------------------------------///
+// ----------------------------------- CommsConfig ---------------------------------------------///
 
 /// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
 ///
@@ -5378,7 +5360,7 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
         for conn in connections {
             // TODO: We always have PeerId but not public key until the peer has identified
             if let Some(pk) = conn.public_key {
-                if let Some(pk) = pk.try_into_sr25519().ok() {
+                if let Ok(pk) = pk.try_into_sr25519() {
                     public_keys.push(pk.inner_key().clone());
                 }
             }
@@ -5455,9 +5437,8 @@ pub unsafe extern "C" fn public_keys_get_at(
     Box::into_raw(Box::new(result))
 }
 
-/// ---------------------------------------------------------------------------------------------- ///
-
-/// ------------------------------------- Wallet -------------------------------------------------///
+// ---------------------------------------------------------------------------------------------- ///
+// ------------------------------------- Wallet -------------------------------------------------///
 
 /// Inits logging, this function is deliberately not exposed externally in the header
 ///
@@ -5943,7 +5924,7 @@ pub unsafe extern "C" fn wallet_create(
     wallet_config.set_base_path(datastore_path_string);
 
     let sql_database_path = &wallet_config.db_file;
-    let _ignore = fs::create_dir_all(&sql_database_path.parent().expect("root paths are not valid"));
+    let _ignore = fs::create_dir_all(sql_database_path.parent().expect("root paths are not valid"));
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations in {}", sql_database_path.display());
 
@@ -6760,7 +6741,7 @@ pub unsafe extern "C" fn wallet_sign_message(
         return result.into_raw();
     }
 
-    let secret = match (&*(*wallet).wallet.network_keypair)
+    let secret = match (*(*wallet).wallet.network_keypair)
         .clone()
         .try_into_sr25519()
         .map(|kp| kp.secret().inner_key().clone())
@@ -9095,7 +9076,7 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
     }
 }
 
-/// ------------------------------------- FeePerGramStats ------------------------------------ ///
+// ------------------------------------- FeePerGramStats ------------------------------------ ///
 
 /// Get the TariFeePerGramStats from a TariWallet.
 ///
@@ -9231,9 +9212,8 @@ pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut Tar
     }
 }
 
-/// ------------------------------------------------------------------------------------------ ///
-
-/// ------------------------------------- FeePerGramStat ------------------------------------- ///
+// ------------------------------------------------------------------------------------------ ///
+// ------------------------------------- FeePerGramStat ------------------------------------- ///
 
 /// Get the order of TariFeePerGramStat
 ///
@@ -9412,7 +9392,7 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
-    use std::{ffi::c_void, str::from_utf8, sync::Mutex};
+    use std::{ffi::c_void, str::from_utf8, sync::Mutex, time::Duration};
 
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -12430,17 +12410,16 @@ mod test {
             // should not be possible to do anything with the connection.
             let bob_comms_dial_peer =
                 bob_wallet_runtime.block_on(async { bob_wallet_comms.dial_peer(alice_peer_id).await.unwrap().await });
-            if bob_comms_dial_peer.is_ok() {
-                if bob_wallet_runtime
+            if bob_comms_dial_peer.is_ok() &&
+                bob_wallet_runtime
                     .block_on(bob_wallet_comms.open_substream(
                         alice_peer_id,
                         // TODO: this will cause this to fail even if the peer is active
                         &StreamProtocol::new("/test/me"),
                     ))
                     .is_ok()
-                {
-                    panic!("Connection to Alice should not be active!");
-                }
+            {
+                panic!("Connection to Alice should not be active!");
             }
 
             // - Bob can still retrieve messages Alice sent

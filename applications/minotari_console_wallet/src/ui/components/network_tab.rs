@@ -301,7 +301,7 @@ impl NetworkTab {
 
                 self.previous_public_key_field = self.public_key_field.clone();
                 self.previous_address_field = self.address_field.clone();
-                let base_node_previous = app_state.get_previous_base_node().clone();
+                let base_node_previous = app_state.get_previous_base_node();
                 let public_key = base_node_previous.map(|p| public_key_to_string(p.public_key()));
                 let public_address = base_node_previous.map(display_address);
                 self.public_key_field = public_key.unwrap_or_default();

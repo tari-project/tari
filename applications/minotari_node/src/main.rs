@@ -120,9 +120,9 @@ fn main_inner() -> Result<(), ExitError> {
         console_subscriber::init();
     }
 
-    #[cfg(all(unix, feature = "libtor"))]
-    let mut config = ApplicationConfig::load_from(&cfg)?;
-    #[cfg(not(all(unix, feature = "libtor")))]
+    // #[cfg(all(unix, feature = "libtor"))]
+    // let mut config = ApplicationConfig::load_from(&cfg)?;
+    // #[cfg(not(all(unix, feature = "libtor")))]
     let config = ApplicationConfig::load_from(&cfg)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 

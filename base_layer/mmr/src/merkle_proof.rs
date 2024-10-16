@@ -254,17 +254,15 @@ impl MerkleProof {
 
 impl Display for MerkleProof {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&format!("MMR Size: {}\n", self.mmr_size))?;
-        f.write_str("Siblings:\n")?;
-        self.path
-            .iter()
-            .enumerate()
-            .fold(Ok(()), |_, (i, h)| f.write_str(&format!("{:3}: {}\n", i, h.to_hex())))?;
-        f.write_str("Peaks:\n")?;
-        self.peaks
-            .iter()
-            .enumerate()
-            .fold(Ok(()), |_, (i, h)| f.write_str(&format!("{:3}: {}\n", i, h.to_hex())))?;
+        writeln!(f, "MMR size: {}", self.mmr_size)?;
+        writeln!(f, "Siblings:")?;
+        for (i, h) in self.path.iter().enumerate() {
+            writeln!(f, "{:3}: {}", i, h.to_hex())?;
+        }
+        writeln!(f, "Peaks:")?;
+        for (i, h) in self.peaks.iter().enumerate() {
+            writeln!(f, "{:3}: {}", i, h.to_hex())?;
+        }
         Ok(())
     }
 }

@@ -51,7 +51,7 @@ impl CommandContext {
         let mut liveness_events = self.liveness.get_event_stream();
         let mut liveness = self.liveness.clone();
         task::spawn(async move {
-            if let Err(e) = liveness.send_ping(dest_peer_id.clone()).await {
+            if let Err(e) = liveness.send_ping(dest_peer_id).await {
                 println!("🏓 Ping failed to send to {}: {}", dest_peer_id, e);
                 return;
             }

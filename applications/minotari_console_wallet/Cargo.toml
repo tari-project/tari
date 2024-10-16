@@ -15,7 +15,7 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_contacts = { path = "../../base_layer/contacts" }
 tari_crypto = { version = "0.21.0" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
-tari_libtor = { path = "../../infrastructure/libtor", optional = true }
+#tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_max_size = { path = "../../infrastructure/max_size" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
@@ -86,10 +86,10 @@ features = ["crossterm"]
 tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.0" }
 
 [features]
-default = ["libtor", "ledger"]
+default = ["ledger"]
 grpc = []
 ledger = ["minotari_ledger_wallet_comms", "minotari_wallet/ledger"]
-libtor = ["tari_libtor"]
+#libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]
 # We need to specify extra features for log4rs even though it is not used directly in this crate

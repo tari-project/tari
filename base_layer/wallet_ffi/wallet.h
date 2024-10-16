@@ -432,8 +432,6 @@ void destroy_tari_coin_preview(struct TariCoinPreview *p);
 void string_destroy(char *ptr);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transaction Kernel ------------------------------------- ///
  * Gets the excess for a TariTransactionKernel
  *
  * ## Arguments
@@ -496,8 +494,6 @@ char *transaction_kernel_get_excess_signature_hex(TariTransactionKernel *kernel,
 void transaction_kernel_destroy(TariTransactionKernel *x);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- ByteVector ------------------------------------------------ ///
  * Creates a ByteVector
  *
  * ## Arguments
@@ -571,8 +567,6 @@ unsigned int byte_vector_get_length(const struct ByteVector *vec,
                                     int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Public Key ------------------------------------------------ ///
  * Creates a TariPublicKey from a ByteVector
  *
  * ## Arguments
@@ -689,8 +683,6 @@ TariPublicKey *public_key_from_hex(const char *key,
                                    int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Tari Address ---------------------------------------------- ///
  * Creates a TariWalletAddress from a ByteVector
  *
  * ## Arguments
@@ -929,9 +921,6 @@ TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
 char *byte_to_emoji(uint8_t byte);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ------------------------------- ComAndPubSignature Signature ---------------------------------------///
  * Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
  * ByteVectors
  *
@@ -974,8 +963,6 @@ TariComAndPubSignature *commitment_and_public_signature_create_from_bytes(const 
 void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Unblinded utxo -------------------------------------------- ///
  * Creates an unblinded output
  *
  * ## Arguments
@@ -1066,8 +1053,6 @@ TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_j
                                                             int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- TariUnblindedOutputs ------------------------------------///
  * Gets the length of TariUnblindedOutputs
  *
  * ## Arguments
@@ -1165,8 +1150,6 @@ unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWall
                                                                  int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Private Key ----------------------------------------------- ///
  * Creates a TariPrivateKey from a ByteVector
  *
  * ## Arguments
@@ -1249,8 +1232,6 @@ TariPrivateKey *private_key_from_hex(const char *key,
                                      int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Range Proof ----------------------------------------------- ///
  * Creates a default TariRangeProof
  *
  * ## Arguments
@@ -1384,8 +1365,6 @@ TariCovenant *covenant_create_from_bytes(const struct ByteVector *covenant_bytes
 void covenant_destroy(TariCovenant *covenant);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * --------------------------------------- EncryptedOpenings --------------------------------------------///
  * Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
  *
  * ## Arguments
@@ -1434,8 +1413,6 @@ struct ByteVector *encrypted_data_as_bytes(const TariEncryptedOpenings *encrypte
 void encrypted_data_destroy(TariEncryptedOpenings *encrypted_data);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ---------------------------------- Output Features ------------------------------------------///
  * Creates a TariOutputFeatures from byte values
  *
  * ## Arguments
@@ -1477,8 +1454,6 @@ TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
 void output_features_destroy(TariOutputFeatures *output_features);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Seed Words ----------------------------------------------///
  * Create an empty instance of TariSeedWords
  *
  * ## Arguments
@@ -1609,8 +1584,6 @@ unsigned char seed_words_push_word(struct TariSeedWords *seed_words,
 void seed_words_destroy(struct TariSeedWords *seed_words);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contact -------------------------------------------------///
  * Creates a TariContact
  *
  * ## Arguments
@@ -1700,8 +1673,6 @@ TariWalletAddress *contact_get_tari_address(TariContact *contact,
 void contact_destroy(TariContact *contact);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contacts -------------------------------------------------///
  * Gets the length of TariContacts
  *
  * ## Arguments
@@ -1753,8 +1724,6 @@ TariContact *contacts_get_at(struct TariContacts *contacts,
 void contacts_destroy(struct TariContacts *contacts);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contacts Liveness Data ----------------------------------///
  * Gets the public_key from a TariContactsLivenessData
  *
  * ## Arguments
@@ -1930,8 +1899,6 @@ TariCompletedTransaction *completed_transactions_get_at(struct TariCompletedTran
 void completed_transactions_destroy(struct TariCompletedTransactions *transactions);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- OutboundTransactions ------------------------------------ ///
  * Gets the length of a TariPendingOutboundTransactions
  *
  * ## Arguments
@@ -1985,8 +1952,6 @@ TariPendingOutboundTransaction *pending_outbound_transactions_get_at(struct Tari
 void pending_outbound_transactions_destroy(struct TariPendingOutboundTransactions *transactions);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- InboundTransactions ------------------------------------- ///
  * Gets the length of a TariPendingInboundTransactions
  *
  * ## Arguments
@@ -2040,8 +2005,6 @@ TariPendingInboundTransaction *pending_inbound_transactions_get_at(struct TariPe
 void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions *transactions);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- CompletedTransaction ------------------------------------- ///
  * Gets the TransactionID of a TariCompletedTransaction
  *
  * ## Arguments
@@ -2339,8 +2302,6 @@ TariCompletedTransaction *create_tari_completed_transaction_from_json(const char
 void completed_transaction_destroy(TariCompletedTransaction *transaction);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- OutboundTransaction ------------------------------------- ///
  * Gets the TransactionId of a TariPendingOutboundTransaction
  *
  * ## Arguments
@@ -2485,9 +2446,6 @@ int pending_outbound_transaction_get_status(TariPendingOutboundTransaction *tran
 void pending_outbound_transaction_destroy(TariPendingOutboundTransaction *transaction);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ----------------------------------- InboundTransaction ------------------------------------- ///
  * Gets the TransactionId of a TariPendingInboundTransaction
  *
  * ## Arguments
@@ -2616,8 +2574,6 @@ int pending_inbound_transaction_get_status(TariPendingInboundTransaction *transa
 void pending_inbound_transaction_destroy(TariPendingInboundTransaction *transaction);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transport Send Status -----------------------------------///
  * Decode the transaction send status of a TariTransactionSendStatus
  *
  * ## Arguments
@@ -2654,8 +2610,6 @@ unsigned int transaction_send_status_decode(const TariTransactionSendStatus *sta
 void transaction_send_status_destroy(TariTransactionSendStatus *status);
 
 /**
- * ---------------------------------------------------------------------------------------------///
- * ----------------------------------- CommsConfig ---------------------------------------------///
  * Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
  *
  * ## Arguments
@@ -4031,7 +3985,6 @@ void log_debug_message(const char *msg,
                        int *error_out);
 
 /**
- * ------------------------------------- FeePerGramStats ------------------------------------ ///
  * Get the TariFeePerGramStats from a TariWallet.
  *
  * ## Arguments
@@ -4105,8 +4058,6 @@ TariFeePerGramStat *fee_per_gram_stats_get_at(TariFeePerGramStats *fee_per_gram_
 void fee_per_gram_stats_destroy(TariFeePerGramStats *fee_per_gram_stats);
 
 /**
- * ------------------------------------------------------------------------------------------ ///
- * ------------------------------------- FeePerGramStat ------------------------------------- ///
  * Get the order of TariFeePerGramStat
  *
  * ## Arguments

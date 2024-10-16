@@ -4515,31 +4515,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minotari_chat_ffi"
-version = "1.7.0-pre.0"
-dependencies = [
- "cbindgen",
- "chrono",
- "libc",
- "libsqlite3-sys",
- "log",
- "log4rs",
- "minotari_app_utilities",
- "openssl",
- "rand",
- "tari_chat_client",
- "tari_common",
- "tari_common_types",
- "tari_contacts",
- "tari_crypto",
- "tari_p2p",
- "tari_shutdown",
- "tari_utilities",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "minotari_console_wallet"
 version = "1.7.0-pre.0"
 dependencies = [
@@ -4576,7 +4551,6 @@ dependencies = [
  "tari_features",
  "tari_hashing",
  "tari_key_manager",
- "tari_libtor",
  "tari_max_size",
  "tari_network",
  "tari_p2p",
@@ -7705,32 +7679,6 @@ dependencies = [
  "sha3",
  "thiserror-no-std",
  "zeroize",
-]
-
-[[package]]
-name = "tari_chat_client"
-version = "1.7.0-pre.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "config",
- "diesel",
- "lmdb-zero",
- "log",
- "minotari_app_utilities",
- "serde",
- "tari_common",
- "tari_common_sqlite",
- "tari_common_types",
- "tari_contacts",
- "tari_max_size",
- "tari_network",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_storage",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

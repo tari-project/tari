@@ -891,12 +891,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut base_node_service = self.wallet.base_node_service.clone();
 
         let status = match conns.len() {
-            x if x == 0 => tari_rpc::ConnectivityStatus::Offline,
+            0 => tari_rpc::ConnectivityStatus::Offline,
             _ => tari_rpc::ConnectivityStatus::Online,
         };
 
         let resp = tari_rpc::NetworkStatusResponse {
-            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            status: status as i32,
             avg_latency_ms: base_node_service
                 .get_base_node_latency()
                 .await

@@ -754,7 +754,7 @@ pub async fn command_runner(
     println!("Command Runner");
     println!("==============");
 
-    let (_current_index, mut peer_list) = wallet
+    let (_current_index, peer_list) = wallet
         .wallet_connectivity
         .get_base_node_peer_manager_state()
         .unwrap_or_default();
@@ -1660,7 +1660,7 @@ pub async fn command_runner(
                     },
                 }
 
-                temp_ban_peers(&wallet, &mut peer_list).await;
+                temp_ban_peers(&wallet, &peer_list).await;
                 unban_peer_manager_peers = true;
 
                 // Read session info

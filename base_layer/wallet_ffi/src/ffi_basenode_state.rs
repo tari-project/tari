@@ -344,7 +344,7 @@ mod tests {
         let original_best_block = BlockHash::zero();
 
         let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
-            node_id: Some(original_node_id.clone()),
+            node_id: Some(original_node_id),
             best_block_height: 123,
             best_block_hash: original_best_block,
             best_block_timestamp: 12345,

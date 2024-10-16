@@ -2143,7 +2143,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
         let status = match conns.len() {
-            x if x == 0 => tari_rpc::ConnectivityStatus::Offline,
+            0 => tari_rpc::ConnectivityStatus::Offline,
             _ => tari_rpc::ConnectivityStatus::Online,
         };
 
