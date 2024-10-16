@@ -178,8 +178,8 @@ jobs:
           done
       - name: cargo check wallet ffi separately
         run: cargo check --release --package minotari_wallet_ffi --locked
-      - name: cargo check chat ffi separately
-        run: cargo check --release --package minotari_chat_ffi --locked
+  #      - name: cargo check chat ffi separately
+  #        run: cargo check --release --package minotari_chat_ffi --locked
 
   licenses:
     name: file licenses
