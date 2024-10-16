@@ -89,7 +89,7 @@ where TBackend: TransactionBackend + 'static
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void, *mut ContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
+    _callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
     callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
@@ -235,7 +235,7 @@ where TBackend: TransactionBackend + 'static
             callback_contacts_liveness_data_updated,
             callback_balance_updated,
             callback_transaction_validation_complete,
-            callback_saf_messages_received,
+            _callback_saf_messages_received: callback_saf_messages_received,
             callback_connectivity_status,
             callback_wallet_scanned_height,
             callback_base_node_state,
@@ -669,12 +669,12 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn saf_messages_received_event(&mut self) {
-        debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
-        unsafe {
-            (self.callback_saf_messages_received)(self.context.0);
-        }
-    }
+    // fn saf_messages_received_event(&mut self) {
+    //     debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
+    //     unsafe {
+    //         (self._callback_saf_messages_received)(self.context.0);
+    //     }
+    // }
 
     fn connectivity_status_changed(&mut self, status: OnlineStatus) {
         debug!(

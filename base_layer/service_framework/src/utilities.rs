@@ -38,7 +38,6 @@ impl<T> RegisterHandle<T> {
 #[async_trait]
 impl<T: Send + Sync + 'static> ServiceInitializer for RegisterHandle<T> {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        eprintln!("🐞 HERE1");
         context.register_handle(
             self.handle
                 .take()

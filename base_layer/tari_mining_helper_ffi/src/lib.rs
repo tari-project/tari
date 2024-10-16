@@ -46,7 +46,7 @@ use tari_core::{
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
     },
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::runtime::Runtime;
 
 use crate::error::{InterfaceError, MiningHelperError};
@@ -55,7 +55,7 @@ mod consts {
     include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 }
 
-pub type TariPublicKey = tari_comms::types::CommsPublicKey;
+pub type TariPublicKey = RistrettoPublicKey;
 #[derive(Debug, PartialEq, Clone)]
 pub struct ByteVector(Vec<c_uchar>);
 

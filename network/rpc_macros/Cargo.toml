@@ -16,7 +16,6 @@ quote = { workspace = true }
 syn = { workspace = true, features = ["fold"] }
 
 #[dev-dependencies]
-#tari_comms = {  path = "../core", features = ["rpc"] }
 #tari_test_utils = {  path = "../../infrastructure/test_utils" }
 
 #futures = "0.3.5"

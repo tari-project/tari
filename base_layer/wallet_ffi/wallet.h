@@ -2681,8 +2681,7 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
  * The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
  */
 TariCommsConfig *comms_config_create(const char *public_address,
-                                     const char *database_name,
-                                     const char *datastore_path,
+                                     const char *listen_address,
                                      int *error_out);
 
 /**
@@ -2857,6 +2856,8 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  */
 struct TariWallet *wallet_create(void *context,
                                  TariCommsConfig *config,
+                                 const char *database_name,
+                                 const char *datastore_path,
                                  const char *log_path,
                                  int log_verbosity,
                                  unsigned int num_rolling_log_files,
@@ -2922,7 +2923,8 @@ struct TariWallet *wallet_create(void *context,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-char *wallet_get_last_version(TariCommsConfig *config,
+char *wallet_get_last_version(const char *datastore_path,
+                              const char *database_name,
                               int *error_out);
 
 /**
@@ -2938,7 +2940,8 @@ char *wallet_get_last_version(TariCommsConfig *config,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-char *wallet_get_last_network(TariCommsConfig *config,
+char *wallet_get_last_network(const char *datastore_path,
+                              const char *database_name,
                               int *error_out);
 
 /**

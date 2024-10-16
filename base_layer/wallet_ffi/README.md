@@ -210,7 +210,8 @@ repositories.
 Breaking changes:
 
 - All transport functions removed (`transport_tcp_create` etc)
-- Several params removed from comms_config_create
+- Several params removed from comms_config_create. public_address and listen_address can be null.
 - `database_name` and `datastore_path` added to `wallet_create` (removed from `comms_config_create`)
 - `wallet_get_last_version` takes in datastore_path and datastore_name, not Comms config
 - `wallet_get_last_network` same as above
+- New error code 11: invalid multiaddr string

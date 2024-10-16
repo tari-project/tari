@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use libp2p::{identity, Multiaddr, PeerId, StreamProtocol};
+use libp2p::{identity, identity::OtherVariantError, Multiaddr, PeerId, StreamProtocol};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex};
 
 use crate::identity::{KeyType, PublicKey};
@@ -29,6 +29,11 @@ impl Peer {
 
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
+    }
+
+    pub fn try_to_ristretto_public_key(&self) -> Result<RistrettoPublicKey, OtherVariantError> {
+        let pk = self.public_key.clone().try_into_sr25519()?;
+        Ok(pk.inner_key().clone())
     }
 
     pub fn into_public_key_and_addresses(self) -> (PublicKey, Vec<Multiaddr>) {

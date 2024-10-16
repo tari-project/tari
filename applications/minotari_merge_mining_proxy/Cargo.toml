@@ -19,7 +19,6 @@ minotari_node_grpc_client = { path = "../../clients/rust/base_node_grpc_client" 
 minotari_wallet_grpc_client = { path = "../../clients/rust/wallet_grpc_client" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",
 ] }
@@ -39,11 +38,12 @@ config = { version = "0.14.0" }
 crossterm = { version = "0.25.0" }
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hyper = "0.14.12"
+hyper = { version = "0.14.12", features = ["server", "stream"] }
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
 monero = { version = "0.21.0" }
 reqwest = { version = "0.11.4", features = ["json"] }
+multiaddr = { workspace = true }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.26"

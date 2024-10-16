@@ -121,6 +121,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub network_consensus: NetworkConsensus,
     pub network: NetworkHandle,
     pub network_public_key: RistrettoPublicKey,
+    pub network_keypair: Arc<identity::Keypair>,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
@@ -152,7 +153,7 @@ where
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
-        node_identity: Arc<identity::Keypair>,
+        network_keypair: Arc<identity::Keypair>,
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
@@ -182,7 +183,7 @@ where
                 user_agent,
                 peer_seeds,
                 config.network,
-                node_identity.clone(),
+                network_keypair.clone(),
             ))
             .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
                 config.output_manager_service_config,
@@ -200,7 +201,7 @@ where
                 config.transaction_service_config,
                 dispatcher.clone(),
                 transaction_backend,
-                node_identity.clone(),
+                network_keypair.clone(),
                 config.network,
                 consensus_manager,
                 factories.clone(),
@@ -292,7 +293,7 @@ where
             warn!("failed to store network and version: {:#?}", e);
         }
 
-        let network_public_key = node_identity
+        let network_public_key = network_keypair
             .public()
             .try_into_sr25519()
             .map_err(|e| WalletError::UnsupportedKeyType { details: e.to_string() })?
@@ -303,6 +304,7 @@ where
             network_consensus: config.network.into(),
             network,
             network_public_key,
+            network_keypair,
             output_manager_service: output_manager_handle,
             key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,

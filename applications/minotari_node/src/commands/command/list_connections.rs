@@ -77,7 +77,7 @@ impl CommandContext {
                 format_duration_basic(conn.age()),
                 ua.map_or("<unknown>", |ua| ua.as_str()),
                 format!(
-                    "{}, rpc: {}",
+                    "{}rpc: {}",
                     chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),
                     rpc_sessions
                 ),
