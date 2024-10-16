@@ -3901,7 +3901,7 @@ dependencies = [
 
 [[package]]
 name = "libp2p-messaging"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "async-trait",
  "futures-bounded",
@@ -4058,7 +4058,7 @@ dependencies = [
 
 [[package]]
 name = "libp2p-substream"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "libp2p",
  "smallvec 1.13.2",
@@ -6218,7 +6218,7 @@ dependencies = [
 
 [[package]]
 name = "proto_builder"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "prost-build 0.13.3",
  "sha2 0.10.8",
@@ -8143,7 +8143,7 @@ dependencies = [
 
 [[package]]
 name = "tari_network"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "anyhow",
  "humantime 2.1.0",
@@ -8198,7 +8198,7 @@ dependencies = [
 
 [[package]]
 name = "tari_rpc_framework"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "async-trait",
  "bitflags 2.6.0",
@@ -8223,7 +8223,7 @@ dependencies = [
 
 [[package]]
 name = "tari_rpc_macros"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8288,7 +8288,7 @@ dependencies = [
 
 [[package]]
 name = "tari_swarm"
-version = "1.7.0-pre.0"
+version = "1.7.0-pre.2"
 dependencies = [
  "libp2p",
  "libp2p-messaging",

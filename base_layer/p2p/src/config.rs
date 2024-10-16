@@ -34,10 +34,7 @@ use tari_common::{
     },
     SubConfigPath,
 };
-use tari_network::{
-    multiaddr::{multiaddr, Multiaddr},
-    ReachabilityMode,
-};
+use tari_network::ReachabilityMode;
 
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -99,8 +96,8 @@ pub struct P2pConfig {
     /// manually set.
     pub public_addresses: MultiaddrList,
     /// The multiaddrs to listen on.
-    /// Default: ["/ip4/0.0.0.0/tcp/0"]
-    pub listen_addresses: Vec<Multiaddr>,
+    /// Default: ["/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"]
+    pub listen_addresses: MultiaddrList,
     #[serde(
         default,
         deserialize_with = "deserialize_from_str",
@@ -122,7 +119,7 @@ impl Default for P2pConfig {
         Self {
             override_from: None,
             public_addresses: MultiaddrList::default(),
-            listen_addresses: vec![multiaddr!(Ip4([0, 0, 0, 0]), Tcp(0u16))],
+            listen_addresses: tari_network::Config::default_listen_addrs().into(),
             reachability_mode: Default::default(),
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,

@@ -248,7 +248,7 @@ where
             stack
         };
 
-        let mut handles = stack.build().await?;
+        let handles = stack.build().await?;
 
         let inbound = handles
             .take_handle::<InboundMessaging<TariNodeMessageSpec>>()

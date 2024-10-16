@@ -143,7 +143,7 @@ pub async fn spawn_wallet(
             .wallet
             .base_node_service_config
             .base_node_monitor_max_refresh_interval = Duration::from_secs(15);
-        wallet_app_config.wallet.p2p.listen_addresses = vec![listen_addr.clone()];
+        wallet_app_config.wallet.p2p.listen_addresses = MultiaddrList::from(vec![listen_addr.clone()]);
         wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![listen_addr]);
         if let Some(mech) = routing_mechanism {
             wallet_app_config

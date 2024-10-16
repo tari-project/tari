@@ -42,12 +42,12 @@ use tari_core::{
     },
     OutputSmt,
 };
-use tari_network::{identity, NetworkHandle};
-use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_network::{identity, NetworkError, NetworkHandle};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, initialization::TaskHandle, services::liveness::LivenessHandle};
 use tari_rpc_framework::RpcServerHandle;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::watch;
+use tokio::{sync::watch, task};
 
 use crate::{bootstrap::BaseNodeBootstrapper, ApplicationConfig, DatabaseType};
 
@@ -89,6 +89,12 @@ impl BaseNodeContext {
     /// Returns the CommsNode.
     pub fn network(&self) -> &NetworkHandle {
         &self.network
+    }
+
+    /// Returns the task JoinHandle for the network worker. This will only return Some once.
+    pub fn take_network_join_handle(&self) -> Option<task::JoinHandle<Result<(), NetworkError>>> {
+        let handle = self.base_node_handles.take_handle::<TaskHandle<NetworkError>>()?;
+        Some(handle.into_inner())
     }
 
     /// Returns the liveness service handle

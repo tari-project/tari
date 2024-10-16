@@ -32,10 +32,7 @@ use std::{
 use minotari_app_utilities::identity_management::save_identity;
 use minotari_node::{run_base_node, BaseNodeConfig, GrpcMethod, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use tari_common::{
-    configuration::{CommonConfig, MultiaddrList},
-    network_check::set_network_if_choice_valid,
-};
+use tari_common::{configuration::CommonConfig, network_check::set_network_if_choice_valid};
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_network::{identity, multiaddr::Multiaddr};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
@@ -182,13 +179,9 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.max_randomx_vms = 1;
 
         base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
-        base_node_config
-            .base_node
-            .p2p
-            .listen_addresses
-            .push(format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap());
-        base_node_config.base_node.p2p.public_addresses =
-            MultiaddrList::from(base_node_config.base_node.p2p.listen_addresses.clone());
+        base_node_config.base_node.p2p.listen_addresses =
+            vec![format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()].into();
+        base_node_config.base_node.p2p.public_addresses = base_node_config.base_node.p2p.listen_addresses.clone();
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;

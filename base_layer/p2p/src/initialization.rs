@@ -53,8 +53,8 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     connector::InboundMessaging,
-    message::TariNodeMessageSpec,
     dns::DnsClientError,
+    message::TariNodeMessageSpec,
     peer_seeds::{DnsSeedResolver, SeedPeer},
 };
 
@@ -120,6 +120,7 @@ where
         MessagingMode::Enabled { tx_messages },
         config,
         seed_peers.into_iter().map(Into::into).collect(),
+        vec![],
         shutdown_signal,
     )?;
 
@@ -137,6 +138,7 @@ pub type P2pHandles<TMsg> = (
 pub fn spawn_network<TMsg>(
     identity: Arc<identity::Keypair>,
     seed_peers: Vec<SeedPeer>,
+    known_relay_peers: Vec<SeedPeer>,
     config: tari_network::Config,
     shutdown_signal: ShutdownSignal,
 ) -> Result<P2pHandles<TMsg>, CommsInitializationError>
@@ -151,6 +153,7 @@ where
         MessagingMode::Enabled { tx_messages },
         config,
         seed_peers.into_iter().map(Into::into).collect(),
+        known_relay_peers.into_iter().map(Into::into).collect(),
         shutdown_signal,
     )?;
 
@@ -317,11 +320,6 @@ impl ServiceInitializer for P2pInitializer {
                 Vec::new()
             });
 
-        let mut listener_addrs = self.config.listen_addresses.clone();
-        if listener_addrs.is_empty() {
-            listener_addrs = tari_network::Config::default_listen_addrs();
-        }
-
         let config = tari_network::Config {
             swarm: SwarmConfig {
                 protocol_version: format!("/minotari/{}/1.0.0", self.network.as_key_str()).parse()?,
@@ -330,24 +328,36 @@ impl ServiceInitializer for P2pInitializer {
                 enable_relay: self.config.enable_relay,
                 ..Default::default()
             },
-            listener_addrs,
+            listener_addrs: self.config.listen_addresses.to_vec(),
             reachability_mode: self.config.reachability_mode,
             check_connections_interval: Duration::from_secs(2 * 60 * 60),
             known_local_public_address: self.config.public_addresses.to_vec(),
         };
 
         let shutdown = context.get_shutdown_signal();
-        let (network, outbound_messaging, inbound_messaging, _join_handle) = spawn_network::<TariNodeMessageSpec>(
+        let (network, outbound_messaging, inbound_messaging, join_handle) = spawn_network::<TariNodeMessageSpec>(
             self.identity.clone(),
             seed_peers.into_iter().chain(dns_peers).collect(),
+            vec![],
             config,
             shutdown,
         )?;
 
+        context.register_handle(TaskHandle(join_handle));
         context.register_handle(network);
         context.register_handle(outbound_messaging);
         context.register_handle(inbound_messaging);
         debug!(target: LOG_TARGET, "P2P Initialized");
         Ok(())
+    }
+}
+
+/// Wrapper that makes use a join handle with the service framework easier
+#[derive(Debug)]
+pub struct TaskHandle<E>(JoinHandle<Result<(), E>>);
+
+impl<E> TaskHandle<E> {
+    pub fn into_inner(self) -> JoinHandle<Result<(), E>> {
+        self.0
     }
 }

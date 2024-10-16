@@ -34,6 +34,7 @@ pub fn spawn<TMsg>(
     messaging_mode: MessagingMode<TMsg>,
     mut config: crate::Config,
     seed_peers: Vec<Peer>,
+    known_relay_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<NetworkHandles<TMsg>, NetworkError>
 where
@@ -81,7 +82,7 @@ where
             swarm,
             config,
             seed_peers,
-            vec![],
+            known_relay_peers,
             shutdown_signal,
         )
         .run(),

@@ -76,7 +76,7 @@ use tari_network::{BannedPeer, NetworkError, NetworkHandle};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_rpc_framework::RpcServerHandle;
 use tari_shutdown::Shutdown;
-use tokio::{sync::watch, time};
+use tokio::{sync::watch, task, time};
 pub use watch_command::WatchCommand;
 
 use crate::{
@@ -150,6 +150,7 @@ pub struct CommandContext {
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     rpc_server: RpcServerHandle,
     network: NetworkHandle,
+    network_join_handle: Option<task::JoinHandle<Result<(), NetworkError>>>,
     liveness: LivenessHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
@@ -168,6 +169,7 @@ impl CommandContext {
             blockchain_db: ctx.blockchain_db().into(),
             rpc_server: ctx.rpc_server(),
             network: ctx.network().clone(),
+            network_join_handle: ctx.take_network_join_handle(),
             liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
@@ -177,6 +179,10 @@ impl CommandContext {
             last_time_full: Instant::now(),
             shutdown,
         }
+    }
+
+    pub fn take_network_join_handle(&mut self) -> Option<task::JoinHandle<Result<(), NetworkError>>> {
+        self.network_join_handle.take()
     }
 
     pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<WatchCommand>, Error> {

@@ -100,7 +100,7 @@ where B: BlockchainBackend + 'static
 
         let dispatcher = Dispatcher::new();
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
-        let mut handles = StackBuilder::new(self.interrupt_signal)
+        let handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
                 user_agent,

@@ -155,6 +155,9 @@ where
     }
 
     fn listen(&mut self) -> Result<(), NetworkError> {
+        if self.config.listener_addrs.is_empty() {
+            info!(target: LOG_TARGET, "ℹ️ No listener addressed specified. The node will not be able to receive inbound connections.");
+        }
         for addr in &self.config.listener_addrs {
             debug!("listening on {addr}");
             self.swarm.listen_on(addr.clone())?;
@@ -214,6 +217,8 @@ where
                 }
             }
         }
+        warn!(target: LOG_TARGET, "💤 Networking service shutdown");
+
         Ok(())
     }
 
