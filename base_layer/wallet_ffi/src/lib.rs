@@ -58,7 +58,6 @@ use std::{
     slice,
     str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 
 use chrono::{DateTime, Local};

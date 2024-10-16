@@ -337,6 +337,7 @@ impl Callbacks {
             START.call_once(|| {
                 INSTANCE = Some(Self::default());
             });
+            #[allow(static_mut_refs)]
             INSTANCE.as_mut().unwrap()
         }
     }

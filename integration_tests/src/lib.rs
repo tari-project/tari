@@ -23,10 +23,12 @@
 use std::{convert::TryFrom, net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
 
 use rand::Rng;
+use tari_p2p::peer_seeds::SeedPeer;
+use tokio::net::TcpSocket;
 
 pub mod base_node_process;
-pub mod chat_client;
-pub mod chat_ffi;
+// pub mod chat_client;
+// pub mod chat_ffi;
 pub mod ffi;
 pub mod merge_mining_proxy;
 pub mod miner;
@@ -57,13 +59,13 @@ pub fn get_base_dir() -> PathBuf {
 }
 
 pub async fn wait_for_service(port: u64) {
-    // The idea is that if the port is taken it means the service is running.
-    // If the port is not taken the service hasn't come up yet
+    // Check if we can open a socket to a port.
     let max_tries = 4 * 60;
     let mut attempts = 0;
+    let addr = ([127u8, 0, 0, 1], u16::try_from(port).unwrap()).into();
 
     loop {
-        if TcpListener::bind(("127.0.0.1", u16::try_from(port).unwrap())).is_err() {
+        if TcpSocket::new_v4().unwrap().connect(addr).await.is_ok() {
             return;
         }
 
@@ -76,12 +78,15 @@ pub async fn wait_for_service(port: u64) {
     }
 }
 
-pub async fn get_peer_addresses(world: &TariWorld, peers: &[String]) -> Vec<String> {
-    peers
+pub async fn get_peer_seeds(world: &TariWorld, seed_peer_names: &[String]) -> Vec<String> {
+    seed_peer_names
         .iter()
         .map(|peer_string| {
-            let peer = world.base_nodes.get(peer_string.as_str()).unwrap().identity.to_peer();
-            peer.to_short_string()
+            let bn = world.base_nodes.get(peer_string.as_str()).unwrap();
+            SeedPeer::new(bn.public_key.clone(), vec![format!("/ip4/127.0.0.1/tcp/{}", bn.port)
+                .parse()
+                .unwrap()])
+            .to_string()
         })
         .collect()
 }

@@ -99,21 +99,13 @@ use tari_key_manager::{
     key_manager_service::{KeyId, KeyManagerInterface},
     SeedWords,
 };
-use tari_network::{
-    multiaddr::Multiaddr,
-    DiscoveryResult,
-    NetworkEvent,
-    NetworkHandle,
-    NetworkingService,
-    Peer,
-    ToPeerId,
-};
+use tari_network::{multiaddr::Multiaddr, NetworkEvent, NetworkHandle, NetworkingService, Peer, ToPeerId};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
-    sync::{broadcast, mpsc, oneshot::error::RecvError},
+    sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
 

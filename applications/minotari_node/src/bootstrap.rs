@@ -63,8 +63,6 @@ use tokio::sync::mpsc;
 use crate::ApplicationConfig;
 
 const LOG_TARGET: &str = "c::bn::initialization";
-/// The minimum buffer size for the base node pubsub_connector channel
-const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 
 pub struct BaseNodeBootstrapper<'a, B> {
     pub app_config: &'a ApplicationConfig,
@@ -83,7 +81,7 @@ where B: BlockchainBackend + 'static
     #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
         let mut base_node_config = self.app_config.base_node.clone();
-        let mut p2p_config = self.app_config.base_node.p2p.clone();
+        let p2p_config = self.app_config.base_node.p2p.clone();
         let peer_seeds = &self.app_config.peer_seeds;
 
         let mempool_config = base_node_config.mempool.service.clone();
@@ -163,7 +161,7 @@ where B: BlockchainBackend + 'static
     }
 
     async fn setup_rpc_services(
-        mut networking: NetworkHandle,
+        networking: NetworkHandle,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
         config: &P2pConfig,

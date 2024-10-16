@@ -36,13 +36,14 @@ use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
 };
-use tari_network::identity;
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_network::{identity, multiaddr::Multiaddr};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_seeds, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
@@ -50,11 +51,18 @@ pub struct BaseNodeProcess {
     pub port: u64,
     pub grpc_port: u64,
     pub identity: identity::Keypair,
+    pub public_key: RistrettoPublicKey,
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
     pub config: BaseNodeConfig,
     pub kill_signal: Shutdown,
+}
+
+impl BaseNodeProcess {
+    pub fn get_listen_addr(&self) -> Multiaddr {
+        format!("/ip4/127.0.0.1/tcp/{}", self.port).parse().unwrap()
+    }
 }
 
 impl Drop for BaseNodeProcess {
@@ -128,6 +136,13 @@ pub async fn spawn_base_node_with_config(
         port,
         grpc_port,
         identity: base_node_identity.clone(),
+        public_key: base_node_identity
+            .public()
+            .clone()
+            .try_into_sr25519()
+            .unwrap()
+            .inner_key()
+            .clone(),
         temp_dir_path: temp_dir_path.clone(),
         is_seed_node,
         seed_nodes: peers.clone(),
@@ -137,7 +152,7 @@ pub async fn spawn_base_node_with_config(
 
     let name_cloned = bn_name.clone();
 
-    let peer_addresses = get_peer_addresses(world, &peers).await;
+    let peer_seeds = get_peer_seeds(world, &peers).await;
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
@@ -148,7 +163,7 @@ pub async fn spawn_base_node_with_config(
             base_node: base_node_config,
             metrics: MetricsConfig::default(),
             peer_seeds: PeerSeedsConfig {
-                peer_seeds: peer_addresses.into(),
+                peer_seeds: peer_seeds.into(),
                 dns_seeds_use_dnssec: false,
                 ..Default::default()
             },

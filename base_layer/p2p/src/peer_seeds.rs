@@ -75,7 +75,7 @@ impl DnsSeedResolver {
 }
 
 /// Parsed information from a DNS seed record
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String", into = "String")]
 pub struct SeedPeer {
     pub public_key: RistrettoPublicKey,
@@ -115,16 +115,14 @@ impl FromStr for SeedPeer {
 
 impl Display for SeedPeer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}::{}",
-            self.public_key,
-            self.addresses
-                .iter()
-                .map(|ma| ma.to_string())
-                .collect::<Vec<_>>()
-                .join("::")
-        )
+        write!(f, "{}::", self.public_key)?;
+        for (i, addr) in self.addresses.iter().enumerate() {
+            write!(f, "{}", addr)?;
+            if i != self.addresses.len() - 1 {
+                write!(f, "::")?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -175,6 +173,8 @@ mod test {
                 "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
             );
             assert_eq!(seed.addresses.len(), 2);
+            let s2 = seed.to_string().parse::<SeedPeer>().unwrap();
+            assert_eq!(seed, s2);
         }
 
         #[test]

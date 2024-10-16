@@ -12,8 +12,8 @@ minotari_app_grpc = { path = "../applications/minotari_app_grpc" }
 minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
 minotari_node = { path = "../applications/minotari_node", features = ["metrics"] }
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
-tari_chat_client = { path = "../base_layer/contacts/src/chat_client" }
-minotari_chat_ffi = { path = "../base_layer/chat_ffi" }
+#tari_chat_client = { path = "../base_layer/contacts/src/chat_client" }
+#minotari_chat_ffi = { path = "../base_layer/chat_ffi" }
 tari_crypto = { version = "0.21.0" }
 tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }

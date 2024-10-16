@@ -4,12 +4,7 @@
 use std::collections::HashMap;
 
 use log::*;
-use tari_network::{
-    identity::{sr25519::PublicKey, OtherVariantError},
-    public_key_to_string,
-    Peer,
-};
-use tari_utilities::hex::Hex;
+use tari_network::{public_key_to_string, Peer};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,

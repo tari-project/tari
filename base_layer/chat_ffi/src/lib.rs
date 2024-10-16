@@ -28,7 +28,7 @@ use callback_handler::CallbackContactStatusChange;
 use libc::c_int;
 use log::info;
 use minotari_app_utilities::identity_management::setup_node_identity;
-use tari_chat_client::{config::ApplicationConfig, networking::PeerFeatures, ChatClient as ChatClientTrait, Client};
+use tari_chat_client::{config::ApplicationConfig, ChatClient as ChatClientTrait, Client};
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::handle::ContactsServiceHandle;
 use tokio::runtime::Runtime;
@@ -129,12 +129,7 @@ pub unsafe extern "C" fn create_chat_client(
         ptr::null_mut::<ChatClient>()
     };
 
-    let identity = match setup_node_identity(
-        (*config).chat_client.identity_file.clone(),
-        (*config).chat_client.p2p.public_addresses.clone().into_vec(),
-        true,
-        PeerFeatures::COMMUNICATION_NODE,
-    ) {
+    let identity = match setup_node_identity((*config).chat_client.identity_file.clone(), true) {
         Ok(node_id) => node_id,
         _ => {
             bad_identity("No identity loaded".to_string());

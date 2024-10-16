@@ -31,14 +31,13 @@ use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
 };
-use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use tari_network::multiaddr::Multiaddr;
+use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_seeds, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -97,7 +96,7 @@ pub async fn spawn_wallet(
     };
 
     let base_node = base_node_name.map(|name| {
-        let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
+        let pubkey = world.base_nodes.get(&name).unwrap().public_key.clone();
         let port = world.base_nodes.get(&name).unwrap().port;
         let set_base_node_request = SetBaseNodeRequest {
             net_address: format! {"/ip4/127.0.0.1/tcp/{}", port},
@@ -107,7 +106,7 @@ pub async fn spawn_wallet(
         (pubkey, port, set_base_node_request)
     });
 
-    let peer_addresses = get_peer_addresses(world, &peer_seeds).await;
+    let peer_seeds = get_peer_seeds(world, &peer_seeds).await;
 
     let base_node_cloned = base_node.clone();
     let shutdown = Shutdown::new();
@@ -124,12 +123,13 @@ pub async fn spawn_wallet(
             auto_update: AutoUpdateConfig::default(),
             wallet: wallet_cfg,
             peer_seeds: PeerSeedsConfig {
-                peer_seeds: peer_addresses.into(),
+                peer_seeds: peer_seeds.into(),
                 ..Default::default()
             },
         };
 
         eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
+        let listen_addr = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
 
         wallet_app_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
         wallet_app_config.wallet.network = Network::LocalNet;
@@ -143,19 +143,8 @@ pub async fn spawn_wallet(
             .wallet
             .base_node_service_config
             .base_node_monitor_max_refresh_interval = Duration::from_secs(15);
-        wallet_app_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
-        wallet_app_config.wallet.p2p.transport.tcp.listener_address =
-            Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-        wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![wallet_app_config
-            .wallet
-            .p2p
-            .transport
-            .tcp
-            .listener_address
-            .clone()]);
-        wallet_app_config.wallet.p2p.dht = DhtConfig::default_local_test();
-        wallet_app_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
-        wallet_app_config.wallet.p2p.allow_test_addresses = true;
+        wallet_app_config.wallet.p2p.listen_addresses = vec![listen_addr.clone()];
+        wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![listen_addr]);
         if let Some(mech) = routing_mechanism {
             wallet_app_config
                 .wallet

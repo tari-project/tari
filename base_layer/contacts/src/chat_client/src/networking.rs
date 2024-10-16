@@ -23,6 +23,7 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
+pub use tari_network::multiaddr::Multiaddr;
 use tari_network::{identity, NetworkHandle, Peer};
 use tari_p2p::{
     connector::InboundMessaging,
@@ -41,7 +42,7 @@ use crate::{
     error::NetworkingError,
 };
 
-const LOG_TARGET: &str = "contacts::chat_client::networking";
+const _LOG_TARGET: &str = "contacts::chat_client::networking";
 
 pub async fn start(
     node_identity: Arc<identity::Keypair>,
