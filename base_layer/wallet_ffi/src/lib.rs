@@ -8955,7 +8955,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
-    base_node_public_key: *mut TariPublicKey,
+    base_node_public_keys: *mut TariPublicKeys,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
     recovered_output_message: *const c_char,
     error_out: *mut c_int,
@@ -8968,9 +8968,14 @@ pub unsafe extern "C" fn wallet_start_recovery(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
+    if base_node_public_keys.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("base_node_public_keys".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let peer_public_keys = (*base_node_public_keys).0.clone();
     let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
     if !recovered_output_message.is_null() {
