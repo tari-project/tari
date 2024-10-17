@@ -96,10 +96,10 @@ pub enum MmProxyError {
     InvalidHeaderValue(#[from] InvalidHeaderValue),
     #[error("Block was lost due to a failed precondition, and should be retried")]
     FailedPreconditionBlockLostRetry,
-    #[error("Could not convert data:{0}")]
+    #[error("Could not convert data: {0}")]
     ConversionError(String),
-    #[error("No reachable servers in configuration")]
-    ServersUnavailable,
+    #[error("No reachable servers in configuration: {0}")]
+    ServersUnavailable(String),
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
     #[error("TLS connection error: {0}")]
