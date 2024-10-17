@@ -70,6 +70,4 @@ allow = [
     # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
     'clippy::bool-assert-comparison',
     'clippy::blocks_in_conditions',
-    # A lot of these are present in the code
-    "clippy::too_long_first_doc_paragraph",
 ]

@@ -29,7 +29,7 @@ env:
   # TS_BUILD: "debug"
   TS_BUILD: "release"
   TARI_NETWORK_DIR: testnet
-  toolchain: nightly-2024-10-14
+  toolchain: nightly-2024-08-01
   matrix-json-file: ".github/workflows/build_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true

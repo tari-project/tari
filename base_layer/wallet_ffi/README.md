@@ -149,8 +149,8 @@ Install [Rust](https://www.rust-lang.org/tools/install)
 Install the following tools and system images
 
 ```Shell Script
-rustup toolchain add nightly-2024-10-14
-rustup default nightly-2024-10-14
+rustup toolchain add nightly-2024-08-01
+rustup default nightly-2024-08-01
 rustup component add rustfmt --toolchain nightly
 rustup component add clippy
 rustup target add x86_64-apple-ios aarch64-apple-ios # iPhone and emulator cross compiling
