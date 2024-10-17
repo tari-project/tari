@@ -29,7 +29,7 @@ env:
   # TS_BUILD: "debug"
   TS_BUILD: "release"
   TARI_NETWORK_DIR: testnet
-  toolchain: nightly-2024-07-07
+  toolchain: nightly-2024-10-14
   matrix-json-file: ".github/workflows/build_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -42,7 +42,7 @@ concurrency:
   group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
 
-permissions: {}
+permissions: { }
 
 jobs:
   matrix-prep:

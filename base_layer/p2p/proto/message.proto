@@ -16,16 +16,14 @@ import "transaction_protocol.proto";
 message TariMessage {
   oneof message {
     tari.liveness.PingPongMessage ping_pong = 1;
-    //    tari.common.Transaction new_transaction = 2;
-    //    tari.common.NewBlock new_block = 3;
-    tari.base_node.BaseNodeServiceRequest base_node_request = 4;
-    tari.base_node.BaseNodeServiceResponse base_node_response = 5;
-    tari.transaction_protocol.TransactionSenderMessage sender_partial_transaction = 6;
-    tari.transaction_protocol.RecipientSignedMessage receiver_partial_transaction_reply = 7;
-    tari.transaction_protocol.TransactionFinalizedMessage transaction_finalized = 8;
-    tari.transaction_protocol.TransactionCancelledMessage transaction_cancelled = 9;
+    tari.base_node.BaseNodeServiceRequest base_node_request = 2;
+    tari.base_node.BaseNodeServiceResponse base_node_response = 3;
+    tari.transaction_protocol.TransactionSenderMessage sender_partial_transaction = 4;
+    tari.transaction_protocol.RecipientSignedMessage receiver_partial_transaction_reply = 5;
+    tari.transaction_protocol.TransactionFinalizedMessage transaction_finalized = 6;
+    tari.transaction_protocol.TransactionCancelledMessage transaction_cancelled = 7;
 
-    tari.chat.MessageDispatch chat = 10;
+    tari.chat.MessageDispatch chat = 8;
   }
 }
 

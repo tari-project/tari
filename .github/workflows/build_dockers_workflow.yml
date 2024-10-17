@@ -14,7 +14,7 @@ name: Build docker images - workflow_call/on-demand
       toolchain:
         type: string
         description: 'Rust toolchain'
-        default: nightly-2024-07-07
+        default: nightly-2024-10-14
       arch:
         type: string
         default: x86-64
@@ -41,7 +41,7 @@ env:
   LAUNCHPAD_BRANCH: main
   DAYS_to_EXPIRE: 30
 
-permissions: {}
+permissions: { }
 
 jobs:
   envs_setup:

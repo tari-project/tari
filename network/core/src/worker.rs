@@ -36,14 +36,13 @@ use libp2p::{
 };
 use log::*;
 use rand::{prelude::IteratorRandom, rngs::OsRng};
-use tari_rpc_framework::Substream;
 use tari_shutdown::ShutdownSignal;
 use tari_swarm::{
     messaging,
     messaging::{prost, prost::ProstCodec},
     peersync,
     substream,
-    substream::{NegotiatedSubstream, ProtocolNotification, StreamId},
+    substream::{NegotiatedSubstream, ProtocolNotification, StreamId, Substream},
     TariNodeBehaviourEvent,
     TariSwarm,
 };

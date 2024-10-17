@@ -9,24 +9,6 @@ use tari_network::{identity::PeerId, MessageSpec};
 pub use crate::proto::message::{tari_message, TariMessageType};
 use crate::{proto, proto::message::TariMessage};
 
-// #[derive(Debug, Clone)]
-// pub enum TariNodeMessage {
-//     // Common
-//     PingPong(proto::liveness::PingPongMessage),
-//     // Base node
-//     NewTransaction(proto::common::Transaction),
-//     NewBlock(proto::common::NewBlock),
-//     BaseNodeRequest(proto::base_node::BaseNodeServiceRequest),
-//     BaseNodeResponse(proto::base_node::BaseNodeServiceResponse),
-//     // Wallet
-//     SenderPartialTransaction(proto::transaction_protocol::TransactionSenderMessage),
-//     ReceiverPartialTransactionReply(proto::transaction_protocol::RecipientSignedMessage),
-//     TransactionFinalized(proto::transaction_protocol::TransactionFinalizedMessage),
-//     TransactionCancelled(proto::transaction_protocol::TransactionCancelledMessage),
-//     // Chat
-//     Chat(proto::chat::MessageDispatch),
-// }
-
 impl TariMessage {
     pub fn into_ping_pong(self) -> Option<proto::liveness::PingPongMessage> {
         match self.message {
@@ -113,8 +95,6 @@ macro_rules! impl_from {
 }
 
 impl_from!(PingPong, proto::liveness::PingPongMessage);
-// impl_from!(NewTransaction, proto::common::Transaction);
-// impl_from!(NewBlock, proto::common::NewBlock);
 impl_from!(BaseNodeRequest, proto::base_node::BaseNodeServiceRequest);
 impl_from!(BaseNodeResponse, proto::base_node::BaseNodeServiceResponse);
 impl_from!(
