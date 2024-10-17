@@ -576,7 +576,7 @@ extern "C" {
     pub fn wallet_is_recovery_in_progress(wallet: *mut TariWallet, error_out: *mut c_int) -> bool;
     pub fn wallet_start_recovery(
         wallet: *mut TariWallet,
-        base_node_public_key: *mut TariPublicKey,
+        base_node_public_keys: *mut TariPublicKeys,
         recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
         recovered_output_message: *const c_char,
         error_out: *mut c_int,

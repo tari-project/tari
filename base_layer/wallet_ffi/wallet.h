@@ -3806,7 +3806,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer.
- * `base_node_public_key` - The TariPublicKey pointer of the Base Node the recovery process will use
+ * `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
  * `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
  * progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
  * ```
@@ -3859,7 +3859,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  * None
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
-                           TariPublicKey *base_node_public_key,
+                           struct TariPublicKeys *base_node_public_keys,
                            void (*recovery_progress_callback)(void *context,
                                                               uint8_t,
                                                               uint64_t,
