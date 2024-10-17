@@ -224,4 +224,12 @@ mod test {
             assert_eq!(validate_checksum(&data_), Err(ChecksumError::InvalidChecksum));
         }
     }
+
+    #[test]
+    fn known_checksum() {
+        const SIZE: usize = 33;
+
+        // We know what the checksum for all-zero data must be
+        assert_eq!(compute_checksum(&[0u8; SIZE]), 0u8);
+    }
 }
