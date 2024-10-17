@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms_dht::outbound::DhtOutboundError;
+use tari_network::NetworkError;
 use thiserror::Error;
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError},
+    base_node::comms_interface::CommsInterfaceError,
     common::{BanPeriod, BanReason},
 };
 
@@ -32,21 +32,21 @@ use crate::{
 pub enum BaseNodeServiceError {
     #[error("Comms interface error: `{0}`")]
     CommsInterfaceError(#[from] CommsInterfaceError),
-    #[error("DHT outbound error: `{0}`")]
-    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Network error: `{0}`")]
+    NetworkError(#[from] NetworkError),
     #[error("Invalid request error: `{0}`")]
     InvalidRequest(String),
     #[error("Invalid response error: `{0}`")]
     InvalidResponse(String),
-    #[error("Invalid block error: `{0}`")]
-    InvalidBlockMessage(#[from] ExtractBlockError),
+    #[error("Invalid block message: `{0}`")]
+    InvalidBlockMessage(String),
 }
 
 impl BaseNodeServiceError {
     pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             BaseNodeServiceError::CommsInterfaceError(e) => e.get_ban_reason(),
-            BaseNodeServiceError::DhtOutboundError(_) => None,
+            BaseNodeServiceError::NetworkError(_) => None,
             err @ BaseNodeServiceError::InvalidRequest(_) |
             err @ BaseNodeServiceError::InvalidResponse(_) |
             err @ BaseNodeServiceError::InvalidBlockMessage(_) => Some(BanReason {

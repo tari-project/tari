@@ -26,8 +26,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
-use tari_utilities::ByteArray;
+use tari_network::ToPeerId;
 
 use crate::{
     contacts_service::{error::ContactsServiceStorageError, types::Contact},
@@ -142,7 +141,7 @@ impl TryFrom<ContactSql> for Contact {
         let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
             // Public key must always be the master data source for node ID here
-            node_id: NodeId::from_key(address.public_spend_key()),
+            peer_id: address.public_spend_key().to_peer_id(),
             address,
             alias: o.alias,
             last_seen: o.last_seen,
@@ -162,7 +161,7 @@ impl From<Contact> for ContactSql {
     fn from(o: Contact) -> Self {
         Self {
             // Public key must always be the master data source for node ID here
-            node_id: NodeId::from_key(o.address.public_spend_key()).to_vec(),
+            node_id: o.address.public_spend_key().to_peer_id().to_bytes(),
             address: o.address.to_vec(),
             alias: o.alias,
             last_seen: o.last_seen,

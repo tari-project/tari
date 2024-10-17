@@ -24,14 +24,14 @@ use std::{collections::HashMap, net::SocketAddr};
 
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::bootstrap::ApplicationType, SubConfigPath};
-use tari_comms::NodeIdentity;
 use tari_metrics::{server::MetricsServerBuilder, Registry};
+use tari_network::identity;
 use tari_shutdown::ShutdownSignal;
 use tokio::task;
 
 pub fn install(
     application: ApplicationType,
-    identity: &NodeIdentity,
+    identity: &identity::Keypair,
     config: &MetricsConfig,
     shutdown: ShutdownSignal,
 ) {
@@ -52,12 +52,11 @@ pub fn install(
     task::spawn(metrics.start(shutdown));
 }
 
-fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity) -> Registry {
+fn create_metrics_registry(application: ApplicationType, identity: &identity::Keypair) -> Registry {
     let mut labels = HashMap::with_capacity(4);
     labels.insert("app".to_string(), application.as_config_str().to_string());
-    labels.insert("node_role".to_string(), identity.features().as_role_str().to_string());
-    labels.insert("node_id".to_string(), identity.node_id().to_string());
-    labels.insert("node_public_key".to_string(), identity.public_key().to_string());
+    labels.insert("node_id".to_string(), identity.public().to_peer_id().to_string());
+    // labels.insert("node_public_key".to_string(), identity.public().to_string());
     Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
 }
 

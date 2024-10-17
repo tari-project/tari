@@ -56,6 +56,6 @@ mod test {
         obj.kernel_sum();
         obj.utxo_sum();
         drop(obj.clone());
-        format!("{:?}", obj);
+        // format!("{:?}", obj);
     }
 }

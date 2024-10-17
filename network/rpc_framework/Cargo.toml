@@ -1,0 +1,35 @@
+[package]
+name = "tari_rpc_framework"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tari_shutdown = { workspace = true }
+tari_metrics = { workspace = true, optional = true }
+
+async-trait = { workspace = true }
+bitflags = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+once_cell = { workspace = true, optional = true }
+pin-project = { workspace = true }
+prost = { workspace = true, features = ["std"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["default", "sync", "time", "rt", "macros"] }
+tokio-util = { workspace = true, features = ["compat", "codec"] }
+tower = { workspace = true, features = ["default", "make", "util"] }
+tracing = { workspace = true }
+
+libp2p = { workspace = true }
+libp2p-substream = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+proto_builder = { workspace = true }
+
+[features]
+metrics = ["tari_metrics", "once_cell"]

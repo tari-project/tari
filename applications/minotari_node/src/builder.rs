@@ -27,8 +27,6 @@ use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
-use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
@@ -44,10 +42,12 @@ use tari_core::{
     },
     OutputSmt,
 };
-use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_network::{identity, NetworkError, NetworkHandle};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, initialization::TaskHandle, services::liveness::LivenessHandle};
+use tari_rpc_framework::RpcServerHandle;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::watch;
+use tokio::{sync::watch, task};
 
 use crate::{bootstrap::BaseNodeBootstrapper, ApplicationConfig, DatabaseType};
 
@@ -60,8 +60,7 @@ pub struct BaseNodeContext {
     config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
-    base_node_comms: CommsNode,
-    base_node_dht: Dht,
+    network: NetworkHandle,
     base_node_handles: ServiceHandles,
 }
 
@@ -70,10 +69,6 @@ impl BaseNodeContext {
     /// This call consumes the NodeContainer instance.
     pub async fn wait_for_shutdown(self) {
         self.state_machine().shutdown_signal().wait().await;
-        info!(target: LOG_TARGET, "Waiting for communications stack shutdown");
-
-        self.base_node_comms.wait_until_shutdown().await;
-        info!(target: LOG_TARGET, "Communications stack has shutdown");
     }
 
     /// Return the node config
@@ -92,8 +87,14 @@ impl BaseNodeContext {
     }
 
     /// Returns the CommsNode.
-    pub fn base_node_comms(&self) -> &CommsNode {
-        &self.base_node_comms
+    pub fn network(&self) -> &NetworkHandle {
+        &self.network
+    }
+
+    /// Returns the task JoinHandle for the network worker. This will only return Some once.
+    pub fn take_network_join_handle(&self) -> Option<task::JoinHandle<Result<(), NetworkError>>> {
+        let handle = self.base_node_handles.take_handle::<TaskHandle<NetworkError>>()?;
+        Some(handle.into_inner())
     }
 
     /// Returns the liveness service handle
@@ -104,16 +105,6 @@ impl BaseNodeContext {
     /// Returns the base node state machine
     pub fn state_machine(&self) -> StateMachineHandle {
         self.base_node_handles.expect_handle()
-    }
-
-    /// Returns this node's identity.
-    pub fn base_node_identity(&self) -> Arc<NodeIdentity> {
-        self.base_node_comms.node_identity()
-    }
-
-    /// Returns the base node DHT
-    pub fn base_node_dht(&self) -> &Dht {
-        &self.base_node_dht
     }
 
     /// Returns a software update handle
@@ -132,7 +123,7 @@ impl BaseNodeContext {
     }
 
     /// Returns the configured network
-    pub fn network(&self) -> Network {
+    pub fn network_consensus(&self) -> Network {
         self.config.base_node.network
     }
 
@@ -163,7 +154,7 @@ impl BaseNodeContext {
 /// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
     app_config: Arc<ApplicationConfig>,
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Arc<identity::Keypair>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
@@ -197,7 +188,7 @@ pub async fn configure_and_initialize_node(
 async fn build_node_context(
     backend: LMDBDatabase,
     app_config: Arc<ApplicationConfig>,
-    base_node_identity: Arc<NodeIdentity>,
+    base_node_identity: Arc<identity::Keypair>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, ExitError> {
     //---------------------------------- Blockchain --------------------------------------------//
@@ -269,15 +260,13 @@ async fn build_node_context(
     .bootstrap()
     .await?;
 
-    let base_node_comms = base_node_handles.expect_handle::<CommsNode>();
-    let base_node_dht = base_node_handles.expect_handle::<Dht>();
+    let network = base_node_handles.expect_handle::<NetworkHandle>();
 
     Ok(BaseNodeContext {
         config: app_config,
         consensus_rules: rules,
         blockchain_db,
-        base_node_comms,
-        base_node_dht,
+        network,
         base_node_handles,
     })
 }

@@ -22,27 +22,22 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    iter::FromIterator,
     sync::Arc,
 };
 
 use tari_common_types::types::PrivateKey;
+pub use tari_p2p::{proto, proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse};
 use tari_utilities::{convert::try_convert_all, ByteArray};
 
-pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
-use crate::{
-    base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse},
-    blocks::{Block, BlockHeader, HistoricalBlock},
-    proto,
-};
+use crate::base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse};
 
-impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
+impl TryFrom<ProtoNodeCommsResponse> for NodeCommsResponse {
     type Error = String;
 
-    fn try_into(self) -> Result<NodeCommsResponse, Self::Error> {
+    fn try_from(value: ProtoNodeCommsResponse) -> Result<NodeCommsResponse, Self::Error> {
         use ProtoNodeCommsResponse::{BlockResponse, FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
-        let response = match self {
-            BlockResponse(block) => NodeCommsResponse::Block(Box::new(block.try_into()?)),
+        let response = match value {
+            BlockResponse(block) => NodeCommsResponse::Block(Box::new(block.block.map(TryInto::try_into).transpose()?)),
             HistoricalBlocks(blocks) => {
                 let blocks = try_convert_all(blocks.blocks)?;
                 NodeCommsResponse::HistoricalBlocks(blocks)
@@ -60,12 +55,10 @@ impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
                         PrivateKey::from_canonical_bytes(&bytes).map_err(|_| "Malformed excess signature".to_string())
                     })
                     .collect::<Result<_, _>>()?;
-                NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
-                    self::FetchMempoolTransactionsResponse {
-                        transactions,
-                        not_found,
-                    },
-                )
+                NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse {
+                    transactions,
+                    not_found,
+                })
             },
         };
 
@@ -77,24 +70,29 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
 
     fn try_from(response: NodeCommsResponse) -> Result<Self, Self::Error> {
-        use NodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
+        #[allow(clippy::enum_glob_use)]
+        use NodeCommsResponse::*;
         match response {
-            NodeCommsResponse::Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse((*block).try_into()?)),
+            Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse(proto::base_node::BlockResponse {
+                block: block.map(TryInto::try_into).transpose()?,
+            })),
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks
                     .into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<proto::core::HistoricalBlock>, _>>()?
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                Ok(ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks))
+                    .map(proto::common::HistoricalBlock::try_from)
+                    .collect::<Result<_, _>>()?;
+
+                Ok(ProtoNodeCommsResponse::HistoricalBlocks(
+                    proto::base_node::HistoricalBlocks {
+                        blocks: historical_blocks,
+                    },
+                ))
             },
             FetchMempoolTransactionsByExcessSigsResponse(resp) => {
                 let transactions = resp
                     .transactions
                     .into_iter()
-                    .map(|tx| tx.try_into())
+                    .map(|tx| (&*tx).try_into())
                     .collect::<Result<_, _>>()?;
                 Ok(ProtoNodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
                     proto::base_node::FetchMempoolTransactionsResponse {
@@ -105,112 +103,6 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
             },
             // This would only occur if a programming error sent out the unsupported response
             resp => Err(format!("Response not supported {:?}", resp)),
-        }
-    }
-}
-
-impl From<Option<BlockHeader>> for proto::base_node::BlockHeaderResponse {
-    fn from(v: Option<BlockHeader>) -> Self {
-        Self {
-            header: v.map(Into::into),
-        }
-    }
-}
-
-impl TryInto<Option<BlockHeader>> for proto::base_node::BlockHeaderResponse {
-    type Error = String;
-
-    fn try_into(self) -> Result<Option<BlockHeader>, Self::Error> {
-        match self.header {
-            Some(header) => {
-                let header = header.try_into()?;
-                Ok(Some(header))
-            },
-            None => Ok(None),
-        }
-    }
-}
-
-impl TryFrom<Option<HistoricalBlock>> for proto::base_node::HistoricalBlockResponse {
-    type Error = String;
-
-    fn try_from(v: Option<HistoricalBlock>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            block: v.map(TryInto::try_into).transpose()?,
-        })
-    }
-}
-
-impl TryInto<Option<HistoricalBlock>> for proto::base_node::HistoricalBlockResponse {
-    type Error = String;
-
-    fn try_into(self) -> Result<Option<HistoricalBlock>, Self::Error> {
-        match self.block {
-            Some(block) => {
-                let block = block.try_into()?;
-                Ok(Some(block))
-            },
-            None => Ok(None),
-        }
-    }
-}
-
-impl TryFrom<Option<Block>> for proto::base_node::BlockResponse {
-    type Error = String;
-
-    fn try_from(v: Option<Block>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            block: v.map(TryInto::try_into).transpose()?,
-        })
-    }
-}
-
-impl TryInto<Option<Block>> for proto::base_node::BlockResponse {
-    type Error = String;
-
-    fn try_into(self) -> Result<Option<Block>, Self::Error> {
-        match self.block {
-            Some(block) => {
-                let block = block.try_into()?;
-                Ok(Some(block))
-            },
-            None => Ok(None),
-        }
-    }
-}
-
-//---------------------------------- Collection impls --------------------------------------------//
-
-// The following allow `Iterator::collect` to collect into these repeated types
-
-impl FromIterator<proto::types::TransactionKernel> for proto::base_node::TransactionKernels {
-    fn from_iter<T: IntoIterator<Item = proto::types::TransactionKernel>>(iter: T) -> Self {
-        Self {
-            kernels: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl FromIterator<proto::core::BlockHeader> for proto::base_node::BlockHeaders {
-    fn from_iter<T: IntoIterator<Item = proto::core::BlockHeader>>(iter: T) -> Self {
-        Self {
-            headers: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl FromIterator<proto::types::TransactionOutput> for proto::base_node::TransactionOutputs {
-    fn from_iter<T: IntoIterator<Item = proto::types::TransactionOutput>>(iter: T) -> Self {
-        Self {
-            outputs: iter.into_iter().collect(),
-        }
-    }
-}
-
-impl FromIterator<proto::core::HistoricalBlock> for proto::base_node::HistoricalBlocks {
-    fn from_iter<T: IntoIterator<Item = proto::core::HistoricalBlock>>(iter: T) -> Self {
-        Self {
-            blocks: iter.into_iter().collect(),
         }
     }
 }

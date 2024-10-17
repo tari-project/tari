@@ -113,11 +113,7 @@ impl PaymentId {
         match self {
             PaymentId::Empty => Vec::new(),
             PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
-            PaymentId::U256(v) => {
-                let mut bytes = vec![0; 32];
-                v.to_little_endian(&mut bytes);
-                bytes
-            },
+            PaymentId::U256(v) => v.to_little_endian().to_vec(),
             PaymentId::Address(v) => v.to_vec(),
             PaymentId::Open(v) => v.clone(),
             PaymentId::AddressAndData(v, d) => {

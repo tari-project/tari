@@ -1,0 +1,24 @@
+[package]
+name = "tari_rpc_macros"
+description = "RPC service proc macro"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true, features = ["fold"] }
+
+#[dev-dependencies]
+#tari_test_utils = {  path = "../../infrastructure/test_utils" }
+
+#futures = "0.3.5"
+#prost = "0.12.0"
+#tokio = { version = "1", features = ["macros"] }
+#tower-service = "0.3"

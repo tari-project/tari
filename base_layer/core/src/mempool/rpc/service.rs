@@ -22,12 +22,13 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use async_trait::async_trait;
 use log::*;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_p2p::proto;
+use tari_rpc_framework::{Request, Response, RpcStatus};
 
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
-    proto,
     transactions::transaction_components::Transaction,
 };
 
@@ -53,7 +54,7 @@ fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
     RpcStatus::general_default()
 }
 
-#[tari_comms::async_trait]
+#[async_trait]
 impl MempoolService for MempoolRpcService {
     async fn get_stats(&self, _: Request<()>) -> Result<Response<proto::mempool::StatsResponse>, RpcStatus> {
         let stats = self.mempool().get_stats().await.map_err(to_internal_error)?;
@@ -70,7 +71,7 @@ impl MempoolService for MempoolRpcService {
 
     async fn get_transaction_state_by_excess_sig(
         &self,
-        request: Request<proto::types::Signature>,
+        request: Request<proto::common::Signature>,
     ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
         let excess_sig = request
             .into_message()
@@ -86,20 +87,21 @@ impl MempoolService for MempoolRpcService {
 
     async fn submit_transaction(
         &self,
-        request: Request<proto::types::Transaction>,
+        request: Request<proto::common::Transaction>,
     ) -> Result<Response<proto::mempool::TxStorage>, RpcStatus> {
-        let (context, message) = request.into_parts();
+        let peer_id = request.peer_id();
+        let message = request.into_message();
         let tx = match Transaction::try_from(message) {
             Ok(tx) => tx,
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
                     "Received invalid message from peer `{}`: {}",
-                    context.peer_node_id(),
+                    peer_id,
                     err
                 );
                 // These error messages are safe to send back to the requester
-                return Err(RpcStatus::bad_request(&format!("Malformed transaction: {}", err)));
+                return Err(RpcStatus::bad_request(format!("Malformed transaction: {}", err)));
             },
         };
         let tx_storage = self.mempool().submit_transaction(tx).await.map_err(to_internal_error)?;

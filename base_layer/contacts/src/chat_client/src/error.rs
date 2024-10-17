@@ -25,9 +25,9 @@ use std::io;
 use diesel::ConnectionError;
 use minotari_app_utilities::identity_management::IdentityError;
 use tari_common_sqlite::error::StorageError as SqliteStorageError;
-use tari_comms::peer_manager::PeerManagerError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_max_size::MaxSizeBytesError;
+use tari_network::NetworkError;
 use tari_p2p::initialization::CommsInitializationError;
 use tari_storage::lmdb_store::LMDBError;
 
@@ -65,12 +65,12 @@ pub enum NetworkingError {
     IdentityError(#[from] IdentityError),
     #[error("Error mapping the peer seeds: {0}")]
     PeerSeeds(String),
-    #[error("Identity error: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
     #[error("Storage error: {0}")]
     StorageError(#[from] StorageError),
     #[error("Service initializer error: {0}")]
     ServiceInitializerError(#[from] anyhow::Error),
     #[error("Comms failed to spawn")]
     CommsSpawnError,
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
 }

@@ -23,13 +23,10 @@
 use std::{num::TryFromIntError, time::Duration};
 
 use tari_common_types::types::FixedHashSizeError;
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
-};
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
+use tari_network::{identity::PeerId, NetworkError};
+use tari_rpc_framework::{RpcError, RpcStatus};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
@@ -75,8 +72,8 @@ pub enum HorizonSyncError {
     ConversionError(String),
     #[error("MerkleMountainRangeError: {0}")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
-    #[error("Connectivity error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
     #[error("Validation error: {0}")]
     ValidationError(#[from] ValidationError),
     #[error("No sync peers")]
@@ -85,7 +82,7 @@ pub enum HorizonSyncError {
     FailedSyncAllPeers,
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
     MaxLatencyExceeded {
-        peer: NodeId,
+        peer: PeerId,
         latency: Duration,
         max_latency: Duration,
     },
@@ -131,7 +128,7 @@ impl HorizonSyncError {
             HorizonSyncError::NoSyncPeers |
             HorizonSyncError::FailedSyncAllPeers |
             HorizonSyncError::AllSyncPeersExceedLatency |
-            HorizonSyncError::ConnectivityError(_) |
+            HorizonSyncError::NetworkError(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::JoinError(_) |

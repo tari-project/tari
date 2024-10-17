@@ -53,7 +53,6 @@ use tari_core::{
         MempoolConfig,
         MempoolServiceConfig,
         MempoolServiceInitializer,
-        OutboundMempoolServiceInterface,
     },
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, TempDatabase},

@@ -41,7 +41,7 @@ impl ProtocolInfo<'_> {
     }
 }
 
-impl<'a> TorCommand for ProtocolInfo<'a> {
+impl TorCommand for ProtocolInfo<'_> {
     type Error = TorClientError;
     type Output = ProtocolInfoResponse;
 

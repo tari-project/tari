@@ -29,27 +29,18 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, SendMessageResponse},
-};
 use tari_core::{
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::OutputFeatures,
-        transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::SingleRoundSenderData,
-            TransactionMetadata,
-        },
+        transaction_protocol::{recipient::RecipientSignedMessage, sender::SingleRoundSenderData, TransactionMetadata},
         SenderTransactionProtocol,
     },
 };
-use tari_p2p::tari_message::TariMessageType;
+use tari_network::{identity::PeerId, OutboundMessager, ToPeerId};
+use tari_p2p::proto::transaction_protocol as proto;
 use tari_script::TariScript;
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
@@ -72,7 +63,6 @@ use crate::{
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
-            wait_on_dial::wait_on_dial,
         },
         utc::utc_duration_since,
     },
@@ -96,7 +86,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInt
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-    transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
+    transaction_reply_receiver: Option<Receiver<(PeerId, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     tx_meta: TransactionMetadata,
     sender_protocol: Option<SenderTransactionProtocol>,
@@ -112,7 +102,7 @@ where
     pub fn new(
         id: TxId,
         resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-        transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
+        transaction_reply_receiver: Receiver<(PeerId, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_address: TariAddress,
         amount: MicroMinotari,
@@ -489,11 +479,11 @@ where
         loop {
             let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
             tokio::select! {
-                Some((spk, rr)) = receiver.recv() => {
+                Some((peer_id, rr)) = receiver.recv() => {
                     let rr_tx_id = rr.tx_id;
                     reply = Some(rr);
 
-                    if outbound_tx.destination_address.comms_public_key() != &spk {
+                    if outbound_tx.destination_address.comms_public_key().to_peer_id() != peer_id {
                         warn!(
                             target: LOG_TARGET,
                             "Transaction Reply did not come from the expected Public Key"
@@ -507,15 +497,16 @@ where
                 result = &mut cancellation_receiver => {
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
-                        let _ = send_transaction_cancelled_message(
-                            self.id,self.dest_address.comms_public_key().clone(),
-                            self.resources.outbound_message_service.clone(), )
-                        .await.map_err(|e| {
+                        if let Err(e) =  send_transaction_cancelled_message(
+                            self.id,
+                            self.dest_address.comms_public_key(),
+                            self.resources.outbound_message_service.clone(),
+                        ).await {
                             warn!(
                                 target: LOG_TARGET,
                                 "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
                             )
-                        });
+                        }
                         self.resources
                             .db
                             .increment_send_count(self.id)
@@ -620,7 +611,7 @@ where
         send_finalized_transaction_message(
             tx_id,
             tx.clone(),
-            self.dest_address.comms_public_key().clone(),
+            self.dest_address.comms_public_key().to_peer_id(),
             self.resources.outbound_message_service.clone(),
             self.resources.config.direct_send_timeout,
             self.resources.config.transaction_routing_mechanism,
@@ -657,25 +648,18 @@ where
         &mut self,
         msg: SingleRoundSenderData,
     ) -> Result<SendResult, TransactionServiceProtocolError<TxId>> {
-        let mut result = SendResult {
-            direct_send_result: false,
-            store_and_forward_send_result: false,
-            transaction_status: TransactionStatus::Queued,
-        };
-
         match self.resources.config.transaction_routing_mechanism {
             TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
-                result = self.send_transaction_direct(msg.clone()).await?;
+                self.send_transaction_direct(msg.clone()).await
             },
             TransactionRoutingMechanism::StoreAndForwardOnly => {
-                result.store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
-                if result.store_and_forward_send_result {
-                    result.transaction_status = TransactionStatus::Pending;
-                }
+                self.send_transaction_direct(msg.clone()).await
+                // result.store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
+                // if result.store_and_forward_send_result {
+                //     result.transaction_status = TransactionStatus::Pending;
+                // }
             },
-        };
-
-        Ok(result)
+        }
     }
 
     /// Attempt to send the transaction to the recipient both directly and via Store-and-forward. If both fail to send
@@ -690,7 +674,7 @@ where
         let proto_message = proto::TransactionSenderMessage::single(msg.clone().try_into().map_err(|err| {
             TransactionServiceProtocolError::new(msg.tx_id, TransactionServiceError::ServiceError(err))
         })?);
-        let mut store_and_forward_send_result = false;
+        let store_and_forward_send_result = false;
         let mut direct_send_result = false;
         let mut transaction_status = TransactionStatus::Queued;
 
@@ -702,119 +686,14 @@ where
         match self
             .resources
             .outbound_message_service
-            .send_direct_unencrypted(
-                self.dest_address.comms_public_key().clone(),
-                OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
-                "transaction send".to_string(),
-            )
+            .send_message(self.dest_address.comms_public_key().to_peer_id(), proto_message)
             .await
         {
-            Ok(result) => match result {
-                SendMessageResponse::Queued(send_states) => {
-                    if wait_on_dial(
-                        send_states,
-                        self.id,
-                        self.dest_address.comms_public_key().clone(),
-                        "Transaction",
-                        self.resources.config.direct_send_timeout,
-                    )
-                    .await
-                    {
-                        direct_send_result = true;
-                        transaction_status = TransactionStatus::Pending;
-                    }
-                    // Send a Store and Forward (SAF) regardless. Empirical testing determined
-                    // that in some cases a direct send would be reported as true, even though the wallet
-                    // was offline. Possibly due to the Tor connection remaining active for a few
-                    // minutes after wallet shutdown.
-                    info!(
-                        target: LOG_TARGET,
-                        "Direct Send result was {}. Sending SAF for TxId: {} to recipient with Address: {}",
-                        direct_send_result,
-                        self.id,
-                        self.dest_address,
-                    );
-                    match self.send_transaction_store_and_forward(msg.clone()).await {
-                        Ok(res) => {
-                            store_and_forward_send_result = res;
-                            if store_and_forward_send_result {
-                                transaction_status = TransactionStatus::Pending
-                            };
-                        },
-                        // Sending SAF is the secondary concern here, so do not propagate the error
-                        Err(e) => warn!(target: LOG_TARGET, "Sending SAF for TxId {} failed ({:?})", self.id, e),
-                    }
-                },
-                SendMessageResponse::Failed(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Transaction Send Direct for TxID {} failed: {}", self.id, err
-                    );
-                    match self.send_transaction_store_and_forward(msg.clone()).await {
-                        Ok(res) => {
-                            store_and_forward_send_result = res;
-                            if store_and_forward_send_result {
-                                transaction_status = TransactionStatus::Pending
-                            };
-                        },
-                        // Sending SAF is the secondary concern here, so do not propagate the error
-                        Err(e) => warn!(target: LOG_TARGET, "Sending SAF for TxId {} failed ({:?})", self.id, e),
-                    }
-                },
-                SendMessageResponse::PendingDiscovery(rx) => {
-                    let _size = self
-                        .resources
-                        .event_publisher
-                        .send(Arc::new(TransactionEvent::TransactionDiscoveryInProgress(self.id)));
-                    match self.send_transaction_store_and_forward(msg.clone()).await {
-                        Ok(res) => {
-                            store_and_forward_send_result = res;
-                            if store_and_forward_send_result {
-                                transaction_status = TransactionStatus::Pending
-                            };
-                        },
-                        // Sending SAF is the secondary concern here, so do not propagate the error
-                        Err(e) => warn!(
-                            target: LOG_TARGET,
-                            "Sending SAF for TxId {} failed; we will still wait for discovery of {} to complete ({:?})",
-                            self.id,
-                            self.dest_address,
-                            e
-                        ),
-                    }
-                    // now wait for discovery to complete
-                    match rx.await {
-                        Ok(SendMessageResponse::Queued(send_states)) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Discovery of {} completed for TxID: {}", self.dest_address, self.id
-                            );
-                            direct_send_result = wait_on_dial(
-                                send_states,
-                                self.id,
-                                self.dest_address.comms_public_key().clone(),
-                                "Transaction",
-                                self.resources.config.direct_send_timeout,
-                            )
-                            .await;
-                            if direct_send_result {
-                                transaction_status = TransactionStatus::Pending
-                            };
-                        },
-                        Ok(SendMessageResponse::Failed(e)) => warn!(
-                            target: LOG_TARGET,
-                            "Failed to send message ({}) for TxId: {}", e, self.id
-                        ),
-                        Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
-                        Err(e) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Error waiting for Discovery while sending message (TxId: {}) {:?}", self.id, e
-                            );
-                        },
-                    }
-                },
+            Ok(_) => {
+                direct_send_result = true;
+                transaction_status = TransactionStatus::Pending;
             },
+
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
@@ -830,80 +709,80 @@ where
         })
     }
 
-    /// Contains all the logic to send the transaction to the recipient via store and forward
-    /// # Arguments
-    /// `msg`: The transaction data message to be sent
-    /// 'send_events': A bool indicating whether we should send events during the operation or not.
-    async fn send_transaction_store_and_forward(
-        &mut self,
-        msg: SingleRoundSenderData,
-    ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
-            return Ok(false);
-        }
-        let proto_message = proto::TransactionSenderMessage::single(msg.clone().try_into().map_err(|err| {
-            TransactionServiceProtocolError::new(msg.tx_id, TransactionServiceError::ServiceError(err))
-        })?);
-        match self
-            .resources
-            .outbound_message_service
-            .closest_broadcast(
-                self.dest_address.comms_public_key().clone(),
-                OutboundEncryption::encrypt_for(self.dest_address.comms_public_key().clone()),
-                vec![],
-                OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
-            )
-            .await
-        {
-            Ok(send_states) if !send_states.is_empty() => {
-                let (successful_sends, failed_sends) = send_states
-                    .wait_n_timeout(self.resources.config.broadcast_send_timeout, 1)
-                    .await;
-                if !successful_sends.is_empty() {
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
-                         Tags: {:?}",
-                        self.id,
-                        successful_sends[0],
-                    );
-                    Ok(true)
-                } else if !failed_sends.is_empty() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-                         messages were sent",
-                        self.id
-                    );
-                    Ok(false)
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
-                         unsuccessful. Some message might still be sent.",
-                        self.id
-                    );
-                    Ok(false)
-                }
-            },
-            Ok(_) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-                     messages were sent",
-                    self.id
-                );
-                Ok(false)
-            },
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
-                );
-                Ok(false)
-            },
-        }
-    }
+    // /// Contains all the logic to send the transaction to the recipient via store and forward
+    // /// # Arguments
+    // /// `msg`: The transaction data message to be sent
+    // /// 'send_events': A bool indicating whether we should send events during the operation or not.
+    // async fn send_transaction_store_and_forward(
+    //     &mut self,
+    //     msg: SingleRoundSenderData,
+    // ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
+    //     if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
+    //         return Ok(false);
+    //     }
+    //     let proto_message = proto::TransactionSenderMessage::single(msg.clone().try_into().map_err(|err| {
+    //         TransactionServiceProtocolError::new(msg.tx_id, TransactionServiceError::ServiceError(err))
+    //     })?);
+    //     match self
+    //         .resources
+    //         .outbound_message_service
+    //         .closest_broadcast(
+    //             self.dest_address.comms_public_key().clone(),
+    //             OutboundEncryption::encrypt_for(self.dest_address.comms_public_key().clone()),
+    //             vec![],
+    //             OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
+    //         )
+    //         .await
+    //     {
+    //         Ok(send_states) if !send_states.is_empty() => {
+    //             let (successful_sends, failed_sends) = send_states
+    //                 .wait_n_timeout(self.resources.config.broadcast_send_timeout, 1)
+    //                 .await;
+    //             if !successful_sends.is_empty() {
+    //                 info!(
+    //                     target: LOG_TARGET,
+    //                     "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
+    //                      Tags: {:?}",
+    //                     self.id,
+    //                     successful_sends[0],
+    //                 );
+    //                 Ok(true)
+    //             } else if !failed_sends.is_empty() {
+    //                 warn!(
+    //                     target: LOG_TARGET,
+    //                     "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
+    //                      messages were sent",
+    //                     self.id
+    //                 );
+    //                 Ok(false)
+    //             } else {
+    //                 warn!(
+    //                     target: LOG_TARGET,
+    //                     "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
+    //                      unsuccessful. Some message might still be sent.",
+    //                     self.id
+    //                 );
+    //                 Ok(false)
+    //             }
+    //         },
+    //         Ok(_) => {
+    //             warn!(
+    //                 target: LOG_TARGET,
+    //                 "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
+    //                  messages were sent",
+    //                 self.id
+    //             );
+    //             Ok(false)
+    //         },
+    //         Err(e) => {
+    //             warn!(
+    //                 target: LOG_TARGET,
+    //                 "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
+    //             );
+    //             Ok(false)
+    //         },
+    //     }
+    // }
 
     async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         info!(
@@ -937,9 +816,10 @@ where
         &mut self,
         cancel_reason: TxCancellationReason,
     ) -> Result<(), TransactionServiceProtocolError<TxId>> {
+        // they are just courtesy messages
         let _ = send_transaction_cancelled_message(
             self.id,
-            self.dest_address.comms_public_key().clone(),
+            self.dest_address.comms_public_key(),
             self.resources.outbound_message_service.clone(),
         )
         .await

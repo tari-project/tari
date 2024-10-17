@@ -24,7 +24,7 @@ use bincode::serialize_into;
 use log::{debug, error};
 use serde::Serialize;
 use tari_common_types::transaction::TxId;
-use tari_comms::protocol::rpc;
+use tari_rpc_framework::RPC_MAX_FRAME_SIZE;
 
 use crate::transaction_service::error::{TransactionServiceError, TransactionServiceProtocolError};
 
@@ -45,10 +45,10 @@ pub fn check_transaction_size<T: Serialize>(
         TransactionServiceProtocolError::new(tx_id, TransactionServiceError::SerializationError(e.to_string()))
     })?;
     const SIZE_MARGIN: usize = 1024 * 10;
-    if buf.len() > rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN) {
+    if buf.len() > RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN) {
         let err = TransactionServiceProtocolError::new(tx_id, TransactionServiceError::TransactionTooLarge {
             got: buf.len(),
-            expected: rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN),
+            expected: RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN),
         });
         error!(
             target: LOG_TARGET,
@@ -60,7 +60,7 @@ pub fn check_transaction_size<T: Serialize>(
         debug!(
             target: LOG_TARGET,
             "Transaction '{}' size ok, can be broadcast (got: {}, limit: {}).",
-            tx_id, buf.len(), rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN)
+            tx_id, buf.len(), RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN)
         );
         Ok(())
     }

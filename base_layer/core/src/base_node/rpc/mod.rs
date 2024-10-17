@@ -27,17 +27,7 @@ pub mod sync_utxos_by_block_task;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-
-#[cfg(feature = "base_node")]
-use crate::base_node::StateMachineHandle;
-#[cfg(feature = "base_node")]
-use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::service::MempoolHandle,
-};
-use crate::{
+use tari_p2p::{
     proto,
     proto::{
         base_node::{
@@ -57,11 +47,21 @@ use crate::{
             UtxoQueryRequest,
             UtxoQueryResponses,
         },
-        types::{Signature, Transaction},
+        common::{Signature, Transaction},
     },
 };
+use tari_rpc_framework::{Request, Response, RpcStatus, Streaming};
+use tari_rpc_macros::tari_rpc;
 
-#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
+#[cfg(feature = "base_node")]
+use crate::base_node::StateMachineHandle;
+#[cfg(feature = "base_node")]
+use crate::{
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    mempool::service::MempoolHandle,
+};
+
+#[tari_rpc(protocol_name = "/tari/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn submit_transaction(
@@ -88,7 +88,7 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     async fn get_tip_info(&self, request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus>;
 
     #[rpc(method = 6)]
-    async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+    async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::common::BlockHeader>, RpcStatus>;
 
     #[rpc(method = 7)]
     async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus>;
@@ -103,7 +103,7 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+    ) -> Result<Response<proto::common::BlockHeader>, RpcStatus>;
 
     #[rpc(method = 10)]
     async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;

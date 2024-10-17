@@ -33,8 +33,8 @@ use tari_comms::{
 use tari_comms_dht::{envelope::DhtMessageHeader, Dht, DhtProtocolVersion};
 use tari_p2p::{
     comms_connector::InboundDomainConnector,
-    domain_message::DomainMessage,
     initialization::initialize_local_test_comms,
+    message::DomainMessage,
 };
 use tari_shutdown::ShutdownSignal;
 
@@ -81,7 +81,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         Default::default(),
     );
     DomainMessage {
-        dht_header: DhtMessageHeader {
+        header: DhtMessageHeader {
             version: DhtProtocolVersion::latest(),
             ephemeral_public_key: None,
             message_signature: Vec::new(),
@@ -93,6 +93,6 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         },
         authenticated_origin: None,
         source_peer: peer_source,
-        inner: Ok(inner),
+        payload: Ok(inner),
     }
 }

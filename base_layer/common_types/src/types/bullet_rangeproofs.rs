@@ -101,7 +101,7 @@ impl<'de> Deserialize<'de> for BulletRangeProof {
     where D: Deserializer<'de> {
         struct RangeProofVisitor;
 
-        impl<'de> Visitor<'de> for RangeProofVisitor {
+        impl Visitor<'_> for RangeProofVisitor {
             type Value = BulletRangeProof;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

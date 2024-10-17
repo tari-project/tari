@@ -25,15 +25,10 @@ use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
-use tari_comms::{
-    connectivity::ConnectivityError,
-    multiaddr,
-    peer_manager::{node_id::NodeIdError, PeerManagerError},
-};
-use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_core::transactions::transaction_components::TransactionError;
 use tari_key_manager::{error::KeyManagerError, key_manager_service::KeyManagerServiceError};
+use tari_network::{multiaddr, NetworkError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -60,10 +55,10 @@ pub enum WalletError {
     CommsInitializationError(#[from] CommsInitializationError),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
     #[error("Transaction service error: `{0}`")]
     TransactionServiceError(#[from] TransactionServiceError),
-    #[error("Peer manager error: `{0}`")]
-    PeerManagerError(#[from] PeerManagerError),
     #[error("Multiaddr error: `{0}`")]
     MultiaddrError(#[from] multiaddr::Error),
     #[error("Wallet storage error: `{0}`")]
@@ -74,16 +69,10 @@ pub enum WalletError {
     ContactsServiceError(#[from] ContactsServiceError),
     #[error("Liveness service error: `{0}`")]
     LivenessServiceError(#[from] LivenessError),
-    #[error("Store and forward error: `{0}`")]
-    StoreAndForwardError(#[from] StoreAndForwardError),
-    #[error("Connectivity error: `{0}`")]
-    ConnectivityError(#[from] ConnectivityError),
     #[error("Failed to initialize services: {0}")]
     ServiceInitializationError(#[from] ServiceInitializationError),
     #[error("Base Node Service error: {0}")]
     BaseNodeServiceError(#[from] BaseNodeServiceError),
-    #[error("Node ID error: `{0}`")]
-    NodeIdError(#[from] NodeIdError),
     #[error("Error performing wallet recovery: '{0}'")]
     WalletRecoveryError(String),
     #[error("Shutdown Signal Received")]
@@ -106,6 +95,8 @@ pub enum WalletError {
     PublicAddressNotSet,
     #[error("Wallet connectivity error: `{0}`")]
     WalletConnectivityError(#[from] WalletConnectivityError),
+    #[error("Unsupported key type: {details}")]
+    UnsupportedKeyType { details: String },
 }
 
 pub const LOG_TARGET: &str = "minotari::application";

@@ -129,20 +129,20 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
         .unwrap()
 }
 
-/// This macro unlocks a Mutex or RwLock. If the lock is
-/// poisoned (i.e. panic while unlocked) the last value
-/// before the panic is used.
-macro_rules! acquire_lock {
-    ($e:expr, $m:ident) => {
-        match $e.$m() {
-            Ok(lock) => lock,
-            Err(poisoned) => {
-                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
-                poisoned.into_inner()
-            },
-        }
-    };
-    ($e:expr) => {
-        acquire_lock!($e, lock)
-    };
-}
+// /// This macro unlocks a Mutex or RwLock. If the lock is
+// /// poisoned (i.e. panic while unlocked) the last value
+// /// before the panic is used.
+// macro_rules! acquire_lock {
+//     ($e:expr, $m:ident) => {
+//         match $e.$m() {
+//             Ok(lock) => lock,
+//             Err(poisoned) => {
+//                 log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
+//                 poisoned.into_inner()
+//             },
+//         }
+//     };
+//     ($e:expr) => {
+//         acquire_lock!($e, lock)
+//     };
+// }

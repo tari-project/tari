@@ -106,7 +106,6 @@ impl Difficulty {
 /// - `Div for Difficulty` `/` must not be used at all; difficulties should only be added to or subtracted from
 /// - `From<u64> for Difficulty` `Difficulty::from<u64>` must not be used, use `from_u64(value)` instead; to prevent
 ///   assignment `< MIN_DIFFICULTY`
-
 impl Default for Difficulty {
     fn default() -> Self {
         Difficulty::min()
@@ -179,8 +178,7 @@ mod test {
     #[test]
     fn be_max_difficulty() {
         let target = U256::MAX / U256::from(u64::MAX);
-        let mut bytes = [0u8; 32];
-        target.to_big_endian(&mut bytes);
+        let bytes = target.to_big_endian();
         assert_eq!(Difficulty::big_endian_difficulty(&bytes).unwrap(), Difficulty::max());
     }
 
@@ -207,8 +205,7 @@ mod test {
     #[test]
     fn le_max_difficulty() {
         let target = U256::MAX / U256::from(u64::MAX);
-        let mut bytes = [0u8; 32];
-        target.to_little_endian(&mut bytes);
+        let bytes = target.to_little_endian();
         assert_eq!(Difficulty::little_endian_difficulty(&bytes).unwrap(), Difficulty::max());
     }
 

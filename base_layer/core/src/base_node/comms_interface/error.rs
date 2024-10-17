@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
@@ -47,8 +46,6 @@ pub enum CommsInterfaceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
-    #[error("Failed to send outbound message: {0}")]
-    OutboundMessageError(#[from] DhtOutboundError),
     #[error("Mempool error: {0}")]
     MempoolError(#[from] MempoolError),
     #[error("Failed to broadcast message")]
@@ -100,7 +97,6 @@ impl CommsInterfaceError {
             CommsInterfaceError::ChainStorageError(e) => e.get_ban_reason(),
             CommsInterfaceError::MergeMineError(e) => e.get_ban_reason(),
             CommsInterfaceError::NoBootstrapNodesConfigured |
-            CommsInterfaceError::OutboundMessageError(_) |
             CommsInterfaceError::BroadcastFailed |
             CommsInterfaceError::InternalChannelError(_) |
             CommsInterfaceError::DifficultyAdjustmentManagerError(_) |

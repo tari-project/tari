@@ -121,7 +121,7 @@ mod test {
         let header = MessageHeader::new(123);
         let msg = wrap_in_envelope_body!(header, b"my message".to_vec());
 
-        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.encode_to_vec());
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         InboundDomainConnector::new(tx).oneshot(decrypted).await.unwrap();
 
@@ -136,7 +136,7 @@ mod test {
         let header = MessageHeader::new(123);
         let msg = wrap_in_envelope_body!(header, b"my message".to_vec());
 
-        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.encode_to_vec());
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
 
         InboundDomainConnector::new(tx).call(decrypted).await.unwrap();
@@ -152,7 +152,7 @@ mod test {
         let header = b"dodgy header".to_vec();
         let msg = wrap_in_envelope_body!(header, b"message".to_vec());
 
-        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.encode_to_vec());
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         InboundDomainConnector::new(tx).oneshot(decrypted).await.unwrap_err();
 
@@ -167,7 +167,7 @@ mod test {
         let (tx, _) = mpsc::channel(1);
         let header = MessageHeader::new(123);
         let msg = wrap_in_envelope_body!(header, b"my message".to_vec());
-        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.to_encoded_bytes());
+        let inbound_message = make_dht_inbound_message(&make_node_identity(), msg.encode_to_vec());
         let decrypted = DecryptedDhtMessage::succeeded(msg, None, inbound_message);
         let result = InboundDomainConnector::new(tx).oneshot(decrypted).await;
         assert!(result.is_err());

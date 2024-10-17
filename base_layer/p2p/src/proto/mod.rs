@@ -21,11 +21,39 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #[allow(clippy::all, clippy::pedantic)]
-pub(crate) mod liveness {
-    tari_comms::outdir_include!("tari.p2p.liveness.rs");
+pub mod liveness {
+    include!(concat!(env!("OUT_DIR"), "/tari.liveness.rs"));
 }
 
 #[allow(clippy::all, clippy::pedantic)]
-pub(crate) mod message_type {
-    tari_comms::outdir_include!("tari.p2p.message_type.rs");
+pub mod chat {
+    include!(concat!(env!("OUT_DIR"), "/tari.chat.rs"));
 }
+
+pub mod message {
+    include!(concat!(env!("OUT_DIR"), "/tari.message.rs"));
+}
+
+#[allow(clippy::all, clippy::pedantic)]
+pub mod common {
+    include!(concat!(env!("OUT_DIR"), "/tari.common.rs"));
+}
+
+#[allow(clippy::all, clippy::pedantic)]
+pub mod transaction_protocol {
+    include!(concat!(env!("OUT_DIR"), "/tari.transaction_protocol.rs"));
+}
+
+#[allow(clippy::all, clippy::pedantic)]
+pub mod base_node {
+    include!(concat!(env!("OUT_DIR"), "/tari.base_node.rs"));
+}
+
+pub mod mempool {
+    include!(concat!(env!("OUT_DIR"), "/tari.mempool.rs"));
+}
+
+mod chain_metadata;
+mod sync_protocol;
+mod transaction_sender;
+mod types_impls;

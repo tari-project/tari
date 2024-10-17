@@ -27,7 +27,7 @@ use crate::key_val_store::{
     key_val_store::{IterationResult, KeyValueStore},
 };
 
-///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
+/// The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
 /// It allows key-value pairs to be inserted, retrieved and removed in a thread-safe manner.
 #[derive(Default)]
 pub struct HashmapDatabase<K: Eq + Hash, V> {

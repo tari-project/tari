@@ -23,21 +23,17 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-use std::{iter, path::Path, sync::Arc};
-
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::PeerManager;
 use tari_crypto::keys::{PublicKey as PublicKeyT, SecretKey};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -160,26 +156,6 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
         block.header.nonce += 1;
     }
     Err("Could not mine to difficulty in 20000 iterations".to_string())
-}
-
-pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
-    let peer_database_name = {
-        let mut rng = rand::thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(data_path)
-        .set_env_config(Default::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {

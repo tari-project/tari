@@ -22,15 +22,11 @@
 
 use std::convert::TryFrom;
 
-use tari_comms_dht::domain_message::OutboundDomainMessage;
-use tari_p2p::tari_message::TariMessageType;
+use tari_p2p::proto::chat as proto;
 
-use crate::contacts_service::{
-    proto,
-    types::{Confirmation, Message},
-};
+use crate::contacts_service::types::{Confirmation, Message};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum MessageDispatch {
     Message(Message),
     DeliveryConfirmation(Confirmation),
@@ -67,11 +63,5 @@ impl From<MessageDispatch> for proto::MessageDispatch {
         Self {
             contents: Some(content),
         }
-    }
-}
-
-impl From<MessageDispatch> for OutboundDomainMessage<proto::MessageDispatch> {
-    fn from(dispatch: MessageDispatch) -> Self {
-        Self::new(&TariMessageType::Chat, dispatch.into())
     }
 }

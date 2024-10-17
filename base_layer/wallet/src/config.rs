@@ -33,7 +33,7 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::multiaddr::Multiaddr;
+use tari_network::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
 
@@ -126,8 +126,8 @@ pub struct WalletConfig {
 impl Default for WalletConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
-            datastore_path: PathBuf::from("peer_db/wallet"),
-            listener_self_liveness_check_interval: None,
+            enable_relay: false,
+            enable_mdns: true,
             ..Default::default()
         };
         Self {
@@ -181,7 +181,6 @@ impl WalletConfig {
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
         }
-        self.p2p.set_base_path(base_path);
     }
 }
 

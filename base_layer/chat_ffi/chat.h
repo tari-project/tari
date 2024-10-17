@@ -30,8 +30,6 @@ struct MessageVector;
 
 struct TariAddress;
 
-struct TransportConfig;
-
 typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
 
 typedef void (*CallbackMessageReceived)(struct Message*);
@@ -149,7 +147,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *public_address,
                                              const char *datastore_path,
                                              const char *identity_file_path,
-                                             struct TransportConfig *tor_transport_config,
+                                             TransportConfig *tor_transport_config,
                                              const char *log_path,
                                              int log_verbosity,
                                              int *error_out);
@@ -883,13 +881,13 @@ void destroy_message_vector(struct MessageVector *ptr);
  * The ```destroy_chat_tor_transport_config``` method must be called when finished with a TransportConfig to prevent a
  * memory leak
  */
-struct TransportConfig *create_chat_tor_transport_config(const char *control_server_address,
-                                                         const struct ChatByteVector *tor_cookie,
-                                                         unsigned short tor_port,
-                                                         bool tor_proxy_bypass_for_outbound,
-                                                         const char *socks_username,
-                                                         const char *socks_password,
-                                                         int *error_out);
+TransportConfig *create_chat_tor_transport_config(const char *control_server_address,
+                                                  const struct ChatByteVector *tor_cookie,
+                                                  unsigned short tor_port,
+                                                  bool tor_proxy_bypass_for_outbound,
+                                                  const char *socks_username,
+                                                  const char *socks_password,
+                                                  int *error_out);
 
 /**
  * Frees memory for a TransportConfig
@@ -903,7 +901,7 @@ struct TransportConfig *create_chat_tor_transport_config(const char *control_ser
  * # Safety
  * None
  */
-void destroy_chat_tor_transport_config(struct TransportConfig *ptr);
+void destroy_chat_tor_transport_config(TransportConfig *ptr);
 
 /**
  * Creates a TariAddress and returns a ptr

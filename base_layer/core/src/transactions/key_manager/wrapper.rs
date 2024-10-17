@@ -29,7 +29,6 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
-use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
@@ -47,6 +46,7 @@ use tokio::sync::RwLock;
 use crate::transactions::{
     key_manager::{
         interface::{SecretTransactionKeyManagerInterface, TxoStage},
+        RistrettoDiffieHellmanSharedSecret,
         TariKeyId,
         TransactionKeyManagerInner,
         TransactionKeyManagerInterface,
@@ -254,7 +254,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<CommsDHKE, TransactionError> {
+    ) -> Result<RistrettoDiffieHellmanSharedSecret, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await

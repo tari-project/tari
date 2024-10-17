@@ -23,8 +23,8 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_utilities::utilities::UniNodeId;
-use tari_comms::peer_manager::NodeId;
+use minotari_app_utilities::utilities::UniPeerId;
+use tari_network::{identity::PeerId, ToPeerId};
 use tari_p2p::services::liveness::LivenessEvent;
 use tokio::{sync::broadcast::error::RecvError, task};
 
@@ -34,32 +34,32 @@ use super::{CommandContext, HandleCommand};
 #[derive(Debug, Parser)]
 pub struct Args {
     /// hex public key or emoji id
-    node_id: UniNodeId,
+    node_id: UniPeerId,
 }
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        self.ping_peer(args.node_id.into()).await
+        self.ping_peer(args.node_id.to_peer_id()).await
     }
 }
 
 impl CommandContext {
     /// Function to process the dial-peer command
-    pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
+    pub async fn ping_peer(&mut self, dest_peer_id: PeerId) -> Result<(), Error> {
         println!("🏓 Pinging peer...");
         let mut liveness_events = self.liveness.get_event_stream();
         let mut liveness = self.liveness.clone();
         task::spawn(async move {
-            if let Err(e) = liveness.send_ping(dest_node_id.clone()).await {
-                println!("🏓 Ping failed to send to {}: {}", dest_node_id, e);
+            if let Err(e) = liveness.send_ping(dest_peer_id).await {
+                println!("🏓 Ping failed to send to {}: {}", dest_peer_id, e);
                 return;
             }
             loop {
                 match liveness_events.recv().await {
                     Ok(event) => {
                         if let LivenessEvent::ReceivedPong(pong) = &*event {
-                            if pong.node_id == dest_node_id {
+                            if pong.peer_id == dest_peer_id {
                                 println!(
                                     "🏓️ Pong received, round-trip-time is {:.2?}!",
                                     pong.latency.unwrap_or_default()

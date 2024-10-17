@@ -24,8 +24,8 @@ use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
+use tari_network::{identity::PeerId, NetworkHandle};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -54,7 +54,7 @@ pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) retry_limit: usize,
-    pub(crate) peer_seeds: Vec<CommsPublicKey>,
+    pub(crate) peer_seeds: Vec<PeerId>,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
@@ -69,7 +69,7 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        peer_seeds: Vec<CommsPublicKey>,
+        peer_seeds: Vec<PeerId>,
         retry_limit: usize,
         mode: UtxoScannerMode,
         resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
@@ -162,8 +162,8 @@ where
                     _ = self.resources.current_base_node_watcher.changed() => {
                         debug!(target: LOG_TARGET, "Base node change detected.");
                         let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                        if let Some(peer) = selected_peer {
-                            self.peer_seeds = vec![peer.get_current_peer().public_key];
+                        if let Some(pm) = selected_peer {
+                            self.peer_seeds = vec![pm.get_current_peer_id()];
                         }
                         local_shutdown.trigger();
                     },
@@ -188,7 +188,7 @@ where
 #[derive(Clone)]
 pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub db: WalletDatabase<TBackend>,
-    pub comms_connectivity: ConnectivityRequester,
+    pub network: NetworkHandle,
     pub wallet_connectivity: TWalletConnectivity,
     pub current_base_node_watcher: watch::Receiver<Option<BaseNodePeerManager>>,
     pub output_manager_service: OutputManagerHandle,

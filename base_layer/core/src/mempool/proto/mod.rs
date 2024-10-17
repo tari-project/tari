@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use mempool::{InventoryIndexes, TransactionInventory, TransactionItem};
-
-use crate::proto::mempool;
-
 mod state_response;
 mod stats_response;
-mod sync_protocol;
 mod tx_storage_response;

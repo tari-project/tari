@@ -40,8 +40,6 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{PrivateKey, PublicKey},
     };
-    use tari_comms::peer_manager::NodeId;
-    use tari_comms_dht::event::DhtEvent;
     use tari_contacts::contacts_service::{
         handle::{ContactsLivenessData, ContactsLivenessEvent},
         service::{ContactMessageType, ContactOnlineStatus},
@@ -54,6 +52,7 @@ mod test {
         SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_network::test_utils::random_peer_id;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tokio::{
@@ -470,7 +469,7 @@ mod test {
         let (base_node_event_sender, base_node_event_receiver) = broadcast::channel(20);
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
-        let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
+        // let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
         let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
@@ -511,7 +510,6 @@ mod test {
             oms_event_receiver,
             oms_handle,
             utxo_scanner_events,
-            dht_event_receiver,
             shutdown_signal.to_signal(),
             comms_address,
             connectivity_rx,
@@ -558,7 +556,7 @@ mod test {
 
         base_node_event_sender
             .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
-                node_id: Some(NodeId::new()),
+                node_id: Some(random_peer_id()),
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(true),
                 updated: NaiveDateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),
@@ -842,7 +840,7 @@ mod test {
         );
         let data = ContactsLivenessData::new(
             contact.address.clone(),
-            contact.node_id.clone(),
+            contact.peer_id.clone(),
             contact.latency,
             contact.last_seen,
             ContactMessageType::NoMessage,
@@ -853,7 +851,7 @@ mod test {
             .unwrap();
         let data = ContactsLivenessData::new(
             contact.address.clone(),
-            contact.node_id,
+            contact.peer_id,
             Some(1234),
             Some(Utc::now().naive_utc()),
             ContactMessageType::Ping,
@@ -863,9 +861,9 @@ mod test {
             .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))))
             .unwrap();
 
-        dht_event_sender
-            .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
-            .unwrap();
+        // dht_event_sender
+        //     .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
+        //     .unwrap();
         thread::sleep(Duration::from_secs(2));
         connectivity_tx.send(OnlineStatus::Offline).unwrap();
         thread::sleep(Duration::from_secs(2));

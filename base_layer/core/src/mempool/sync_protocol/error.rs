@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::io;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use thiserror::Error;
 
 use crate::mempool::MempoolError;
@@ -30,17 +30,17 @@ use crate::mempool::MempoolError;
 #[allow(clippy::large_enum_variant)]
 pub enum MempoolProtocolError {
     #[error("Transaction from peer `{0}` did not contain a kernel excess signature")]
-    ExcessSignatureMissing(NodeId),
+    ExcessSignatureMissing(PeerId),
     #[error("Peer `{0}` unexpectedly closed the substream")]
-    SubstreamClosed(NodeId),
+    SubstreamClosed(PeerId),
     #[error("Mempool database error: {0}")]
     MempoolError(#[from] MempoolError),
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
     #[error("Failed to decode message from peer `{peer}`: {source}")]
-    DecodeFailed { peer: NodeId, source: prost::DecodeError },
+    DecodeFailed { peer: PeerId, source: prost::DecodeError },
     #[error("Wire message from `{peer}` failed to convert to local type: {message}")]
-    MessageConversionFailed { peer: NodeId, message: String },
+    MessageConversionFailed { peer: PeerId, message: String },
     #[error("Send timeout occurred")]
     SendTimeout,
     #[error("Receive timeout occurred")]

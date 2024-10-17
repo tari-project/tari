@@ -26,72 +26,83 @@ package tari.rpc;
 import "google/protobuf/timestamp.proto";
 
 message NodeIdentity {
-    bytes public_key = 1;
-    repeated string public_addresses = 2;
-    bytes node_id = 3;
+  bytes public_key = 1;
+  repeated string public_addresses = 2;
+  bytes node_id = 3;
 }
 
 message Peer {
-    /// Public key of the peer
-    bytes public_key =1;
-    /// NodeId of the peer
-    bytes node_id =2;
-    /// Peer's addresses
-    repeated Address addresses = 3;
-    /// Last connection attempt to peer
-    uint64 last_connection = 4;
-    /// Flags for the peer.
-    uint32 flags = 5;
-    uint64 banned_until= 6;
-    string banned_reason= 7;
-    uint64 offline_at = 8;
-    /// Features supported by the peer
-    uint32 features = 9;
-    /// used as information for more efficient protocol negotiation.
-    repeated bytes supported_protocols = 11;
-    /// User agent advertised by the peer
-    string user_agent = 12;
+  /// Public key of the peer
+  bytes public_key = 1;
+  /// NodeId of the peer
+  bytes node_id = 2;
+  /// Peer's addresses
+  repeated Address addresses = 3;
+  /// Last connection attempt to peer
+  uint64 last_connection = 4;
+  /// Flags for the peer.
+  uint32 flags = 5;
+  uint64 banned_until = 6;
+  string banned_reason = 7;
+  uint64 offline_at = 8;
+  /// Features supported by the peer
+  uint32 features = 9;
+  /// used as information for more efficient protocol negotiation.
+  repeated bytes supported_protocols = 11;
+  /// User agent advertised by the peer
+  string user_agent = 12;
+}
+
+message ConnectedPeer {
+  /// Public key of the peer (empty if not available)
+  bytes public_key = 1;
+  /// PeerId of the peer
+  bytes peer_id = 2;
+  /// Peer's public addresses
+  repeated bytes addresses = 3;
+  /// User agent advertised by the peer
+  string user_agent = 4;
 }
 
 enum ConnectivityStatus {
-    Initializing = 0;
-    Online = 1;
-    Degraded = 2;
-    Offline = 3;
+  Initializing = 0;
+  Online = 1;
+  Degraded = 2;
+  Offline = 3;
 }
 
 message NetworkStatusResponse {
-    ConnectivityStatus status = 1;
-    uint32 avg_latency_ms = 2;
-    uint32 num_node_connections = 3;
+  ConnectivityStatus status = 1;
+  uint32 avg_latency_ms = 2;
+  uint32 num_node_connections = 3;
 }
 
 message Address{
-    bytes address =1;
-    string last_seen = 2;
-    uint32 connection_attempts = 3;
-    AverageLatency avg_latency = 5;
+  bytes address = 1;
+  string last_seen = 2;
+  uint32 connection_attempts = 3;
+  AverageLatency avg_latency = 5;
 }
 
 message AverageLatency {
-    uint64 latency = 1;
+  uint64 latency = 1;
 }
 
 message ListConnectedPeersResponse {
-    repeated Peer connected_peers = 1;
+  repeated ConnectedPeer connected_peers = 1;
 }
 
 message SoftwareUpdate {
-    bool has_update = 1;
-    string version = 2;
-    string sha = 3;
-    string download_url = 4;
+  bool has_update = 1;
+  string version = 2;
+  string sha = 3;
+  string download_url = 4;
 }
 
-message GetIdentityRequest { }
+message GetIdentityRequest {}
 
 message GetIdentityResponse {
-    bytes public_key = 1;
-    string public_address = 2;
-    bytes node_id = 3;
+  bytes public_key = 1;
+  string public_address = 2;
+  bytes node_id = 3;
 }

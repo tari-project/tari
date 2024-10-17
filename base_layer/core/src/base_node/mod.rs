@@ -37,6 +37,9 @@ pub mod chain_metadata_service;
 
 #[cfg(feature = "base_node")]
 pub mod comms_interface;
+
+use std::time::Duration;
+
 #[cfg(feature = "base_node")]
 pub use comms_interface::LocalNodeCommsInterface;
 #[cfg(feature = "metrics")]
@@ -65,3 +68,6 @@ pub mod proto;
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod rpc;
+
+pub const BAN_DURATION_LONG: Duration = Duration::from_secs(2 * 60 * 60);
+pub const BAN_DURATION_SHORT: Duration = Duration::from_secs(2 * 60);

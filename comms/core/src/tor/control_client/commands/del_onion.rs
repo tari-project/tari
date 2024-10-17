@@ -37,7 +37,7 @@ impl<'a> DelOnion<'a> {
     }
 }
 
-impl<'a> TorCommand for DelOnion<'a> {
+impl TorCommand for DelOnion<'_> {
     type Error = TorClientError;
     type Output = ();
 

@@ -1,0 +1,32 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+// A want request for peers
+message WantPeers {
+    // Requested peers
+    repeated bytes want_peer_ids = 1;
+}
+
+// Response to a want request. This response is streamed back to the requester.
+message WantPeerResponse {
+    // A peer that was requested.
+    SignedPeerRecord peer = 1;
+}
+
+message SignedPeerRecord {
+    // The addresses of the peer
+    repeated bytes addresses = 1;
+    // The Unix epoch based timestamp when this peer record was signed
+    uint64 ts_updated_at = 2;
+    // The signature that signs the peer record (addresses | ts_updated_at)
+    PeerSignature signature = 3;
+}
+
+message PeerSignature {
+    // The public key of the peer
+    bytes public_key = 1;
+    // The signature that signs the peer record (addresses | ts_updated_at)
+    bytes signature = 2;
+}

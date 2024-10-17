@@ -32,9 +32,9 @@ use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
+use tari_network::multiaddr::Multiaddr;
 use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,

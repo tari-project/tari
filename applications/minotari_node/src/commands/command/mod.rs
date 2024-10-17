@@ -46,7 +46,6 @@ mod list_validator_nodes;
 mod period_stats;
 mod ping_peer;
 mod quit;
-mod reset_offline_peers;
 mod rewind_blockchain;
 mod search_kernel;
 mod search_utxo;
@@ -66,23 +65,18 @@ use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
-use tari_comms::{
-    peer_manager::{Peer, PeerManagerError, PeerQuery},
-    protocol::rpc::RpcServerHandle,
-    CommsNode,
-    NodeIdentity,
-};
-use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
+    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     blocks::ChainHeader,
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
 };
+use tari_network::{BannedPeer, NetworkError, NetworkHandle};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_rpc_framework::RpcServerHandle;
 use tari_shutdown::Shutdown;
-use tokio::{sync::watch, time};
+use tokio::{sync::watch, task, time};
 pub use watch_command::WatchCommand;
 
 use crate::{
@@ -109,7 +103,6 @@ pub enum Command {
     ListPeers(list_peers::Args),
     DialPeer(dial_peer::Args),
     PingPeer(ping_peer::Args),
-    ResetOfflinePeers(reset_offline_peers::Args),
     RewindBlockchain(rewind_blockchain::Args),
     AddPeer(add_peer::ArgsAddPeer),
     BanPeer(ban_peer::ArgsBan),
@@ -155,15 +148,14 @@ pub struct CommandContext {
     pub config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
-    discovery_service: DhtDiscoveryRequester,
-    dht_metrics_collector: MetricsCollectorHandle,
     rpc_server: RpcServerHandle,
-    base_node_identity: Arc<NodeIdentity>,
-    comms: CommsNode,
+    network: NetworkHandle,
+    network_join_handle: Option<task::JoinHandle<Result<(), NetworkError>>>,
     liveness: LivenessHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
+    state_machine: StateMachineHandle,
     pub software_updater: SoftwareUpdaterHandle,
     last_time_full: Instant,
     pub shutdown: Shutdown,
@@ -175,19 +167,22 @@ impl CommandContext {
             config: ctx.config(),
             consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
-            discovery_service: ctx.base_node_dht().discovery_service_requester(),
-            dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
             rpc_server: ctx.rpc_server(),
-            base_node_identity: ctx.base_node_identity(),
-            comms: ctx.base_node_comms().clone(),
+            network: ctx.network().clone(),
+            network_join_handle: ctx.take_network_join_handle(),
             liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
+            state_machine: ctx.state_machine(),
             state_machine_info: ctx.get_state_machine_info_channel(),
             software_updater: ctx.software_updater(),
             last_time_full: Instant::now(),
             shutdown,
         }
+    }
+
+    pub fn take_network_join_handle(&mut self) -> Option<task::JoinHandle<Result<(), NetworkError>>> {
+        self.network_join_handle.take()
     }
 
     pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<WatchCommand>, Error> {
@@ -206,7 +201,6 @@ impl CommandContext {
                 Command::UnbanAllPeers(_) |
                 Command::UnbanPeer(_) |
                 Command::GetPeer(_) |
-                Command::ResetOfflinePeers(_) |
                 Command::DialPeer(_) |
                 Command::PingPeer(_) |
                 Command::DiscoverPeer(_) |
@@ -274,7 +268,6 @@ impl HandleCommand<Command> for CommandContext {
             Command::AddPeer(args) => self.handle_command(args).await,
             Command::BanPeer(args) => self.handle_command(args).await,
             Command::UnbanPeer(args) => self.handle_command(args).await,
-            Command::ResetOfflinePeers(args) => self.handle_command(args).await,
             Command::RewindBlockchain(args) => self.handle_command(args).await,
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListHeaders(args) => self.handle_command(args).await,
@@ -302,10 +295,8 @@ impl HandleCommand<Command> for CommandContext {
 }
 
 impl CommandContext {
-    async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let pm = self.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_banned());
-        pm.perform_query(query).await
+    async fn fetch_banned_peers(&self) -> Result<Vec<BannedPeer>, NetworkError> {
+        self.network.get_banned_peers().await
     }
 
     /// Function to process the get-headers command

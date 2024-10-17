@@ -34,24 +34,18 @@ use tari_common_types::{
     types::HashOutput,
     wallet_types::WalletType,
 };
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    traits::OrOptional,
-    types::CommsPublicKey,
-    Minimized,
-    PeerConnection,
-};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
-    proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
+use tari_network::identity::PeerId;
+use tari_p2p::proto::base_node::SyncUtxosByBlockRequest;
+use tari_rpc_framework::{optional::OrOptional, pool::RpcClientLease, RpcConnector};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -77,7 +71,7 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
-    pub(crate) peer_seeds: Vec<CommsPublicKey>,
+    pub(crate) peer_seeds: Vec<PeerId>,
     pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
@@ -106,7 +100,7 @@ where
                 return Ok(());
             }
             match self.get_next_peer() {
-                Some(peer) => match self.attempt_sync(peer.clone()).await {
+                Some(peer) => match self.attempt_sync(peer).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
@@ -179,35 +173,9 @@ where
         Ok(())
     }
 
-    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
-        debug!(
-            target: LOG_TARGET,
-            "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
-        );
-        match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
-            Ok(conn) => Ok(conn),
-            Err(e) => {
-                self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                    peer: peer.clone(),
-                    num_retries: self.num_retries,
-                    retry_limit: self.retry_limit,
-                    error: e.to_string(),
-                });
-
-                if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
-                    if connection.clone().disconnect(Minimized::No).await.is_ok() {
-                        debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
-                    }
-                }
-
-                Err(e.into())
-            },
-        }
-    }
-
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
-        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
+    async fn attempt_sync(&mut self, peer: PeerId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
         let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
@@ -222,10 +190,7 @@ where
         };
 
         let latency = client.get_last_request_latency();
-        self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
-            peer.clone(),
-            latency.unwrap_or_default(),
-        ));
+        self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(peer, latency.unwrap_or_default()));
 
         let timer = Instant::now();
         loop {
@@ -331,11 +296,12 @@ where
 
     async fn establish_new_rpc_connection(
         &mut self,
-        peer: &NodeId,
+        peer: &PeerId,
     ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
-        let mut connection = self.connect_to_peer(peer.clone()).await?;
-        let client = connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
+        let client = self
+            .resources
+            .network
+            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder(*peer).with_deadline(Duration::from_secs(60)))
             .await?;
         Ok(RpcClientLease::new(client))
     }
@@ -749,8 +715,8 @@ where
         Ok(tx_id)
     }
 
-    fn get_next_peer(&mut self) -> Option<NodeId> {
-        let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
+    fn get_next_peer(&mut self) -> Option<PeerId> {
+        let peer = self.peer_seeds.get(self.peer_index).copied();
         self.peer_index += 1;
         peer
     }
@@ -764,16 +730,13 @@ where
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
 
-        let block_height = match client.get_height_at_time(epoch_time).await {
-            Ok(b) => b,
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Problem requesting `height_at_time` from Base Node: {}", e
-                );
-                0
-            },
-        };
+        let block_height = client.get_height_at_time(epoch_time).await.unwrap_or_else(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Problem requesting `height_at_time` from Base Node: {}", e
+            );
+            0
+        });
         let header = client.get_header_by_height(block_height).await?;
         let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
         let header_hash = header.hash();

@@ -25,6 +25,7 @@ pub mod error;
 pub mod handle;
 pub mod service;
 
+mod backoff;
 mod monitor;
 
 use log::*;

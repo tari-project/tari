@@ -105,7 +105,7 @@ mod tests {
 
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
+        TestHashDomain::add_domain_separation_tag(&mut hasher, format!("{}.n{}", "foo", network.as_byte()));
 
         let expected_hash = hasher.chain_update(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
@@ -122,7 +122,7 @@ mod tests {
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop).unwrap();
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
+        TestHashDomain::add_domain_separation_tag(&mut hasher, format!("{}.n{}", "foo", network.as_byte()));
 
         let expected_hash = hasher.chain_update(b"\x01\x73").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")

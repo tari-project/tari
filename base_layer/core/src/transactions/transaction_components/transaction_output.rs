@@ -105,7 +105,6 @@ pub struct TransactionOutput {
 /// An output for a transaction, includes a range proof and Tari script metadata
 impl TransactionOutput {
     /// Create new Transaction Output
-
     pub fn new(
         version: TransactionOutputVersion,
         features: OutputFeatures,

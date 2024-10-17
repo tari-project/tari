@@ -30,7 +30,7 @@ use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
 use rand::rngs::OsRng;
 use serde_json::Value;
-use tari_chat_client::ChatClient;
+// use tari_chat_client::ChatClient;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -83,7 +83,7 @@ pub struct TariWorld {
     pub miners: IndexMap<String, MinerProcess>,
     pub ffi_wallets: IndexMap<String, WalletFFI>,
     pub wallets: IndexMap<String, WalletProcess>,
-    pub chat_clients: IndexMap<String, Box<dyn ChatClient>>,
+    // pub chat_clients: IndexMap<String, Box<dyn ChatClient>>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -125,7 +125,7 @@ impl Default for TariWorld {
             miners: Default::default(),
             ffi_wallets: Default::default(),
             wallets: Default::default(),
-            chat_clients: Default::default(),
+            // chat_clients: Default::default(),
             merge_mining_proxies: Default::default(),
             transactions: Default::default(),
             wallet_addresses: Default::default(),
@@ -155,7 +155,7 @@ impl Debug for TariWorld {
             .field("ffi_wallets", &self.ffi_wallets)
             .field("wallets", &self.wallets)
             .field("merge_mining_proxies", &self.merge_mining_proxies)
-            .field("chat_clients", &self.chat_clients.keys())
+            // .field("chat_clients", &self.chat_clients.keys())
             .field("transactions", &self.transactions)
             .field("wallet_addresses", &self.wallet_addresses)
             .field("utxos", &self.utxos)
@@ -293,10 +293,10 @@ impl TariWorld {
     }
 
     pub async fn after(&mut self, _scenario: &Scenario) {
-        for (name, mut p) in self.chat_clients.drain(..) {
-            println!("Shutting down chat client {}", name);
-            p.shutdown();
-        }
+        // for (name, mut p) in self.chat_clients.drain(..) {
+        //     println!("Shutting down chat client {}", name);
+        //     p.shutdown();
+        // }
         for (name, mut p) in self.wallets.drain(..) {
             println!("Shutting down wallet {}", name);
             p.kill_signal.trigger();

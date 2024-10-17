@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_network::NetworkHandle;
 use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
@@ -43,11 +43,11 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
         context.register_handle(handle);
 
         context.spawn_until_shutdown(|handles| {
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
+            let network = handles.expect_handle::<NetworkHandle>();
             let liveness = handles.expect_handle::<LivenessHandle>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
-            ChainMetadataService::new(liveness, base_node, connectivity, publisher).run()
+            ChainMetadataService::new(liveness, base_node, network, publisher).run()
         });
 
         debug!(target: LOG_TARGET, "Chain Metadata Service initialized");

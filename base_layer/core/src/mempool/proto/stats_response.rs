@@ -22,7 +22,9 @@
 
 use std::convert::TryFrom;
 
-use crate::mempool::{proto::mempool::StatsResponse as ProtoStatsResponse, StatsResponse};
+use tari_p2p::proto::mempool::StatsResponse as ProtoStatsResponse;
+
+use crate::mempool::StatsResponse;
 
 impl TryFrom<ProtoStatsResponse> for StatsResponse {
     type Error = String;

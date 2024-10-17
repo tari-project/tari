@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
     fmt::{Display, Formatter},
     ops::Deref,
     time::Instant,
@@ -57,20 +56,10 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerMetadata {
     pub metadata: ChainMetadata,
     pub last_updated: EpochTime,
-}
-
-impl PeerMetadata {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let size = usize::try_from(bincode::serialized_size(self).unwrap())
-            .expect("The serialized size is larger than the platform allows");
-        let mut buf = Vec::with_capacity(size);
-        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
-        buf
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -169,16 +158,16 @@ impl Listening {
                     }
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
-                    match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
-                        Ok(true) => {
+                    match shared.network.get_banned_peer(*peer_metadata.peer_id()).await {
+                        Ok(Some(_)) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Ignoring chain metadata from banned peer {}",
-                                peer_metadata.node_id()
+                                peer_metadata.peer_id()
                             );
                             continue;
                         },
-                        Ok(false) => {},
+                        Ok(None) => {},
                         Err(e) => {
                             return FatalError(format!("Error checking if peer is banned: {}", e));
                         },
@@ -187,19 +176,18 @@ impl Listening {
                         metadata: peer_metadata.claimed_chain_metadata().clone(),
                         last_updated: EpochTime::now(),
                     };
-                    // If this fails, its not the end of the world, we just want to keep record of the stats of
-                    // the peer
-                    let _old_data = shared
-                        .peer_manager
-                        .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
-                        .await;
+                    shared
+                        .peer_metadata
+                        .write()
+                        .await
+                        .insert(*peer_metadata.peer_id(), peer_data);
                     log_mdc::extend(mdc.clone());
 
                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                     if !configured_sync_peers.is_empty() {
                         // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
                         // we're out of sync
-                        if !configured_sync_peers.contains(peer_metadata.node_id()) {
+                        if !configured_sync_peers.contains(peer_metadata.peer_id()) {
                             continue;
                         }
                     };
@@ -450,7 +438,7 @@ fn determine_sync_mode(
             "Lagging (local height = {}, network height = {}, peer = {} ({}))",
             local_tip_height,
             network_tip_height,
-            network.node_id(),
+            network.peer_id(),
             network
                 .latency()
                 .map(|l| format!("{:.2?}", l))
@@ -484,17 +472,10 @@ fn determine_sync_mode(
 #[cfg(test)]
 mod test {
     use primitive_types::U256;
-    use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
-    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-    use tari_crypto::keys::PublicKey;
+    use tari_network::test_utils::random_peer_id;
 
     use super::*;
-
-    fn random_node_id() -> NodeId {
-        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-        NodeId::from_key(&public_key)
-    }
 
     #[test]
     fn test_determine_sync_mode() {
@@ -506,13 +487,13 @@ mod test {
         let accumulated_difficulty = U256::from(10000);
 
         let archival_node = PeerChainMetadata::new(
-            random_node_id(),
+            random_peer_id(),
             ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_difficulty, 0).unwrap(),
             None,
         );
 
         let behind_node = PeerChainMetadata::new(
-            random_node_id(),
+            random_peer_id(),
             ChainMetadata::new(
                 NETWORK_TIP_HEIGHT - 1,
                 block_hash,

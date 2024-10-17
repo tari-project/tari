@@ -25,8 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_comms::peer_manager::Peer;
-use tari_utilities::hex::Hex;
+use tari_network::{identity::PeerId, Peer};
 
 use crate::connectivity_service::WalletConnectivityError;
 
@@ -53,7 +52,11 @@ impl BaseNodePeerManager {
             return Err(WalletConnectivityError::PeerIndexOutOfBounds(format!(
                 "Preferred index: {}, Max index: {}",
                 preferred_peer_index,
-                peer_list.len() - 1
+                peer_list
+                    .len()
+                    .checked_sub(1)
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "<empty>".to_string())
             )));
         }
         Ok(Self {
@@ -63,23 +66,27 @@ impl BaseNodePeerManager {
         })
     }
 
+    /// Get the current peer's PeerId
+    pub fn get_current_peer_id(&self) -> PeerId {
+        self.get_current_peer().peer_id()
+    }
+
     /// Get the current peer
-    pub fn get_current_peer(&self) -> Peer {
+    pub fn get_current_peer(&self) -> &Peer {
         self.peer_list
             .get(self.current_peer_index)
-            .cloned()
-            .unwrap_or(self.peer_list[0].clone())
+            .unwrap_or(&self.peer_list[0])
     }
 
     /// Get the next peer in the list
-    pub fn get_next_peer(&mut self) -> Peer {
+    pub fn get_next_peer_id(&mut self) -> PeerId {
         self.current_peer_index = (self.current_peer_index + 1) % self.peer_list.len();
-        self.peer_list[self.current_peer_index].clone()
+        self.peer_list[self.current_peer_index].peer_id()
     }
 
     /// Get the base node peer manager state
-    pub fn get_state(&self) -> (usize, Vec<Peer>) {
-        (self.current_peer_index, self.peer_list.clone())
+    pub fn get_state(&self) -> (usize, &[Peer]) {
+        (self.current_peer_index, &self.peer_list)
     }
 
     /// Set the last connection attempt stats
@@ -112,13 +119,10 @@ impl Display for BaseNodePeerManager {
         };
         write!(
             f,
-            "BaseNodePeerManager {{ current index: {}, last attempt (s): {}, peer list: {:?} }}",
+            "BaseNodePeerManager {{ current index: {}, last attempt (s): {}, peer list: {} entries }}",
             self.current_peer_index,
             last_connection_attempt,
-            self.peer_list
-                .iter()
-                .map(|p| (p.node_id.to_hex(), p.public_key.to_hex()))
-                .collect::<Vec<_>>()
+            self.peer_list.len()
         )
     }
 }

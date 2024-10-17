@@ -26,12 +26,16 @@ use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    conversions::multiaddr::multiaddr_to_socketaddr,
+    tls::identity::read_identity,
+};
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_network::{multiaddr::Multiaddr, Peer};
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tui::backend::CrosstermBackend;
@@ -99,10 +103,7 @@ impl PeerConfig {
         } else if !self.peer_seeds.is_empty() {
             Ok(self.peer_seeds.clone())
         } else {
-            Err(ExitError::new(
-                ExitCode::ConfigError,
-                "No peer seeds or base node peer defined in config!",
-            ))
+            Ok(vec![])
         }
     }
 
@@ -363,16 +364,17 @@ pub fn tui_mode(
         events_broadcaster,
     );
 
-    let base_node_selected;
-    if let Some(peer) = base_node_config.base_node_custom.clone() {
-        base_node_selected = peer;
-    } else if let Some(peer) = get_custom_base_node_peer_from_db(&wallet) {
-        base_node_selected = peer;
-    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
-        base_node_selected = peer;
-    } else {
-        return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
-    }
+    let base_node_selected = wallet.get_base_node_peer();
+    // let base_node_selected;
+    // if let Some(peer) = base_node_config.base_node_custom.clone() {
+    //     base_node_selected = peer;
+    // } else if let Some(peer) = get_custom_base_node_peer_from_db(&wallet) {
+    //     base_node_selected = peer;
+    // } else if let Some(peer) = wallet.get_base_node_peer() {
+    //     base_node_selected = peer;
+    // } else {
+    //     return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
+    // }
 
     let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Minotari Wallet".into(),

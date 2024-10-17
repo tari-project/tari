@@ -136,7 +136,7 @@ impl PathIterator<'_> {
     }
 }
 
-impl<'a> Iterator for PathIterator<'a> {
+impl Iterator for PathIterator<'_> {
     type Item = TraverseDirection;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -155,7 +155,7 @@ impl<'a> Iterator for PathIterator<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for PathIterator<'a> {
+impl DoubleEndedIterator for PathIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.cursor_front >= self.cursor_back {
             return None;
@@ -171,7 +171,7 @@ impl<'a> DoubleEndedIterator for PathIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for PathIterator<'a> {
+impl ExactSizeIterator for PathIterator<'_> {
     fn len(&self) -> usize {
         self.cursor_back.saturating_sub(self.cursor_front)
     }

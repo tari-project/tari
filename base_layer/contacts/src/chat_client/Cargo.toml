@@ -8,12 +8,11 @@ version = "1.7.0-pre.2"
 edition = "2018"
 
 [dependencies]
+tari_network = { workspace = true }
 minotari_app_utilities = { path = "../../../../applications/minotari_app_utilities" }
 tari_common = { path = "../../../../common" }
 tari_common_sqlite = { path = "../../../../common_sqlite" }
 tari_common_types = { path = "../../../common_types" }
-tari_comms = { path = "../../../../comms/core" }
-tari_comms_dht = { path = "../../../../comms/dht" }
 tari_contacts = { path = "../../../contacts" }
 tari_max_size = { path = "../../../../infrastructure/max_size" }
 tari_p2p = { path = "../../../p2p" }
@@ -33,6 +32,6 @@ diesel = { version = "2.2.4", features = [
 ] }
 lmdb-zero = "0.4.4"
 log = "0.4.17"
-rand = "0.8"
 serde = "1.0.136"
 thiserror = "1.0.50"
+tokio = { version = "1.36.0", features = ["time"] }

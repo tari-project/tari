@@ -1,0 +1,22 @@
+[package]
+name = "tari_network"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tari_swarm = { workspace = true }
+tari_rpc_framework = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_crypto = { workspace = true }
+
+anyhow = { workspace = true }
+libp2p = { workspace = true, features = ["tokio", "noise", "macros", "ping", "tcp", "identify", "yamux", "relay", "quic", "dcutr", "gossipsub", "sr25519", "serde"] }
+log = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["default", "macros", "sync"] }
+prost = { workspace = true }
+humantime = { workspace = true }

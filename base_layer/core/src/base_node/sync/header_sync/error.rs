@@ -23,11 +23,8 @@
 use std::time::Duration;
 
 use primitive_types::U256;
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
-};
+use tari_network::{identity::PeerId, NetworkError};
+use tari_rpc_framework::{RpcError, RpcStatus};
 
 use crate::{
     blocks::BlockError,
@@ -57,9 +54,9 @@ pub enum BlockHeaderSyncError {
     #[error("Peer sent a found hash index that was out of range (Expected less than {0}, Found: {1})")]
     FoundHashIndexOutOfRange(u64, u64),
     #[error("Failed to ban peer: {0}")]
-    FailedToBan(ConnectivityError),
-    #[error("Connectivity Error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
+    FailedToBan(NetworkError),
+    #[error("Network Error: {0}")]
+    NetworkError(#[from] NetworkError),
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
     #[error("Unable to locate start hash `{0}`")]
@@ -67,7 +64,7 @@ pub enum BlockHeaderSyncError {
     #[error("Expected header height {expected} got {actual}")]
     InvalidBlockHeight { expected: u64, actual: u64 },
     #[error("Unable to find chain split from peer `{0}`")]
-    ChainSplitNotFound(NodeId),
+    ChainSplitNotFound(PeerId),
     #[error("Invalid protocol response: {0}")]
     InvalidProtocolResponse(String),
     #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]
@@ -91,7 +88,7 @@ pub enum BlockHeaderSyncError {
     PeerSentTooManyHeaders(usize),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
     MaxLatencyExceeded {
-        peer: NodeId,
+        peer: PeerId,
         latency: Duration,
         max_latency: Duration,
     },
@@ -107,7 +104,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::SyncFailedAllPeers |
             BlockHeaderSyncError::FailedToBan(_) |
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
-            BlockHeaderSyncError::ConnectivityError(_) |
+            BlockHeaderSyncError::NetworkError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::PeerNotFound => None,
             BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),

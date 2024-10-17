@@ -43,9 +43,9 @@ impl StatusLine {
         Default::default()
     }
 
-    pub fn add<T: ToString>(&mut self, value: T) -> &mut Self {
-        self.add_field("", value)
-    }
+    // pub fn add<T: ToString>(&mut self, value: T) -> &mut Self {
+    //     self.add_field("", value)
+    // }
 
     pub fn add_field<T: ToString>(&mut self, name: &'static str, value: T) -> &mut Self {
         self.fields.push((name, value.to_string()));

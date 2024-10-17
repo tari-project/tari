@@ -1,0 +1,66 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "common/transaction.proto";
+import "common/block.proto";
+
+package tari.base_node;
+
+// Response type for a received BaseNodeService requests
+message BaseNodeServiceResponse {
+  uint64 request_key = 1;
+  oneof response {
+    BlockResponse block_response = 5;
+    // Indicates a HistoricalBlocks response.
+    HistoricalBlocks historical_blocks = 6;
+    FetchMempoolTransactionsResponse fetch_mempool_transactions_by_excess_sigs_response = 7;
+  }
+  bool is_synced = 13;
+}
+
+message BlockHeaders {
+  repeated tari.common.BlockHeader headers = 1;
+}
+
+message HistoricalBlockResponse {
+  tari.common.HistoricalBlock block = 1;
+}
+
+message BlockHeaderResponse {
+  tari.common.BlockHeader header = 1;
+}
+
+message TransactionKernels {
+  repeated tari.common.TransactionKernel kernels = 1;
+}
+
+message TransactionOutputs {
+  repeated tari.common.TransactionOutput outputs = 1;
+}
+
+message HistoricalBlocks {
+  repeated tari.common.HistoricalBlock blocks = 1;
+}
+
+message BlockResponse {
+  tari.common.Block block = 1;
+}
+
+message NewBlockResponse {
+  bool success = 1;
+  string error = 2;
+  tari.common.Block block = 3;
+}
+
+message MmrNodes {
+  repeated bytes added = 1;
+  bytes deleted = 2;
+}
+
+message FetchMempoolTransactionsResponse {
+  repeated tari.common.Transaction transactions = 1;
+  repeated bytes not_found = 2;
+}
+

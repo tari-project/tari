@@ -31,15 +31,15 @@ use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::{BlockHash, Signature},
 };
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
         rpc::BaseNodeWalletRpcClient,
     },
     blocks::BlockHeader,
-    proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
+use tari_p2p::proto::{base_node::Signatures as SignaturesProto, common::Signature as SignatureProto};
+use tari_rpc_framework::RpcError;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -333,8 +333,8 @@ where
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
                 match &rpc_error {
-                    RequestFailed(status) => {
-                        if status.as_status_code() == NotFound {
+                    RpcError::RequestFailed(status) => {
+                        if status.is_not_found() {
                             return Ok(None);
                         } else {
                             return Err(rpc_error.into());

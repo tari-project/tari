@@ -87,7 +87,7 @@ impl HorizonStateSync {
 
         let db = shared.db.clone();
         let config = shared.config.blockchain_sync_config.clone();
-        let connectivity = shared.connectivity.clone();
+        let connectivity = shared.network.clone();
         let rules = shared.consensus_rules.clone();
         let prover = CryptoFactories::default().range_proof;
         let validator = shared.sync_validators.final_horizon_state.clone();

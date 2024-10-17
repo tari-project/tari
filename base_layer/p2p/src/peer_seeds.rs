@@ -29,12 +29,8 @@ use std::{
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures},
-    types::CommsPublicKey,
-};
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_network::{identity, multiaddr::Multiaddr, Peer};
 use tari_utilities::hex::Hex;
 
 use super::dns::DnsClientError;
@@ -79,21 +75,16 @@ impl DnsSeedResolver {
 }
 
 /// Parsed information from a DNS seed record
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String", into = "String")]
 pub struct SeedPeer {
-    pub public_key: CommsPublicKey,
+    pub public_key: RistrettoPublicKey,
     pub addresses: Vec<Multiaddr>,
 }
 
 impl SeedPeer {
-    pub fn new(public_key: CommsPublicKey, addresses: Vec<Multiaddr>) -> Self {
+    pub fn new(public_key: RistrettoPublicKey, addresses: Vec<Multiaddr>) -> Self {
         Self { public_key, addresses }
-    }
-
-    #[inline]
-    pub fn derive_node_id(&self) -> NodeId {
-        NodeId::from_public_key(&self.public_key)
     }
 }
 
@@ -112,7 +103,7 @@ impl FromStr for SeedPeer {
         let mut parts = s.split("::").map(|s| s.trim());
         let public_key = parts
             .next()
-            .and_then(|s| CommsPublicKey::from_hex(s).ok())
+            .and_then(|s| RistrettoPublicKey::from_hex(s).ok())
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
         let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
         if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
@@ -124,16 +115,14 @@ impl FromStr for SeedPeer {
 
 impl Display for SeedPeer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}::{}",
-            self.public_key.to_hex(),
-            self.addresses
-                .iter()
-                .map(|ma| ma.to_string())
-                .collect::<Vec<_>>()
-                .join("::")
-        )
+        write!(f, "{}::", self.public_key)?;
+        for (i, addr) in self.addresses.iter().enumerate() {
+            write!(f, "{}", addr)?;
+            if i != self.addresses.len() - 1 {
+                write!(f, "::")?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -145,15 +134,9 @@ impl From<SeedPeer> for String {
 
 impl From<SeedPeer> for Peer {
     fn from(seed: SeedPeer) -> Self {
-        let node_id = seed.derive_node_id();
         Peer::new(
-            seed.public_key,
-            node_id,
-            MultiaddressesWithStats::from_addresses_with_source(seed.addresses, &PeerAddressSource::Config),
-            Default::default(),
-            PeerFeatures::COMMUNICATION_NODE,
-            Default::default(),
-            Default::default(),
+            identity::PublicKey::from(identity::sr25519::PublicKey::from(seed.public_key)),
+            seed.addresses,
         )
     }
 }
@@ -190,6 +173,8 @@ mod test {
                 "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
             );
             assert_eq!(seed.addresses.len(), 2);
+            let s2 = seed.to_string().parse::<SeedPeer>().unwrap();
+            assert_eq!(seed, s2);
         }
 
         #[test]

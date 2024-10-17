@@ -32,14 +32,12 @@ use chrono::Utc;
 use futures::{future, future::Either};
 use log::*;
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
-use tari_comms::{
-    backoff::{Backoff, ExponentialBackoff},
-    protocol::rpc::RpcError,
-};
+use tari_rpc_framework::RpcError;
 use tokio::{sync::RwLock, time};
 
 use crate::{
     base_node_service::{
+        backoff::{Backoff, ExponentialBackoff},
         handle::{BaseNodeEvent, BaseNodeEventSender},
         service::BaseNodeState,
     },
@@ -167,7 +165,7 @@ where
 
             let new_block = self
                 .update_state(BaseNodeState {
-                    node_id: Some(base_node_id.clone()),
+                    node_id: Some(base_node_id),
                     chain_metadata: Some(chain_metadata),
                     is_synced: Some(is_synced),
                     updated: Some(Utc::now().naive_utc()),

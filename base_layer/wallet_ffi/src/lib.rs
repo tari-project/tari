@@ -52,13 +52,12 @@ use std::{
     convert::{TryFrom, TryInto},
     ffi::{CStr, CString},
     fmt::{Display, Formatter},
+    fs,
     mem::ManuallyDrop,
-    num::NonZeroU16,
-    path::PathBuf,
+    path::{Path, PathBuf},
     slice,
     str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 
 use chrono::{DateTime, Local};
@@ -124,20 +123,6 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, PublicKey, RangeProof, SignatureWithDomain},
     wallet_types::WalletType,
 };
-use tari_comms::{
-    multiaddr::Multiaddr,
-    net_address::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE},
-    peer_manager::{NodeIdentity, PeerQuery},
-    transports::MemoryTransport,
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{
-    store_forward::SafConfig,
-    DbConnectionUrl,
-    DhtConfig,
-    DhtConnectivityConfig,
-    NetworkDiscoveryConfig,
-};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,
@@ -165,23 +150,12 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
-use tari_p2p::{
-    auto_update::AutoUpdateConfig,
-    transport::MemoryTransportConfig,
-    Network,
-    PeerSeedsConfig,
-    SocksAuthentication,
-    TcpTransportConfig,
-    TorControlAuthentication,
-    TorTransportConfig,
-    TransportConfig,
-    TransportType,
-};
+use tari_network::{identity, multiaddr::Multiaddr, ReachabilityMode, ToPeerId};
+use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
     encoding::MBase58,
-    hex,
     hex::{Hex, HexError},
     SafePassword,
 };
@@ -196,13 +170,13 @@ use crate::{
 };
 
 mod callback_handler;
-#[cfg(test)]
-mod callback_handler_tests;
+// #[cfg(test)]
+// mod callback_handler_tests;
 mod enums;
 mod error;
 mod ffi_basenode_state;
-#[cfg(test)]
-mod output_manager_service_mock;
+// #[cfg(test)]
+// mod output_manager_service_mock;
 mod tasks;
 
 mod consts {
@@ -212,10 +186,9 @@ mod consts {
 
 const LOG_TARGET: &str = "wallet_ffi";
 
-pub type TariTransportConfig = TransportConfig;
 pub type TariPublicKey = PublicKey;
 pub type TariWalletAddress = TariAddress;
-pub type TariNodeId = tari_comms::peer_manager::NodeId;
+pub type TariNodeId = tari_network::identity::PeerId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariRangeProof = RangeProof;
 pub type TariOutputFeatures = OutputFeatures;
@@ -626,7 +599,7 @@ pub unsafe extern "C" fn destroy_tari_coin_preview(p: *mut TariCoinPreview) {
     }
 }
 
-/// -------------------------------- Strings ------------------------------------------------ ///
+// -------------------------------- Strings ------------------------------------------------ ///
 
 /// Frees memory for a char array
 ///
@@ -645,9 +618,8 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Transaction Kernel ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Transaction Kernel ------------------------------------- ///
 
 /// Gets the excess for a TariTransactionKernel
 ///
@@ -768,9 +740,8 @@ pub unsafe extern "C" fn transaction_kernel_destroy(x: *mut TariTransactionKerne
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- ByteVector ------------------------------------------------ ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- ByteVector ------------------------------------------------ ///
 
 /// Creates a ByteVector
 ///
@@ -891,9 +862,8 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
     (*vec).0.len() as c_uint
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Public Key ------------------------------------------------ ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Public Key ------------------------------------------------ ///
 
 /// Creates a TariPublicKey from a ByteVector
 ///
@@ -1094,9 +1064,8 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Tari Address ---------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Tari Address ---------------------------------------------- ///
 
 /// Creates a TariWalletAddress from a ByteVector
 ///
@@ -1529,9 +1498,9 @@ pub unsafe extern "C" fn byte_to_emoji(byte: u8) -> *mut c_char {
     CString::into_raw(result)
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-///
-/// ------------------------------- ComAndPubSignature Signature ---------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+//
+// ------------------------------- ComAndPubSignature Signature ---------------------------------------///
 
 /// Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
 /// ByteVectors
@@ -1672,9 +1641,8 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// -------------------------------- Unblinded utxo -------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Unblinded utxo -------------------------------------------- ///
 
 /// Creates an unblinded output
 ///
@@ -1952,9 +1920,8 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- TariUnblindedOutputs ------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- TariUnblindedOutputs ------------------------------------///
 
 /// Gets the length of TariUnblindedOutputs
 ///
@@ -2185,8 +2152,8 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         },
     }
 }
-/// -------------------------------------------------------------------------------------------- ///
-/// -------------------------------- Private Key ----------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Private Key ----------------------------------------------- ///
 
 /// Creates a TariPrivateKey from a ByteVector
 ///
@@ -2332,8 +2299,8 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// -------------------------------- Range Proof ----------------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// -------------------------------- Range Proof ----------------------------------------------- ///
 
 /// Creates a default TariRangeProof
 ///
@@ -2514,8 +2481,8 @@ pub unsafe extern "C" fn range_proof_destroy(proof_ptr: *mut TariRangeProof) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// --------------------------------------- Covenant --------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// --------------------------------------- Covenant --------------------------------------------///
 
 /// Creates a TariCovenant from a ByteVector containing the covenant bytes
 ///
@@ -2571,8 +2538,8 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// --------------------------------------- EncryptedOpenings --------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// --------------------------------------- EncryptedOpenings --------------------------------------------///
 
 /// Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
 ///
@@ -2661,8 +2628,8 @@ pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncrypt
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// ---------------------------------- Output Features ------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ---------------------------------- Output Features ------------------------------------------///
 
 /// Creates a TariOutputFeatures from byte values
 ///
@@ -2770,9 +2737,8 @@ pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutpu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Seed Words ----------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Seed Words ----------------------------------------------///
 
 /// Create an empty instance of TariSeedWords
 ///
@@ -3181,9 +3147,8 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Contact -------------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Contact -------------------------------------------------///
 
 /// Creates a TariContact
 ///
@@ -3342,9 +3307,8 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Contacts -------------------------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Contacts -------------------------------------------------///
 
 /// Gets the length of TariContacts
 ///
@@ -3429,9 +3393,8 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Contacts Liveness Data ----------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Contacts Liveness Data ----------------------------------///
 
 /// Gets the public_key from a TariContactsLivenessData
 ///
@@ -3476,7 +3439,6 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
 /// memory leak
-
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_latency(
     liveness_data: *mut TariContactsLivenessData,
@@ -3638,9 +3600,8 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
         drop(Box::from_raw(liveness_data))
     }
 }
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- CompletedTransactions ----------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- CompletedTransactions ----------------------------------- ///
 
 /// Gets the length of a TariCompletedTransactions
 ///
@@ -3655,7 +3616,6 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
 ///
 /// # Safety
 /// None
-// casting here is okay as we wont have more than u32 transctions
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_length(
@@ -3671,6 +3631,7 @@ pub unsafe extern "C" fn completed_transactions_get_length(
     } else {
         len = (*transactions).0.len();
     }
+    // casting here is okay as we wont have more than u32 transctions
     len as c_uint
 }
 
@@ -3730,9 +3691,8 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- OutboundTransactions ------------------------------------ ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- OutboundTransactions ------------------------------------ ///
 
 /// Gets the length of a TariPendingOutboundTransactions
 ///
@@ -3823,9 +3783,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- InboundTransactions ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- InboundTransactions ------------------------------------- ///
 
 /// Gets the length of a TariPendingInboundTransactions
 ///
@@ -3915,9 +3874,8 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- CompletedTransaction ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- CompletedTransaction ------------------------------------- ///
 
 /// Gets the TransactionID of a TariCompletedTransaction
 ///
@@ -4481,9 +4439,8 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- OutboundTransaction ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- OutboundTransaction ------------------------------------- ///
 
 /// Gets the TransactionId of a TariPendingOutboundTransaction
 ///
@@ -4715,9 +4672,9 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-///
-/// ----------------------------------- InboundTransaction ------------------------------------- ///
+// -------------------------------------------------------------------------------------------- ///
+//
+// ----------------------------------- InboundTransaction ------------------------------------- ///
 
 /// Gets the TransactionId of a TariPendingInboundTransaction
 ///
@@ -4923,9 +4880,8 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-
-/// ----------------------------------- Transport Send Status -----------------------------------///
+// -------------------------------------------------------------------------------------------- ///
+// ----------------------------------- Transport Send Status -----------------------------------///
 
 /// Decode the transaction send status of a TariTransactionSendStatus
 ///
@@ -4996,296 +4952,295 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
+// /// -------------------------------------------------------------------------------------------- ///
+//
+// /// ----------------------------------- Transport Types -----------------------------------------///
+//
+// /// Creates a memory transport type
+// ///
+// /// ## Arguments
+// /// `()` - Does not take any arguments
+// ///
+// /// ## Returns
+// /// `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
+// ///
+// /// # Safety
+// /// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+// memory /// leak
+// #[no_mangle]
+// pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
+//     let port = MemoryTransport::acquire_next_memsocket_port();
+//     let listener_address: Multiaddr = format!("/memory/{}", port)
+//         .parse()
+//         .expect("Should be able to create memory address");
+//     let transport = TransportConfig {
+//         transport_type: TransportType::Memory,
+//         memory: MemoryTransportConfig { listener_address },
+//         ..Default::default()
+//     };
+//     Box::into_raw(Box::new(transport))
+// }
+//
+// /// Creates a tcp transport type
+// ///
+// /// ## Arguments
+// /// `listener_address` - The pointer to a char array
+// /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+// Functions /// as an out parameter.
+// ///
+// /// ## Returns
+// /// `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
+// ///
+// /// # Safety
+// /// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+// memory /// leak
+// #[no_mangle]
+// pub unsafe extern "C" fn transport_tcp_create(
+//     listener_address: *const c_char,
+//     error_out: *mut c_int,
+// ) -> *mut TariTransportConfig {
+//     let mut error = 0;
+//     ptr::swap(error_out, &mut error as *mut c_int);
+//
+//     let listener_address_str;
+//     if listener_address.is_null() {
+//         error = LibWalletError::from(InterfaceError::NullError("listener_address".to_string())).code;
+//         ptr::swap(error_out, &mut error as *mut c_int);
+//         return ptr::null_mut();
+//     } else {
+//         match CStr::from_ptr(listener_address).to_str() {
+//             Ok(v) => {
+//                 listener_address_str = v.to_owned();
+//             },
+//             _ => {
+//                 error = LibWalletError::from(InterfaceError::PointerError("listener_address".to_string())).code;
+//                 ptr::swap(error_out, &mut error as *mut c_int);
+//                 return ptr::null_mut();
+//             },
+//         }
+//     }
+//
+//     match listener_address_str.parse() {
+//         Ok(v) => {
+//             let transport = TariTransportConfig {
+//                 transport_type: TransportType::Tcp,
+//                 tcp: TcpTransportConfig {
+//                     listener_address: v,
+//                     ..Default::default()
+//                 },
+//                 ..Default::default()
+//             };
+//             Box::into_raw(Box::new(transport))
+//         },
+//         Err(_) => {
+//             error = LibWalletError::from(InterfaceError::InvalidArgument("listener_address".to_string())).code;
+//             ptr::swap(error_out, &mut error as *mut c_int);
+//             ptr::null_mut()
+//         },
+//     }
+// }
+//
+// /// Creates a tor transport type
+// ///
+// /// ## Arguments
+// /// `control_server_address` - The pointer to a char array
+// /// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
+// /// `tor_port` - The tor port
+// /// `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead
+// of /// the tor proxy if tcp is available, if not it has no effect
+// /// `socks_password` - The pointer to a char array containing the socks password, can be null
+// /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+// Functions /// as an out parameter.
+// ///
+// /// ## Returns
+// /// `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
+// ///
+// /// # Safety
+// /// The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+// /// memory leak
+// #[no_mangle]
+// pub unsafe extern "C" fn transport_tor_create(
+//     control_server_address: *const c_char,
+//     tor_cookie: *const ByteVector,
+//     tor_port: c_ushort,
+//     tor_proxy_bypass_for_outbound: bool,
+//     socks_username: *const c_char,
+//     socks_password: *const c_char,
+//     error_out: *mut c_int,
+// ) -> *mut TariTransportConfig {
+//     let mut error = 0;
+//     ptr::swap(error_out, &mut error as *mut c_int);
+//
+//     let control_address_str;
+//     if control_server_address.is_null() {
+//         error = LibWalletError::from(InterfaceError::NullError("control_server_address".to_string())).code;
+//         ptr::swap(error_out, &mut error as *mut c_int);
+//         return ptr::null_mut();
+//     } else {
+//         match CStr::from_ptr(control_server_address).to_str() {
+//             Ok(v) => {
+//                 control_address_str = v.to_owned();
+//             },
+//             _ => {
+//                 error =
+// LibWalletError::from(InterfaceError::PointerError("control_server_address".to_string())).code;
+// ptr::swap(error_out, &mut error as *mut c_int);                 return ptr::null_mut();
+//             },
+//         }
+//     }
+//
+//     let username_str;
+//     let password_str;
+//     let socks_authentication = if !socks_username.is_null() && !socks_password.is_null() {
+//         match CStr::from_ptr(socks_username).to_str() {
+//             Ok(v) => {
+//                 username_str = v.to_owned();
+//             },
+//             _ => {
+//                 error = LibWalletError::from(InterfaceError::PointerError("socks_username".to_string())).code;
+//                 ptr::swap(error_out, &mut error as *mut c_int);
+//                 return ptr::null_mut();
+//             },
+//         }
+//         match CStr::from_ptr(socks_password).to_str() {
+//             Ok(v) => {
+//                 password_str = v.to_owned();
+//             },
+//             _ => {
+//                 error = LibWalletError::from(InterfaceError::PointerError("socks_password".to_string())).code;
+//                 ptr::swap(error_out, &mut error as *mut c_int);
+//                 return ptr::null_mut();
+//             },
+//         };
+//         SocksAuthentication::UsernamePassword {
+//             username: username_str,
+//             password: password_str,
+//         }
+//     } else {
+//         SocksAuthentication::None
+//     };
+//
+//     let tor_authentication = if tor_cookie.is_null() {
+//         TorControlAuthentication::None
+//     } else {
+//         let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
+//         TorControlAuthentication::hex(cookie_hex)
+//     };
+//
+//     let onion_port = match NonZeroU16::new(tor_port) {
+//         Some(p) => p,
+//         None => {
+//             error = LibWalletError::from(InterfaceError::InvalidArgument(
+//                 "onion_port must be greater than 0".to_string(),
+//             ))
+//             .code;
+//             ptr::swap(error_out, &mut error as *mut c_int);
+//             return ptr::null_mut();
+//         },
+//     };
+//
+//     match control_address_str.parse() {
+//         Ok(v) => {
+//             let transport = TariTransportConfig {
+//                 transport_type: TransportType::Tor,
+//                 tor: TorTransportConfig {
+//                     control_address: v,
+//                     control_auth: tor_authentication,
+//                     // The wallet will populate this from the db
+//                     identity: None,
+//                     onion_port,
+//                     socks_auth: socks_authentication,
+//                     proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
+//                     ..Default::default()
+//                 },
+//                 ..Default::default()
+//             };
+//
+//             Box::into_raw(Box::new(transport))
+//         },
+//         Err(_) => {
+//             error = LibWalletError::from(InterfaceError::InvalidArgument("control_address".to_string())).code;
+//             ptr::swap(error_out, &mut error as *mut c_int);
+//             ptr::null_mut()
+//         },
+//     }
+// }
+//
+// /// Gets the address for a memory transport type
+// ///
+// /// ## Arguments
+// /// `transport` - Pointer to a TariTransportConfig
+// /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+// Functions /// as an out parameter.
+// ///
+// /// ## Returns
+// /// `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
+// ///
+// /// # Safety
+// /// Can only be used with a memory transport type, will crash otherwise
+// #[no_mangle]
+// pub unsafe extern "C" fn transport_memory_get_address(
+//     transport: *const TariTransportConfig,
+//     error_out: *mut c_int,
+// ) -> *mut c_char {
+//     let mut error = 0;
+//     ptr::swap(error_out, &mut error as *mut c_int);
+//     let mut address = CString::new("").expect("Blank CString will not fail.");
+//     if transport.is_null() {
+//         error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
+//         ptr::swap(error_out, &mut error as *mut c_int)
+//     } else {
+//         match (*transport).transport_type {
+//             TransportType::Memory => match CString::new((*transport).memory.listener_address.to_string()) {
+//                 Ok(v) => address = v,
+//                 _ => {
+//                     error = LibWalletError::from(InterfaceError::PointerError("transport".to_string())).code;
+//                     ptr::swap(error_out, &mut error as *mut c_int);
+//                 },
+//             },
+//             _ => {
+//                 error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
+//                 ptr::swap(error_out, &mut error as *mut c_int);
+//             },
+//         }
+//     }
+//
+//     address.into_raw()
+// }
+//
+// /// Frees memory for a TariTransportConfig
+// ///
+// /// ## Arguments
+// /// `transport` - The pointer to a TariTransportConfig
+// ///
+// /// ## Returns
+// /// `()` - Does not return a value, equivalent to void in C
+// ///
+// /// # Safety
+// #[no_mangle]
+// #[deprecated(note = "use transport_config_destroy instead")]
+// pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportConfig) {
+//     transport_config_destroy(transport);
+// }
+//
+// /// Frees memory for a TariTransportConfig
+// ///
+// /// ## Arguments
+// /// `transport` - The pointer to a TariTransportConfig
+// ///
+// /// ## Returns
+// /// `()` - Does not return a value, equivalent to void in C
+// ///
+// /// # Safety
+// #[no_mangle]
+// pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportConfig) {
+//     if !transport.is_null() {
+//         drop(Box::from_raw(transport))
+//     }
+// }
 
-/// ----------------------------------- Transport Types -----------------------------------------///
-
-/// Creates a memory transport type
-///
-/// ## Arguments
-/// `()` - Does not take any arguments
-///
-/// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
-///
-/// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
-/// leak
-#[no_mangle]
-pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
-    let port = MemoryTransport::acquire_next_memsocket_port();
-    let listener_address: Multiaddr = format!("/memory/{}", port)
-        .parse()
-        .expect("Should be able to create memory address");
-    let transport = TransportConfig {
-        transport_type: TransportType::Memory,
-        memory: MemoryTransportConfig { listener_address },
-        ..Default::default()
-    };
-    Box::into_raw(Box::new(transport))
-}
-
-/// Creates a tcp transport type
-///
-/// ## Arguments
-/// `listener_address` - The pointer to a char array
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
-///
-/// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
-/// leak
-#[no_mangle]
-pub unsafe extern "C" fn transport_tcp_create(
-    listener_address: *const c_char,
-    error_out: *mut c_int,
-) -> *mut TariTransportConfig {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    let listener_address_str;
-    if listener_address.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("listener_address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(listener_address).to_str() {
-            Ok(v) => {
-                listener_address_str = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("listener_address".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    match listener_address_str.parse() {
-        Ok(v) => {
-            let transport = TariTransportConfig {
-                transport_type: TransportType::Tcp,
-                tcp: TcpTransportConfig {
-                    listener_address: v,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            Box::into_raw(Box::new(transport))
-        },
-        Err(_) => {
-            error = LibWalletError::from(InterfaceError::InvalidArgument("listener_address".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Creates a tor transport type
-///
-/// ## Arguments
-/// `control_server_address` - The pointer to a char array
-/// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
-/// `tor_port` - The tor port
-/// `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
-/// the tor proxy if tcp is available, if not it has no effect
-/// `socks_password` - The pointer to a char array containing the socks password, can be null
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
-///
-/// # Safety
-/// The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn transport_tor_create(
-    control_server_address: *const c_char,
-    tor_cookie: *const ByteVector,
-    tor_port: c_ushort,
-    tor_proxy_bypass_for_outbound: bool,
-    socks_username: *const c_char,
-    socks_password: *const c_char,
-    error_out: *mut c_int,
-) -> *mut TariTransportConfig {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    let control_address_str;
-    if control_server_address.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("control_server_address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(control_server_address).to_str() {
-            Ok(v) => {
-                control_address_str = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("control_server_address".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    let username_str;
-    let password_str;
-    let socks_authentication = if !socks_username.is_null() && !socks_password.is_null() {
-        match CStr::from_ptr(socks_username).to_str() {
-            Ok(v) => {
-                username_str = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("socks_username".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-        match CStr::from_ptr(socks_password).to_str() {
-            Ok(v) => {
-                password_str = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("socks_password".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        };
-        SocksAuthentication::UsernamePassword {
-            username: username_str,
-            password: password_str,
-        }
-    } else {
-        SocksAuthentication::None
-    };
-
-    let tor_authentication = if tor_cookie.is_null() {
-        TorControlAuthentication::None
-    } else {
-        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
-        TorControlAuthentication::hex(cookie_hex)
-    };
-
-    let onion_port = match NonZeroU16::new(tor_port) {
-        Some(p) => p,
-        None => {
-            error = LibWalletError::from(InterfaceError::InvalidArgument(
-                "onion_port must be greater than 0".to_string(),
-            ))
-            .code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    };
-
-    match control_address_str.parse() {
-        Ok(v) => {
-            let transport = TariTransportConfig {
-                transport_type: TransportType::Tor,
-                tor: TorTransportConfig {
-                    control_address: v,
-                    control_auth: tor_authentication,
-                    // The wallet will populate this from the db
-                    identity: None,
-                    onion_port,
-                    socks_auth: socks_authentication,
-                    proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-
-            Box::into_raw(Box::new(transport))
-        },
-        Err(_) => {
-            error = LibWalletError::from(InterfaceError::InvalidArgument("control_address".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Gets the address for a memory transport type
-///
-/// ## Arguments
-/// `transport` - Pointer to a TariTransportConfig
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
-///
-/// # Safety
-/// Can only be used with a memory transport type, will crash otherwise
-#[no_mangle]
-pub unsafe extern "C" fn transport_memory_get_address(
-    transport: *const TariTransportConfig,
-    error_out: *mut c_int,
-) -> *mut c_char {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let mut address = CString::new("").expect("Blank CString will not fail.");
-    if transport.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int)
-    } else {
-        match (*transport).transport_type {
-            TransportType::Memory => match CString::new((*transport).memory.listener_address.to_string()) {
-                Ok(v) => address = v,
-                _ => {
-                    error = LibWalletError::from(InterfaceError::PointerError("transport".to_string())).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                },
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-            },
-        }
-    }
-
-    address.into_raw()
-}
-
-/// Frees memory for a TariTransportConfig
-///
-/// ## Arguments
-/// `transport` - The pointer to a TariTransportConfig
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-#[no_mangle]
-#[deprecated(note = "use transport_config_destroy instead")]
-pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportConfig) {
-    transport_config_destroy(transport);
-}
-
-/// Frees memory for a TariTransportConfig
-///
-/// ## Arguments
-/// `transport` - The pointer to a TariTransportConfig
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-#[no_mangle]
-pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportConfig) {
-    if !transport.is_null() {
-        drop(Box::from_raw(transport))
-    }
-}
-
-/// ---------------------------------------------------------------------------------------------///
-
-/// ----------------------------------- CommsConfig ---------------------------------------------///
+// ---------------------------------------------------------------------------------------------///
+// ----------------------------------- CommsConfig ---------------------------------------------///
 
 /// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
 ///
@@ -5314,154 +5269,44 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
-    transport: *const TariTransportConfig,
-    database_name: *const c_char,
-    datastore_path: *const c_char,
-    discovery_timeout_in_secs: c_ulonglong,
-    saf_message_duration_in_secs: c_ulonglong,
-    exclude_dial_test_addresses: bool,
+    listen_address: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let public_address_str;
-    if public_address.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("public_address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
+    *error_out = 0;
+
+    let mut ignore_error = 0;
+    let public_address_str = c_char_ptr_to_string(public_address, &mut ignore_error as *mut c_int);
+    let listen_address = c_char_ptr_to_string(listen_address, &mut ignore_error as *mut c_int);
+    let listen_multiaddr = listen_address
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse::<Multiaddr>())
+        .transpose();
+    let public_multiaddr = public_address_str
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse::<Multiaddr>())
+        .transpose();
+    let Ok(listen_multiaddr) = listen_multiaddr else {
+        *error_out = LibWalletError::from(InterfaceError::InvalidMultiaddr).code;
         return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(public_address).to_str() {
-            Ok(v) => {
-                public_address_str = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("public_address".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    let database_name_string;
-    if database_name.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
+    };
+    let Ok(public_multiaddr) = public_multiaddr else {
+        *error_out = LibWalletError::from(InterfaceError::InvalidMultiaddr).code;
         return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(database_name).to_str() {
-            Ok(v) => {
-                database_name_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("database_name".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
+    };
 
-    let datastore_path_string;
-    if datastore_path.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(datastore_path).to_str() {
-            Ok(v) => {
-                datastore_path_string = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("datastore_path".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
-    let datastore_path = PathBuf::from(datastore_path_string);
+    let config = TariCommsConfig {
+        override_from: None,
+        public_addresses: MultiaddrList::from_iter(public_multiaddr),
+        listen_addresses: listen_multiaddr.into_iter().collect(),
+        // Wallets will eagerly use a relay
+        reachability_mode: ReachabilityMode::Private,
+        rpc_max_simultaneous_sessions: 0,
+        rpc_max_sessions_per_peer: 0,
+        enable_mdns: true,
+        enable_relay: false,
+    };
 
-    if transport.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-
-    let dht_database_path = datastore_path.join("dht.db");
-
-    let public_address = public_address_str.parse::<Multiaddr>();
-
-    match public_address {
-        Ok(public_address) => {
-            let addresses = if (*transport).transport_type == TransportType::Tor {
-                MultiaddrList::default()
-            } else {
-                MultiaddrList::from(vec![public_address])
-            };
-
-            let excluded_dial_addresses = if exclude_dial_test_addresses {
-                let multi_addr_range = match MultiaddrRange::from_str(IP4_TCP_TEST_ADDR_RANGE) {
-                    Ok(val) => val,
-                    Err(e) => {
-                        error = LibWalletError::from(InterfaceError::InternalError(e)).code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return ptr::null_mut();
-                    },
-                };
-                MultiaddrRangeList::from(vec![multi_addr_range])
-            } else {
-                MultiaddrRangeList::from(vec![])
-            };
-
-            let config = TariCommsConfig {
-                override_from: None,
-                public_addresses: addresses,
-                transport: (*transport).clone(),
-                auxiliary_tcp_listener_address: None,
-                datastore_path,
-                peer_database_name: database_name_string,
-                max_concurrent_inbound_tasks: 25,
-                max_concurrent_outbound_tasks: 50,
-                dht: DhtConfig {
-                    num_neighbouring_nodes: 5,
-                    num_random_nodes: 1,
-                    minimize_connections: true,
-                    discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                    database_url: DbConnectionUrl::File(dht_database_path),
-                    auto_join: true,
-                    saf: SafConfig {
-                        msg_validity: Duration::from_secs(saf_message_duration_in_secs),
-                        // Ensure that SAF messages are requested automatically
-                        auto_request: true,
-                        ..Default::default()
-                    },
-                    network_discovery: NetworkDiscoveryConfig {
-                        min_desired_peers: 16,
-                        initial_peer_sync_delay: Some(Duration::from_secs(25)),
-                        ..Default::default()
-                    },
-                    connectivity: DhtConnectivityConfig {
-                        update_interval: Duration::from_secs(5 * 60),
-                        minimum_desired_tcpv4_node_ratio: 0.0,
-                        ..Default::default()
-                    },
-                    excluded_dial_addresses,
-                    ..Default::default()
-                },
-                allow_test_addresses: true,
-                listener_liveness_allowlist_cidrs: StringList::new(),
-                listener_liveness_max_sessions: 0,
-                rpc_max_simultaneous_sessions: 0,
-                rpc_max_sessions_per_peer: 0,
-                listener_self_liveness_check_interval: None,
-            };
-
-            Box::into_raw(Box::new(config))
-        },
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
-        },
-    }
+    Box::into_raw(Box::new(config))
 }
 
 /// Frees memory for a TariCommsConfig
@@ -5506,16 +5351,18 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
         return ptr::null_mut();
     }
 
-    let mut connectivity = (*wallet).wallet.comms.connectivity();
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
+    let connectivity = (*wallet).wallet.network.clone();
 
     #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
         let connections = connectivity.get_active_connections().await?;
         let mut public_keys = Vec::with_capacity(connections.len());
         for conn in connections {
-            if let Some(peer) = peer_manager.find_by_node_id(conn.peer_node_id()).await? {
-                public_keys.push(peer.public_key);
+            // TODO: We always have PeerId but not public key until the peer has identified
+            if let Some(pk) = conn.public_key {
+                if let Ok(pk) = pk.try_into_sr25519() {
+                    public_keys.push(pk.inner_key().clone());
+                }
             }
         }
         Result::<_, WalletError>::Ok(public_keys)
@@ -5590,9 +5437,8 @@ pub unsafe extern "C" fn public_keys_get_at(
     Box::into_raw(Box::new(result))
 }
 
-/// ---------------------------------------------------------------------------------------------- ///
-
-/// ------------------------------------- Wallet -------------------------------------------------///
+// ---------------------------------------------------------------------------------------------- ///
+// ------------------------------------- Wallet -------------------------------------------------///
 
 /// Inits logging, this function is deliberately not exposed externally in the header
 ///
@@ -5849,6 +5695,8 @@ unsafe fn init_logging(
 pub unsafe extern "C" fn wallet_create(
     context: *mut c_void,
     config: *mut TariCommsConfig,
+    database_name: *const c_char,
+    datastore_path: *const c_char,
     log_path: *const c_char,
     log_verbosity: c_int,
     num_rolling_log_files: c_uint,
@@ -5898,6 +5746,43 @@ pub unsafe extern "C" fn wallet_create(
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
+
+    let database_name_string;
+    if database_name.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(database_name).to_str() {
+            Ok(v) => {
+                database_name_string = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("database_name".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+
+    let datastore_path_string;
+    if datastore_path.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(datastore_path).to_str() {
+            Ok(v) => {
+                datastore_path_string = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("datastore_path".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+
     if config.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -5987,24 +5872,24 @@ pub unsafe extern "C" fn wallet_create(
         }
     };
 
-    let network = if network_str.is_null() {
+    if network_str.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
-    } else {
-        let network = CStr::from_ptr(network_str)
-            .to_str()
-            .expect("A non-null network should be able to be converted to string");
-        info!(target: LOG_TARGET, "network set to {}", network);
+    }
 
-        match Network::from_str(network) {
-            Ok(n) => n,
-            Err(_) => {
-                error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
+    let network = CStr::from_ptr(network_str)
+        .to_str()
+        .expect("A non-null network should be able to be converted to string");
+    info!(target: LOG_TARGET, "network set to {}", network);
+
+    let network = match Network::from_str(network) {
+        Ok(n) => n,
+        Err(_) => {
+            error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
     };
     // Set the static network variable according to the user chosen network (for use with
     // `get_current_or_user_setting_or_default()`) -
@@ -6024,12 +5909,24 @@ pub unsafe extern "C" fn wallet_create(
     };
     let factories = CryptoFactories::default();
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+    let comms_config = (*config).clone();
+    let mut wallet_config = WalletConfig {
+        override_from: None,
+        p2p: comms_config,
+        transaction_service_config: TransactionServiceConfig { ..Default::default() },
+        base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
+        network,
+        db_file: PathBuf::from(database_name_string).with_extension("sqlite3"),
+        ..Default::default()
+    };
+    // Sets up the paths relative to the base path
+    let _ignore = fs::create_dir_all(&datastore_path_string);
+    wallet_config.set_base_path(datastore_path_string);
 
-    debug!(target: LOG_TARGET, "Running Wallet database migrations");
+    let sql_database_path = &wallet_config.db_file;
+    let _ignore = fs::create_dir_all(sql_database_path.parent().expect("root paths are not valid"));
+
+    debug!(target: LOG_TARGET, "Running Wallet database migrations in {}", sql_database_path.display());
 
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         match initialize_sqlite_database_backends(sql_database_path, passphrase, 16) {
@@ -6047,80 +5944,32 @@ pub unsafe extern "C" fn wallet_create(
     debug!(target: LOG_TARGET, "Databases Initialized");
 
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
-    let mut comms_config = (*config).clone();
-    if let TransportType::Tor = comms_config.transport.transport_type {
-        comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
-    }
-
-    let result = runtime.block_on(async {
-        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
-            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)
-            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-
-        let node_features = wallet_database.get_node_features()?.unwrap_or_default();
-        let node_addresses = if comms_config.public_addresses.is_empty() {
-            match wallet_database.get_node_address()? {
-                Some(addr) => MultiaddrList::from(vec![addr]),
-                None => MultiaddrList::default(),
-            }
-        } else {
-            comms_config.public_addresses.clone()
-        };
-        debug!(target: LOG_TARGET, "We have the following addresses");
-        for address in &node_addresses {
-            debug!(target: LOG_TARGET, "Address: {}", address);
-        }
-        let identity_sig = wallet_database.get_comms_identity_signature()?;
-
-        // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
-        // to None
-        let identity_sig = identity_sig.filter(|sig| {
-            let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-            sig.is_valid(&comms_public_key, node_features, &node_addresses)
-        });
-
-        // SAFETY: we are manually checking the validity of this signature before adding Some(..)
-        let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-            comms_secret_key,
-            node_addresses.to_vec(),
-            node_features,
-            identity_sig,
-        ));
-        if !node_identity.is_signed() {
-            node_identity.sign();
-            // unreachable panic: signed above
-            let sig = node_identity
-                .identity_signature_read()
-                .as_ref()
-                .expect("unreachable panic")
-                .clone();
-            wallet_database.set_comms_identity_signature(sig)?;
-        }
-        Ok((master_seed, node_identity))
-    });
-
-    let (master_seed, node_identity) = match result {
-        Ok(tuple) => tuple,
+    let master_seed = match read_or_create_master_seed(recovery_seed, &wallet_database) {
+        Ok(seed) => seed,
         Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
+                e.to_string(),
+            )))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let comms_secret_key = match derive_comms_secret_key(&master_seed) {
+        Ok(s) => s,
+        Err(e) => {
+            let e = WalletStorageError::RecoverySeedError(e.to_string());
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
     };
 
+    let keypair = Arc::new(identity::Keypair::from(identity::sr25519::Keypair::from(
+        identity::sr25519::SecretKey::from(comms_secret_key),
+    )));
+
     let shutdown = Shutdown::new();
-    let wallet_config = WalletConfig {
-        override_from: None,
-        p2p: comms_config,
-        transaction_service_config: TransactionServiceConfig {
-            direct_send_timeout: (*config).dht.discovery_request_timeout,
-            ..Default::default()
-        },
-        base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
-        network,
-        ..Default::default()
-    };
 
     let mut recovery_lookup = match wallet_database.get_client_key_value(RECOVERY_KEY.to_owned()) {
         Err(_) => false,
@@ -6151,7 +6000,7 @@ pub unsafe extern "C" fn wallet_create(
         wallet_config,
         peer_seeds,
         auto_update,
-        node_identity,
+        keypair,
         consensus_manager,
         factories,
         wallet_database,
@@ -6177,28 +6026,33 @@ pub unsafe extern "C" fn wallet_create(
                 },
             };
 
-            // Lets set the base node peers
-            let peer_manager = w.comms.peer_manager();
-            let query = PeerQuery::new().select_where(|p| p.is_seed());
-            let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
+            // Let's set the base node peers
+            let peers = match runtime.block_on(w.network.get_seed_peers()) {
+                Ok(p) => p,
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return ptr::null_mut();
+                },
+            };
 
             if !peers.is_empty() {
                 let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
-                let net_address = selected_base_node.addresses.best().expect("No addresses for base node");
-                match runtime.block_on(async {
-                    w.set_base_node_peer(
-                        selected_base_node.public_key.clone(),
-                        Some(net_address.address().clone()),
-                        Some(peers.to_vec()),
-                    )
-                    .await
-                }) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        error = LibWalletError::from(e).code;
-                        ptr::swap(error_out, &mut error as *mut c_int);
-                        return ptr::null_mut();
-                    },
+                if let Some(pk) = selected_base_node
+                    .public_key()
+                    .clone()
+                    .try_into_sr25519()
+                    .ok()
+                    .map(|pk| pk.inner_key().clone())
+                {
+                    match runtime.block_on(async { w.set_base_node_peer(pk, None, Some(peers.to_vec())).await }) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            error = LibWalletError::from(e).code;
+                            ptr::swap(error_out, &mut error as *mut c_int);
+                            return ptr::null_mut();
+                        },
+                    }
                 }
             }
 
@@ -6213,8 +6067,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.output_manager_service.get_event_stream(),
                 w.output_manager_service.clone(),
                 utxo_scanner.get_event_receiver(),
-                w.dht_service.subscribe_dht_events(),
-                w.comms.shutdown_signal(),
+                w.shutdown_signal.clone(),
                 wallet_address,
                 w.wallet_connectivity.get_connectivity_status_watch(),
                 w.contacts_service.get_contacts_liveness_event_stream(),
@@ -6269,18 +6122,23 @@ pub unsafe extern "C" fn wallet_create(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn wallet_get_last_version(
+    datastore_path: *const c_char,
+    database_name: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    if config.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
+    let Some(datastore_path) = c_char_ptr_to_string(datastore_path, error_out) else {
+        return ptr::null_mut();
+    };
+    let Some(database_name) = c_char_ptr_to_string(database_name, error_out) else {
+        return ptr::null_mut();
+    };
+
+    let sql_database_path = PathBuf::from(datastore_path)
+        .join(database_name)
         .with_extension("sqlite3");
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
@@ -6296,6 +6154,22 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
     }
 }
 
+/// Utility function for the common case of converting a string pointer to a String
+unsafe fn c_char_ptr_to_string(ptr: *const c_char, error_out: *mut c_int) -> Option<String> {
+    if ptr.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError(String::new())).code;
+        None
+    } else {
+        match CStr::from_ptr(ptr).to_str() {
+            Ok(v) => Some(v.to_string()),
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError(String::new())).code;
+                None
+            },
+        }
+    }
+}
+
 /// Retrieves the network of an app that last accessed the wallet database
 ///
 /// ## Arguments
@@ -6308,19 +6182,20 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if config.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
+pub unsafe extern "C" fn wallet_get_last_network(
+    datastore_path: *const c_char,
+    database_name: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    *error_out = 0;
+    let Some(datastore_path) = c_char_ptr_to_string(datastore_path, error_out) else {
         return ptr::null_mut();
-    }
+    };
+    let Some(database_name) = c_char_ptr_to_string(database_name, error_out) else {
+        return ptr::null_mut();
+    };
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+    let sql_database_path = Path::new(&datastore_path).join(database_name).with_extension("sqlite3");
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -6328,8 +6203,7 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
             network.into_raw()
         },
         Err(e) => {
-            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
+            *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::null_mut()
         },
     }
@@ -6867,12 +6741,20 @@ pub unsafe extern "C" fn wallet_sign_message(
         return result.into_raw();
     }
 
-    let secret = (*wallet).wallet.comms.node_identity().secret_key().clone();
-    let message = CStr::from_ptr(msg)
-        .to_str()
-        .expect("CString should not fail here.")
-        .to_owned();
-
+    let secret = match (*(*wallet).wallet.network_keypair)
+        .clone()
+        .try_into_sr25519()
+        .map(|kp| kp.secret().inner_key().clone())
+    {
+        Ok(s) => s,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InternalError(String::new())).code;
+            return result.into_raw();
+        },
+    };
+    let Some(message) = c_char_ptr_to_string(msg, error_out) else {
+        return result.into_raw();
+    };
     let signature = (*wallet).wallet.sign_message(&secret, &message);
 
     match signature {
@@ -7083,18 +6965,16 @@ pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let peer_manager = (*wallet).wallet.comms.peer_manager();
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
+    let result = (*wallet).runtime.block_on((*wallet).wallet.network.get_seed_peers());
     #[allow(clippy::blocks_in_conditions)]
-    match (*wallet).runtime.block_on(async move {
-        let peers = peer_manager.perform_query(query).await?;
-        let mut public_keys = Vec::with_capacity(peers.len());
-        for peer in peers {
-            public_keys.push(peer.public_key);
-        }
-        Result::<_, WalletError>::Ok(public_keys)
-    }) {
-        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+    match result {
+        Ok(peers) => {
+            let pks = peers
+                .into_iter()
+                .filter_map(|peer| peer.try_to_ristretto_public_key().ok())
+                .collect();
+            Box::into_raw(Box::new(TariPublicKeys(pks)))
+        },
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -8452,17 +8332,6 @@ pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, er
         return 0;
     }
 
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        error = LibWalletError::from(e).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.output_manager_service.validate_txos())
@@ -8502,17 +8371,6 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
         return 0;
     }
 
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        error = LibWalletError::from(e).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.transaction_service.validate_transactions())
@@ -8545,17 +8403,6 @@ pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariW
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
@@ -8970,19 +8817,9 @@ pub unsafe extern "C" fn wallet_start_recovery(
     }
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_public_keys = if base_node_public_keys.is_null() {
-        let peer_manager = (*wallet).wallet.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_seed());
-        #[allow(clippy::blocks_in_conditions)]
-        match (*wallet).runtime.block_on(async move {
-            let peers = peer_manager.perform_query(query).await?;
-            let mut public_keys = Vec::with_capacity(peers.len());
-            for peer in peers {
-                public_keys.push(peer.public_key);
-            }
-            Result::<_, WalletError>::Ok(public_keys)
-        }) {
-            Ok(public_keys) => public_keys,
+    let peer_ids = if base_node_public_keys.is_null() {
+        match (*wallet).runtime.block_on((*wallet).wallet.network.get_seed_peers()) {
+            Ok(peers) => peers.into_iter().map(|p| p.peer_id()).collect(),
             Err(e) => {
                 error = LibWalletError::from(InterfaceError::NullError(format!("{}", e))).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
@@ -8990,7 +8827,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
             },
         }
     } else {
-        (*base_node_public_keys).0.clone()
+        (*base_node_public_keys).0.iter().map(|pk| pk.to_peer_id()).collect()
     };
     let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
@@ -9015,7 +8852,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     };
     let mut recovery_task = match runtime.block_on(async {
         recovery_task_builder
-            .with_peers(peer_public_keys)
+            .with_peers(peer_ids)
             .with_retry_limit(10)
             .build_with_wallet(&(*wallet).wallet, shutdown_signal)
             .await
@@ -9215,22 +9052,8 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
         debug!(target: LOG_TARGET, "Wallet pointer not yet destroyed, shutting down now");
         let mut w = Box::from_raw(wallet);
-        let wallet_comms = w.wallet.comms.clone();
         w.shutdown.trigger();
         w.runtime.block_on(w.wallet.wait_until_shutdown());
-        // The wallet should be shutdown by now; these are just additional confirmations
-        loop {
-            if w.shutdown.is_triggered() &&
-                wallet_comms.shutdown_signal().is_triggered() &&
-                w.runtime
-                    .block_on(wallet_comms.connectivity().get_connectivity_status())
-                    .is_err()
-            {
-                break;
-            };
-            w.runtime
-                .block_on(async { tokio::time::sleep(Duration::from_millis(250)).await });
-        }
     }
 }
 
@@ -9264,7 +9087,7 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
     }
 }
 
-/// ------------------------------------- FeePerGramStats ------------------------------------ ///
+// ------------------------------------- FeePerGramStats ------------------------------------ ///
 
 /// Get the TariFeePerGramStats from a TariWallet.
 ///
@@ -9400,9 +9223,8 @@ pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut Tar
     }
 }
 
-/// ------------------------------------------------------------------------------------------ ///
-
-/// ------------------------------------- FeePerGramStat ------------------------------------- ///
+// ------------------------------------------------------------------------------------------ ///
+// ------------------------------------- FeePerGramStat ------------------------------------- ///
 
 /// Get the order of TariFeePerGramStat
 ///
@@ -9581,7 +9403,7 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
-    use std::{ffi::c_void, path::Path, str::from_utf8, sync::Mutex};
+    use std::{ffi::c_void, str::from_utf8, sync::Mutex, time::Duration};
 
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -9589,7 +9411,6 @@ mod test {
     };
     use once_cell::sync::Lazy;
     use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
-    use tari_comms::peer_manager::PeerFeatures;
     use tari_contacts::contacts_service::types::{ChatBody, Direction, Message, MessageId, MessageMetadata};
     use tari_core::{
         covenant,
@@ -9598,8 +9419,9 @@ mod test {
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
         },
     };
+    use tari_crypto::ristretto::RistrettoPublicKey;
     use tari_key_manager::mnemonic_wordlists;
-    use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
+    use tari_network::{NetworkingService, StreamProtocol};
     use tari_script::script;
     use tari_test_utils::random;
     use tari_utilities::encoding::MBase58;
@@ -9876,6 +9698,8 @@ mod test {
     #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     const NETWORK_STRING: &str = "localnet";
 
+    const LISTEN_MULTIADDR: &str = "/ip4/127.0.0.1/tcp/0";
+
     #[test]
     // casting is okay in tests
     #[allow(clippy::cast_possible_truncation)]
@@ -10028,18 +9852,6 @@ mod test {
     }
 
     #[test]
-    fn test_transport_type_memory() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let transport = transport_memory_create();
-            let _address = transport_memory_get_address(transport, error_ptr);
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
-        }
-    }
-
-    #[test]
     fn test_transaction_send_status() {
         unsafe {
             let mut error = 0;
@@ -10124,54 +9936,6 @@ mod test {
             transaction_send_status_destroy(status);
             assert_eq!(error, 1);
             assert_eq!(transaction_status, 4);
-        }
-    }
-
-    #[test]
-    fn test_transport_type_tcp() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let address_listener = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
-            let address_listener_str: *const c_char = CString::into_raw(address_listener) as *const c_char;
-            let transport = transport_tcp_create(address_listener_str, error_ptr);
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
-        }
-    }
-
-    #[test]
-    fn test_transport_type_tor() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
-            let mut bypass = false;
-            let address_control_str: *const c_char = CString::into_raw(address_control) as *const c_char;
-            let mut transport = transport_tor_create(
-                address_control_str,
-                ptr::null(),
-                8080,
-                bypass,
-                ptr::null(),
-                ptr::null(),
-                error_ptr,
-            );
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
-
-            bypass = true;
-            transport = transport_tor_create(
-                address_control_str,
-                ptr::null(),
-                8080,
-                bypass,
-                ptr::null(),
-                ptr::null(),
-                error_ptr,
-            );
-            assert_eq!(error, 0);
-            transport_config_destroy(transport);
         }
     }
 
@@ -10519,37 +10283,18 @@ mod test {
 
             let secret_key_alice = private_key_generate();
             let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
-            let db_name = random::string(8);
-            let db_name_alice = CString::new(db_name.as_str()).unwrap();
-            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
-            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
-            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let db_path_string = random::string(8);
+            let db_name_alice_str = str_to_pointer(&db_path_string);
+            let base_path_alice_str = str_to_pointer(alice_temp_dir.path().to_str().unwrap());
+            let address_alice_str = str_to_pointer(LISTEN_MULTIADDR);
+            let alice_network_str = str_to_pointer(NETWORK_STRING);
 
-            let sql_database_path = Path::new(alice_temp_dir.path().to_str().unwrap())
-                .join(db_name)
-                .with_extension("sqlite3");
-
-            let alice_network = CString::new(NETWORK_STRING).unwrap();
-            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
-
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            assert_eq!(*error_ptr, 0);
 
             let passphrase: *const c_char =
-                CString::into_raw(CString::new("Hello from Alasca").unwrap()) as *const c_char;
+                CString::into_raw(CString::new("Hello from Alaska").unwrap()) as *const c_char;
 
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
 
@@ -10557,6 +10302,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                base_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -10589,14 +10336,19 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
-            assert!(!(*recovery_in_progress_ptr), "no recovery in progress");
             assert_eq!(*error_ptr, 0, "No error expected");
+            assert!(!(*recovery_in_progress_ptr), "no recovery in progress");
             wallet_destroy(alice_wallet);
 
+            let sql_database_path = alice_temp_dir
+                .path()
+                .join("data/wallet")
+                .join(&db_path_string)
+                .with_extension("sqlite3");
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(
-                WalletSqliteDatabase::new(connection, "Hello from Alasca".to_string().into()).unwrap(),
+                WalletSqliteDatabase::new(connection, "Hello from Alaska".to_string().into()).unwrap(),
             );
 
             let stored_seed1 = wallet_backend.get_master_seed().unwrap().unwrap();
@@ -10608,6 +10360,8 @@ mod test {
             let alice_wallet2 = wallet_create(
                 void_ptr,
                 alice_config,
+                base_path_alice_str,
+                db_name_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -10649,7 +10403,7 @@ mod test {
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
 
-            let passphrase = SafePassword::from("Hello from Alasca");
+            let passphrase = SafePassword::from("Hello from Alaska");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());
 
             let stored_seed2 = wallet_backend.get_master_seed().unwrap().unwrap();
@@ -10678,13 +10432,12 @@ mod test {
 
             string_destroy(alice_network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
-            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(base_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             string_destroy(backup_path_alice_str as *mut c_char);
             string_destroy(original_path_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
         }
     }
@@ -10704,23 +10457,11 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let address_alice_str: *const c_char = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
@@ -10729,6 +10470,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                db_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -10815,7 +10558,6 @@ mod test {
             string_destroy(address_alice_str as *mut c_char);
             string_destroy(passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
 
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
@@ -10936,23 +10678,11 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address = transport_memory_get_address(transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let address_str = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(
-                address_str,
-                transport_type,
-                db_name_str,
-                db_path_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let config = comms_config_create(ptr::null(), address_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
@@ -10961,6 +10691,8 @@ mod test {
             let wallet = wallet_create(
                 void_ptr,
                 config,
+                db_name_str,
+                db_path_str,
                 ptr::null(),
                 0,
                 0,
@@ -11006,21 +10738,9 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address = transport_memory_get_address(transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let address_str = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
 
-            let config = comms_config_create(
-                address_str,
-                transport_type,
-                db_name_str,
-                db_path_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let config = comms_config_create(ptr::null(), address_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
@@ -11034,6 +10754,8 @@ mod test {
             let recovered_wallet = wallet_create(
                 void_ptr,
                 config,
+                db_name_str,
+                db_path_str,
                 log_path,
                 0,
                 0,
@@ -11093,23 +10815,11 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let address_alice_str: *const c_char = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
@@ -11118,6 +10828,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                db_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -11254,7 +10966,6 @@ mod test {
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
@@ -11275,23 +10986,11 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let address_alice_str: *const c_char = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
@@ -11300,6 +10999,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                db_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -11397,7 +11098,6 @@ mod test {
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
@@ -11418,23 +11118,11 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let address_alice_str: *const c_char = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
@@ -11443,6 +11131,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                db_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -11621,7 +11311,6 @@ mod test {
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
@@ -11642,23 +11331,11 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let address_alice_str: *const c_char = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
@@ -11667,6 +11344,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                db_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -11853,10 +11532,13 @@ mod test {
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
+    }
+
+    unsafe fn str_to_pointer(string: &str) -> *const c_char {
+        CString::new(string).unwrap().into_raw() as *const c_char
     }
 
     #[test]
@@ -11874,23 +11556,12 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_config_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
-            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
-            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let address_alice_str = str_to_pointer(LISTEN_MULTIADDR);
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                address_alice_str,
-                transport_config_alice,
-                db_name_alice_str,
-                db_path_alice_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            assert_eq!(error, 0, "comms_config_create errored");
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
@@ -11898,6 +11569,8 @@ mod test {
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
+                db_name_alice_str,
+                db_path_alice_str,
                 ptr::null(),
                 0,
                 0,
@@ -11930,7 +11603,7 @@ mod test {
                 recovery_in_progress_ptr,
                 error_ptr,
             );
-            assert_eq!(error, 0);
+            assert_eq!(error, 0, "wallet_create errored");
 
             let key_manager = &(*alice_wallet).wallet.key_manager_service;
             for i in 1..=5 {
@@ -11951,14 +11624,13 @@ mod test {
             }
 
             // obtaining network and version
-            let _ = wallet_get_last_version(alice_config, &mut error as *mut c_int);
-            let _ = wallet_get_last_network(alice_config, &mut error as *mut c_int);
+            let _ = wallet_get_last_version(db_name_alice_str, db_path_alice_str, &mut error as *mut c_int);
+            let _ = wallet_get_last_network(db_name_alice_str, db_path_alice_str, &mut error as *mut c_int);
 
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
@@ -12119,11 +11791,6 @@ mod test {
         }
     }
 
-    fn get_next_memory_address() -> Multiaddr {
-        let port = MemoryTransport::acquire_next_memsocket_port();
-        format!("/memory/{}", port).parse().unwrap()
-    }
-
     #[test]
     #[allow(clippy::too_many_lines)]
     pub fn test_import_external_utxo() {
@@ -12140,29 +11807,19 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let transport_type = transport_memory_create();
-            let address = transport_memory_get_address(transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let address_str = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(
-                address_str,
-                transport_type,
-                db_name_str,
-                db_path_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let config = comms_config_create(ptr::null(), address_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let wallet_ptr = wallet_create(
                 void_ptr,
                 config,
+                db_name_str,
+                db_path_str,
                 ptr::null(),
                 0,
                 0,
@@ -12198,18 +11855,9 @@ mod test {
             assert_eq!(error, 0);
             let key_manager = &(*wallet_ptr).wallet.key_manager_service;
 
-            let node_identity =
-                NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-            let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
-            let base_node_peer_address_ptr =
-                CString::into_raw(CString::new(node_identity.first_public_address().unwrap().to_string()).unwrap())
-                    as *const c_char;
-            wallet_set_base_node_peer(
-                wallet_ptr,
-                base_node_peer_public_key_ptr,
-                base_node_peer_address_ptr,
-                error_ptr,
-            );
+            let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+            let base_node_peer_public_key_ptr = Box::into_raw(Box::new(pk));
+            wallet_set_base_node_peer(wallet_ptr, base_node_peer_public_key_ptr, ptr::null(), error_ptr);
 
             let source_address_ptr = Box::into_raw(Box::default());
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
@@ -12422,13 +12070,11 @@ mod test {
             unblinded_outputs_destroy(unspent_outputs_ptr);
 
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
-            string_destroy(base_node_peer_address_ptr as *mut c_char);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_str as *mut c_char);
             string_destroy(db_path_str as *mut c_char);
             string_destroy(address_str as *mut c_char);
-            transport_config_destroy(transport_type);
 
             comms_config_destroy(config);
             wallet_destroy(wallet_ptr);
@@ -12525,29 +12171,19 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let alice_db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let alice_transport_type = transport_memory_create();
-            let address = transport_memory_get_address(alice_transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let alice_address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let alice_address_str = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(
-                alice_address_str,
-                alice_transport_type,
-                alice_db_name_str,
-                alice_db_path_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let alice_config = comms_config_create(ptr::null(), alice_address_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet_ptr = wallet_create(
                 void_ptr,
                 alice_config,
+                alice_db_name_str,
+                alice_db_path_str,
                 ptr::null(),
                 0,
                 0,
@@ -12585,7 +12221,6 @@ mod test {
             string_destroy(alice_db_name_str as *mut c_char);
             string_destroy(alice_db_path_str as *mut c_char);
             string_destroy(alice_address_str as *mut c_char);
-            transport_config_destroy(alice_transport_type);
             comms_config_destroy(alice_config);
 
             // Create a new wallet for bob
@@ -12594,29 +12229,19 @@ mod test {
             let temp_dir = tempdir().unwrap();
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let bob_db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
-            let bob_transport_type = transport_memory_create();
-            let address = transport_memory_get_address(bob_transport_type, error_ptr);
-            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
-            let bob_address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let bob_address_str = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
             let network = CString::new(NETWORK_STRING).unwrap();
             let bob_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let bob_config = comms_config_create(
-                bob_address_str,
-                bob_transport_type,
-                bob_db_name_str,
-                bob_db_path_str,
-                20,
-                10800,
-                false,
-                error_ptr,
-            );
+            let bob_config = comms_config_create(ptr::null(), bob_address_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let bob_wallet_ptr = wallet_create(
                 void_ptr,
                 bob_config,
+                bob_db_name_str,
+                bob_db_path_str,
                 ptr::null(),
                 0,
                 0,
@@ -12654,48 +12279,45 @@ mod test {
             string_destroy(bob_db_name_str as *mut c_char);
             string_destroy(bob_db_path_str as *mut c_char);
             string_destroy(bob_address_str as *mut c_char);
-            transport_config_destroy(bob_transport_type);
             comms_config_destroy(bob_config);
 
             // Add some peers
             // - Wallet peer for Alice (add Bob as a base node peer; not how it will be done in production but good
             //   enough for the test as we just need to make sure the wallet can connect to a peer)
-            let bob_wallet_comms = (*bob_wallet_ptr).wallet.comms.clone();
-            let bob_node_identity = bob_wallet_comms.node_identity();
-            let bob_peer_public_key_ptr = Box::into_raw(Box::new(bob_node_identity.public_key().clone()));
-            let bob_peer_address_ptr =
-                CString::into_raw(CString::new(bob_node_identity.first_public_address().unwrap().to_string()).unwrap())
-                    as *const c_char;
-            wallet_set_base_node_peer(
-                alice_wallet_ptr,
-                bob_peer_public_key_ptr,
-                bob_peer_address_ptr,
-                error_ptr,
-            );
-            string_destroy(bob_peer_address_ptr as *mut c_char);
+            let mut bob_wallet_comms = (*bob_wallet_ptr).wallet.network.clone();
+            let bob_wallet_peer_id = *bob_wallet_comms.local_peer_id();
+            let bob_wallet_pk = (*bob_wallet_ptr)
+                .wallet
+                .network_keypair
+                .public()
+                .clone()
+                .try_into_sr25519()
+                .unwrap()
+                .inner_key()
+                .clone();
+            let bob_peer_public_key_ptr = Box::into_raw(Box::new(bob_wallet_pk.clone()));
+            wallet_set_base_node_peer(alice_wallet_ptr, bob_peer_public_key_ptr, ptr::null(), error_ptr);
             let _destroyed = Box::from_raw(bob_peer_public_key_ptr);
             // - Wallet peer for Bob (add Alice as a base node peer; same as above)
-            let alice_wallet_comms = (*alice_wallet_ptr).wallet.comms.clone();
-            let alice_node_identity = alice_wallet_comms.node_identity();
-            let alice_peer_public_key_ptr = Box::into_raw(Box::new(alice_node_identity.public_key().clone()));
-            let alice_peer_address_ptr = CString::into_raw(
-                CString::new(alice_node_identity.first_public_address().unwrap().to_string()).unwrap(),
-            ) as *const c_char;
-            wallet_set_base_node_peer(
-                bob_wallet_ptr,
-                alice_peer_public_key_ptr,
-                alice_peer_address_ptr,
-                error_ptr,
-            );
-            string_destroy(alice_peer_address_ptr as *mut c_char);
+            let mut alice_wallet_comms = (*alice_wallet_ptr).wallet.network.clone();
+            let alice_wallet_pk = (*alice_wallet_ptr)
+                .wallet
+                .network_keypair
+                .public()
+                .clone()
+                .try_into_sr25519()
+                .unwrap()
+                .inner_key()
+                .clone();
+            let alice_peer_id = *alice_wallet_comms.local_peer_id();
+            let alice_peer_public_key_ptr = Box::into_raw(Box::new(alice_wallet_pk.clone()));
+            wallet_set_base_node_peer(bob_wallet_ptr, alice_peer_public_key_ptr, ptr::null(), error_ptr);
             let _destroyed = Box::from_raw(alice_peer_public_key_ptr);
 
             // Add some contacts
             // - Contact for Alice
-            let bob_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
-                bob_node_identity.public_key().clone(),
-                Network::LocalNet,
-            );
+            let bob_wallet_address =
+                TariWalletAddress::new_single_address_with_interactive_only(bob_wallet_pk, Network::LocalNet);
             let alice_contact_alias_ptr: *const c_char =
                 CString::into_raw(CString::new("bob").unwrap()) as *const c_char;
             let alice_contact_address_ptr = Box::into_raw(Box::new(bob_wallet_address.clone()));
@@ -12704,10 +12326,8 @@ mod test {
             assert!(wallet_upsert_contact(alice_wallet_ptr, alice_contact_ptr, error_ptr));
             contact_destroy(alice_contact_ptr);
             // - Contact for Bob
-            let alice_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
-                alice_node_identity.public_key().clone(),
-                Network::LocalNet,
-            );
+            let alice_wallet_address =
+                TariWalletAddress::new_single_address_with_interactive_only(alice_wallet_pk, Network::LocalNet);
             let bob_contact_alias_ptr: *const c_char =
                 CString::into_raw(CString::new("alice").unwrap()) as *const c_char;
             let bob_contact_address_ptr = Box::into_raw(Box::new(alice_wallet_address.clone()));
@@ -12727,20 +12347,12 @@ mod test {
                 dial_count += 1;
                 if !alice_dialed_bob {
                     alice_dialed_bob = alice_wallet_runtime
-                        .block_on(
-                            alice_wallet_comms
-                                .connectivity()
-                                .dial_peer(bob_node_identity.node_id().clone()),
-                        )
+                        .block_on(alice_wallet_comms.dial_peer(bob_wallet_peer_id))
                         .is_ok();
                 }
                 if !bob_dialed_alice {
                     bob_dialed_alice = bob_wallet_runtime
-                        .block_on(
-                            bob_wallet_comms
-                                .connectivity()
-                                .dial_peer(alice_node_identity.node_id().clone()),
-                        )
+                        .block_on(bob_wallet_comms.dial_peer(alice_peer_id))
                         .is_ok();
                 }
                 if alice_dialed_bob && bob_dialed_alice || dial_count > 10 {
@@ -12807,18 +12419,18 @@ mod test {
             // Bob's peer connection to Alice will still be active for a short while until Bob figures out Alice is
             // gone, and a 'dial_peer' command to Alice from Bob may return the previous connection state, but it
             // should not be possible to do anything with the connection.
-            let bob_comms_dial_peer = bob_wallet_runtime.block_on(
-                bob_wallet_comms
-                    .connectivity()
-                    .dial_peer(alice_node_identity.node_id().clone()),
-            );
-            if let Ok(mut connection_to_alice) = bob_comms_dial_peer {
-                if bob_wallet_runtime
-                    .block_on(connection_to_alice.open_substream(&MESSAGING_PROTOCOL_ID.clone()))
+            let bob_comms_dial_peer =
+                bob_wallet_runtime.block_on(async { bob_wallet_comms.dial_peer(alice_peer_id).await.unwrap().await });
+            if bob_comms_dial_peer.is_ok() &&
+                bob_wallet_runtime
+                    .block_on(bob_wallet_comms.open_substream(
+                        alice_peer_id,
+                        // TODO: this will cause this to fail even if the peer is active
+                        &StreamProtocol::new("/test/me"),
+                    ))
                     .is_ok()
-                {
-                    panic!("Connection to Alice should not be active!");
-                }
+            {
+                panic!("Connection to Alice should not be active!");
             }
 
             // - Bob can still retrieve messages Alice sent

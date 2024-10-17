@@ -22,7 +22,8 @@
 
 use serde_json::Error as SerdeJsonError;
 use tari_common_types::types::FixedHashSizeError;
-use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
+use tari_network::NetworkError;
+use tari_rpc_framework::RpcError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -35,8 +36,8 @@ pub enum UtxoScannerError {
     UnexpectedApiResponse { details: String },
     #[error("Wallet storage error: `{0}`")]
     WalletStorageError(#[from] WalletStorageError),
-    #[error("Connectivity error: `{0}`")]
-    ConnectivityError(#[from] ConnectivityError),
+    #[error("Network error: `{0}`")]
+    NetworkError(#[from] NetworkError),
     #[error("RpcError: `{0}`")]
     RpcError(#[from] RpcError),
     #[error("RpcStatus: `{0}`")]

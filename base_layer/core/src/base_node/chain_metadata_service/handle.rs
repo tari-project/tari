@@ -27,27 +27,27 @@ use std::{
 };
 
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerChainMetadata {
-    node_id: NodeId,
+    peer_id: PeerId,
     chain_metadata: ChainMetadata,
     latency: Option<Duration>,
 }
 
 impl PeerChainMetadata {
-    pub fn new(node_id: NodeId, chain_metadata: ChainMetadata, latency: Option<Duration>) -> Self {
+    pub fn new(peer_id: PeerId, chain_metadata: ChainMetadata, latency: Option<Duration>) -> Self {
         Self {
-            node_id,
+            peer_id,
             chain_metadata,
             latency,
         }
     }
 
-    pub fn node_id(&self) -> &NodeId {
-        &self.node_id
+    pub fn peer_id(&self) -> &PeerId {
+        &self.peer_id
     }
 
     pub fn claimed_chain_metadata(&self) -> &ChainMetadata {
@@ -69,7 +69,7 @@ impl Display for PeerChainMetadata {
         write!(
             f,
             "Node ID: {}, Chain metadata: {}, Latency: {}",
-            self.node_id,
+            self.peer_id,
             self.chain_metadata,
             self.latency
                 .map(|d| format!("{:.2?}", d))

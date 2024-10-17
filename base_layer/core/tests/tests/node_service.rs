@@ -186,7 +186,7 @@ async fn propagate_and_forward_many_valid_blocks() {
     for block in &blocks {
         alice_node
             .outbound_nci
-            .propagate_block(NewBlock::from(block.block()), vec![])
+            .propagate_block(NewBlock::from(block.block()))
             .await
             .unwrap();
 

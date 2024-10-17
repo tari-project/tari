@@ -22,21 +22,16 @@
 
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use log::{error, trace};
-use minotari_app_utilities::{identity_management, identity_management::load_from_json};
-// Re-exports
-pub use tari_comms::{
-    multiaddr::{Error as MultiaddrError, Multiaddr},
-    peer_manager::{NodeIdentity, PeerFeatures},
-};
-use tari_comms::{peer_manager::Peer, tor::TorIdentity, CommsNode, UnspawnedCommsNode};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
+pub use tari_network::multiaddr::Multiaddr;
+use tari_network::{identity, NetworkHandle, Peer};
 use tari_p2p::{
-    comms_connector::pubsub_connector,
-    initialization::{spawn_comms_using_transport, P2pInitializer},
+    connector::InboundMessaging,
+    initialization::P2pInitializer,
+    message::TariNodeMessageSpec,
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
-    TransportType,
+    Dispatcher,
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
@@ -47,25 +42,20 @@ use crate::{
     error::NetworkingError,
 };
 
-const LOG_TARGET: &str = "contacts::chat_client::networking";
+const _LOG_TARGET: &str = "contacts::chat_client::networking";
 
 pub async fn start(
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Arc<identity::Keypair>,
     config: ApplicationConfig,
     shutdown_signal: ShutdownSignal,
     user_agent: String,
-) -> Result<(ContactsServiceHandle, CommsNode), NetworkingError> {
+) -> Result<(ContactsServiceHandle, NetworkHandle), NetworkingError> {
     create_chat_storage(&config.chat_client.db_file)?;
     let backend = connect_to_db(config.chat_client.db_file)?;
 
-    let (publisher, subscription_factory) = pubsub_connector(100);
-    let in_msg = Arc::new(subscription_factory);
+    let dispatcher = Dispatcher::new();
 
-    let mut p2p_config = config.chat_client.p2p.clone();
-
-    let tor_identity = load_from_json(&config.chat_client.tor_identity_file)?;
-    p2p_config.transport.tor.identity = tor_identity.clone();
-    trace!(target: LOG_TARGET, "loaded chat tor identity {:?}", tor_identity);
+    let p2p_config = config.chat_client.p2p.clone();
 
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(P2pInitializer::new(
@@ -74,18 +64,17 @@ pub async fn start(
             config.peer_seeds.clone(),
             config.chat_client.network,
             node_identity,
-            publisher,
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
                 auto_ping_interval: Some(config.chat_client.metadata_auto_ping_interval),
                 ..Default::default()
             },
-            in_msg.clone(),
+            dispatcher.clone(),
         ))
         .add_initializer(ContactsServiceInitializer::new(
             backend,
-            in_msg,
+            dispatcher.clone(),
             Duration::from_secs(5),
             2,
         ))
@@ -93,11 +82,12 @@ pub async fn start(
 
     let mut handles = fut.await?;
 
-    let comms = handles
-        .take_handle::<UnspawnedCommsNode>()
-        .ok_or(NetworkingError::CommsSpawnError)?;
+    let inbound = handles
+        .take_handle::<InboundMessaging<TariNodeMessageSpec>>()
+        .expect("Inbound messaging not registered");
+    dispatcher.spawn(inbound);
 
-    let peer_manager = comms.peer_manager();
+    let network = handles.expect_handle::<NetworkHandle>();
 
     let seed_peers = config
         .peer_seeds
@@ -109,44 +99,9 @@ pub async fn start(
         .map_err(|e| NetworkingError::PeerSeeds(e.to_string()))?;
 
     for peer in seed_peers {
-        peer_manager.add_peer(peer).await?;
+        network.add_peer(peer).await?;
     }
-    let comms = if p2p_config.transport.transport_type == TransportType::Tor {
-        let path = config.chat_client.tor_identity_file.clone();
-        let node_id = comms.node_identity();
-        let after_comms = move |identity: TorIdentity| {
-            let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
-            if let Err(e) = identity_management::save_as_json(&path, &identity) {
-                error!(target: LOG_TARGET, "Failed to save tor identity{:?}", e);
-            }
-            let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
-            if result.is_err() {
-                error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
-                return;
-            }
-            let address = result.unwrap();
-            trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", identity);
-            if !node_id.public_addresses().contains(&address) {
-                node_id.add_public_address(address);
-            }
-        };
-        spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
-    } else {
-        let after_comms = |_identity| {};
-        spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await?
-    };
-    // changed by comms during initialization when using tor.
-    match p2p_config.transport.transport_type {
-        TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
-        _ => {
-            identity_management::save_as_json(&config.chat_client.identity_file, &*comms.node_identity())?;
-            trace!(target: LOG_TARGET, "save chat identity file");
-        },
-    };
 
-    handles.register(comms);
-
-    let comms = handles.expect_handle::<CommsNode>();
     let contacts = handles.expect_handle::<ContactsServiceHandle>();
-    Ok((contacts, comms))
+    Ok((contacts, network))
 }

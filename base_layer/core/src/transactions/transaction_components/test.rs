@@ -296,6 +296,8 @@ fn kernel_hash() {
     let r = PublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
     let sig = Signature::new(r, s);
     let excess = Commitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
+    // If none of the features are active, k is unused
+    #[allow(unused_variables)]
     let k = KernelBuilder::new()
         .with_signature(sig)
         .with_fee(100.into())
@@ -326,6 +328,7 @@ fn kernel_metadata() {
     let r = PublicKey::from_hex("5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee561").unwrap();
     let sig = Signature::new(r, s);
     let excess = Commitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
+    #[allow(unused_variables)]
     let k = KernelBuilder::new()
         .with_signature(sig)
         .with_fee(100.into())

@@ -23,8 +23,6 @@
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
-use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
-use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
@@ -34,6 +32,7 @@ use tari_key_manager::{
     error::{KeyManagerError, MnemonicError},
     key_manager_service::KeyManagerServiceError,
 };
+use tari_rpc_framework::RpcError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -63,8 +62,6 @@ pub enum OutputManagerError {
     KeyManagerError(#[from] KeyManagerError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
-    #[error("DHT outbound error: `{0}`")]
-    DhtOutboundError(#[from] DhtOutboundError),
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
@@ -109,8 +106,6 @@ pub enum OutputManagerError {
     Shutdown,
     #[error("RpcError: `{0}`")]
     RpcError(#[from] RpcError),
-    #[error("Node ID error: `{0}`")]
-    NodeIdError(#[from] NodeIdError),
     #[error("Script hash does not match expected script")]
     InvalidScriptHash,
     #[error("Unsupported Covenant")]
@@ -129,11 +124,6 @@ pub enum OutputManagerError {
     KeyNotFoundInKeyChain,
     #[error("No UTXOs selected as inputs for {criteria}")]
     NoUtxosSelected { criteria: UtxoSelectionCriteria },
-    #[error("Connectivity error: {source}")]
-    ConnectivityError {
-        #[from]
-        source: ConnectivityError,
-    },
     #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
     #[error("Key manager service error: {0}")]

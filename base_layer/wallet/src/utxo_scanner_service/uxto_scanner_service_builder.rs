@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_network::{identity::PeerId, NetworkHandle};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -53,7 +53,7 @@ pub enum UtxoScannerMode {
 #[derive(Debug, Clone)]
 pub struct UtxoScannerServiceBuilder {
     retry_limit: usize,
-    peers: Vec<CommsPublicKey>,
+    peers: Vec<PeerId>,
     mode: Option<UtxoScannerMode>,
     one_sided_message: String,
     recovery_message: String,
@@ -79,8 +79,8 @@ impl UtxoScannerServiceBuilder {
         self
     }
 
-    pub fn with_peers(&mut self, peer_public_keys: Vec<CommsPublicKey>) -> &mut Self {
-        self.peers = peer_public_keys;
+    pub fn with_peers(&mut self, peers: Vec<PeerId>) -> &mut Self {
+        self.peers = peers;
         self
     }
 
@@ -107,7 +107,7 @@ impl UtxoScannerServiceBuilder {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
-            comms_connectivity: wallet.comms.connectivity(),
+            network: wallet.network.clone(),
             wallet_connectivity: wallet.wallet_connectivity.clone(),
             current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
@@ -140,7 +140,7 @@ impl UtxoScannerServiceBuilder {
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
-        comms_connectivity: ConnectivityRequester,
+        network: NetworkHandle,
         wallet_connectivity: TWalletConnectivity,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
@@ -154,7 +154,7 @@ impl UtxoScannerServiceBuilder {
     ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
         let resources = UtxoScannerResources {
             db,
-            comms_connectivity,
+            network,
             current_base_node_watcher: wallet_connectivity.get_current_base_node_watcher(),
             wallet_connectivity,
             output_manager_service,

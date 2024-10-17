@@ -25,7 +25,11 @@ use std::{convert::Infallible, str::FromStr};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_app_grpc::{tari_rpc::sha_p2_pool_client::ShaP2PoolClient, tls::protocol_string};
+use minotari_app_grpc::{
+    conversions::multiaddr::multiaddr_to_socketaddr,
+    tari_rpc::sha_p2_pool_client::ShaP2PoolClient,
+    tls::protocol_string,
+};
 use minotari_app_utilities::parse_miner_input::{
     base_node_socket_address,
     verify_base_node_grpc_mining_responses,
@@ -36,7 +40,6 @@ use minotari_app_utilities::parse_miner_input::{
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use tari_common::{configuration::StringList, load_configuration, DefaultConfigLoader};
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};

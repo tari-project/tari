@@ -36,10 +36,10 @@ use tari_utilities::hex::Hex;
 async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
     spawn_wallet_ffi(world, wallet.clone(), null());
     let base_node = world.get_node(&base_node).unwrap();
-    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
+    world
+        .get_ffi_wallet(&wallet)
+        .unwrap()
+        .add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
 }
 
 #[given(expr = "I have a ffi wallet {word} connected to seed node {word}")]
@@ -47,19 +47,19 @@ async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: 
     spawn_wallet_ffi(world, wallet.clone(), null());
     assert!(world.all_seed_nodes().contains(&seed_node), "Seed node not found.");
     let seed_node = world.get_node(&seed_node).unwrap();
-    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
-        seed_node.identity.public_key().to_hex(),
-        seed_node.identity.first_public_address().unwrap().to_string(),
-    );
+    world
+        .get_ffi_wallet(&wallet)
+        .unwrap()
+        .add_base_node(seed_node.public_key.to_hex(), seed_node.get_listen_addr().to_string());
 }
 
 #[given(expr = "I set base node {word} for ffi wallet {word}")]
 async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
     let base_node = world.get_node(&base_node).unwrap();
-    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
+    world
+        .get_ffi_wallet(&wallet)
+        .unwrap()
+        .add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
 }
 
 #[then(expr = "I want to get public key of ffi wallet {word}")]
@@ -104,7 +104,7 @@ async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
 #[then(expr = "I wait for ffi wallet {word} to connect to {word}")]
 async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let node = world.get_node(&node).unwrap().identity.public_key();
+    let node = &world.get_node(&node).unwrap().public_key;
     for _ in 0..10 {
         let public_keys = ffi_wallet.connected_public_keys();
         for i in 0..public_keys.get_length() {
@@ -494,10 +494,10 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
     spawn_wallet_ffi(world, ffi_wallet_name.clone(), seed_words.get_ptr());
 
     let base_node = world.get_node(&base_node).unwrap();
-    world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
+    world
+        .get_ffi_wallet(&ffi_wallet_name)
+        .unwrap()
+        .add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
 }
 
 #[then(expr = "I restart ffi wallet {word} connected to base node {word}")]
@@ -506,10 +506,7 @@ async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: St
     ffi_wallet.restart();
     let base_node = world.get_node(&base_node).unwrap();
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    ffi_wallet.add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
+    ffi_wallet.add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
 }
 
 #[then(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]

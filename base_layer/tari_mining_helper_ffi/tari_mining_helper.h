@@ -8,11 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/**
- * The latest version of the Identity Signature.
- */
-#define IdentitySignature_LATEST_VERSION 0
-
 struct ByteVector;
 
 #ifdef __cplusplus

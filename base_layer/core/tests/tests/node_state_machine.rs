@@ -314,7 +314,7 @@ async fn test_event_channel() {
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
     for _ in 0..5 {
         mock.publish_chain_metadata(
-            peer_chain_metadata.node_id(),
+            peer_chain_metadata.peer_id(),
             peer_chain_metadata.claimed_chain_metadata(),
         )
         .await
