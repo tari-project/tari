@@ -1084,3 +1084,186 @@ fn parse_method_name(request: &Request<Bytes>) -> String {
         _ => "unsupported".to_string(),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::{fmt::Display, time::Instant};
+
+    use anyhow::{anyhow, Error};
+    use chrono::{Local, Timelike};
+    use reqwest::Client;
+    use serde_json::{json, Value};
+
+    #[allow(clippy::enum_variant_names)]
+    #[derive(Clone, Copy)]
+    enum Method {
+        GetHeight,
+        GetBlockTemplate,
+        GetVersion,
+    }
+
+    impl Display for Method {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let str = match self {
+                Method::GetHeight => "get_height".to_string(),
+                Method::GetBlockTemplate => "get_block_template".to_string(),
+                Method::GetVersion => "get_version".to_string(),
+            };
+            write!(f, "{}", str)
+        }
+    }
+
+    async fn get_json_rpc(method: Method, json_rpc_port: u16) -> Result<String, Error> {
+        match method {
+            Method::GetHeight => get_response(json_rpc_port, method).await,
+            Method::GetBlockTemplate | Method::GetVersion => json_rpc_request(method, json_rpc_port).await,
+        }
+    }
+
+    async fn get_response(json_rpc_port: u16, method: Method) -> Result<String, Error> {
+        let full_address = format!("http://127.0.0.1:{}", json_rpc_port);
+        match reqwest::get(format!("{}/{}", full_address, method))
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+        {
+            Ok(val) => Ok(val.to_string()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn json_rpc_request(method: Method, json_rpc_port: u16) -> Result<String, Error> {
+        let rpc_method = format!("{}", method);
+        let request_body = match method {
+            Method::GetBlockTemplate => json!({
+                "jsonrpc": "2.0",
+                "id": "0",
+                "method": rpc_method,
+                "params": {
+                    "wallet_address": "489r43gR8bDMJNBf4Q6sL9CNERvZQrTqjRCSESqgWQEWWq2UGAfj2voaw3zBtD7U8CQ391Nc1PDHUHiN85yhbZnCDasqzyX",
+                }
+            }),
+            Method::GetVersion => json!({
+                "jsonrpc": "2.0",
+                "id": "0",
+                "method": rpc_method,
+                "params": {}
+            }),
+            _ => return Err(anyhow!("'{}' not supported", method)),
+        };
+        let rpc_url = format!("http://127.0.0.1:{}/json_rpc", json_rpc_port);
+
+        // Create an HTTP client
+        let client = Client::new();
+
+        // Send the POST request
+        let response = client.post(rpc_url).json(&request_body).send().await?;
+
+        // Parse the response body
+        if response.status().is_success() {
+            let response_text = response.text().await?;
+            let response_json: serde_json::Value = serde_json::from_str(&response_text)?;
+            if response_json.get("error").is_some() {
+                return Err(anyhow!("'{}' failed ({})", method, response_text));
+            }
+            if response_json.get("result").is_none() {
+                return Err(anyhow!("'{}' failed ({})", method, response_text));
+            }
+            Ok(response_text)
+        } else {
+            Err(anyhow!("{} failed({})", method, response.status()))
+        }
+    }
+
+    fn time_now() -> String {
+        let now = Local::now();
+        format!(
+            "{:02}:{:02}:{:02}.{:03}",
+            now.hour(),
+            now.minute(),
+            now.second(),
+            now.timestamp_subsec_millis()
+        )
+    }
+
+    async fn inner_json_rpc_loop(method: Method, json_rpc_port: u16, responses: &mut Vec<String>, count: usize) {
+        let start = Instant::now();
+        let response = get_json_rpc(method, json_rpc_port).await;
+        match response {
+            Ok(val) => {
+                responses.push(format!(
+                    "  {}: method: {}; time now: {}; duration: {:.2?}, response length: {}",
+                    count,
+                    method,
+                    time_now(),
+                    start.elapsed(),
+                    val.len(),
+                ));
+            },
+            Err(err) => {
+                responses.push(format!(
+                    "  {}: method: {}; time now: {}; duration: {:.2?}, response length: {}, Error: {}",
+                    count,
+                    method,
+                    time_now(),
+                    start.elapsed(),
+                    err.to_string().len(),
+                    err
+                ));
+            },
+        }
+    }
+
+    // To execute this test a merge mining proxy must be running (just verify the port, default used), ideally when
+    // RandomX mining with XMRig is taking place.
+    #[tokio::test]
+    #[ignore]
+    async fn test_get_monerod_info() {
+        let json_rpc_port = 18081;
+        let tick = tokio::time::Duration::from_secs(2);
+        let mut interval = tokio::time::interval(tick);
+        let mut responses = Vec::with_capacity(50);
+        for method in [Method::GetHeight, Method::GetVersion, Method::GetBlockTemplate] {
+            let mut count = 0;
+            responses.push(format!("method: {}, tick: {:.2?}", method, tick));
+            loop {
+                interval.tick().await;
+                count += 1;
+                inner_json_rpc_loop(method, json_rpc_port, &mut responses, count).await;
+                if count >= 5 {
+                    break;
+                }
+            }
+        }
+        for response in responses {
+            println!("{}", response);
+        }
+    }
+
+    // To execute this test a merge mining proxy must be running (just verify the port, default used), ideally when
+    // RandomX mining with XMRig is taking place.
+    #[tokio::test]
+    #[ignore]
+    async fn stress_test_get_monerod_info() {
+        let json_rpc_port = 18081;
+        let tick = tokio::time::Duration::from_millis(1000);
+        let mut interval = tokio::time::interval(tick);
+        let mut responses = Vec::with_capacity(3010);
+        for method in [Method::GetHeight, Method::GetVersion, Method::GetBlockTemplate] {
+            let mut count = 0;
+            responses.push(format!("method: {}, tick: {:.2?}", method, tick));
+            loop {
+                interval.tick().await;
+                count += 1;
+                inner_json_rpc_loop(method, json_rpc_port, &mut responses, count).await;
+                if count >= 500 {
+                    break;
+                }
+            }
+        }
+        for response in responses {
+            println!("{}", response);
+        }
+    }
+}
