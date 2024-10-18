@@ -48,22 +48,62 @@ use crate::{
     block_template_data::BlockTemplateRepository,
     config::MergeMiningProxyConfig,
     error::MmProxyError,
-    monero_fail::get_monerod_info,
-    proxy::MergeMiningProxyService,
+    monero_fail::{get_monerod_info, order_and_select_monerod_info, MonerodEntry},
+    proxy::{MergeMiningProxyService, MONEROD_CONNECTION_TIMEOUT, NUMBER_OF_MONEROD_SERVERS},
     Cli,
 };
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
+#[allow(clippy::too_many_lines)]
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
+
+    // Get reputable monerod URLs
+    let mut assigned_dynamic_fail = false;
     if config.use_dynamic_fail_data {
-        let entries = get_monerod_info(15, Duration::from_secs(5), &config.monero_fail_url).await?;
-        if !entries.is_empty() {
-            config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+        if let Ok(entries) = get_monerod_info(
+            NUMBER_OF_MONEROD_SERVERS,
+            MONEROD_CONNECTION_TIMEOUT,
+            &config.monero_fail_url,
+        )
+        .await
+        {
+            if !entries.is_empty() {
+                let entries_len = entries.len();
+                config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+                assigned_dynamic_fail = true;
+                debug!(
+                    target: LOG_TARGET,
+                    "Using {} vetted monerod servers from the Monero website at '{}'",
+                    entries_len, config.monero_fail_url
+                );
+            }
+        }
+    }
+    if !assigned_dynamic_fail {
+        let mut entries = Vec::new();
+        for url in config.monerod_url.clone().into_vec() {
+            entries.push(MonerodEntry {
+                url,
+                ..Default::default()
+            });
+        }
+        if let Ok(entries) =
+            order_and_select_monerod_info(NUMBER_OF_MONEROD_SERVERS, MONEROD_CONNECTION_TIMEOUT, &entries).await
+        {
+            if !entries.is_empty() {
+                let entries_len = entries.len();
+                config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+                debug!(
+                    target: LOG_TARGET,
+                    "Using {} vetted monerod servers from the config list'",
+                    entries_len
+                );
+            }
         }
     }
 
