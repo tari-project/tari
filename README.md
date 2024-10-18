@@ -23,8 +23,8 @@ The recommended running versions of each network are:
 | Network   | Version        |
 |-----------|----------------|
 | Stagenet  | 1.0.0-alpha.0a |
-| Nextnet   | 1.7.0-rc.2     |
-| Esmeralda | 1.7.0-pre.2    |
+| Nextnet   | 1.7.0-rc.3     |
+| Esmeralda | 1.7.0-pre.3    |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 

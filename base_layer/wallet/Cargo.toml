@@ -3,32 +3,32 @@ name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "1.7.0-pre.2"
+version = "1.7.0-pre.3"
 edition = "2018"
 
 [dependencies]
-tari_common = { path = "../../common", version = "1.7.0-pre.2" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.7.0-pre.2" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.7.0-pre.2" }
-tari_comms = { path = "../../comms/core", version = "1.7.0-pre.2" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.7.0-pre.2" }
-tari_contacts = { path = "../../base_layer/contacts", version = "1.7.0-pre.2" }
+tari_common = { path = "../../common", version = "1.7.0-pre.3" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.7.0-pre.3" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.7.0-pre.3" }
+tari_comms = { path = "../../comms/core", version = "1.7.0-pre.3" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.7.0-pre.3" }
+tari_contacts = { path = "../../base_layer/contacts", version = "1.7.0-pre.3" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",
     "mempool_proto",
     "base_node_proto",
-], version = "1.7.0-pre.2" }
+], version = "1.7.0-pre.3" }
 tari_crypto = { version = "0.21.0" }
 tari_max_size = { path = "../../infrastructure/max_size" }
 tari_key_manager = { path = "../key_manager", features = [
     "key_manager_service",
-], version = "1.7.0-pre.2" }
+], version = "1.7.0-pre.3" }
 tari_p2p = { path = "../p2p", features = [
     "auto-update",
-], version = "1.7.0-pre.2" }
-tari_script = { path = "../../infrastructure/tari_script", version = "1.7.0-pre.2" }
-tari_service_framework = { path = "../service_framework", version = "1.7.0-pre.2" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.7.0-pre.2" }
+], version = "1.7.0-pre.3" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.7.0-pre.3" }
+tari_service_framework = { path = "../service_framework", version = "1.7.0-pre.3" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.7.0-pre.3" }
 tari_utilities = { version = "0.8" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
@@ -74,7 +74,7 @@ zeroize = "1"
 tari_common = { path = "../../common", features = [
     "build",
     "static-application-info",
-], version = "1.7.0-pre.2" }
+], version = "1.7.0-pre.3" }
 
 [dev-dependencies]
 tari_p2p = { path = "../p2p", features = ["test-mocks"] }
