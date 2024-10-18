@@ -163,6 +163,12 @@ fn write_bytes_to_file<P: AsRef<Path>>(path: P, bytes: &[u8]) -> Result<(), Iden
 }
 
 pub fn save_identity<P: AsRef<Path>>(path: P, identity: &identity::Keypair) -> Result<(), IdentityError> {
+    if let Some(p) = path.as_ref().parent() {
+        if !p.exists() {
+            fs::create_dir_all(p)?;
+        }
+    }
+    // TODO: some kind of standard encoding (e.g. pem, der) would be nice
     write_bytes_to_file(path.as_ref(), &identity.to_protobuf_encoding()?)?;
     set_permissions(path, REQUIRED_IDENTITY_PERMS)?;
     Ok(())

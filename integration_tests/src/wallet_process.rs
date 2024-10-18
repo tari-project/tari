@@ -139,6 +139,8 @@ pub async fn spawn_wallet(
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
         wallet_app_config.wallet.db_file = PathBuf::from("console_wallet.db");
         wallet_app_config.wallet.contacts_auto_ping_interval = Duration::from_secs(2);
+        wallet_app_config.wallet.p2p.enable_mdns = false;
+        wallet_app_config.wallet.p2p.enable_relay = false;
         wallet_app_config
             .wallet
             .base_node_service_config

@@ -103,8 +103,8 @@ pub struct BaseNodeConfig {
     /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
     /// with the optional "libtor" feature flag.
     pub use_libtor: bool,
-    /// A path to the file that stores the tor hidden service private key, if using the tor transport.
-    pub tor_identity_file: PathBuf,
+    // /// A path to the file that stores the tor hidden service private key, if using the tor transport.
+    // pub tor_identity_file: PathBuf,
     /// The type of database backend to use
     pub db_type: DatabaseType,
     /// The lmdb config settings
@@ -158,7 +158,7 @@ impl Default for BaseNodeConfig {
             second_layer_grpc_enabled: false,
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: true,
-            tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
+            // tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
             p2p: P2pConfig::default(),
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
@@ -191,9 +191,9 @@ impl BaseNodeConfig {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(self.identity_file.as_path());
         }
-        if !self.tor_identity_file.is_absolute() {
-            self.tor_identity_file = base_path.as_ref().join(self.tor_identity_file.as_path());
-        }
+        // if !self.tor_identity_file.is_absolute() {
+        //     self.tor_identity_file = base_path.as_ref().join(self.tor_identity_file.as_path());
+        // }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());
         }

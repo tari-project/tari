@@ -101,11 +101,12 @@ pub async fn spawn_base_node_with_config(
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
     let base_node_identity: identity::Keypair;
-
+    let base_node_identity_path;
     if let Some(node_ps) = world.base_nodes.get(&bn_name) {
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
         temp_dir_path = node_ps.temp_dir_path.clone();
+        base_node_identity_path = temp_dir_path.join("base_node_key.bin");
         base_node_config = node_ps.config.clone();
 
         base_node_identity = node_ps.identity.clone();
@@ -120,9 +121,10 @@ pub async fn spawn_base_node_with_config(
             .expect("Base dir on world")
             .join("base_nodes")
             .join(format!("{}_grpc_port_{}", bn_name.clone(), grpc_port));
+        base_node_identity_path = temp_dir_path.join("base_node_key.bin");
 
         base_node_identity = identity::Keypair::generate_sr25519();
-        save_identity(temp_dir_path.join("base_node.json"), &base_node_identity).unwrap();
+        save_identity(&base_node_identity_path, &base_node_identity).unwrap();
     };
 
     println!("Base node peer id: {}", base_node_identity.public().to_peer_id());
@@ -174,9 +176,11 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(15);
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
-        base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
-        base_node_config.base_node.tor_identity_file = PathBuf::from("base_node_tor_id.json");
+        base_node_config.base_node.identity_file = base_node_identity_path;
+        // base_node_config.base_node.tor_identity_file = PathBuf::from("base_node_tor_id.json");
         base_node_config.base_node.max_randomx_vms = 1;
+        base_node_config.base_node.p2p.enable_mdns = false;
+        base_node_config.base_node.p2p.enable_relay = false;
 
         base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.listen_addresses =
