@@ -3,7 +3,7 @@ name = "minotari_chat_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
-version = "1.7.0-pre.3"
+version = "1.7.0-rc.3"
 edition = "2018"
 
 [dependencies]

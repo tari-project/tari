@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The Tari merge mining proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.7.0-pre.3"
+version = "1.7.0-rc.3"
 edition = "2018"
 
 [features]
@@ -55,7 +55,7 @@ url = "2.1.1"
 scraper = "0.19.0"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.3" }
+tari_features = { path = "../../common/tari_features", version = "1.7.0-rc.3" }
 
 [dev-dependencies]
 hyper = { version ="0.14.12", features = ["full"] }

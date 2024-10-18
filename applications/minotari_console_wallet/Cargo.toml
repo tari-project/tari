@@ -1,6 +1,6 @@
 [package]
 name = "minotari_console_wallet"
-version = "1.7.0-pre.3"
+version = "1.7.0-rc.3"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -8,7 +8,7 @@ license = "BSD-3-Clause"
 [dependencies]
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
-minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.7.0-pre.3", optional = true }
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.7.0-rc.3", optional = true }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
@@ -84,7 +84,7 @@ default-features = false
 features = ["crossterm"]
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.3" }
+tari_features = { path = "../../common/tari_features", version = "1.7.0-rc.3" }
 
 [features]
 default = ["libtor", "ledger"]
