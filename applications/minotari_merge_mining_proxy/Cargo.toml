@@ -42,6 +42,7 @@ hex = "0.4.2"
 hyper = { version ="0.14.12", features = ["default"] }
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
+markup5ever = "0.11.0"
 monero = { version = "0.21.0" }
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.136", features = ["derive"] }
@@ -57,5 +58,4 @@ scraper = "0.19.0"
 tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.2" }
 
 [dev-dependencies]
-markup5ever = "0.11.0"
 hyper = { version ="0.14.12", features = ["full"] }

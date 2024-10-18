@@ -66,6 +66,9 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
+/// The timeout duration for connecting to monerod
+pub(crate) const MONEROD_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const NUMBER_OF_MONEROD_SERVERS: usize = 15;
 
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyService {
@@ -93,7 +96,7 @@ impl MergeMiningProxyService {
                 p2pool_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
-                last_assigned_monerod_server: Arc::new(RwLock::new(None)),
+                last_assigned_monerod_url: Arc::new(RwLock::new(None)),
                 randomx_factory,
                 consensus_manager,
                 wallet_payment_address,
@@ -136,10 +139,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Method \"{}\" failed handling request: {:?}", method_name, err
-                    );
+                    error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", method_name, err);
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
@@ -166,11 +166,13 @@ struct InnerService {
     p2pool_client: Option<ShaP2PoolGrpcClient>,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
-    last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
+    last_assigned_monerod_url: Arc<RwLock<Option<String>>>,
     randomx_factory: RandomXFactory,
     consensus_manager: ConsensusManager,
     wallet_payment_address: TariAddress,
 }
+
+const BUSY_QUALIFYING: &str = "BusyQualifyingMonerodUrl";
 
 impl InnerService {
     #[allow(clippy::cast_possible_wrap)]
@@ -642,7 +644,39 @@ impl InnerService {
         Ok(proxy::into_response(parts, &resp))
     }
 
-    async fn get_fully_qualified_monerod_url(&self, uri: &Uri) -> Result<Url, MmProxyError> {
+    fn clear_current_monerod_server_lock(&self) {
+        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
+        *lock = None;
+        trace!(
+            target: LOG_TARGET, "Monerod status - Current: 'None', Last assigned: {}",
+            self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+        );
+    }
+
+    fn set_current_monerod_server_lock_busy(&self) {
+        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
+        *lock = Some(BUSY_QUALIFYING.to_string());
+        trace!(
+            target: LOG_TARGET, "Monerod status - Current: '{}', Last assigned: {}",
+            BUSY_QUALIFYING,
+            self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+        );
+    }
+
+    fn update_monerod_server_locks(&self, server: &str) {
+        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
+        *lock = Some(server.to_string());
+        let mut lock = self
+            .last_assigned_monerod_url
+            .write()
+            .expect("Write lock should not fail");
+        *lock = Some(server.to_string());
+        trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", server, server);
+    }
+
+    async fn get_fully_qualified_monerod_url(&self, request_uri: &Uri) -> Result<Url, MmProxyError> {
+        // Return the previously qualified monerod URL if it exists
+        let mut parse_error = None;
         {
             let lock = self
                 .current_monerod_server
@@ -650,62 +684,88 @@ impl InnerService {
                 .expect("Read lock should not fail")
                 .clone();
             if let Some(server) = lock {
-                let uri = format!("{}{}", server, uri.path()).parse::<Url>()?;
-                return Ok(uri);
+                if server == BUSY_QUALIFYING {
+                    return Err(MmProxyError::ServersUnavailable(BUSY_QUALIFYING.to_string()));
+                }
+                match format!("{}{}", server, request_uri.path()).parse::<Url>() {
+                    Ok(url) => return Ok(url),
+                    Err(e) => parse_error = Some(e),
+                }
             }
         }
+        if let Some(e) = parse_error {
+            self.clear_current_monerod_server_lock();
+            return Err(e.into());
+        }
 
+        // Set the "busy qualifying" state
+        self.set_current_monerod_server_lock_busy();
+
+        // Create an iterator to query the list twice before giving up, starting after the last used entry
         let last_used_url = {
             let lock = self
-                .last_assigned_monerod_server
+                .last_assigned_monerod_url
                 .read()
                 .expect("Read lock should not fail")
                 .clone();
-            match lock {
-                Some(url) => url,
-                None => "".to_string(),
-            }
+            lock.unwrap_or_default()
         };
-
-        // Query the list twice before giving up, starting after the last used entry
         let pos = self
             .config
             .monerod_url
             .iter()
             .position(|x| x == &last_used_url)
             .unwrap_or(0);
-
-        let (left, right) = self
-            .config
-            .monerod_url
-            .split_at_checked(pos)
-            .ok_or(MmProxyError::ConversionError("Invalid utf 8 url".to_string()))?;
+        let (left, right) = self.config.monerod_url.split_at_checked(pos).ok_or_else(|| {
+            self.clear_current_monerod_server_lock();
+            MmProxyError::ConversionError("Invalid utf 8 url".to_string())
+        })?;
         let left = left.to_vec();
         let right = right.to_vec();
         let iter = right.iter().chain(left.iter()).chain(right.iter()).chain(left.iter());
 
-        for next_url in iter {
-            let uri = format!("{}{}", next_url, uri.path()).parse::<Url>()?;
-            debug!(target: LOG_TARGET, "Trying to connect to Monerod server at: {}", uri.as_str());
-            match timeout(Duration::from_secs(10), reqwest::get(uri.clone())).await {
-                Ok(_) => {
-                    let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
-                    *lock = Some(next_url.to_string());
-                    let mut lock = self
-                        .last_assigned_monerod_server
-                        .write()
-                        .expect("Write lock should not fail");
-                    *lock = Some(next_url.to_string());
-                    info!(target: LOG_TARGET, "Monerod server available: {}", uri.as_str());
-                    return Ok(uri);
+        // Lock the current and last monerod server into the first available server
+        for server in iter {
+            let start = Instant::now();
+            let url = match format!("{}{}", server, request_uri.path()).parse::<Url>() {
+                Ok(uri) => uri,
+                Err(e) => {
+                    self.clear_current_monerod_server_lock();
+                    return Err(e.into());
+                },
+            };
+            let pos = self.config.monerod_url.iter().position(|x| x == server).unwrap_or(0);
+            debug!(
+                target: LOG_TARGET, "Trying to connect to Monerod server at: {} (entry {} of {})",
+                url.as_str(), pos + 1, self.config.monerod_url.len()
+            );
+            match timeout(MONEROD_CONNECTION_TIMEOUT, reqwest::get(url.clone())).await {
+                Ok(response) => {
+                    self.update_monerod_server_locks(server);
+                    let data_len = match response {
+                        Ok(data) => data.content_length().unwrap_or_default(),
+                        Err(_) => 0,
+                    };
+                    info!(
+                        target: LOG_TARGET,
+                        "Monerod server available (response in {:.2?}, {} bytes): {}",
+                        start.elapsed(), data_len, url.as_str()
+                    );
+                    return Ok(url);
                 },
                 Err(_) => {
-                    warn!(target: LOG_TARGET, "Monerod server unavailable: {}", uri.as_str());
+                    warn!(
+                        target: LOG_TARGET,
+                        "Monerod server unavailable (timeout in {:.2?}): {}",
+                        start.elapsed(), url.as_str()
+                    );
                 },
             }
         }
 
-        Err(MmProxyError::ServersUnavailable)
+        // Clear the "busy qualifying" state
+        self.clear_current_monerod_server_lock();
+        Err(MmProxyError::ServersUnavailable(format!("{}", self.config.monerod_url)))
     }
 
     /// Proxy a request received by this server to Monerod
@@ -903,16 +963,14 @@ impl InnerService {
                     },
                     Err(e) => {
                         // Monero Server encountered a problem processing the request, reset the current monerod server
-                        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
-                        *lock = None;
+                        self.clear_current_monerod_server_lock();
                         Err(e)
                     },
                 }
             },
             Err(e) => {
                 // Monero Server encountered a problem processing the request, reset the current monerod server
-                let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
-                *lock = None;
+                self.clear_current_monerod_server_lock();
                 Err(e)
             },
         }

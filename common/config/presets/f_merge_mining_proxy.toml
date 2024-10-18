@@ -19,7 +19,8 @@
 #monero_fail_url = "https://monero.fail/?chain=monero&network=mainnet&all=true"
 
 # URL to monerod (you can add your own server here or use public nodes from https://monero.fail/), only if
-# 'use_dynamic_fail_data = false' (default = "")
+# 'use_dynamic_fail_data = false' or if the server at 'monero_fail_url' is not available 
+# (default: The 'monerod_url = [ # mainnet ...' list below)
 
 #monerod_url = [# stagenet
 #    "http://stagenet.xmr-tw.org:38081",
@@ -29,17 +30,40 @@
 #    "http://singapore.node.xmr.pm:38081",
 #]
 
-monerod_url = [ # mainnet
-    "http://node1.xmr-tw.org:18081",
-    "https://monero.homeqloud.com:443",
-    "http://monero1.com:18089",
-    "http://node.c3pool.org:18081",
-    "http://xmr-full.p2pool.uk:18089",
-    "https://monero.stackwallet.com:18081",
-    "http://xmr.support:18081",
-    "http://xmr.nthrow.nyc:18081",
-    "https://xmr-01.tari.com",
-]
+#monerod_url = [ # mainnet
+#    "http://node.c3pool.org:18081",
+#    "http://xmr-full.p2pool.uk:18089",
+#    "http://monero.stackwallet.com:18081",
+#    "http://xmr.support:18081",
+#    "https://xmr-01.tari.com",
+#    "http://node1.xmr-tw.org:18081",
+#    "http://monero-g2.hexhex.online:18081",
+#    "http://137.220.120.19:18089",
+#    "http://185.218.124.120:18489",
+#    "http://185.218.124.120:18789",
+#    "https://xmr-de-2.boldsuck.org:18081",
+#    "http://46.32.46.171:18081",
+#    "http://185.218.124.120:18089",
+#    "http://185.218.124.120:18589",
+#    "http://xmr-de-1.boldsuck.org:18081",
+#    "http://185.218.124.120:18889",
+#    "http://pinodexmr.hopto.org:18081",
+#    "http://node.tincloud.eu:18081",
+#    "http://183.6.24.33:18081",
+#    "http://147.45.196.232:18089",
+#    "http://h-helix.com:18089",
+#    "http://185.218.124.120:18689",
+#    "http://185.218.124.120:18289",
+#    "https://node.tincloud.eu",
+#    "https://xmr-de.boldsuck.org:18081",
+#    "https://monero.booze.org",
+#    "https://xmr.mailia.be:18088",
+#    "https://xmr.lolfox.au",
+#    "https://xmr1.doggett.tech:18089",
+#    "https://node.icefiles.nz:18081",
+#    "http://45.8.132.220:18089",
+#    "http://82.147.85.13:18089",
+#]
 
 # Username for curl. (default = "")
 #monerod_username = ""
