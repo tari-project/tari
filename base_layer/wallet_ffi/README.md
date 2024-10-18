@@ -9,11 +9,13 @@ This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
 ## Homebrew
 
 Install Brew
+
 ```Shell Script
 /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 ```
 
 Run the following to install the needed bottles
+
 ```Shell Script
 brew install pkgconfig
 brew install git
@@ -27,15 +29,19 @@ brew install openssl@1.1
 
 ## iOS Dependencies
 
-Install [XCode](https://apps.apple.com/za/app/xcode/id497799835?mt=12) and then the XCode Command Line Tools with the following command
+Install [XCode](https://apps.apple.com/za/app/xcode/id497799835?mt=12) and then the XCode Command Line Tools with the
+following command
+
 ```Shell Script
 xcode-select --install
 ```
 
 For macOS Mojave additional headers need to be installed, run
+
 ```Shell Script
 open /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
 ```
+
 and follow the prompts.
 
 For Catalina, if you get compilation errors such as these:
@@ -51,6 +57,7 @@ Switch the XCode app defaults with:
 
 For Big Sur, currently it seems only thin libraries for openssl are being distributed via brew (instead of fat ones),
 should you run into linker errors in the logs:
+
 ```Shell Script
 git clone https://github.com/StriderDM/OpenSSL-for-iPhone.git
 cd OpenSSL-for-iPhone
@@ -59,6 +66,7 @@ git checkout shared_lib_and_mobile_optimizations
 ```
 
 After the script finishes building the libraries, copy the following:
+
 ```
 ./bin/iPhoneOS14.3-arm64.sdk/lib/libcrypto.1.1.dylib
 ./bin/iPhoneOS14.3-arm64.sdk/lib/libcrypto.dylib
@@ -68,11 +76,13 @@ After the script finishes building the libraries, copy the following:
 ```
 
 To:
+
 ```
 ~/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib/aarch64-apple-ios/lib
 ```
 
 And the following:
+
 ```
 ./bin/iPhoneSimulator14.3-x86_64.sdk/lib/libcrypto.1.1.dylib
 ./bin/iPhoneSimulator14.3-x86_64.sdk/lib/libcrypto.dylib
@@ -81,6 +91,7 @@ And the following:
 ```
 
 To:
+
 ```
 ~/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib/x86_64-apple-ios/lib
 ```
@@ -109,18 +120,22 @@ Alternatively, download the [Android NDK Bundle](https://developer.android.com/n
 ## Enable Hidden Files
 
 Run the following to show hidden files and folders
+
 ```Shell Script
 defaults write com.apple.finder AppleShowAllFiles -bool YES
 killall Finder
 ```
+
 ## The Code
 
 Clone the following git repositories
+
 1. [Tari](https://github.com/tari-project/tari.git)
 2. [Wallet-Android](https://github.com/tari-project/wallet-android.git)
 3. [Wallet-iOS](https://github.com/tari-project/wallet-ios.git)
 
 Afterwards ```cd``` into the Tari repository and run the following
+
 ```Shell Script
 git submodule init
 git config submodule.recurse true
@@ -128,12 +143,14 @@ git submodule update --recursive --remote
 ```
 
 ## Rust
+
 Install [Rust](https://www.rust-lang.org/tools/install)
 
 Install the following tools and system images
+
 ```Shell Script
-rustup toolchain add nightly-2024-07-07
-rustup default nightly-2024-07-07
+rustup toolchain add nightly-2024-08-01
+rustup default nightly-2024-08-01
 rustup component add rustfmt --toolchain nightly
 rustup component add clippy
 rustup target add x86_64-apple-ios aarch64-apple-ios # iPhone and emulator cross compiling
@@ -143,12 +160,14 @@ rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-android
 ## Build Configuration
 
 To configure the build, ```cd``` to the Tari repository and then
+
 ```Shell Script
 cd base_layer/wallet_ffi
 open build.sample.config
 ```
 
 Which will present you with the file contents as follows
+
 ```text
 BUILD_ANDROID=1
 BUILD_IOS=1
@@ -160,7 +179,9 @@ ANDROID_WALLET_PATH=$HOME/wallet-android
 IOS_WALLET_PATH=$HOME/wallet-ios
 TARI_REPO_PATH=$HOME/tari-main
 ```
+
 The following changes need to be made to the file
+
 1. ```NDK_PATH``` needs to be changed to the directory of the Android NDK Bundle.
 1. ```ANDROID_WALLET``` needs to be changed to the path of the Android-Wallet repository
 1. ```IOS_WALLET_PATH``` needs to be changed to the path of the Wallet-iOS repository
@@ -175,9 +196,22 @@ Save the file and rename it to ```build.config```
 ## Building the Libraries
 
 To build the libraries, ```cd``` to the Tari repository and then
+
 ```Shell Script
 cd base_layer/wallet_ffi
 sh mobile_build.sh
 ```
 
-The relevant libraries will then be built and placed in the appropriate directories of the Wallet-iOS and Wallet-Android repositories.
+The relevant libraries will then be built and placed in the appropriate directories of the Wallet-iOS and Wallet-Android
+repositories.
+
+### libp2p update
+
+Breaking changes:
+
+- All transport functions removed (`transport_tcp_create` etc)
+- Several params removed from comms_config_create. public_address and listen_address can be null.
+- `database_name` and `datastore_path` added to `wallet_create` (removed from `comms_config_create`)
+- `wallet_get_last_version` takes in datastore_path and datastore_name, not Comms config
+- `wallet_get_last_network` same as above
+- New error code 11: invalid multiaddr string

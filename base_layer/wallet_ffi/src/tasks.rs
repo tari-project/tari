@@ -24,7 +24,6 @@ use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
-use tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, task::JoinHandle};
 
 use crate::callback_handler::Context;
@@ -58,7 +57,7 @@ pub async fn recovery_event_monitoring(
                 info!(
                     target: LOG_TARGET,
                     "Attempting connection to base node {}",
-                    peer.to_hex(),
+                    peer,
                 );
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {
@@ -68,7 +67,7 @@ pub async fn recovery_event_monitoring(
                 info!(
                     target: LOG_TARGET,
                     "Connected to base node {} in {:.2?}",
-                    pk.to_hex(),
+                    pk,
                     elapsed
                 );
             },
@@ -89,7 +88,7 @@ pub async fn recovery_event_monitoring(
                 warn!(
                     target: LOG_TARGET,
                     "Failed to connect to base node {} with error {}",
-                    peer.to_hex(),
+                    peer,
                     error
                 );
             },

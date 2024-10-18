@@ -691,7 +691,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         Ok(Response::new(tip_info_response_lock.clone()))
     }
 
-    async fn get_header(&self, _: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+    async fn get_header(&self, _: Request<u64>) -> Result<Response<proto::common::BlockHeader>, RpcStatus> {
         let lock = acquire_lock!(self.state.get_header_response);
         let resp = lock
             .as_ref()
@@ -726,7 +726,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+    ) -> Result<Response<proto::common::BlockHeader>, RpcStatus> {
         let height = request.into_message();
 
         let mut header_by_height_lock = acquire_lock!(self.state.get_header_by_height_calls);

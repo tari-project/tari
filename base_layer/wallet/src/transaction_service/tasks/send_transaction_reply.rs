@@ -23,20 +23,14 @@
 use std::{convert::TryInto, time::Duration};
 
 use log::*;
-use tari_common_types::transaction::TxId;
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
-};
-use tari_core::transactions::transaction_protocol::proto;
-use tari_p2p::tari_message::TariMessageType;
+use tari_common_types::{transaction::TxId, types::PublicKey};
+use tari_network::{OutboundMessager, OutboundMessaging, ToPeerId};
+use tari_p2p::{message::TariNodeMessageSpec, proto::transaction_protocol as proto};
 
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
     error::TransactionServiceError,
     storage::models::InboundTransaction,
-    tasks::wait_on_dial::wait_on_dial,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
@@ -45,7 +39,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_r
 /// either directly, via Store-and-forward or both as per config setting.
 pub async fn send_transaction_reply(
     inbound_transaction: InboundTransaction,
-    mut outbound_message_service: OutboundMessageRequester,
+    mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
     direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError> {
@@ -79,146 +73,53 @@ pub async fn send_transaction_reply(
 }
 
 /// A task to resend a transaction reply message if a repeated Send Transaction is received from a Sender
-#[allow(clippy::too_many_lines)]
 pub async fn send_transaction_reply_direct(
     inbound_transaction: InboundTransaction,
-    mut outbound_message_service: OutboundMessageRequester,
-    direct_send_timeout: Duration,
-    transaction_routing_mechanism: TransactionRoutingMechanism,
+    mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
+    _direct_send_timeout: Duration,
+    _transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError> {
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
 
-    let mut store_and_forward_send_result = false;
     let mut direct_send_result = false;
 
-    let tx_id = inbound_transaction.tx_id;
     let proto_message: proto::RecipientSignedMessage = recipient_reply
         .try_into()
         .map_err(TransactionServiceError::ServiceError)?;
     match outbound_message_service
-        .send_direct_unencrypted(
-            inbound_transaction.source_address.comms_public_key().clone(),
-            OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
-            "wallet transaction reply".to_string(),
+        .send_message(
+            inbound_transaction.source_address.comms_public_key().to_peer_id(),
+            proto_message,
         )
         .await
     {
-        Ok(result) => match result {
-            SendMessageResponse::Queued(send_states) => {
-                if wait_on_dial(
-                    send_states,
-                    tx_id,
-                    inbound_transaction.source_address.comms_public_key().clone(),
-                    "Transaction Reply",
-                    direct_send_timeout,
-                )
-                .await
-                {
-                    direct_send_result = true;
-                }
-                // Send a Store and Forward (SAF) regardless.
-                info!(
-                    target: LOG_TARGET,
-                    "Direct Send reply result was {}. Sending SAF for TxId: {} to recipient with address: {}",
-                    direct_send_result,
-                    tx_id,
-                    inbound_transaction.source_address,
-                );
-                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
-                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                        tx_id,
-                        inbound_transaction.source_address.comms_public_key().clone(),
-                        proto_message.clone(),
-                        &mut outbound_message_service,
-                    )
-                    .await?;
-                }
-            },
-            SendMessageResponse::Failed(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Transaction Reply Send Direct for TxID {} failed: {}", tx_id, err
-                );
-                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
-                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                        tx_id,
-                        inbound_transaction.source_address.comms_public_key().clone(),
-                        proto_message.clone(),
-                        &mut outbound_message_service,
-                    )
-                    .await?;
-                }
-            },
-            SendMessageResponse::PendingDiscovery(rx) => {
-                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
-                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                        tx_id,
-                        inbound_transaction.source_address.comms_public_key().clone(),
-                        proto_message.clone(),
-                        &mut outbound_message_service,
-                    )
-                    .await?;
-                }
-                // now wait for discovery to complete
-                match rx.await {
-                    Ok(SendMessageResponse::Queued(send_states)) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Discovery of {} completed for TxID: {}", inbound_transaction.source_address, tx_id
-                        );
-                        direct_send_result = wait_on_dial(
-                            send_states,
-                            tx_id,
-                            inbound_transaction.source_address.comms_public_key().clone(),
-                            "Transaction Reply",
-                            direct_send_timeout,
-                        )
-                        .await;
-                    },
-
-                    Ok(SendMessageResponse::Failed(e)) => warn!(
-                        target: LOG_TARGET,
-                        "Failed to send message ({}) Discovery failed for TxId: {}", e, tx_id
-                    ),
-                    Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
-                    Err(e) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
-                        );
-                    },
-                }
-            },
+        Ok(_) => {
+            direct_send_result = true;
         },
         Err(e) => {
             warn!(target: LOG_TARGET, "Direct Transaction Reply Send failed: {:?}", e);
         },
     }
-    Ok(direct_send_result || store_and_forward_send_result)
+    Ok(direct_send_result)
 }
 
 async fn send_transaction_reply_store_and_forward(
     tx_id: TxId,
-    destination_pubkey: CommsPublicKey,
+    destination_pubkey: PublicKey,
     msg: proto::RecipientSignedMessage,
-    outbound_message_service: &mut OutboundMessageRequester,
+    outbound_message_service: &mut OutboundMessaging<TariNodeMessageSpec>,
 ) -> Result<bool, TransactionServiceError> {
+    // If I make this a warn, this will occur often in logs
+    debug!(target: LOG_TARGET, "Transaction routing mechanism not supported. Sending direct.");
     match outbound_message_service
-        .closest_broadcast(
-            destination_pubkey.clone(),
-            OutboundEncryption::encrypt_for(destination_pubkey.clone()),
-            vec![],
-            OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, msg),
-        )
+        .send_message(destination_pubkey.to_peer_id(), msg)
         .await
     {
-        Ok(send_states) => {
+        Ok(_) => {
             info!(
                 target: LOG_TARGET,
-                "Sending Transaction Reply (TxId: {}) to Neighbours for Store and Forward successful with Message \
-                 Tags: {:?}",
+                "Sending Transaction Reply (TxId: {}) to Neighbours for Store and Forward successful",
                 tx_id,
-                send_states.to_tags(),
             );
         },
         Err(e) => {

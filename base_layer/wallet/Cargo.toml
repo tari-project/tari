@@ -7,11 +7,11 @@ version = "1.7.0-pre.2"
 edition = "2018"
 
 [dependencies]
+tari_network = { workspace = true }
+tari_rpc_framework = { workspace = true }
 tari_common = { path = "../../common", version = "1.7.0-pre.2" }
 tari_common_sqlite = { path = "../../common_sqlite", version = "1.7.0-pre.2" }
 tari_common_types = { path = "../../base_layer/common_types", version = "1.7.0-pre.2" }
-tari_comms = { path = "../../comms/core", version = "1.7.0-pre.2" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.7.0-pre.2" }
 tari_contacts = { path = "../../base_layer/contacts", version = "1.7.0-pre.2" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",

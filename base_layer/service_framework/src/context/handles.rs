@@ -174,7 +174,7 @@ impl ServiceHandles {
     }
 
     /// Take ownership of a handle
-    pub fn take_handle<H: 'static>(&mut self) -> Option<H> {
+    pub fn take_handle<H: 'static>(&self) -> Option<H> {
         acquire_lock!(self.handles)
             .remove(&TypeId::of::<H>())
             .and_then(|handle| handle.downcast::<H>().ok().map(|h| *h))

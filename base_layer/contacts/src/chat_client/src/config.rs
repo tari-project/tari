@@ -33,8 +33,7 @@ use tari_common::{
     DefaultConfigLoader,
     SubConfigPath,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
-use tari_p2p::{P2pConfig, PeerSeedsConfig, TcpTransportConfig, TransportConfig};
+use tari_p2p::{P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -98,11 +97,7 @@ pub struct ChatClientConfig {
 impl Default for ChatClientConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
-            datastore_path: PathBuf::from("peer_db/chat_client"),
-            dht: DhtConfig {
-                database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
-                ..Default::default()
-            },
+            enable_relay: false,
             ..Default::default()
         };
         Self {
@@ -152,7 +147,6 @@ impl ChatClientConfig {
                 self.log_path = Some(base_path.as_ref().join(path));
             }
         }
-        self.p2p.set_base_path(base_path);
     }
 
     pub fn default_local_test() -> Self {
@@ -160,24 +154,8 @@ impl ChatClientConfig {
             network: Network::LocalNet,
             log_verbosity: Some(5), // Trace
             p2p: P2pConfig {
-                datastore_path: PathBuf::from("peer_db/chat_client"),
-                dht: DhtConfig {
-                    database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
-                    network_discovery: NetworkDiscoveryConfig {
-                        enabled: true,
-                        initial_peer_sync_delay: None,
-                        ..NetworkDiscoveryConfig::default()
-                    },
-                    saf: SafConfig {
-                        auto_request: true,
-                        ..Default::default()
-                    },
-                    ..DhtConfig::default_local_test()
-                },
-                transport: TransportConfig::new_tcp(TcpTransportConfig {
-                    ..TcpTransportConfig::default()
-                }),
-                allow_test_addresses: true,
+                enable_relay: false,
+                enable_mdns: false,
                 ..P2pConfig::default()
             },
             ..Self::default()

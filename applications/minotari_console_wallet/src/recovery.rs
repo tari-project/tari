@@ -108,24 +108,23 @@ pub async fn wallet_recovery(
 
     let peers = base_node_config.get_all_peers();
 
-    let peer_manager = wallet.comms.peer_manager();
-    let mut peer_public_keys = Vec::with_capacity(peers.len());
+    let mut peer_ids = Vec::with_capacity(peers.len());
     for peer in peers {
         debug!(
             target: LOG_TARGET,
-            "Peer added: {} (NodeId: {})",
-            peer.public_key.to_hex(),
-            peer.node_id.to_hex()
+            "Peer added: {}",
+            peer.peer_id(),
         );
-        peer_public_keys.push(peer.public_key.clone());
-        peer_manager
+        peer_ids.push(peer.peer_id());
+        wallet
+            .network
             .add_peer(peer)
             .await
             .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder()
-        .with_peers(peer_public_keys)
+        .with_peers(peer_ids)
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal).await.map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;

@@ -25,7 +25,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 /// A list of all the GRPC methods that can be enabled/disabled
-#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum GrpcMethod {
     ListHeaders,
@@ -35,7 +35,6 @@ pub enum GrpcMethod {
     GetConstants,
     GetBlockSize,
     GetBlockFees,
-    #[default]
     GetVersion,
     CheckForUpdates,
     GetTokensInCirculation,
@@ -54,7 +53,6 @@ pub enum GrpcMethod {
     SearchKernels,
     SearchUtxos,
     FetchMatchingUtxos,
-    GetPeers,
     GetMempoolTransactions,
     TransactionState,
     Identify,
@@ -69,7 +67,7 @@ pub enum GrpcMethod {
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 36] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 35] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -95,7 +93,6 @@ impl GrpcMethod {
         GrpcMethod::SearchKernels,
         GrpcMethod::SearchUtxos,
         GrpcMethod::FetchMatchingUtxos,
-        GrpcMethod::GetPeers,
         GrpcMethod::GetMempoolTransactions,
         GrpcMethod::TransactionState,
         GrpcMethod::Identify,
@@ -110,7 +107,7 @@ impl GrpcMethod {
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 36>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 35>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -150,7 +147,6 @@ impl FromStr for GrpcMethod {
             "search_kernels" => Ok(GrpcMethod::SearchKernels),
             "search_utxos" => Ok(GrpcMethod::SearchUtxos),
             "fetch_matching_utxos" => Ok(GrpcMethod::FetchMatchingUtxos),
-            "get_peers" => Ok(GrpcMethod::GetPeers),
             "get_mempool_transactions" => Ok(GrpcMethod::GetMempoolTransactions),
             "transaction_state" => Ok(GrpcMethod::TransactionState),
             "identify" => Ok(GrpcMethod::Identify),
@@ -245,7 +241,6 @@ mod tests {
                 GrpcMethod::SearchKernels => count += 1,
                 GrpcMethod::SearchUtxos => count += 1,
                 GrpcMethod::FetchMatchingUtxos => count += 1,
-                GrpcMethod::GetPeers => count += 1,
                 GrpcMethod::GetMempoolTransactions => count += 1,
                 GrpcMethod::TransactionState => count += 1,
                 GrpcMethod::Identify => count += 1,

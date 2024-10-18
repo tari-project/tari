@@ -56,7 +56,7 @@ use std::{iter::FromIterator, net::SocketAddr};
 pub use common_config::CommonConfig;
 pub use config_list::ConfigList;
 pub use dns_name_server_list::{deserialize_dns_name_server_list, DnsNameServerList};
-use multiaddr::{Error, Multiaddr, Protocol};
+use libp2p::multiaddr::{Error, Multiaddr, Protocol};
 pub use multiaddr_list::MultiaddrList;
 pub use string_list::StringList;
 

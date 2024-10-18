@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+use libp2p::multiaddr;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]

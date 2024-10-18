@@ -76,9 +76,6 @@ use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
-use tari_comms::peer_manager::PeerFeatures;
-#[cfg(all(unix, feature = "libtor"))]
-use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 
 const LOG_TARGET: &str = "minotari::base_node::app";
@@ -123,19 +120,14 @@ fn main_inner() -> Result<(), ExitError> {
         console_subscriber::init();
     }
 
-    #[cfg(all(unix, feature = "libtor"))]
-    let mut config = ApplicationConfig::load_from(&cfg)?;
-    #[cfg(not(all(unix, feature = "libtor")))]
+    // #[cfg(all(unix, feature = "libtor"))]
+    // let mut config = ApplicationConfig::load_from(&cfg)?;
+    // #[cfg(not(all(unix, feature = "libtor")))]
     let config = ApplicationConfig::load_from(&cfg)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity
-    let node_identity = setup_node_identity(
-        &config.base_node.identity_file,
-        config.base_node.p2p.public_addresses.clone().into_vec(),
-        cli.non_interactive_mode || cli.init,
-        PeerFeatures::COMMUNICATION_NODE,
-    )?;
+    let keypair = setup_node_identity(&config.base_node.identity_file, cli.non_interactive_mode || cli.init)?;
 
     if cli.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
@@ -148,21 +140,8 @@ fn main_inner() -> Result<(), ExitError> {
     // Set up the Tokio runtime
     let runtime = setup_runtime()?;
 
-    // Run our own Tor instance, if configured
-    // This is currently only possible on linux/macos
-    #[cfg(all(unix, feature = "libtor"))]
-    if config.base_node.use_libtor && config.base_node.p2p.transport.is_tor() {
-        let tor = Tor::initialize()?;
-        tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
-        tor.run_background();
-        debug!(
-            target: LOG_TARGET,
-            "Updated Tor comms transport: {:?}", config.base_node.p2p.transport
-        );
-    }
-
     // Run the base node
-    runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
+    runtime.block_on(run_base_node_with_cli(keypair, Arc::new(config), cli, shutdown))?;
 
     Ok(())
 }

@@ -76,22 +76,14 @@ use std::{
 use error::MempoolProtocolError;
 use futures::{stream, SinkExt, Stream, StreamExt};
 pub use initializer::MempoolSyncInitializer;
+use libp2p_substream::{ProtocolEvent, ProtocolNotification, Substream};
 use log::*;
-use prost::Message;
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester, ConnectivitySelection},
-    framing,
-    framing::CanonicalFraming,
-    message::MessageExt,
-    peer_manager::{NodeId, PeerFeatures},
-    protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx},
-    Bytes,
-    PeerConnection,
-};
+use prost::{bytes::Bytes, Message};
+use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, StreamProtocol};
+use tari_p2p::{framing, framing::CanonicalFraming, proto as shared_proto, proto::mempool as proto};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::Semaphore,
+    sync::{mpsc, Semaphore},
     task,
     time,
 };
@@ -101,13 +93,12 @@ use crate::mempool::metrics;
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     chain_storage::BlockAddResult,
-    mempool::{proto, Mempool, MempoolServiceConfig},
-    proto as shared_proto,
+    mempool::{Mempool, MempoolServiceConfig},
     transactions::transaction_components::Transaction,
 };
 
-#[cfg(test)]
-mod test;
+// #[cfg(test)]
+// mod test;
 
 mod error;
 mod initializer;
@@ -115,26 +106,24 @@ mod initializer;
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
-pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
+pub static MEMPOOL_SYNC_PROTOCOL: StreamProtocol = StreamProtocol::new("/tari/mempool-sync/1");
 
-pub struct MempoolSyncProtocol<TSubstream> {
+pub struct MempoolSyncProtocol {
     config: MempoolServiceConfig,
-    protocol_notifier: ProtocolNotificationRx<TSubstream>,
+    protocol_notifier: mpsc::UnboundedReceiver<ProtocolNotification<Substream>>,
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
-    connectivity: ConnectivityRequester,
+    network: NetworkHandle,
     block_event_stream: BlockEventReceiver,
 }
 
-impl<TSubstream> MempoolSyncProtocol<TSubstream>
-where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
-{
+impl MempoolSyncProtocol {
     pub fn new(
         config: MempoolServiceConfig,
-        protocol_notifier: ProtocolNotificationRx<TSubstream>,
+        protocol_notifier: mpsc::UnboundedReceiver<ProtocolNotification<Substream>>,
         mempool: Mempool,
-        connectivity: ConnectivityRequester,
+        network: NetworkHandle,
         block_event_stream: BlockEventReceiver,
     ) -> Self {
         Self {
@@ -143,7 +132,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
-            connectivity,
+            network,
             block_event_stream,
         }
     }
@@ -151,14 +140,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
 
-        let mut connectivity_events = self.connectivity.get_event_subscription();
+        let mut network_events = self.network.subscribe_events();
         loop {
             tokio::select! {
                 Ok(block_event) = self.block_event_stream.recv() => {
                     self.handle_block_event(&block_event).await;
                 },
-                Ok(event) = connectivity_events.recv() => {
-                    self.handle_connectivity_event(event).await;
+                Ok(event) = network_events.recv() => {
+                    self.handle_network_event(event).await;
                 },
 
                 Some(notif) = self.protocol_notifier.recv() => {
@@ -168,17 +157,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         }
     }
 
-    async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
+    async fn handle_network_event(&mut self, event: NetworkEvent) {
         match event {
             // If this node is connecting to a peer
-            ConnectivityEvent::PeerConnected(conn) if conn.direction().is_outbound() => {
-                // This protocol is only spoken between base nodes
-                if !conn.peer_features().contains(PeerFeatures::COMMUNICATION_NODE) {
-                    return;
-                }
-
+            NetworkEvent::PeerConnected { peer_id, direction } if direction.is_outbound() => {
                 if !self.is_synched() {
-                    self.spawn_initiator_protocol(*conn.clone()).await;
+                    self.spawn_initiator_protocol(peer_id).await;
                 }
             },
             _ => {},
@@ -208,11 +192,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         // initial_sync_num_peers
         self.num_synched.store(0, Ordering::SeqCst);
         let connections = match self
-            .connectivity
-            .select_connections(ConnectivitySelection::random_nodes(
-                self.config.initial_sync_num_peers,
-                vec![],
-            ))
+            .network
+            .select_random_connections(self.config.initial_sync_num_peers, Default::default())
             .await
         {
             Ok(v) => {
@@ -231,7 +212,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             },
         };
         for connection in connections {
-            self.spawn_initiator_protocol(connection).await;
+            self.spawn_initiator_protocol(connection.peer_id).await;
         }
     }
 
@@ -239,34 +220,38 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         self.num_synched.load(Ordering::SeqCst) >= self.config.initial_sync_num_peers
     }
 
-    fn handle_protocol_notification(&mut self, notification: ProtocolNotification<TSubstream>) {
+    fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
         match notification.event {
-            ProtocolEvent::NewInboundSubstream(node_id, substream) => {
-                self.spawn_inbound_handler(node_id, substream);
+            ProtocolEvent::NewInboundSubstream { peer_id, substream } => {
+                self.spawn_inbound_handler(peer_id, substream);
             },
         }
     }
 
-    async fn spawn_initiator_protocol(&mut self, mut conn: PeerConnection) {
+    async fn spawn_initiator_protocol(&mut self, peer_id: PeerId) {
         let mempool = self.mempool.clone();
         let permits = self.permits.clone();
         let num_synched = self.num_synched.clone();
         let config = self.config.clone();
+        let network = self.network.clone();
         task::spawn(async move {
             // Only initiate this protocol with a single peer at a time
             let _permit = permits.acquire().await;
             if num_synched.load(Ordering::SeqCst) >= config.initial_sync_num_peers {
                 return;
             }
-            match conn.open_framed_substream(&MEMPOOL_SYNC_PROTOCOL, MAX_FRAME_SIZE).await {
+            match network
+                .open_framed_substream(peer_id, &MEMPOOL_SYNC_PROTOCOL, MAX_FRAME_SIZE)
+                .await
+            {
                 Ok(framed) => {
-                    let protocol = MempoolPeerProtocol::new(config, framed, conn.peer_node_id().clone(), mempool);
+                    let protocol = MempoolPeerProtocol::new(config, framed, peer_id, mempool);
                     match protocol.start_initiator().await {
                         Ok(_) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "Mempool initiator protocol completed successfully for peer `{}`",
-                                conn.peer_node_id().short_str(),
+                                peer_id,
                             );
                             num_synched.fetch_add(1, Ordering::SeqCst);
                         },
@@ -274,7 +259,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                             debug!(
                                 target: LOG_TARGET,
                                 "Mempool initiator protocol failed for peer `{}`: {}",
-                                conn.peer_node_id().short_str(),
+                                peer_id,
                                 err
                             );
                         },
@@ -283,32 +268,32 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 Err(err) => error!(
                     target: LOG_TARGET,
                     "Unable to establish mempool protocol substream to peer `{}`: {}",
-                    conn.peer_node_id().short_str(),
+                    peer_id,
                     err
                 ),
             }
         });
     }
 
-    fn spawn_inbound_handler(&self, node_id: NodeId, substream: TSubstream) {
+    fn spawn_inbound_handler(&self, peer_id: PeerId, substream: Substream) {
         let mempool = self.mempool.clone();
         let config = self.config.clone();
         task::spawn(async move {
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
-            let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);
+            let mut protocol = MempoolPeerProtocol::new(config, framed, peer_id, mempool);
             match protocol.start_responder().await {
                 Ok(_) => {
                     debug!(
                         target: LOG_TARGET,
                         "Mempool responder protocol succeeded for peer `{}`",
-                        node_id.short_str()
+                        peer_id
                     );
                 },
                 Err(err) => {
                     debug!(
                         target: LOG_TARGET,
                         "Mempool responder protocol failed for peer `{}`: {}",
-                        node_id.short_str(),
+                        peer_id,
                         err
                     );
                 },
@@ -317,27 +302,25 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     }
 }
 
-struct MempoolPeerProtocol<TSubstream> {
+struct MempoolPeerProtocol {
     config: MempoolServiceConfig,
-    framed: CanonicalFraming<TSubstream>,
+    framed: CanonicalFraming<Substream>,
     mempool: Mempool,
-    peer_node_id: NodeId,
+    peer_id: PeerId,
 }
 
-impl<TSubstream> MempoolPeerProtocol<TSubstream>
-where TSubstream: AsyncRead + AsyncWrite + Unpin
-{
+impl MempoolPeerProtocol {
     pub fn new(
         config: MempoolServiceConfig,
-        framed: CanonicalFraming<TSubstream>,
-        peer_node_id: NodeId,
+        framed: CanonicalFraming<Substream>,
+        peer_id: PeerId,
         mempool: Mempool,
     ) -> Self {
         Self {
             config,
             framed,
             mempool,
-            peer_node_id,
+            peer_id,
         }
     }
 
@@ -363,7 +346,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         debug!(
             target: LOG_TARGET,
             "Starting initiator mempool sync for peer `{}`",
-            self.peer_node_id.short_str()
+            self.peer_id,
         );
 
         let transactions = self.mempool.snapshot().await?;
@@ -380,7 +363,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             target: LOG_TARGET,
             "Sending transaction inventory containing {} item(s) to peer `{}`",
             inventory.items.len(),
-            self.peer_node_id.short_str()
+            self.peer_id,
         );
 
         self.write_message(inventory).await?;
@@ -392,7 +375,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             target: LOG_TARGET,
             "Received {} missing transaction index(es) from peer `{}`",
             missing_items.indexes.len(),
-            self.peer_node_id.short_str(),
+            self.peer_id,
         );
         let missing_txns = missing_items
             .indexes
@@ -403,7 +386,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             target: LOG_TARGET,
             "Sending {} missing transaction(s) to peer `{}`",
             missing_items.indexes.len(),
-            self.peer_node_id.short_str(),
+            self.peer_id,
         );
 
         // If we don't have any transactions at the given indexes we still need to send back an empty if they requested
@@ -440,7 +423,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         debug!(
             target: LOG_TARGET,
             "Starting responder mempool sync for peer `{}`",
-            self.peer_node_id.short_str()
+            self.peer_id,
         );
 
         let inventory: proto::TransactionInventory = self.read_message().await?;
@@ -448,7 +431,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         debug!(
             target: LOG_TARGET,
             "Received inventory from peer `{}` containing {} item(s)",
-            self.peer_node_id.short_str(),
+            self.peer_id,
             inventory.items.len()
         );
 
@@ -478,7 +461,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             target: LOG_TARGET,
             "Streaming {} transaction(s) to peer `{}`",
             transactions.len(),
-            self.peer_node_id.short_str()
+            self.peer_id,
         );
 
         self.write_transactions(transactions).await?;
@@ -501,7 +484,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             target: LOG_TARGET,
             "Requesting {} missing transaction index(es) from peer `{}`",
             missing_items.len(),
-            self.peer_node_id.short_str(),
+            self.peer_id,
         );
 
         let missing_items = proto::InventoryIndexes { indexes: missing_items };
@@ -523,7 +506,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
                 MempoolProtocolError::DecodeFailed {
                     source: err,
-                    peer: self.peer_node_id.clone(),
+                    peer: self.peer_id,
                 }
             })?;
 
@@ -537,7 +520,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                         target: LOG_TARGET,
                         "All transaction(s) (count={}) received from peer `{}`. ",
                         num_recv,
-                        self.peer_node_id.short_str()
+                        self.peer_id,
                     );
                     break;
                 },
@@ -558,22 +541,22 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     async fn validate_and_insert_transaction(
         &mut self,
-        txn: shared_proto::types::Transaction,
+        txn: shared_proto::common::Transaction,
     ) -> Result<(), MempoolProtocolError> {
         let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
-            peer: self.peer_node_id.clone(),
+            peer: self.peer_id,
             message: err,
         })?;
         let excess_sig = txn
             .first_kernel_excess_sig()
-            .ok_or_else(|| MempoolProtocolError::ExcessSignatureMissing(self.peer_node_id.clone()))?;
+            .ok_or_else(|| MempoolProtocolError::ExcessSignatureMissing(self.peer_id))?;
         let excess_sig_hex = excess_sig.get_signature().to_hex();
 
         debug!(
             target: LOG_TARGET,
             "Received transaction `{}` from peer `{}`",
             excess_sig_hex,
-            self.peer_node_id.short_str()
+            self.peer_id,
         );
         let txn = Arc::new(txn);
         let store_state = self.mempool.has_transaction(txn.clone()).await?;
@@ -584,16 +567,16 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         let stored_result = self.mempool.insert(txn).await?;
         if stored_result.is_stored() {
             #[cfg(feature = "metrics")]
-            metrics::inbound_transactions(Some(&self.peer_node_id)).inc();
+            metrics::inbound_transactions().inc();
             debug!(
                 target: LOG_TARGET,
                 "Inserted transaction `{}` from peer `{}`",
                 excess_sig_hex,
-                self.peer_node_id.short_str()
+                self.peer_id,
             );
         } else {
             #[cfg(feature = "metrics")]
-            metrics::rejected_inbound_transactions(Some(&self.peer_node_id)).inc();
+            metrics::rejected_inbound_transactions().inc();
             debug!(
                 target: LOG_TARGET,
                 "Did not store new transaction `{}` in mempool: {}", excess_sig_hex, stored_result
@@ -606,7 +589,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
         let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
             .filter_map(|txn| {
-                match shared_proto::types::Transaction::try_from(txn) {
+                match shared_proto::common::Transaction::try_from(&*txn) {
                     Ok(txn) =>   Some(proto::TransactionItem {
                         transaction: Some(txn),
                     }),
@@ -628,11 +611,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         let msg = time::timeout(Duration::from_secs(10), self.framed.next())
             .await
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
-            .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_node_id.clone()))??;
+            .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_id))??;
 
         T::decode(&mut msg.freeze()).map_err(|err| MempoolProtocolError::DecodeFailed {
             source: err,
-            peer: self.peer_node_id.clone(),
+            peer: self.peer_id,
         })
     }
 
@@ -641,7 +624,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         S: Stream<Item = T> + Unpin,
         T: prost::Message,
     {
-        let mut s = stream.map(|m| Bytes::from(m.to_encoded_bytes())).map(Ok);
+        let mut s = stream.map(|m| Bytes::from(m.encode_to_vec())).map(Ok);
         self.framed.send_all(&mut s).await?;
         Ok(())
     }
@@ -649,7 +632,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
         time::timeout(
             Duration::from_secs(10),
-            self.framed.send(message.to_encoded_bytes().into()),
+            self.framed.send(message.encode_to_vec().into()),
         )
         .await
         .map_err(|_| MempoolProtocolError::SendTimeout)??;

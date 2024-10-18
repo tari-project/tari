@@ -27,7 +27,7 @@ name: Integration tests
         type: string
 
 env:
-  toolchain: nightly-2024-07-07
+  toolchain: nightly-2024-08-01
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -36,7 +36,7 @@ concurrency:
 jobs:
   base_layer:
     name: Cucumber tests / Base Layer
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    runs-on: [ self-hosted, ubuntu-high-cpu ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
 
   ffi:
     name: Cucumber tests / FFI
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    runs-on: [ self-hosted, ubuntu-high-cpu ]
     steps:
       - name: checkout
         uses: actions/checkout@v4

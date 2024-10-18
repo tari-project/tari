@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 #FROM rust:1.42.0 as builder
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2024-07-07 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2024-08-01 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
 ADD . /minotari_node
 WORKDIR /minotari_node
 
-# RUN rustup component add rustfmt --toolchain nightly-2024-07-07-x86_64-unknown-linux-gnu
+# RUN rustup component add rustfmt --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
 #ARG TBN_ARCH=native
 ARG TBN_ARCH=x86-64
 #ARG TBN_FEATURES=avx2

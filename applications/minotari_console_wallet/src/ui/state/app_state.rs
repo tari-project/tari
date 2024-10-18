@@ -51,18 +51,13 @@ use tari_common_types::{
     types::PublicKey,
     wallet_types::WalletType,
 };
-use tari_comms::{
-    connectivity::ConnectivityEventRx,
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-};
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{encrypted_data::PaymentId, OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
+use tari_network::{identity, multiaddr::Multiaddr, public_key_to_string, Connection, NetworkEvent, Peer};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{
@@ -105,7 +100,7 @@ impl AppState {
     pub fn new(
         wallet_identity: &WalletIdentity,
         wallet: WalletSqlite,
-        base_node_selected: Peer,
+        base_node_selected: Option<Peer>,
         base_node_config: PeerConfig,
         wallet_config: WalletConfig,
     ) -> Self {
@@ -212,9 +207,14 @@ impl AppState {
         if self.get_custom_base_node().is_none() &&
             self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
         {
-            let current = self.get_selected_base_node();
+            let Some(current) = self.get_selected_base_node() else {
+                return;
+            };
             let list = self.get_base_node_list().clone();
-            let mut index: usize = list.iter().position(|(_, p)| p == current).unwrap_or_default();
+            let mut index: usize = list
+                .iter()
+                .position(|(_, p)| p.peer_id() == current.peer_id())
+                .unwrap_or_default();
             if !list.is_empty() {
                 if index == list.len() - 1 {
                     index = 0;
@@ -548,7 +548,7 @@ impl AppState {
         }
     }
 
-    pub fn get_connected_peers(&self) -> &Vec<Peer> {
+    pub fn get_connected_peers(&self) -> &[Connection] {
         &self.cached_data.connected_peers
     }
 
@@ -568,12 +568,12 @@ impl AppState {
         self.wallet_connectivity.clone()
     }
 
-    pub fn get_selected_base_node(&self) -> &Peer {
-        &self.cached_data.base_node_selected
+    pub fn get_selected_base_node(&self) -> Option<&Peer> {
+        self.cached_data.base_node_selected.as_ref()
     }
 
-    pub fn get_previous_base_node(&self) -> &Peer {
-        &self.cached_data.base_node_previous
+    pub fn get_previous_base_node(&self) -> Option<&Peer> {
+        self.cached_data.base_node_previous.as_ref()
     }
 
     pub fn get_custom_base_node(&self) -> &Option<Peer> {
@@ -593,16 +593,8 @@ impl AppState {
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
         let pub_key = PublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
-        let node_id = NodeId::from_key(&pub_key);
-        let peer = Peer::new(
-            pub_key,
-            node_id,
-            MultiaddressesWithStats::from_addresses_with_source(vec![addr], &PeerAddressSource::Config),
-            PeerFlags::default(),
-            PeerFeatures::COMMUNICATION_NODE,
-            Default::default(),
-            Default::default(),
-        );
+        let pub_key = identity::PublicKey::from(identity::sr25519::PublicKey::from(pub_key));
+        let peer = Peer::new(pub_key, vec![addr]);
 
         let mut inner = self.inner.write().await;
         inner.set_custom_base_node_peer(peer.clone()).await?;
@@ -669,7 +661,7 @@ impl AppStateInner {
     pub fn new(
         wallet_identity: &WalletIdentity,
         wallet: WalletSqlite,
-        base_node_selected: Peer,
+        base_node_selected: Option<Peer>,
         base_node_config: PeerConfig,
     ) -> Self {
         let data = AppStateData::new(wallet_identity, base_node_selected, base_node_config);
@@ -690,7 +682,7 @@ impl AppStateInner {
     }
 
     pub fn get_network(&self) -> Network {
-        self.wallet.network.as_network()
+        self.wallet.network_consensus.as_network()
     }
 
     pub fn add_event(&mut self, event: EventListItem) {
@@ -715,7 +707,7 @@ impl AppStateInner {
     pub fn get_transaction_weight(&self) -> TransactionWeight {
         *self
             .wallet
-            .network
+            .network_consensus
             .create_consensus_constants()
             .last()
             .unwrap()
@@ -933,16 +925,11 @@ impl AppStateInner {
         let identity = MyIdentity {
             tari_address_interactive: wallet_id.address_interactive.clone(),
             tari_address_one_sided: wallet_id.address_one_sided.clone(),
-            network_address: wallet_id
-                .node_identity
-                .public_addresses()
-                .iter()
-                .map(|a| a.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
+            // TODO: we could display the current public addresses (either by config or autonat)
+            network_address: String::new(),
             qr_code: image,
-            node_id: wallet_id.node_identity.node_id().to_string(),
-            public_key: wallet_id.node_identity.public_key().to_string(),
+            node_id: wallet_id.peer_id.to_string(),
+            public_key: wallet_id.public_key.to_string(),
         };
         self.data.my_identity = identity;
         self.updated = true;
@@ -951,15 +938,8 @@ impl AppStateInner {
 
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         self.refresh_network_id().await?;
-        let connections = self.wallet.comms.connectivity().get_active_connections().await?;
-        let peer_manager = self.wallet.comms.peer_manager();
-        let mut peers = Vec::with_capacity(connections.len());
-        for c in &connections {
-            if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
-                peers.push(p);
-            }
-        }
-        self.data.connected_peers = peers;
+        let connections = self.wallet.network.get_active_connections().await?;
+        self.data.connected_peers = connections;
         self.updated = true;
         Ok(())
     }
@@ -987,10 +967,9 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn refresh_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
-        self.data.base_node_selected = peer;
+    pub fn update_base_node_peer(&mut self, peer: Peer) {
+        self.data.base_node_selected = Some(peer);
         self.updated = true;
-        Ok(())
     }
 
     pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64) -> Result<(), UiError> {
@@ -1000,7 +979,7 @@ impl AppStateInner {
     }
 
     pub fn get_shutdown_signal(&self) -> ShutdownSignal {
-        self.wallet.comms.shutdown_signal()
+        self.wallet.shutdown_signal.clone()
     }
 
     pub fn get_transaction_service_event_stream(&self) -> TransactionEventReceiver {
@@ -1015,8 +994,8 @@ impl AppStateInner {
         self.wallet.output_manager_service.get_event_stream()
     }
 
-    pub fn get_connectivity_event_stream(&self) -> ConnectivityEventRx {
-        self.wallet.comms.connectivity().get_event_subscription()
+    pub fn get_network_events(&self) -> broadcast::Receiver<NetworkEvent> {
+        self.wallet.network.subscribe_events()
     }
 
     pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
@@ -1032,10 +1011,23 @@ impl AppStateInner {
     }
 
     pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
+        let pk = peer
+            .public_key()
+            .clone()
+            .try_into_sr25519()
+            .map_err(|_| UiError::PublicKeyParseError)?
+            .inner_key()
+            .clone();
+        info!(
+            target: LOG_TARGET,
+            "Setting new base node peer for wallet: {}::{}",
+            pk,
+            peer.addresses().first().ok_or(UiError::NoAddress)?.to_string(),
+        );
         self.wallet
             .set_base_node_peer(
-                peer.public_key.clone(),
-                Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                pk,
+                Some(peer.addresses().first().ok_or(UiError::NoAddress)?.clone()),
                 None,
             )
             .await?;
@@ -1044,24 +1036,24 @@ impl AppStateInner {
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
-        self.data.base_node_selected = peer.clone();
+        self.data.base_node_selected = Some(peer);
         self.updated = true;
-
-        info!(
-            target: LOG_TARGET,
-            "Setting new base node peer for wallet: {}::{}",
-            peer.public_key,
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
-        );
 
         Ok(())
     }
 
     pub async fn set_custom_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
+        let pk = peer
+            .public_key()
+            .clone()
+            .try_into_sr25519()
+            .map_err(|_| UiError::PublicKeyParseError)?
+            .inner_key()
+            .clone();
         self.wallet
             .set_base_node_peer(
-                peer.public_key.clone(),
-                Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                pk,
+                Some(peer.addresses().first().cloned().ok_or(UiError::NoAddress)?),
                 None,
             )
             .await?;
@@ -1070,7 +1062,7 @@ impl AppStateInner {
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
-        self.data.base_node_selected = peer.clone();
+        self.data.base_node_selected = Some(peer.clone());
         self.data.base_node_peer_custom = Some(peer.clone());
         self.data
             .base_node_list
@@ -1078,29 +1070,40 @@ impl AppStateInner {
         self.updated = true;
 
         // persist the custom node in wallet db
+        let pk_str = public_key_to_string(peer.public_key());
         self.wallet
             .db
-            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())?;
+            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), pk_str.clone())?;
         self.wallet.db.set_client_key_value(
             CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses().first().ok_or(UiError::NoAddress)?.to_string(),
         )?;
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
-            peer.public_key,
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
+            pk_str,
+            peer.addresses().first().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
     }
 
     pub async fn clear_custom_base_node_peer(&mut self) -> Result<(), UiError> {
-        let previous = self.data.base_node_previous.clone();
+        let Some(previous) = self.data.base_node_previous.clone() else {
+            // No previous
+            return Ok(());
+        };
+        let pk = previous
+            .public_key()
+            .clone()
+            .try_into_sr25519()
+            .map_err(|_| UiError::PublicKeyParseError)?
+            .inner_key()
+            .clone();
         self.wallet
             .set_base_node_peer(
-                previous.public_key.clone(),
-                Some(previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                pk,
+                Some(previous.addresses().first().ok_or(UiError::NoAddress)?.clone()),
                 None,
             )
             .await?;
@@ -1109,7 +1112,7 @@ impl AppStateInner {
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
-        self.data.base_node_selected = previous;
+        self.data.base_node_selected = Some(previous);
         self.data.base_node_list.remove(0);
         self.updated = true;
 
@@ -1257,11 +1260,11 @@ struct AppStateData {
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
     burnt_proofs: Vec<UiBurntProof>,
-    connected_peers: Vec<Peer>,
+    connected_peers: Vec<Connection>,
     balance: Balance,
     base_node_state: BaseNodeState,
-    base_node_selected: Peer,
-    base_node_previous: Peer,
+    base_node_selected: Option<Peer>,
+    base_node_previous: Option<Peer>,
     base_node_list: Vec<(String, Peer)>,
     base_node_peer_custom: Option<Peer>,
     all_events: VecDeque<EventListItem>,
@@ -1277,7 +1280,11 @@ pub struct EventListItem {
 }
 
 impl AppStateData {
-    pub fn new(wallet_identity: &WalletIdentity, base_node_selected: Peer, base_node_config: PeerConfig) -> Self {
+    pub fn new(
+        wallet_identity: &WalletIdentity,
+        base_node_selected: Option<Peer>,
+        base_node_config: PeerConfig,
+    ) -> Self {
         let qr_link = format!(
             "tari://{}/transactions/send?tariAddress={}",
             wallet_identity.network(),
@@ -1296,16 +1303,11 @@ impl AppStateData {
         let identity = MyIdentity {
             tari_address_interactive: wallet_identity.address_interactive.clone(),
             tari_address_one_sided: wallet_identity.address_one_sided.clone(),
-            network_address: wallet_identity
-                .node_identity
-                .public_addresses()
-                .iter()
-                .map(|a| a.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
+            // TODO: Display configured addresses or public address from autonat
+            network_address: String::new(),
             qr_code: image,
-            node_id: wallet_identity.node_identity.node_id().to_string(),
-            public_key: wallet_identity.node_identity.public_key().to_string(),
+            node_id: wallet_identity.peer_id.to_string(),
+            public_key: wallet_identity.public_key.to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 

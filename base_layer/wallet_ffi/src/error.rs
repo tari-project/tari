@@ -26,8 +26,6 @@ use minotari_wallet::{
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
 use tari_common_types::tari_address::TariAddressError;
-use tari_comms::multiaddr;
-use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_crypto::{
     signatures::SchnorrSignatureError,
@@ -37,6 +35,7 @@ use tari_key_manager::{
     error::{KeyManagerError, MnemonicError},
     key_manager_service::KeyManagerServiceError,
 };
+use tari_network::{multiaddr, NetworkError};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -61,6 +60,8 @@ pub enum InterfaceError {
     InternalError(String),
     #[error("Balance Unavailable")]
     BalanceError,
+    #[error("Invalid multiaddr")]
+    InvalidMultiaddr,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -111,6 +112,10 @@ impl From<InterfaceError> for LibWalletError {
             InterfaceError::InternalError(_) => Self {
                 code: 10,
                 message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidMultiaddr => Self {
+                code: 11,
+                message: v.to_string(),
             },
         }
     }
@@ -251,10 +256,10 @@ impl From<WalletError> for LibWalletError {
                 code: 301,
                 message: format!("{:?}", w),
             },
-            WalletError::StoreAndForwardError(_) => Self {
-                code: 302,
-                message: format!("{:?}", w),
-            },
+            // WalletError::StoreAndForwardError(_) => Self {
+            //     code: 302,
+            //     message: format!("{:?}", w),
+            // },
             WalletError::ContactsServiceError(ContactsServiceError::ContactNotFound) => Self {
                 code: 401,
                 message: format!("{:?}", w),
@@ -337,7 +342,7 @@ impl From<WalletError> for LibWalletError {
                 code: 994,
                 message: format!("{:?}", w),
             },
-            WalletError::ConnectivityError(_) => Self {
+            WalletError::NetworkError(_) => Self {
                 code: 995,
                 message: format!("{:?}", w),
             },
@@ -499,15 +504,74 @@ impl From<SchnorrSignatureError> for LibWalletError {
     }
 }
 
-impl From<StoreAndForwardError> for LibWalletError {
-    fn from(err: StoreAndForwardError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
-        Self {
-            code: 902,
-            message: format!("{:?}", err),
+impl From<NetworkError> for LibWalletError {
+    fn from(value: NetworkError) -> Self {
+        match value {
+            NetworkError::CodecError(_) => Self {
+                code: 900,
+                message: value.to_string(),
+            },
+            NetworkError::GossipPublishError(_) => Self {
+                code: 901,
+                message: value.to_string(),
+            },
+            NetworkError::SwarmError(_) => Self {
+                code: 902,
+                message: value.to_string(),
+            },
+            NetworkError::NetworkingHandleError(_) => Self {
+                code: 903,
+                message: value.to_string(),
+            },
+            NetworkError::SubscriptionError(_) => Self {
+                code: 904,
+                message: value.to_string(),
+            },
+            NetworkError::DialError(_) => Self {
+                code: 905,
+                message: value.to_string(),
+            },
+            NetworkError::MessagingError(_) => Self {
+                code: 906,
+                message: value.to_string(),
+            },
+            NetworkError::FailedToOpenSubstream(_) => Self {
+                code: 907,
+                message: value.to_string(),
+            },
+            NetworkError::RpcError(_) => Self {
+                code: 908,
+                message: value.to_string(),
+            },
+            NetworkError::TransportError(_) => Self {
+                code: 909,
+                message: value.to_string(),
+            },
+            NetworkError::PeerSyncError(_) => Self {
+                code: 910,
+                message: value.to_string(),
+            },
+            NetworkError::MessagingDisabled => Self {
+                code: 911,
+                message: value.to_string(),
+            },
+            NetworkError::FailedToAddPeer { .. } => Self {
+                code: 912,
+                message: value.to_string(),
+            },
         }
     }
 }
+
+// impl From<StoreAndForwardError> for LibWalletError {
+//     fn from(err: StoreAndForwardError) -> Self {
+//         error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+//         Self {
+//             code: 902,
+//             message: format!("{:?}", err),
+//         }
+//     }
+// }
 #[derive(Debug, Error, PartialEq)]
 pub enum TransactionError {
     #[error("The transaction has an incorrect status: `{0}`")]

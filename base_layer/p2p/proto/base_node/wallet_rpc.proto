@@ -1,0 +1,109 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "base_node/chain_metadata.proto";
+import "common/types.proto";
+import "common/transaction.proto";
+
+package tari.base_node;
+
+enum TxSubmissionRejectionReason {
+  TxSubmissionRejectionReasonNone = 0;
+  TxSubmissionRejectionReasonAlreadyMined = 1;
+  TxSubmissionRejectionReasonDoubleSpend = 2;
+  TxSubmissionRejectionReasonOrphan = 3;
+  TxSubmissionRejectionReasonTimeLocked = 4;
+  TxSubmissionRejectionReasonValidationFailed = 5;
+  TxSubmissionRejectionReasonFeeTooLow = 6;
+}
+
+message TxSubmissionResponse {
+  bool accepted = 1;
+  TxSubmissionRejectionReason rejection_reason = 2;
+  bool is_synced = 3;
+}
+
+enum TxLocation {
+  TxLocationNone = 0;
+  TxLocationNotStored = 1;
+  TxLocationInMempool = 2;
+  TxLocationMined = 3;
+}
+
+message TxQueryResponse {
+  TxLocation location = 1;
+  bytes best_block_hash = 2;
+  uint64 confirmations = 3;
+  bool is_synced = 4;
+  uint64 best_block_height = 5;
+  uint64 mined_timestamp = 6;
+}
+
+message TxQueryBatchResponse {
+  tari.common.Signature signature = 1;
+  TxLocation location = 2;
+  bytes best_block_hash = 3;
+  uint64 confirmations = 4;
+  uint64 best_block_height = 5;
+  uint64 mined_timestamp = 6;
+}
+
+message TxQueryBatchResponses {
+  repeated TxQueryBatchResponse responses = 1;
+  bool is_synced = 2;
+  bytes best_block_hash = 3;
+  uint64 best_block_height = 4;
+  uint64 tip_mined_timestamp = 5;
+}
+
+message FetchMatchingUtxos {
+  repeated bytes output_hashes = 1;
+}
+
+message FetchUtxosResponse {
+  repeated tari.common.TransactionOutput outputs = 1;
+  bool is_synced = 2;
+}
+
+message QueryDeletedRequest {
+  repeated bytes hashes = 1;
+  bytes chain_must_include_header = 2;
+}
+
+message QueryDeletedResponse {
+  repeated QueryDeletedData data = 1;
+  bytes best_block_hash = 2;
+  uint64 best_block_height = 3;
+}
+
+message QueryDeletedData{
+  uint64 mined_at_height = 1;
+  bytes block_mined_in = 2;
+  uint64 height_deleted_at = 3;
+  bytes block_deleted_in = 4;
+}
+
+message UtxoQueryRequest {
+  repeated bytes output_hashes = 1;
+}
+
+message UtxoQueryResponses {
+  repeated UtxoQueryResponse responses = 1;
+  bytes best_block_hash = 3;
+  uint64 best_block_height = 4;
+}
+
+message UtxoQueryResponse {
+  tari.common.TransactionOutput output = 1;
+  uint64 mined_at_height = 2;
+  bytes mined_in_block = 3;
+  bytes output_hash = 4;
+  uint64 mined_timestamp = 5;
+}
+
+message TipInfoResponse {
+  ChainMetadata metadata = 1;
+  bool is_synced = 2;
+}

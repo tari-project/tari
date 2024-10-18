@@ -72,7 +72,9 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
     Ok(())
 }
 
-/// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
+/// Log an error
+///
+/// if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
 /// `Some(v)` is returned, otherwise `None` is returned (same as `Result::ok`).
 /// Useful in cases where the error should be logged and ignored.
 /// instead of writing `if let Err(err) = my_error_call() { error!(...) }`, you can write

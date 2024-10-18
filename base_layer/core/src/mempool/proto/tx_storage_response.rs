@@ -22,7 +22,9 @@
 
 use std::convert::TryFrom;
 
-use crate::mempool::{proto::mempool as proto, TxStorageResponse};
+use tari_p2p::proto::mempool as proto;
+
+use crate::mempool::TxStorageResponse;
 
 impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
     type Error = String;

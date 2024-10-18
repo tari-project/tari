@@ -59,12 +59,12 @@ pub use mempool::Mempool;
 pub use self::config::{MempoolConfig, MempoolServiceConfig};
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
-pub mod proto;
+mod proto;
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
 #[cfg(feature = "base_node")]
-pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
+pub use service::{MempoolServiceError, MempoolServiceInitializer};
 
 #[cfg(feature = "base_node")]
 mod sync_protocol;
@@ -75,11 +75,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::Signature;
+use tari_p2p::proto::base_node as base_node_proto;
 
-use crate::{
-    proto::base_node as base_node_proto,
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction},
-};
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::Transaction};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsResponse {

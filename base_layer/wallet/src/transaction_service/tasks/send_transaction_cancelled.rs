@@ -20,40 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::transaction::TxId;
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, OutboundMessageRequester},
-};
-use tari_core::transactions::transaction_protocol::proto::protocol as proto;
-use tari_p2p::tari_message::TariMessageType;
+use tari_network::{OutboundMessager, OutboundMessaging, ToPeerId};
+use tari_p2p::{message::TariNodeMessageSpec, proto::transaction_protocol::TransactionCancelledMessage};
 
 use crate::transaction_service::error::TransactionServiceError;
 
-pub async fn send_transaction_cancelled_message(
+pub async fn send_transaction_cancelled_message<T: ToPeerId>(
     tx_id: TxId,
-    destination_public_key: CommsPublicKey,
-    mut outbound_message_service: OutboundMessageRequester,
+    id: T,
+    mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
 ) -> Result<(), TransactionServiceError> {
-    let proto_message = proto::TransactionCancelledMessage { tx_id: tx_id.into() };
-
-    // Send both direct and SAF we are not going to monitor the progress on these messages for potential resend as
-    // they are just courtesy messages
-    let _send_message_response = outbound_message_service
-        .send_direct_unencrypted(
-            destination_public_key.clone(),
-            OutboundDomainMessage::new(&TariMessageType::TransactionCancelled, proto_message.clone()),
-            "transaction cancelled".to_string(),
-        )
+    let proto_message = TransactionCancelledMessage { tx_id: tx_id.into() };
+    outbound_message_service
+        .send_message(id.to_peer_id(), proto_message)
         .await?;
 
-    let _message_send_state = outbound_message_service
-        .closest_broadcast(
-            destination_public_key.clone(),
-            OutboundEncryption::encrypt_for(destination_public_key),
-            vec![],
-            OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
-        )
-        .await?;
     Ok(())
 }

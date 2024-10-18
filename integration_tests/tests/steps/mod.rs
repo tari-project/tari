@@ -25,8 +25,8 @@ use std::time::Duration;
 use cucumber::{then, when};
 use tari_integration_tests::TariWorld;
 
-pub mod chat_ffi_steps;
-pub mod chat_steps;
+// pub mod chat_ffi_steps;
+// pub mod chat_steps;
 pub mod merge_mining_steps;
 pub mod mining_steps;
 pub mod node_steps;

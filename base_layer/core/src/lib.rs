@@ -41,7 +41,7 @@ pub mod test_helpers;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod base_node;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
+mod proto;
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
@@ -50,6 +50,7 @@ pub mod mempool;
 pub mod transactions;
 
 mod common;
+mod topics;
 
 #[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;

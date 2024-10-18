@@ -23,7 +23,8 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::peer_manager::NodeId;
+use tari_network::{identity::PeerId, GossipPublisher};
+use tari_p2p::proto;
 use tari_utilities::hex::Hex;
 
 #[cfg(feature = "metrics")]
@@ -32,7 +33,7 @@ use crate::{
     base_node::comms_interface::{BlockEvent, BlockEvent::AddBlockErrored},
     chain_storage::BlockAddResult,
     mempool::{
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
+        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
         Mempool,
         TxStorageResponse,
     },
@@ -46,15 +47,15 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 #[derive(Clone)]
 pub struct MempoolInboundHandlers {
     mempool: Mempool,
-    outbound_service: OutboundMempoolServiceInterface,
+    gossip_publisher: GossipPublisher<proto::common::Transaction>,
 }
 
 impl MempoolInboundHandlers {
     /// Construct the MempoolInboundHandlers.
-    pub fn new(mempool: Mempool, outbound_service: OutboundMempoolServiceInterface) -> Self {
+    pub fn new(mempool: Mempool, gossip_publisher: GossipPublisher<proto::common::Transaction>) -> Self {
         Self {
             mempool,
-            outbound_service,
+            gossip_publisher,
         }
     }
 
@@ -79,7 +80,20 @@ impl MempoolInboundHandlers {
                     "Transaction ({}) submitted using request.",
                     first_tx_kernel_excess_sig,
                 );
-                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+                let tx = Arc::new(tx);
+                let storage = self.submit_transaction(tx.clone()).await?;
+                if storage.is_stored() {
+                    let msg =
+                        proto::common::Transaction::try_from(&*tx).map_err(MempoolServiceError::ConversionError)?;
+                    // Gossip the transaction
+                    if let Err(err) = self.gossip_publisher.publish(msg).await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error publishing transaction {}: {}.", first_tx_kernel_excess_sig, err
+                        );
+                    }
+                }
+                Ok(MempoolResponse::TxStorage(storage))
             },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
@@ -92,7 +106,7 @@ impl MempoolInboundHandlers {
     pub async fn handle_transaction(
         &mut self,
         tx: Transaction,
-        source_peer: Option<NodeId>,
+        source_peer: PeerId,
     ) -> Result<(), MempoolServiceError> {
         let first_tx_kernel_excess_sig = tx
             .first_kernel_excess_sig()
@@ -104,23 +118,16 @@ impl MempoolInboundHandlers {
             "Transaction ({}) received from {}.",
             first_tx_kernel_excess_sig,
             source_peer
-                .as_ref()
-                .map(|p| format!("remote peer: {}", p))
-                .unwrap_or_else(|| "local services".to_string())
         );
-        self.submit_transaction(tx, source_peer).await?;
+        let tx = Arc::new(tx);
+        self.submit_transaction(tx).await?;
         Ok(())
     }
 
     /// Submits a transaction to the mempool and propagate valid transactions.
-    async fn submit_transaction(
-        &mut self,
-        tx: Transaction,
-        source_peer: Option<NodeId>,
-    ) -> Result<TxStorageResponse, MempoolServiceError> {
+    async fn submit_transaction(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
 
-        let tx = Arc::new(tx);
         let tx_storage = self.mempool.has_transaction(tx.clone()).await?;
         let kernel_excess_sig = tx
             .first_kernel_excess_sig()
@@ -134,13 +141,14 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
+
         match self.mempool.insert(tx.clone()).await {
             Ok(tx_storage) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
-                    metrics::inbound_transactions(source_peer.as_ref()).inc();
+                    metrics::inbound_transactions().inc();
                 } else {
-                    metrics::rejected_inbound_transactions(source_peer.as_ref()).inc();
+                    metrics::rejected_inbound_transactions().inc();
                 }
                 self.update_pool_size_metrics().await;
 
@@ -154,9 +162,6 @@ impl MempoolInboundHandlers {
                         target: LOG_TARGET,
                         "Propagate transaction ({}) to network.", kernel_excess_sig,
                     );
-                    self.outbound_service
-                        .propagate_tx(tx, source_peer.into_iter().collect())
-                        .await?;
                 }
                 Ok(tx_storage)
             },

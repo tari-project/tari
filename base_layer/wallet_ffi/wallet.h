@@ -189,8 +189,6 @@ struct TransactionKernel;
 
 struct TransactionSendStatus;
 
-struct TransportConfig;
-
 /**
  * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
  * build both inputs and outputs (every input comes from an output). This is only used for import and export where
@@ -339,8 +337,6 @@ typedef struct InboundTransaction TariPendingInboundTransaction;
 
 typedef struct TransactionSendStatus TariTransactionSendStatus;
 
-typedef struct TransportConfig TariTransportConfig;
-
 typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
@@ -421,7 +417,6 @@ void destroy_tari_vector(struct TariVector *v);
 void destroy_tari_coin_preview(struct TariCoinPreview *p);
 
 /**
- * -------------------------------- Strings ------------------------------------------------ ///
  * Frees memory for a char array
  *
  * ## Arguments
@@ -436,8 +431,6 @@ void destroy_tari_coin_preview(struct TariCoinPreview *p);
 void string_destroy(char *ptr);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transaction Kernel ------------------------------------- ///
  * Gets the excess for a TariTransactionKernel
  *
  * ## Arguments
@@ -500,8 +493,6 @@ char *transaction_kernel_get_excess_signature_hex(TariTransactionKernel *kernel,
 void transaction_kernel_destroy(TariTransactionKernel *x);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- ByteVector ------------------------------------------------ ///
  * Creates a ByteVector
  *
  * ## Arguments
@@ -575,8 +566,6 @@ unsigned int byte_vector_get_length(const struct ByteVector *vec,
                                     int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Public Key ------------------------------------------------ ///
  * Creates a TariPublicKey from a ByteVector
  *
  * ## Arguments
@@ -693,8 +682,6 @@ TariPublicKey *public_key_from_hex(const char *key,
                                    int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Tari Address ---------------------------------------------- ///
  * Creates a TariWalletAddress from a ByteVector
  *
  * ## Arguments
@@ -933,9 +920,6 @@ TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
 char *byte_to_emoji(uint8_t byte);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ------------------------------- ComAndPubSignature Signature ---------------------------------------///
  * Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
  * ByteVectors
  *
@@ -978,8 +962,6 @@ TariComAndPubSignature *commitment_and_public_signature_create_from_bytes(const 
 void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Unblinded utxo -------------------------------------------- ///
  * Creates an unblinded output
  *
  * ## Arguments
@@ -1070,8 +1052,6 @@ TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_j
                                                             int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- TariUnblindedOutputs ------------------------------------///
  * Gets the length of TariUnblindedOutputs
  *
  * ## Arguments
@@ -1169,8 +1149,6 @@ unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWall
                                                                  int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Private Key ----------------------------------------------- ///
  * Creates a TariPrivateKey from a ByteVector
  *
  * ## Arguments
@@ -1253,8 +1231,6 @@ TariPrivateKey *private_key_from_hex(const char *key,
                                      int *error_out);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Range Proof ----------------------------------------------- ///
  * Creates a default TariRangeProof
  *
  * ## Arguments
@@ -1356,8 +1332,6 @@ struct ByteVector *range_proof_get_bytes(TariRangeProof *proof_ptr,
 void range_proof_destroy(TariRangeProof *proof_ptr);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * --------------------------------------- Covenant --------------------------------------------///
  * Creates a TariCovenant from a ByteVector containing the covenant bytes
  *
  * ## Arguments
@@ -1388,8 +1362,6 @@ TariCovenant *covenant_create_from_bytes(const struct ByteVector *covenant_bytes
 void covenant_destroy(TariCovenant *covenant);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * --------------------------------------- EncryptedOpenings --------------------------------------------///
  * Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
  *
  * ## Arguments
@@ -1438,8 +1410,6 @@ struct ByteVector *encrypted_data_as_bytes(const TariEncryptedOpenings *encrypte
 void encrypted_data_destroy(TariEncryptedOpenings *encrypted_data);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ---------------------------------- Output Features ------------------------------------------///
  * Creates a TariOutputFeatures from byte values
  *
  * ## Arguments
@@ -1481,8 +1451,6 @@ TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
 void output_features_destroy(TariOutputFeatures *output_features);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Seed Words ----------------------------------------------///
  * Create an empty instance of TariSeedWords
  *
  * ## Arguments
@@ -1613,8 +1581,6 @@ unsigned char seed_words_push_word(struct TariSeedWords *seed_words,
 void seed_words_destroy(struct TariSeedWords *seed_words);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contact -------------------------------------------------///
  * Creates a TariContact
  *
  * ## Arguments
@@ -1704,8 +1670,6 @@ TariWalletAddress *contact_get_tari_address(TariContact *contact,
 void contact_destroy(TariContact *contact);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contacts -------------------------------------------------///
  * Gets the length of TariContacts
  *
  * ## Arguments
@@ -1757,8 +1721,6 @@ TariContact *contacts_get_at(struct TariContacts *contacts,
 void contacts_destroy(struct TariContacts *contacts);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contacts Liveness Data ----------------------------------///
  * Gets the public_key from a TariContactsLivenessData
  *
  * ## Arguments
@@ -1879,8 +1841,6 @@ const char *liveness_data_get_online_status(TariContactsLivenessData *liveness_d
 void liveness_data_destroy(TariContactsLivenessData *liveness_data);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- CompletedTransactions ----------------------------------- ///
  * Gets the length of a TariCompletedTransactions
  *
  * ## Arguments
@@ -1934,8 +1894,6 @@ TariCompletedTransaction *completed_transactions_get_at(struct TariCompletedTran
 void completed_transactions_destroy(struct TariCompletedTransactions *transactions);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- OutboundTransactions ------------------------------------ ///
  * Gets the length of a TariPendingOutboundTransactions
  *
  * ## Arguments
@@ -1989,8 +1947,6 @@ TariPendingOutboundTransaction *pending_outbound_transactions_get_at(struct Tari
 void pending_outbound_transactions_destroy(struct TariPendingOutboundTransactions *transactions);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- InboundTransactions ------------------------------------- ///
  * Gets the length of a TariPendingInboundTransactions
  *
  * ## Arguments
@@ -2044,8 +2000,6 @@ TariPendingInboundTransaction *pending_inbound_transactions_get_at(struct TariPe
 void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions *transactions);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- CompletedTransaction ------------------------------------- ///
  * Gets the TransactionID of a TariCompletedTransaction
  *
  * ## Arguments
@@ -2343,8 +2297,6 @@ TariCompletedTransaction *create_tari_completed_transaction_from_json(const char
 void completed_transaction_destroy(TariCompletedTransaction *transaction);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- OutboundTransaction ------------------------------------- ///
  * Gets the TransactionId of a TariPendingOutboundTransaction
  *
  * ## Arguments
@@ -2489,9 +2441,6 @@ int pending_outbound_transaction_get_status(TariPendingOutboundTransaction *tran
 void pending_outbound_transaction_destroy(TariPendingOutboundTransaction *transaction);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ----------------------------------- InboundTransaction ------------------------------------- ///
  * Gets the TransactionId of a TariPendingInboundTransaction
  *
  * ## Arguments
@@ -2620,8 +2569,6 @@ int pending_inbound_transaction_get_status(TariPendingInboundTransaction *transa
 void pending_inbound_transaction_destroy(TariPendingInboundTransaction *transaction);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transport Send Status -----------------------------------///
  * Decode the transaction send status of a TariTransactionSendStatus
  *
  * ## Arguments
@@ -2658,114 +2605,6 @@ unsigned int transaction_send_status_decode(const TariTransactionSendStatus *sta
 void transaction_send_status_destroy(TariTransactionSendStatus *status);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transport Types -----------------------------------------///
- * Creates a memory transport type
- *
- * ## Arguments
- * `()` - Does not take any arguments
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
- *
- * # Safety
- * The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
- * leak
- */
-TariTransportConfig *transport_memory_create(void);
-
-/**
- * Creates a tcp transport type
- *
- * ## Arguments
- * `listener_address` - The pointer to a char array
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
- *
- * # Safety
- * The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
- * leak
- */
-TariTransportConfig *transport_tcp_create(const char *listener_address,
-                                          int *error_out);
-
-/**
- * Creates a tor transport type
- *
- * ## Arguments
- * `control_server_address` - The pointer to a char array
- * `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
- * `tor_port` - The tor port
- * `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
- * the tor proxy if tcp is available, if not it has no effect
- * `socks_password` - The pointer to a char array containing the socks password, can be null
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
- *
- * # Safety
- * The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
- * memory leak
- */
-TariTransportConfig *transport_tor_create(const char *control_server_address,
-                                          const struct ByteVector *tor_cookie,
-                                          unsigned short tor_port,
-                                          bool tor_proxy_bypass_for_outbound,
-                                          const char *socks_username,
-                                          const char *socks_password,
-                                          int *error_out);
-
-/**
- * Gets the address for a memory transport type
- *
- * ## Arguments
- * `transport` - Pointer to a TariTransportConfig
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
- *
- * # Safety
- * Can only be used with a memory transport type, will crash otherwise
- */
-char *transport_memory_get_address(const TariTransportConfig *transport,
-                                   int *error_out);
-
-/**
- * Frees memory for a TariTransportConfig
- *
- * ## Arguments
- * `transport` - The pointer to a TariTransportConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- */
-void transport_type_destroy(TariTransportConfig *transport);
-
-/**
- * Frees memory for a TariTransportConfig
- *
- * ## Arguments
- * `transport` - The pointer to a TariTransportConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- */
-void transport_config_destroy(TariTransportConfig *transport);
-
-/**
- * ---------------------------------------------------------------------------------------------///
- * ----------------------------------- CommsConfig ---------------------------------------------///
  * Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
  *
  * ## Arguments
@@ -2791,12 +2630,7 @@ void transport_config_destroy(TariTransportConfig *transport);
  * The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
  */
 TariCommsConfig *comms_config_create(const char *public_address,
-                                     const TariTransportConfig *transport,
-                                     const char *database_name,
-                                     const char *datastore_path,
-                                     unsigned long long discovery_timeout_in_secs,
-                                     unsigned long long saf_message_duration_in_secs,
-                                     bool exclude_dial_test_addresses,
+                                     const char *listen_address,
                                      int *error_out);
 
 /**
@@ -2971,6 +2805,8 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  */
 struct TariWallet *wallet_create(void *context,
                                  TariCommsConfig *config,
+                                 const char *database_name,
+                                 const char *datastore_path,
                                  const char *log_path,
                                  int log_verbosity,
                                  unsigned int num_rolling_log_files,
@@ -3036,7 +2872,8 @@ struct TariWallet *wallet_create(void *context,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-char *wallet_get_last_version(TariCommsConfig *config,
+char *wallet_get_last_version(const char *datastore_path,
+                              const char *database_name,
                               int *error_out);
 
 /**
@@ -3052,7 +2889,8 @@ char *wallet_get_last_version(TariCommsConfig *config,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-char *wallet_get_last_network(TariCommsConfig *config,
+char *wallet_get_last_network(const char *datastore_path,
+                              const char *database_name,
                               int *error_out);
 
 /**
@@ -4142,7 +3980,6 @@ void log_debug_message(const char *msg,
                        int *error_out);
 
 /**
- * ------------------------------------- FeePerGramStats ------------------------------------ ///
  * Get the TariFeePerGramStats from a TariWallet.
  *
  * ## Arguments
@@ -4216,8 +4053,6 @@ TariFeePerGramStat *fee_per_gram_stats_get_at(TariFeePerGramStats *fee_per_gram_
 void fee_per_gram_stats_destroy(TariFeePerGramStats *fee_per_gram_stats);
 
 /**
- * ------------------------------------------------------------------------------------------ ///
- * ------------------------------------- FeePerGramStat ------------------------------------- ///
  * Get the order of TariFeePerGramStat
  *
  * ## Arguments

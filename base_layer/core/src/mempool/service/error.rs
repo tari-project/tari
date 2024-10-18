@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
@@ -28,8 +27,6 @@ use crate::mempool::MempoolError;
 
 #[derive(Debug, Error)]
 pub enum MempoolServiceError {
-    #[error("DHT outbound error: `{0}`")]
-    DhtOutboundError(#[from] DhtOutboundError),
     #[error("Invalid request error: `{0}`")]
     InvalidRequest(String),
     #[error("Invalid response error: `{0}`")]

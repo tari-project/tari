@@ -1,0 +1,16 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "common/transaction.proto";
+import "common/types.proto";
+
+package tari.mempool;
+
+message StateResponse{
+  // List of transactions in unconfirmed pool.
+  repeated tari.common.Transaction unconfirmed_pool = 1;
+  // List of transactions in reorg pool.
+  repeated tari.common.Signature reorg_pool = 4;
+}

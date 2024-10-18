@@ -10,7 +10,6 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_shutdown = { path = "../shutdown", version = "1.7.0-pre.2" }
-tari_comms = { path = "../../comms/core", version = "1.7.0-pre.2" }
 
 futures = { version = "^0.3.1" }
 rand = "0.8"

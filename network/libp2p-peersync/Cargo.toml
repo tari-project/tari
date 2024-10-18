@@ -1,0 +1,22 @@
+[package]
+name = "libp2p-peersync"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+futures-bounded = { workspace = true }
+libp2p = { workspace = true }
+quick-protobuf = { workspace = true }
+quick-protobuf-codec = { workspace = true }
+asynchronous-codec = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+async-semaphore = { workspace = true }
+blake2 = { workspace = true }
+
+[build-dependencies]
+pb-rs = "0.10.0"
+
+[features]
+default = []

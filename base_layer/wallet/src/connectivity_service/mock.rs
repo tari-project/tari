@@ -20,12 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    protocol::rpc::RpcClientLease,
-    types::CommsPublicKey,
-};
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use tari_network::{identity::PeerId, Peer};
+use tari_rpc_framework::pool::RpcClientLease;
 use tokio::sync::watch::Receiver;
 
 use crate::{
@@ -91,7 +88,10 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
     }
 
     fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)> {
-        self.base_node_watch.borrow().as_ref().map(|p| p.get_state().clone())
+        self.base_node_watch.borrow().as_ref().map(|p| {
+            let (count, list) = p.get_state();
+            (count, list.to_vec())
+        })
     }
 
     async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
@@ -131,18 +131,8 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
             .map(|p| p.get_current_peer().clone())
     }
 
-    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().public_key.clone())
-    }
-
-    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().node_id.clone())
+    fn get_current_base_node_peer_node_id(&self) -> Option<PeerId> {
+        self.base_node_watch.borrow().as_ref().map(|p| p.get_current_peer_id())
     }
 
     fn is_base_node_set(&self) -> bool {

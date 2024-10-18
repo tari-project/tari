@@ -38,11 +38,6 @@ mod local_service;
 #[cfg(feature = "base_node")]
 pub use local_service::LocalMempoolService;
 
-#[cfg(feature = "base_node")]
-mod outbound_interface;
-#[cfg(feature = "base_node")]
-pub use outbound_interface::OutboundMempoolServiceInterface;
-
 #[allow(clippy::module_inception)]
 #[cfg(feature = "base_node")]
 mod service;

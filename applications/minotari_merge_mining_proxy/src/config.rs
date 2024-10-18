@@ -23,13 +23,13 @@
 use std::path::{Path, PathBuf};
 
 use minotari_wallet_grpc_client::GrpcAuthentication;
+use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{Network, StringList},
     SubConfigPath,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::transaction_components::RangeProofType;
 
 // The default Monero fail URL for mainnet
@@ -179,8 +179,8 @@ impl SubConfigPath for MergeMiningProxyConfig {
 mod test {
     use std::str::FromStr;
 
+    use multiaddr::Multiaddr;
     use tari_common::DefaultConfigLoader;
-    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::MergeMiningProxyConfig;
 

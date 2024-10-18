@@ -27,11 +27,12 @@ use std::{
 };
 
 use log::*;
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
-    utils,
+use tari_network::identity::PeerId;
+use tari_p2p::{
+    proto,
+    proto::base_node::{sync_utxos_response::Txo, SyncUtxosRequest, SyncUtxosResponse},
 };
+use tari_rpc_framework::{Request, RpcStatus, RpcStatusResultExt};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::mpsc, task};
 
@@ -40,21 +41,21 @@ use crate::base_node::metrics;
 use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    proto,
-    proto::base_node::{sync_utxos_response::Txo, SyncUtxosRequest, SyncUtxosResponse},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
-    peer_node_id: Arc<NodeId>,
+    /// This is wrapped in an Arc because a weak ref for the Arc is used to keep track of whether the session for a
+    /// given peer is active
+    peer_node_id: Arc<PeerId>,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
-    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<NodeId>) -> Self {
+    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<PeerId>) -> Self {
         Self { db, peer_node_id }
     }
 
@@ -90,7 +91,7 @@ where B: BlockchainBackend + 'static
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash was not found"))?;
         if start_header.height > end_header.height {
-            return Err(RpcStatus::bad_request(&format!(
+            return Err(RpcStatus::bad_request(format!(
                 "Start header height({}) cannot be greater than the end header height({})",
                 start_header.height, end_header.height
             )));
@@ -196,7 +197,7 @@ where B: BlockchainBackend + 'static
                     continue;
                 }
                 if !spent {
-                    match proto::types::TransactionOutput::try_from(output.clone()) {
+                    match proto::common::TransactionOutput::try_from(output.clone()) {
                         Ok(tx_ouput) => {
                             trace!(
                                 target: LOG_TARGET,
@@ -209,7 +210,7 @@ where B: BlockchainBackend + 'static
                             }));
                         },
                         Err(e) => {
-                            return Err(RpcStatus::general(&format!(
+                            return Err(RpcStatus::general(format!(
                                 "Output '{}' RPC conversion error ({})",
                                 output.hash().to_hex(),
                                 e
@@ -254,13 +255,13 @@ where B: BlockchainBackend + 'static
                     let input_commitment = match self.db.fetch_output(input.output_hash()).await {
                         Ok(Some(o)) => o.output.commitment,
                         Ok(None) => {
-                            return Err(RpcStatus::general(&format!(
+                            return Err(RpcStatus::general(format!(
                                 "Mined info for input '{}' not found",
                                 input.output_hash().to_hex()
                             )))
                         },
                         Err(e) => {
-                            return Err(RpcStatus::general(&format!(
+                            return Err(RpcStatus::general(format!(
                                 "Input '{}' not found ({})",
                                 input.output_hash().to_hex(),
                                 e
@@ -297,8 +298,14 @@ where B: BlockchainBackend + 'static
 
             // Ensure task stops if the peer prematurely stops their RPC session
             let txos_len = txos.len();
-            if utils::mpsc::send_all(tx, txos).await.is_err() {
-                break;
+            for txo in txos {
+                if tx.send(txo).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Peer '{}' exited TXO sync session early", self.peer_node_id
+                    );
+                    return Ok(());
+                }
             }
 
             debug!(
@@ -318,7 +325,7 @@ where B: BlockchainBackend + 'static
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::general(&format!(
+                    RpcStatus::general(format!(
                         "Potential data consistency issue: header {} not found",
                         current_header.height + 1
                     ))

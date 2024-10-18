@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
-use tari_comms_dht::outbound::DhtOutboundError;
+use tari_rpc_framework::RpcError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
@@ -31,8 +30,6 @@ use crate::{connectivity_service::WalletConnectivityError, error::WalletStorageE
 pub enum BaseNodeServiceError {
     #[error("No base node peer set")]
     NoBaseNodePeer,
-    #[error("Error connecting to base node: {0}")]
-    BaseNodeConnectivityError(#[from] ConnectivityError),
     #[error("RPC Error: `{0}`")]
     RpcError(#[from] RpcError),
     #[error("No chain metadata from peer")]
@@ -41,8 +38,6 @@ pub enum BaseNodeServiceError {
     UnexpectedApiResponse,
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
-    #[error("Outbound Error: `{0}`")]
-    OutboundError(#[from] DhtOutboundError),
     #[error("Received invalid base node response: {0}")]
     InvalidBaseNodeResponse(String),
     #[error("Wallet storage error: `{0}`")]

@@ -8,17 +8,16 @@ version = "1.7.0-pre.2"
 edition = "2018"
 
 [dependencies]
+tari_network = { workspace = true }
+tari_rpc_framework = { workspace = true }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
 tari_common = { path = "../../common" }
-tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",
 ] }
 tari_crypto = { version = "0.21.0" }
-tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = { path = "../../infrastructure/storage" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
@@ -30,7 +29,6 @@ tari_key_manager = { path = "../../base_layer/key_manager", features = [
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"
-bincode = "1.3.1"
 borsh = "1.5"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
@@ -71,10 +69,9 @@ tari_metrics = { path = "../../infrastructure/metrics", optional = true, feature
 ] }
 
 [features]
-default = ["libtor"]
-metrics = ["tari_metrics", "tari_comms/metrics"]
+default = []
+metrics = ["tari_metrics"]
 safe = []
-libtor = ["tari_libtor"]
 
 [build-dependencies]
 tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.2" }

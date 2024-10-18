@@ -23,15 +23,17 @@
 use std::{convert::TryInto, time::Instant};
 
 use log::*;
-use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
+use tari_p2p::{
+    proto,
+    proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
+};
+use tari_rpc_framework::{RpcStatus, RpcStatusResultExt};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    proto,
-    proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";
@@ -76,7 +78,7 @@ where B: BlockchainBackend + 'static
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
 
         if start_header.height > end_header.height {
-            return Err(RpcStatus::bad_request(&format!(
+            return Err(RpcStatus::bad_request(format!(
                 "start header height {} cannot be greater than the end header height ({})",
                 start_header.height, end_header.height
             )));
@@ -130,7 +132,7 @@ where B: BlockchainBackend + 'static
             let outputs = outputs_with_statuses
                 .into_iter()
                 .map(|(output, _spent)| output.try_into())
-                .collect::<Result<Vec<proto::types::TransactionOutput>, String>>()
+                .collect::<Result<Vec<proto::common::TransactionOutput>, String>>()
                 .map_err(|err| RpcStatus::general(&err))?;
 
             debug!(
@@ -183,7 +185,7 @@ where B: BlockchainBackend + 'static
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::general(&format!(
+                    RpcStatus::general(format!(
                         "Potential data consistency issue: header {} not found",
                         current_header.height + 1
                     ))

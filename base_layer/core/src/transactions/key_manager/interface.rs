@@ -29,12 +29,12 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
 };
-use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyAndId, KeyId, KeyManagerInterface, KeyManagerServiceError};
 use tari_script::{CheckSigSchnorrSignature, TariScript};
 
 use crate::transactions::{
+    key_manager::RistrettoDiffieHellmanSharedSecret,
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,
@@ -121,7 +121,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<CommsDHKE, TransactionError>;
+    ) -> Result<RistrettoDiffieHellmanSharedSecret, TransactionError>;
 
     async fn get_diffie_hellman_stealth_domain_hasher(
         &self,

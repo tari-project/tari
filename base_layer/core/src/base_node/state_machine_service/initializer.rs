@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_network::NetworkHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -91,6 +89,7 @@ where B: BlockchainBackend + 'static
             status_event_receiver,
             context.get_shutdown_signal(),
         );
+        let peer_metadata = handle.peer_metadata_store();
         context.register_handle(handle);
 
         let factories = self.factories.clone();
@@ -106,17 +105,15 @@ where B: BlockchainBackend + 'static
             log_mdc::extend(mdc);
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let sync_validators =
                 SyncValidators::full_consensus(rules.clone(), factories, bypass_range_proof_verification);
+            let network = handles.expect_handle::<NetworkHandle>();
 
             let node = BaseNodeStateMachine::new(
                 db,
                 node_local_interface,
-                connectivity,
-                peer_manager,
+                network,
                 chain_metadata_service.get_event_stream(),
                 config,
                 sync_validators,
@@ -124,6 +121,7 @@ where B: BlockchainBackend + 'static
                 state_event_publisher,
                 randomx_factory,
                 rules,
+                peer_metadata,
                 handles.get_shutdown_signal(),
             );
 

@@ -37,12 +37,12 @@ use minotari_console_wallet::{
     WhoisArgs,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
+use tari_network::multiaddr::Multiaddr;
 use tari_utilities::hex::Hex;
 
 #[then(expr = "I change base node of {word} to {word} via command line")]

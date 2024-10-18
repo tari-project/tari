@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -45,7 +45,7 @@ pub struct BlockchainSyncConfig {
     pub short_ban_period: Duration,
     /// An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty, sync peers
     /// are chosen based on their advertised chain metadata.
-    pub forced_sync_peers: Vec<NodeId>,
+    pub forced_sync_peers: Vec<PeerId>,
     /// Number of threads to use for validation
     pub validation_concurrency: usize,
     /// The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for

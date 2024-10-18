@@ -28,12 +28,8 @@ use std::{
 use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::{chain_metadata::ChainMetadata, wallet_types::WalletType};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, PeerFeatures},
-    tor::TorIdentity,
-};
 use tari_key_manager::cipher_seed::CipherSeed;
+use tari_network::multiaddr::Multiaddr;
 use tari_utilities::SafePassword;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
@@ -78,8 +74,7 @@ pub trait WalletBackend: Send + Sync + Clone {
 pub enum DbKey {
     CommsAddress,
     CommsFeatures,
-    CommsIdentitySignature,
-    TorId,
+    // TorId,
     BaseNodeChainMetadata,
     ClientKey(String),
     MasterSeed,
@@ -99,7 +94,7 @@ impl DbKey {
             DbKey::MasterSeed => "MasterSeed".to_string(),
             DbKey::CommsAddress => "CommsAddress".to_string(),
             DbKey::CommsFeatures => "NodeFeatures".to_string(),
-            DbKey::TorId => "TorId".to_string(),
+            // DbKey::TorId => "TorId".to_string(),
             DbKey::ClientKey(k) => format!("ClientKey.{}", k),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
             DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
@@ -107,7 +102,6 @@ impl DbKey {
             DbKey::SecondaryKeyVersion => "SecondaryKeyVersion".to_string(),
             DbKey::SecondaryKeyHash => "SecondaryKeyHash".to_string(),
             DbKey::WalletBirthday => "WalletBirthday".to_string(),
-            DbKey::CommsIdentitySignature => "CommsIdentitySignature".to_string(),
             DbKey::LastAccessedNetwork => "LastAccessedNetwork".to_string(),
             DbKey::LastAccessedVersion => "LastAccessedVersion".to_string(),
             DbKey::WalletType => "WalletType".to_string(),
@@ -117,9 +111,8 @@ impl DbKey {
 
 pub enum DbValue {
     CommsAddress(Multiaddr),
-    CommsFeatures(PeerFeatures),
-    CommsIdentitySignature(Box<IdentitySignature>),
-    TorId(TorIdentity),
+    CommsFeatures(u32),
+    // TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
     BaseNodeChainMetadata(ChainMetadata),
@@ -137,12 +130,12 @@ pub enum DbValue {
 #[derive(Clone)]
 pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
-    TorId(TorIdentity),
+    // TorId(TorIdentity),
     BaseNodeChainMetadata(ChainMetadata),
     MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
-    CommsFeatures(PeerFeatures),
-    CommsIdentitySignature(Box<IdentitySignature>),
+    // This isnt used for anything
+    CommsFeatures(u32),
     NetworkAndVersion((String, String)),
     WalletType(WalletType),
 }
@@ -190,38 +183,23 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::TorId) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::TorId(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::TorId, other),
-            Err(e) => log_error(DbKey::TorId, e),
-        }?;
-        Ok(c)
-    }
+    // pub fn get_node_address(&self) -> Result<Option<Multiaddr>, WalletStorageError> {
+    //     let c = match self.db.fetch(&DbKey::CommsAddress) {
+    //         Ok(None) => Ok(None),
+    //         Ok(Some(DbValue::CommsAddress(k))) => Ok(Some(k)),
+    //         Ok(Some(other)) => unexpected_result(DbKey::CommsAddress, other),
+    //         Err(e) => log_error(DbKey::CommsAddress, e),
+    //     }?;
+    //     Ok(c)
+    // }
 
-    pub fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
-        self.db.write(WriteOperation::Insert(DbKeyValuePair::TorId(id)))?;
-        Ok(())
-    }
+    // pub fn set_node_address(&self, address: Multiaddr) -> Result<(), WalletStorageError> {
+    //     self.db
+    //         .write(WriteOperation::Insert(DbKeyValuePair::CommsAddress(address)))?;
+    //     Ok(())
+    // }
 
-    pub fn get_node_address(&self) -> Result<Option<Multiaddr>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::CommsAddress) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::CommsAddress(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::CommsAddress, other),
-            Err(e) => log_error(DbKey::CommsAddress, e),
-        }?;
-        Ok(c)
-    }
-
-    pub fn set_node_address(&self, address: Multiaddr) -> Result<(), WalletStorageError> {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::CommsAddress(address)))?;
-        Ok(())
-    }
-
-    pub fn get_node_features(&self) -> Result<Option<PeerFeatures>, WalletStorageError> {
+    pub fn get_node_features(&self) -> Result<Option<u32>, WalletStorageError> {
         let c = match self.db.fetch(&DbKey::CommsFeatures) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::CommsFeatures(k))) => Ok(Some(k)),
@@ -231,27 +209,9 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
-    pub fn set_node_features(&self, features: PeerFeatures) -> Result<(), WalletStorageError> {
+    pub fn set_node_features(&self, features: u32) -> Result<(), WalletStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::CommsFeatures(features)))?;
-        Ok(())
-    }
-
-    pub fn get_comms_identity_signature(&self) -> Result<Option<IdentitySignature>, WalletStorageError> {
-        let sig = match self.db.fetch(&DbKey::CommsIdentitySignature) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::CommsIdentitySignature(k))) => Ok(Some(*k)),
-            Ok(Some(other)) => unexpected_result(DbKey::CommsIdentitySignature, other),
-            Err(e) => log_error(DbKey::CommsIdentitySignature, e),
-        }?;
-        Ok(sig)
-    }
-
-    pub fn set_comms_identity_signature(&self, sig: IdentitySignature) -> Result<(), WalletStorageError> {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(
-                Box::new(sig),
-            )))?;
         Ok(())
     }
 
@@ -413,14 +373,13 @@ impl Display for DbValue {
             DbValue::ValueCleared => f.write_str("ValueCleared"),
             DbValue::CommsFeatures(_) => f.write_str("Node features"),
             DbValue::CommsAddress(_) => f.write_str("Comms Address"),
-            DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
+            // DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
             DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {:?}", k)),
             DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {}", s)),
             DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {}", v)),
             DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {}", h)),
             DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
-            DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
             DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
             DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
             DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {:?}", wallet_type)),

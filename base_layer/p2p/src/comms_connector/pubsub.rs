@@ -31,16 +31,14 @@ use tokio::{
 use tokio_stream::wrappers;
 
 use super::peer_message::PeerMessage;
-use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
+use crate::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
 
-/// Alias for a pubsub-type domain connector
-pub type PubsubDomainConnector = InboundDomainConnector;
 pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered broadcast channel
-pub fn pubsub_connector(buf_size: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
+pub fn pubsub_connector(buf_size: usize) -> (mpsc::Sender<Arc<PeerMessage>>, SubscriptionFactory) {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
 
@@ -80,7 +78,7 @@ pub fn pubsub_connector(buf_size: usize) -> (PubsubDomainConnector, Subscription
                 future::ready(())
             }).await;
     });
-    (InboundDomainConnector::new(sender), subscription_factory)
+    (sender, subscription_factory)
 }
 
 /// Create a topic-based pub-sub channel

@@ -23,11 +23,8 @@
 use std::time::Duration;
 
 use tari_common_types::types::FixedHashSizeError;
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
-};
+use tari_network::{identity::PeerId, NetworkError};
+use tari_rpc_framework::{RpcError, RpcStatus, RpcStatusCode};
 
 use crate::{
     chain_storage::ChainStorageError,
@@ -47,8 +44,8 @@ pub enum BlockSyncError {
     ChainStorageError(#[from] ChainStorageError),
     #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
     BlockWithoutParent { expected: String, got: String },
-    #[error("Connectivity Error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
+    #[error("Network Error: {0}")]
+    NetworkError(#[from] NetworkError),
     #[error("No more sync peers available: {0}")]
     NoMoreSyncPeers(String),
     #[error("Block validation failed: {0}")]
@@ -61,7 +58,7 @@ pub enum BlockSyncError {
     InvalidBlockBody(String),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}, max: {max_latency:.2?}")]
     MaxLatencyExceeded {
-        peer: NodeId,
+        peer: PeerId,
         latency: Duration,
         max_latency: Duration,
     },
@@ -88,7 +85,7 @@ impl BlockSyncError {
             BlockSyncError::AsyncTaskFailed(_) => "AsyncTaskFailed",
             BlockSyncError::ChainStorageError(_) => "ChainStorageError",
             BlockSyncError::BlockWithoutParent { .. } => "PeerSentBlockThatDidNotFormAChain",
-            BlockSyncError::ConnectivityError(_) => "ConnectivityError",
+            BlockSyncError::NetworkError(_) => "NetworkError",
             BlockSyncError::NoMoreSyncPeers(_) => "NoMoreSyncPeers",
             BlockSyncError::ValidationError(_) => "ValidationError",
             BlockSyncError::FailedToConstructChainBlock => "FailedToConstructChainBlock",
@@ -109,7 +106,7 @@ impl BlockSyncError {
         match self {
             // no ban
             BlockSyncError::AsyncTaskFailed(_) |
-            BlockSyncError::ConnectivityError(_) |
+            BlockSyncError::NetworkError(_) |
             BlockSyncError::NoMoreSyncPeers(_) |
             BlockSyncError::AllSyncPeersExceedLatency |
             BlockSyncError::FailedToConstructChainBlock |

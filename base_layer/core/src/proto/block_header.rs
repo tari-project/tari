@@ -23,9 +23,9 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_p2p::proto::common as proto;
 use tari_utilities::{epoch_time::EpochTime, ByteArray};
 
-use super::core as proto;
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{PowAlgorithm, PowData, ProofOfWork},

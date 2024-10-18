@@ -24,11 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-};
+use tari_network::{multiaddr::Multiaddr, swarm::dial_opts::DialOpts, NetworkingService, ToPeerId};
 
 use super::{CommandContext, HandleCommand};
 
@@ -44,25 +40,15 @@ pub struct ArgsAddPeer {
 #[async_trait]
 impl HandleCommand<ArgsAddPeer> for CommandContext {
     async fn handle_command(&mut self, args: ArgsAddPeer) -> Result<(), Error> {
-        let public_key = args.public_key.into();
-        if *self.comms.node_identity().public_key() == public_key {
+        let public_key = args.public_key.into_public_key();
+        let peer_id = public_key.to_peer_id();
+        if *self.network.local_peer_id() == peer_id {
             return Err(Error::msg("Cannot add self as peer"));
         }
-        let peer_manager = self.comms.peer_manager();
-        let node_id = NodeId::from_public_key(&public_key);
-        let peer = Peer::new(
-            public_key,
-            node_id.clone(),
-            MultiaddressesWithStats::from_addresses_with_source(vec![args.address], &PeerAddressSource::Config),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-            vec![],
-            String::new(),
-        );
-        // If the peer exists, this will merge the given address
-        peer_manager.add_peer(peer).await?;
-        println!("Peer with node id '{}' was added to the base node.", node_id);
-        self.dial_peer(node_id).await?;
+        self.network
+            .dial_peer(DialOpts::peer_id(peer_id).addresses(vec![args.address]).build())
+            .await?;
+        println!("Peer with node id '{}' was added to the base node.", peer_id);
         Ok(())
     }
 }

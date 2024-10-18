@@ -22,19 +22,19 @@
 
 use std::fmt::{Display, Formatter};
 
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 
 use crate::base_node::sync::SyncPeer;
 
 /// Info about the state of horizon sync
 #[derive(Clone, Debug, PartialEq)]
 pub struct HorizonSyncInfo {
-    pub sync_peers: Vec<NodeId>,
+    pub sync_peers: Vec<PeerId>,
     pub status: HorizonSyncStatus,
 }
 
 impl HorizonSyncInfo {
-    pub fn new(sync_peers: Vec<NodeId>, status: HorizonSyncStatus) -> HorizonSyncInfo {
+    pub fn new(sync_peers: Vec<PeerId>, status: HorizonSyncStatus) -> HorizonSyncInfo {
         HorizonSyncInfo { sync_peers, status }
     }
 
@@ -51,7 +51,7 @@ impl HorizonSyncInfo {
                 current,
                 total,
                 current as f64 / total as f64 * 100.0,
-                sync_peer.node_id(),
+                sync_peer.peer_id(),
                 sync_peer
                     .items_per_second()
                     .map(|kps| format!(" ({:.2?} kernels/s)", kps))
@@ -67,7 +67,7 @@ impl HorizonSyncInfo {
                 current,
                 total,
                 current as f64 / total as f64 * 100.0,
-                sync_peer.node_id(),
+                sync_peer.peer_id(),
                 sync_peer
                     .items_per_second()
                     .map(|kps| format!(" ({:.2?} outputs/s)", kps))
@@ -97,7 +97,7 @@ impl Display for HorizonSyncInfo {
                 "Horizon syncing kernels: {}/{} from {} (latency: {:.2?})",
                 current,
                 total,
-                sync_peer.node_id(),
+                sync_peer.peer_id(),
                 sync_peer.latency().unwrap_or_default()
             ),
             HorizonSyncStatus::Outputs {
@@ -110,7 +110,7 @@ impl Display for HorizonSyncInfo {
                     "Horizon syncing outputs: {}/{} from {} (latency: {:.2?})",
                     current,
                     total,
-                    sync_peer.node_id(),
+                    sync_peer.peer_id(),
                     sync_peer.latency().unwrap_or_default()
                 )
             },

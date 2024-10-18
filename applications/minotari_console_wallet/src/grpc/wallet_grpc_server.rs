@@ -97,7 +97,6 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, PublicKey, Signature},
 };
-use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
@@ -112,6 +111,7 @@ use tari_core::{
         },
     },
 };
+use tari_network::{multiaddr::Multiaddr, NetworkHandle, ToPeerId};
 use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, task};
@@ -147,7 +147,7 @@ pub struct WalletGrpcServer {
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
+        let rules = ConsensusManager::builder(wallet.network_consensus.as_network()).build()?;
         Ok(Self { wallet, rules })
     }
 
@@ -159,8 +159,8 @@ impl WalletGrpcServer {
         self.wallet.output_manager_service.clone()
     }
 
-    fn comms(&self) -> &CommsNode {
-        &self.wallet.comms
+    fn network(&self) -> &NetworkHandle {
+        &self.wallet.network
     }
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
@@ -222,11 +222,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let identity = self.wallet.comms.node_identity();
+        let local_info = self
+            .wallet
+            .network
+            .get_local_peer_info()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(GetIdentityResponse {
-            public_key: identity.public_key().to_vec(),
-            public_address: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
-            node_id: identity.node_id().to_vec(),
+            public_key: self.wallet.network_public_key.to_vec(),
+            // TODO: These are not public - not sure if we ever really use this field
+            public_address: local_info.listen_addrs.iter().map(|a| a.to_string()).collect(),
+            node_id: self.wallet.network_public_key.to_peer_id().to_bytes(),
         }))
     }
 
@@ -397,7 +403,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<ClaimShaAtomicSwapRequest>,
     ) -> Result<Response<ClaimShaAtomicSwapResponse>, Status> {
         let message = request.into_inner();
-        let pre_image = CommsPublicKey::from_hex(&message.pre_image)
+        let pre_image = PublicKey::from_hex(&message.pre_image)
             .map_err(|_| Status::internal("pre_image is malformed".to_string()))?;
         let output = BlockHash::from_hex(&message.output)
             .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
@@ -877,23 +883,27 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        let status = self
-            .comms()
-            .connectivity()
-            .get_connectivity_status()
+        let conns = self
+            .network()
+            .get_active_connections()
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
         let mut base_node_service = self.wallet.base_node_service.clone();
 
+        let status = match conns.len() {
+            0 => tari_rpc::ConnectivityStatus::Offline,
+            _ => tari_rpc::ConnectivityStatus::Online,
+        };
+
         let resp = tari_rpc::NetworkStatusResponse {
-            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            status: status as i32,
             avg_latency_ms: base_node_service
                 .get_base_node_latency()
                 .await
                 .map_err(|err| Status::internal(err.to_string()))?
                 .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
                 .unwrap_or_default(),
-            num_node_connections: u32::try_from(status.num_connected_nodes())
+            num_node_connections: u32::try_from(conns.len())
                 .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
         };
 
@@ -904,26 +914,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        let mut connectivity = self.comms().connectivity();
-        let peer_manager = self.comms().peer_manager();
-        let connected_peers = connectivity
+        let connected_peers = self
+            .network()
             .get_active_connections()
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        let mut peers = Vec::with_capacity(connected_peers.len());
-        for conn in connected_peers {
-            peers.push(
-                peer_manager
-                    .find_by_node_id(conn.peer_node_id())
-                    .await
-                    .map_err(|err| Status::internal(err.to_string()))?
-                    .ok_or_else(|| Status::not_found(format!("Peer '{}' not found", conn.peer_node_id())))?,
-            );
-        }
-
         let resp = tari_rpc::ListConnectedPeersResponse {
-            connected_peers: peers.into_iter().map(Into::into).collect(),
+            connected_peers: connected_peers.into_iter().map(Into::into).collect(),
         };
 
         Ok(Response::new(resp))
@@ -1019,7 +1017,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
-        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
+        let validator_node_public_key = PublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let validator_node_signature = request
             .validator_node_signature

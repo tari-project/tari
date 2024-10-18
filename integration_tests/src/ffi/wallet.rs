@@ -193,7 +193,12 @@ impl Drop for Wallet {
 
 impl Wallet {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn create(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
+    pub fn create(
+        comms_config: CommsConfig,
+        base_dir: String,
+        log_path: String,
+        seed_words_ptr: *const c_void,
+    ) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
@@ -202,6 +207,8 @@ impl Wallet {
             ptr = wallet_create(
                 void_ptr,
                 comms_config.get_ptr(),
+                CString::new("wallet.dat").unwrap().into_raw(),
+                CString::new(base_dir).unwrap().into_raw(),
                 CString::new(log_path).unwrap().into_raw(),
                 11,
                 50,

@@ -26,8 +26,7 @@ use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
+use tari_common::exit_codes::ExitError;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
 
@@ -107,24 +106,6 @@ impl Tor {
 
         debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
         Ok(instance)
-    }
-
-    /// Override a given Tor comms transport with the control address and auth from this instance
-    pub fn update_comms_transport(&self, transport: &mut TransportConfig) -> Result<(), ExitError> {
-        match transport.transport_type {
-            TransportType::Tor => {
-                if let Some(ref passphrase) = self.passphrase.0 {
-                    transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
-                }
-                transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
-                debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
-                Ok(())
-            },
-            _ => {
-                let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
-                Err(ExitError::new(ExitCode::ConfigError, e))
-            },
-        }
     }
 
     /// Run the Tor instance in the background and return a handle to the thread.

@@ -32,29 +32,21 @@ use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
+use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, OutboundMessager, OutboundMessaging, ToPeerId};
 use tari_p2p::{
-    comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
-    services::{
-        liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
-        utils::map_decode,
-    },
-    tari_message::TariMessageType,
+    message::{DomainMessage, TariNodeMessageSpec},
+    proto,
+    proto::{liveness::MetadataKey, message::TariMessage},
+    services::liveness::{LivenessEvent, LivenessHandle, PingPongEvent},
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{epoch_time::EpochTime, ByteArray};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::contacts_service::{
     error::ContactsServiceError,
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceRequest, ContactsServiceResponse},
-    proto,
     storage::database::{ContactsBackend, ContactsDatabase},
     types::{Confirmation, Contact, Message, MessageDispatch},
 };
@@ -129,9 +121,9 @@ where T: ContactsBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     liveness: LivenessHandle,
     liveness_data: Vec<ContactsLivenessData>,
-    connectivity: ConnectivityRequester,
-    dht: Dht,
-    subscription_factory: Arc<SubscriptionFactory>,
+    network: NetworkHandle,
+    outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
+    messages_rx: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
     message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
     number_of_rounds_no_pings: u16,
@@ -150,9 +142,9 @@ where T: ContactsBackend + 'static
         >,
         shutdown_signal: ShutdownSignal,
         liveness: LivenessHandle,
-        connectivity: ConnectivityRequester,
-        dht: Dht,
-        subscription_factory: Arc<SubscriptionFactory>,
+        network: NetworkHandle,
+        outbound_messaging: OutboundMessaging<TariNodeMessageSpec>,
+        messages_rx: mpsc::UnboundedReceiver<DomainMessage<TariMessage>>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
         message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
         contacts_auto_ping_interval: Duration,
@@ -164,9 +156,9 @@ where T: ContactsBackend + 'static
             shutdown_signal: Some(shutdown_signal),
             liveness,
             liveness_data: Vec::new(),
-            connectivity,
-            dht,
-            subscription_factory,
+            network,
+            outbound_messaging,
+            messages_rx,
             event_publisher,
             message_publisher,
             number_of_rounds_no_pings: 0,
@@ -186,15 +178,7 @@ where T: ContactsBackend + 'static
         let liveness_event_stream = self.liveness.get_event_stream();
         pin_mut!(liveness_event_stream);
 
-        let connectivity_events = self.connectivity.get_event_subscription();
-        pin_mut!(connectivity_events);
-
-        let chat_messages = self
-            .subscription_factory
-            .get_subscription(TariMessageType::Chat, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::MessageDispatch>);
-
-        pin_mut!(chat_messages);
+        let mut network_events = self.network.subscribe_events();
 
         let shutdown = self
             .shutdown_signal
@@ -212,7 +196,7 @@ where T: ContactsBackend + 'static
         loop {
             tokio::select! {
                 // Incoming chat messages
-                Some(msg) = chat_messages.next() => {
+                Some(msg) = self.messages_rx.recv() => {
                     if let Err(err) = self.handle_incoming_message(msg).await {
                         warn!(target: LOG_TARGET, "Failed to handle incoming chat message: {}", err);
                     }
@@ -230,13 +214,12 @@ where T: ContactsBackend + 'static
                 },
 
                 Ok(event) = liveness_event_stream.recv() => {
-                    let _result = self.handle_liveness_event(&event).await.map_err(|e| {
+                    if let Err(e) =  self.handle_liveness_event(&event).await {
                         error!(target: LOG_TARGET, "Failed to handle contact status liveness event: {:?}", e);
-                        e
-                    });
+                    }
                 },
 
-                Ok(event) = connectivity_events.recv() => {
+                Ok(event) = network_events.recv() => {
                     self.handle_connectivity_event(event);
                 },
 
@@ -258,24 +241,22 @@ where T: ContactsBackend + 'static
             ContactsServiceRequest::GetContact(address) => {
                 let result = self.db.get_contact(address.clone());
                 if let Ok(ref contact) = result {
-                    self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
+                    self.liveness.check_add_monitored_peer(contact.peer_id).await?;
                 };
                 Ok(result.map(ContactsServiceResponse::Contact)?)
             },
             ContactsServiceRequest::UpsertContact(c) => {
                 self.db.upsert_contact(c.clone())?;
-                self.liveness.check_add_monitored_peer(c.node_id.clone()).await?;
+                self.liveness.check_add_monitored_peer(c.peer_id).await?;
                 info!(
                     target: LOG_TARGET,
-                    "Contact Saved: \nAlias: {}\nAddress: {}\nNodeId: {}", c.alias, c.address, c.node_id
+                    "Contact Saved: \nAlias: {}\nAddress: {}\nNodeId: {}", c.alias, c.address, c.peer_id
                 );
                 Ok(ContactsServiceResponse::ContactSaved)
             },
             ContactsServiceRequest::RemoveContact(pk) => {
                 let result = self.db.remove_contact(pk.clone())?;
-                self.liveness
-                    .check_remove_monitored_peer(result.node_id.clone())
-                    .await?;
+                self.liveness.check_remove_monitored_peer(result.peer_id).await?;
                 info!(
                     target: LOG_TARGET,
                     "Contact Removed: \nAlias: {}\nAddress: {} ", result.alias, result.address
@@ -299,12 +280,12 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
                 message.sent_at = Utc::now().naive_utc().timestamp() as u64;
-                let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
-
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
-                match self.db.save_message(message) {
+
+                match self.db.save_message(message.clone()) {
                     Ok(_) => {
-                        if let Err(e) = self.deliver_message(address.clone(), ob_message).await {
+                        let message = MessageDispatch::Message(message);
+                        if let Err(e) = self.deliver_message(address.clone(), message.into()).await {
                             trace!(target: LOG_TARGET, "Failed to broadcast a message {} over the network: {}", address, e);
                         }
                     },
@@ -318,10 +299,10 @@ where T: ContactsBackend + 'static
                 Ok(ContactsServiceResponse::MessageSent)
             },
             ContactsServiceRequest::SendReadConfirmation(address, confirmation) => {
-                let msg = OutboundDomainMessage::from(MessageDispatch::ReadConfirmation(confirmation.clone()));
                 trace!(target: LOG_TARGET, "Sending read confirmation with details: message_id: {:?}, timestamp: {:?}", confirmation.message_id, confirmation.timestamp);
 
-                match self.deliver_message(address.clone(), msg).await {
+                let msg = MessageDispatch::ReadConfirmation(confirmation.clone());
+                match self.deliver_message(address.clone(), msg.into()).await {
                     Ok(_) => {
                         trace!(target: LOG_TARGET, "Read confirmation broadcast for message_id: {:?} to {}", confirmation.message_id, address);
                         match self.db.confirm_message(
@@ -358,7 +339,7 @@ where T: ContactsBackend + 'static
 
     async fn add_contacts_to_liveness_service(&mut self, contacts: &[Contact]) -> Result<(), ContactsServiceError> {
         for contact in contacts {
-            self.liveness.check_add_monitored_peer(contact.node_id.clone()).await?;
+            self.liveness.check_add_monitored_peer(contact.peer_id).await?;
         }
         Ok(())
     }
@@ -406,7 +387,7 @@ where T: ContactsBackend + 'static
                         }
                         let data = ContactsLivenessData::new(
                             contact.address.clone(),
-                            contact.node_id.clone(),
+                            contact.peer_id,
                             contact.latency,
                             contact.last_seen,
                             ContactMessageType::NoMessage,
@@ -425,52 +406,38 @@ where T: ContactsBackend + 'static
         Ok(())
     }
 
-    async fn handle_incoming_message(
-        &mut self,
-        msg: DomainMessage<Result<proto::MessageDispatch, prost::DecodeError>>,
-    ) -> Result<(), ContactsServiceError> {
-        trace!(target: LOG_TARGET, "Handling incoming chat message dispatch {:?} from peer {}", msg, msg.source_peer.public_key);
+    async fn handle_incoming_message(&mut self, msg: DomainMessage<TariMessage>) -> Result<(), ContactsServiceError> {
+        let source_peer_id = msg.source_peer_id;
+        trace!(target: LOG_TARGET, "Handling incoming chat message dispatch {:?} from peer {}", msg, source_peer_id);
 
-        let msg_inner = match &msg.inner {
-            Ok(msg) => msg.clone(),
-            Err(e) => {
-                debug!(target: LOG_TARGET, "Banning peer {} for illformed message", msg.source_peer.public_key);
-
-                self.connectivity
-                    .ban_peer(
-                        msg.source_peer.node_id.clone(),
-                        "Peer sent illformed message".to_string(),
-                    )
-                    .await?;
-                return Err(ContactsServiceError::MalformedMessageError(e.clone()));
-            },
+        let Some(msg) = msg.into_payload().into_chat() else {
+            warn!(target: LOG_TARGET, "Received an invalid message type from peer {}", source_peer_id);
+            return Ok(());
         };
-        if let Some(source_public_key) = msg.authenticated_origin {
-            let dispatch = MessageDispatch::try_from(msg_inner).map_err(ContactsServiceError::MessageParsingError)?;
 
-            match dispatch {
-                MessageDispatch::Message(m) => self.handle_chat_message(m, source_public_key).await,
-                MessageDispatch::DeliveryConfirmation(_) | MessageDispatch::ReadConfirmation(_) => {
-                    self.handle_confirmation(dispatch.clone()).await
-                },
-            }
-        } else {
-            Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin)
+        let dispatch = MessageDispatch::try_from(msg).map_err(ContactsServiceError::MessageParsingError)?;
+
+        match dispatch {
+            MessageDispatch::Message(m) => self.handle_chat_message(m, source_peer_id).await,
+            MessageDispatch::DeliveryConfirmation(_) | MessageDispatch::ReadConfirmation(_) => {
+                self.handle_confirmation(dispatch).await
+            },
         }
     }
 
     async fn get_online_status(&self, contact: &Contact) -> Result<ContactOnlineStatus, ContactsServiceError> {
         let mut online_status = ContactOnlineStatus::NeverSeen;
-        if let Some(peer_data) = self.connectivity.get_peer_info(contact.node_id.clone()).await? {
-            if let Some(banned_until) = peer_data.banned_until() {
-                let msg = format!(
-                    "Until {} ({})",
-                    banned_until.format("%m-%d %H:%M"),
-                    peer_data.banned_reason
-                );
-                return Ok(ContactOnlineStatus::Banned(msg));
-            }
-        };
+        if let Some(peer) = self.network.get_banned_peer(contact.peer_id).await? {
+            let msg = format!(
+                "Until {} ({})",
+                peer.remaining_ban()
+                    .map(humantime::format_duration)
+                    .map(|ht| ht.to_string())
+                    .unwrap_or_else(|| "inf".to_string()),
+                peer.ban_reason
+            );
+            return Ok(ContactOnlineStatus::Banned(msg));
+        }
         if let Some(time) = contact.last_seen {
             if self.is_online(time) {
                 online_status = ContactOnlineStatus::Online;
@@ -500,7 +467,7 @@ where T: ContactsBackend + 'static
             if let Some(pos) = self
                 .liveness_data
                 .iter()
-                .position(|peer_status| *peer_status.node_id() == event.node_id)
+                .position(|peer_status| *peer_status.peer_id() == event.peer_id)
             {
                 latency = self.liveness_data[pos].latency();
                 self.liveness_data.remove(pos);
@@ -515,11 +482,11 @@ where T: ContactsBackend + 'static
             }
             let this_public_key = self
                 .db
-                .update_contact_last_seen(&event.node_id, last_seen.naive_utc(), latency)?;
+                .update_contact_last_seen(event.peer_id, last_seen.naive_utc(), latency)?;
 
             let data = ContactsLivenessData::new(
                 this_public_key,
-                event.node_id.clone(),
+                event.peer_id,
                 latency,
                 Some(last_seen.naive_utc()),
                 message_type,
@@ -536,7 +503,7 @@ where T: ContactsBackend + 'static
             trace!(
                 target: LOG_TARGET,
                 "Ping-pong metadata key from {} not recognized",
-                event.node_id
+                event.peer_id
             );
         }
         Ok(())
@@ -564,14 +531,14 @@ where T: ContactsBackend + 'static
         }
     }
 
-    fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
-        use ConnectivityEvent::{PeerBanned, PeerDisconnected};
+    fn handle_connectivity_event(&mut self, event: NetworkEvent) {
+        use NetworkEvent::{PeerBanned, PeerDisconnected};
         match event {
-            PeerDisconnected(node_id, _) | PeerBanned(node_id) => {
-                if let Some(pos) = self.liveness_data.iter().position(|p| *p.node_id() == node_id) {
+            PeerDisconnected { peer_id } | PeerBanned { peer_id } => {
+                if let Some(pos) = self.liveness_data.iter().position(|p| *p.peer_id() == peer_id) {
                     debug!(
                         target: LOG_TARGET,
-                        "Removing disconnected/banned peer `{}` from contacts status list ", node_id
+                        "Removing disconnected/banned peer `{}` from contacts status list ", peer_id
                     );
                     self.liveness_data.remove(pos);
                 }
@@ -583,9 +550,9 @@ where T: ContactsBackend + 'static
     async fn handle_chat_message(
         &mut self,
         message: Message,
-        source_public_key: CommsPublicKey,
+        source_peer_id: PeerId,
     ) -> Result<(), ContactsServiceError> {
-        if source_public_key != *message.sender_address.comms_public_key() {
+        if message.sender_address.comms_public_key().to_peer_id() == source_peer_id {
             return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
         }
         let our_message = Message {
@@ -624,10 +591,9 @@ where T: ContactsBackend + 'static
             message_id: message.message_id.clone(),
             timestamp: message.stored_at,
         });
-        let msg = OutboundDomainMessage::from(confirmation);
-        trace!(target: LOG_TARGET, "Sending a delivery notification {:?}", msg);
+        trace!(target: LOG_TARGET, "Sending a delivery notification {:?}", confirmation);
 
-        self.deliver_message(address.clone(), msg).await?;
+        self.deliver_message(address.clone(), confirmation.into()).await?;
 
         if let Err(e) = self
             .db
@@ -660,35 +626,31 @@ where T: ContactsBackend + 'static
     async fn deliver_message(
         &mut self,
         address: TariAddress,
-        message: OutboundDomainMessage<proto::MessageDispatch>,
+        message: proto::chat::MessageDispatch,
     ) -> Result<(), ContactsServiceError> {
         let contact = match self.db.get_contact(address.clone()) {
             Ok(contact) => contact,
             Err(_) => Contact::from(&address),
         };
-        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_spend_key().clone()));
 
         match self.get_online_status(&contact).await {
             Ok(ContactOnlineStatus::Online) => {
                 info!(target: LOG_TARGET, "Chat message being sent direct");
-                let mut comms_outbound = self.dht.outbound_requester();
-
-                comms_outbound
-                    .send_direct_encrypted(
-                        address.public_spend_key().clone(),
-                        message,
-                        encryption,
-                        "contact service messaging".to_string(),
-                    )
+                self.outbound_messaging
+                    .send_message(address.public_spend_key().to_peer_id(), message)
                     .await?;
             },
             Err(e) => return Err(e),
             _ => {
                 info!(target: LOG_TARGET, "Chat message being sent via closest broadcast");
-                let mut comms_outbound = self.dht.outbound_requester();
-                comms_outbound
-                    .closest_broadcast(address.public_spend_key().clone(), encryption, vec![], message)
+                // No SAF sorry :/
+                self.outbound_messaging
+                    .send_message(address.public_spend_key().to_peer_id(), message)
                     .await?;
+                // let mut comms_outbound = self.dht.outbound_requester();
+                // comms_outbound
+                //     .closest_broadcast(address.public_spend_key().clone(), encryption, vec![], message)
+                //     .await?;
             },
         };
 

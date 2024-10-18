@@ -29,15 +29,15 @@ use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
     types::FixedHashSizeError,
 };
-use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
-use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_network::NetworkError;
 use tari_p2p::services::liveness::error::LivenessError;
+use tari_rpc_framework::RpcError;
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
@@ -111,8 +111,6 @@ pub enum TransactionServiceError {
     UnexpectedBaseNodeResponse,
     #[error("The current transaction has been cancelled")]
     TransactionCancelled,
-    #[error("DHT outbound error: `{0}`")]
-    DhtOutboundError(#[from] DhtOutboundError),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Transport channel error: `{0}`")]
@@ -129,8 +127,6 @@ pub enum TransactionServiceError {
     ConversionError(#[from] TransactionConversionError),
     #[error("duration::NegativeDurationError: {0}")]
     DurationOutOfRange(#[from] NegativeDurationError),
-    #[error("Node ID error: `{0}`")]
-    NodeIdError(#[from] NodeIdError),
     #[error("Broadcast recv error: `{0}`")]
     BroadcastRecvError(#[from] RecvError),
     #[error("Broadcast send error: `{0}`")]
@@ -167,11 +163,6 @@ pub enum TransactionServiceError {
     WalletRecoveryInProgress,
     #[error("Wallet Transaction Validation already in progress, request ignored")]
     TransactionValidationInProgress,
-    #[error("Connectivity error: {source}")]
-    ConnectivityError {
-        #[from]
-        source: ConnectivityError,
-    },
     #[error("Base Node is not synced")]
     BaseNodeNotSynced,
     #[error("Value encryption error: `{0}`")]
@@ -198,6 +189,8 @@ pub enum TransactionServiceError {
     NotSupported(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

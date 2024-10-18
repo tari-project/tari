@@ -36,7 +36,6 @@
 /// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8)))).unwrap();
 /// covenant.execute(...)?;
 /// ```
-
 #[macro_export]
 macro_rules! covenant {
     ($token:ident($($args:tt)*)) => {{

@@ -26,7 +26,7 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_network::NetworkHandle;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -35,6 +35,7 @@ use crate::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::LocalNodeCommsInterface,
         state_machine_service::{
+            handle::PeerMetadataStore,
             states,
             states::{BaseNodeState, HeaderSyncState, StateEvent, StateInfo, StatusInfo, SyncStatus},
         },
@@ -89,8 +90,7 @@ impl Default for BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
-    pub(super) connectivity: ConnectivityRequester,
-    pub(super) peer_manager: Arc<PeerManager>,
+    pub(super) network: NetworkHandle,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
@@ -98,6 +98,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) consensus_rules: ConsensusManager,
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     pub(super) randomx_factory: RandomXFactory,
+    pub(super) peer_metadata: PeerMetadataStore,
     is_bootstrapped: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
@@ -105,12 +106,10 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
-
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
-        connectivity: ConnectivityRequester,
-        peer_manager: Arc<PeerManager>,
+        network: NetworkHandle,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators<B>,
@@ -118,13 +117,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         event_publisher: broadcast::Sender<Arc<StateEvent>>,
         randomx_factory: RandomXFactory,
         consensus_rules: ConsensusManager,
+        peer_metadata: PeerMetadataStore,
         interrupt_signal: ShutdownSignal,
     ) -> Self {
         Self {
             db,
             local_node_interface,
-            connectivity,
-            peer_manager,
+            network,
             metadata_event_stream,
             config,
             info: StateInfo::StartUp,
@@ -134,6 +133,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             randomx_factory,
             is_bootstrapped: false,
             consensus_rules,
+            peer_metadata,
             interrupt_signal,
         }
     }

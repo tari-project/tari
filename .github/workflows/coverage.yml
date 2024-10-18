@@ -11,7 +11,7 @@ name: Source Coverage
       - ci-coverage-*
 
 env:
-  toolchain: nightly-2024-07-07
+  toolchain: nightly-2024-08-01
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

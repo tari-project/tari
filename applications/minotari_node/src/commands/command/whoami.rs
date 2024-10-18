@@ -24,7 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use qrcode::{render::unicode, QrCode};
-use tari_utilities::hex::Hex;
+use tari_network::multiaddr::{Multiaddr, Protocol};
 
 use super::{CommandContext, HandleCommand};
 
@@ -36,30 +36,32 @@ pub struct Args {}
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.whoami()
+        self.whoami().await
     }
 }
 
 impl CommandContext {
     /// Function to process the whoami command
-    pub fn whoami(&self) -> Result<(), Error> {
-        println!("{}", self.base_node_identity);
+    pub async fn whoami(&self) -> Result<(), Error> {
+        let peer_info = self.network.get_local_peer_info().await?;
         let peer = format!(
             "{}::{}",
-            self.base_node_identity.public_key().to_hex(),
-            self.base_node_identity
-                .public_addresses()
+            peer_info.public_key.try_into_sr25519()?.inner_key(),
+            peer_info
+                .listen_addrs
                 .iter()
+                .filter(|addr| !is_loopback(addr))
                 .map(|addr| addr.to_string())
                 .collect::<Vec<_>>()
                 .join("::")
         );
+
+        println!("{}", peer);
+        println!();
         let network = self.config.network();
         let qr_link = format!(
             "tari://{}/base_nodes/add?name={}&peer={}",
-            network,
-            self.base_node_identity.node_id(),
-            peer
+            network, peer_info.peer_id, peer
         );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
@@ -72,5 +74,13 @@ impl CommandContext {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         println!("{}", image);
         Ok(())
+    }
+}
+
+fn is_loopback(addr: &Multiaddr) -> bool {
+    match addr.iter().next() {
+        Some(Protocol::Ip4(ip)) => ip.is_loopback(),
+        Some(Protocol::Ip6(ip)) => ip.is_loopback(),
+        _ => false,
     }
 }

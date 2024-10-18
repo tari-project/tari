@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Deref, time::Instant};
+use std::time::Instant;
 
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
-use tari_comms_dht::envelope::NodeDestination;
 use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_network::ToPeerId;
 use tokio::task;
 
 use super::{CommandContext, HandleCommand};
@@ -42,25 +42,50 @@ pub struct Args {
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        self.discover_peer(Box::new(args.id.into())).await
+        self.discover_peer(args.id.into()).await
     }
 }
 
 impl CommandContext {
     /// Function to process the discover-peer command
-    pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
-        let mut discovery_service = self.discovery_service.clone();
+    pub async fn discover_peer(&mut self, dest_pubkey: RistrettoPublicKey) -> Result<(), Error> {
+        let network = self.network.clone();
         task::spawn(async move {
             let start = Instant::now();
             println!("🌎 Peer discovery started.");
-            match discovery_service
-                .discover_peer(dest_pubkey.deref().clone(), NodeDestination::PublicKey(dest_pubkey))
-                .await
-            {
-                Ok(peer) => {
-                    println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
-                    println!("This peer was found:");
-                    println!("{}", peer);
+
+            let peer_id = dest_pubkey.to_peer_id();
+            match network.discover_peer(peer_id).await {
+                Ok(waiter) => match waiter.await {
+                    Ok(result) => {
+                        println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
+                        if result.did_timeout {
+                            println!(
+                                "Discovery timed out: {} peer(s) were found within the timeout",
+                                result.peers.len()
+                            )
+                        }
+
+                        match result.peers.into_iter().find(|p| p.peer_id == peer_id) {
+                            Some(peer) => {
+                                println!(
+                                    "Peer: {} Addresses: {}",
+                                    peer.peer_id,
+                                    peer.addresses
+                                        .iter()
+                                        .map(ToString::to_string)
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                );
+                            },
+                            None => {
+                                println!("☹️ Peer not found on DHT");
+                            },
+                        }
+                    },
+                    Err(_) => {
+                        println!("☠️ Network shutdown");
+                    },
                 },
                 Err(err) => {
                     println!("☠️ {}", err);

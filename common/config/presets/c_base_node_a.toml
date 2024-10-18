@@ -1,4 +1,3 @@
-
 ########################################################################################################################
 #                                                                                                                      #
 #                      Base Node Configuration Options (BaseNodeConfig)                                                #
@@ -9,18 +8,18 @@
 # help maintain the security of the Minotari token and are the surest way to preserve your privacy and be 100% sure that
 # no-one is cheating you out of your money.
 
-[igor.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_igor.json"
-
-[esmeralda.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_esmeralda.json"
-
-[stagenet.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_stagenet.json"
-
-[nextnet.base_node]
-# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
-identity_file = "config/base_node_id_nextnet.json"
+#[igor.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_igor.json"
+#
+#[esmeralda.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_esmeralda.json"
+#
+#[stagenet.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_stagenet.json"
+#
+#[nextnet.base_node]
+## A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id_nextnet.json"

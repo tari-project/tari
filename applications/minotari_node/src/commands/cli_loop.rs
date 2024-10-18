@@ -1,7 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{io, time::Duration};
+use std::{future, io, time::Duration};
 
 use crossterm::{
     cursor,
@@ -9,9 +9,11 @@ use crossterm::{
     terminal,
 };
 use futures::{FutureExt, StreamExt};
+use log::{error, info};
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
+use tari_network::NetworkError;
 use tari_shutdown::ShutdownSignal;
-use tokio::{signal, time};
+use tokio::{signal, task::JoinError, time};
 
 use crate::{
     commands::{
@@ -119,6 +121,19 @@ impl CliLoop {
         if let Some(command) = self.watch_task.take() {
             let mut interrupt = signal::ctrl_c().fuse().boxed();
             let mut software_update_notif = self.context.software_updater.update_notifier().clone();
+            let mut network_handle = self.context.take_network_join_handle();
+            // Need to check this before we do anything in handle_command_str
+            if let Some(handle) = network_handle {
+                if handle.is_finished() {
+                    log_networking_handle_result(handle.await);
+                    return;
+                }
+                network_handle = Some(handle);
+            }
+            let mut network = network_handle
+                .map(|fut| fut.boxed())
+                .unwrap_or_else(|| future::pending().boxed());
+
             let config = self.context.config.clone();
             let line = command.line();
             let interval = command
@@ -146,6 +161,10 @@ impl CliLoop {
                                 break;
                             }
                         }
+                        result = &mut network => {
+                          log_networking_handle_result(result);
+                          break;
+                        },
                         Ok(_) = software_update_notif.changed() => {
                             if let Some(ref update) = *software_update_notif.borrow() {
                                 println!(
@@ -247,5 +266,23 @@ impl CliLoop {
                 self.done = true;
             }
         }
+    }
+}
+
+fn log_networking_handle_result(result: Result<Result<(), NetworkError>, JoinError>) {
+    match result {
+        Ok(Ok(_)) => {
+            info!(target: LOG_TARGET, "ℹ️ Networking exited cleanly");
+            println!("ℹ️ Networking exited cleanly");
+        },
+        Ok(Err(err)) => {
+            error!(target: LOG_TARGET, "❗️ Networking exited with an error {err}");
+            eprintln!("❗️ Networking exited with an error {err}");
+        },
+        Err(err) => {
+            // Panic
+            error!(target: LOG_TARGET, "❗️ Networking panicked {err}");
+            eprintln!("❗️ Networking panicked {err}");
+        },
     }
 }

@@ -23,9 +23,10 @@
 use std::{convert::TryFrom, fmt::Display};
 
 use tari_max_size::MaxSizeBytes;
+use tari_p2p::proto::chat as proto;
 use tari_utilities::ByteArray;
 
-use crate::contacts_service::{error::ContactsServiceError, proto, types::MessageId};
+use crate::contacts_service::{error::ContactsServiceError, types::MessageId};
 
 #[derive(Clone, Debug, Default)]
 pub struct Confirmation {

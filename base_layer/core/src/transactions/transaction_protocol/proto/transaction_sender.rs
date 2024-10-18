@@ -26,33 +26,15 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
+use tari_p2p::proto::{
+    transaction_protocol as proto,
+    transaction_protocol::transaction_sender_message::Message as ProtoTxnSenderMessage,
+};
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
-use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
 use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
-
-impl proto::TransactionSenderMessage {
-    pub fn none() -> Self {
-        proto::TransactionSenderMessage {
-            message: Some(ProtoTxnSenderMessage::None(true)),
-        }
-    }
-
-    pub fn single(data: proto::SingleRoundSenderData) -> Self {
-        proto::TransactionSenderMessage {
-            message: Some(ProtoTxnSenderMessage::Single(data)),
-        }
-    }
-
-    pub fn multiple() -> Self {
-        proto::TransactionSenderMessage {
-            message: Some(ProtoTxnSenderMessage::Multiple(true)),
-        }
-    }
-}
 
 impl TryFrom<proto::TransactionSenderMessage> for TransactionSenderMessage {
     type Error = String;
@@ -77,11 +59,9 @@ impl TryFrom<TransactionSenderMessage> for proto::TransactionSenderMessage {
 
     fn try_from(message: TransactionSenderMessage) -> Result<Self, Self::Error> {
         let message = match message {
-            TransactionSenderMessage::None => ProtoTransactionSenderMessage::None(true),
-            TransactionSenderMessage::Single(sender_data) => {
-                ProtoTransactionSenderMessage::Single((*sender_data).try_into()?)
-            },
-            TransactionSenderMessage::Multiple => ProtoTransactionSenderMessage::Multiple(true),
+            TransactionSenderMessage::None => ProtoTxnSenderMessage::None(true),
+            TransactionSenderMessage::Single(sender_data) => ProtoTxnSenderMessage::Single((*sender_data).try_into()?),
+            TransactionSenderMessage::Multiple => ProtoTxnSenderMessage::Multiple(true),
         };
 
         Ok(Self { message: Some(message) })

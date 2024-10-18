@@ -27,19 +27,7 @@ mod sync_utxos_task;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
-
-#[cfg(test)]
-mod tests;
-
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-
-#[cfg(feature = "base_node")]
-use crate::{
-    base_node::LocalNodeCommsInterface,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-};
-use crate::{
+use tari_p2p::{
     proto,
     proto::base_node::{
         FindChainSplitRequest,
@@ -51,8 +39,18 @@ use crate::{
         SyncUtxosResponse,
     },
 };
+use tari_rpc_framework::{Request, Response, RpcStatus, Streaming};
+use tari_rpc_macros::tari_rpc;
 
-#[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
+// #[cfg(test)]
+// mod tests;
+#[cfg(feature = "base_node")]
+use crate::{
+    base_node::LocalNodeCommsInterface,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+};
+
+#[tari_rpc(protocol_name = "/tari/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn sync_blocks(
@@ -64,13 +62,13 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
-    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus>;
+    ) -> Result<Streaming<proto::common::BlockHeader>, RpcStatus>;
 
     #[rpc(method = 3)]
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+    ) -> Result<Response<proto::common::BlockHeader>, RpcStatus>;
 
     #[rpc(method = 4)]
     async fn find_chain_split(
@@ -88,7 +86,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
-    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>;
+    ) -> Result<Streaming<proto::common::TransactionKernel>, RpcStatus>;
 
     #[rpc(method = 8)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;

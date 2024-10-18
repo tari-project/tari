@@ -25,39 +25,41 @@ use std::{
     fmt::{Debug, Formatter},
     net::TcpListener,
     path::PathBuf,
-    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
-use minotari_app_utilities::identity_management::save_as_json;
+use minotari_app_utilities::identity_management::save_identity;
 use minotari_node::{run_base_node, BaseNodeConfig, GrpcMethod, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use rand::rngs::OsRng;
-use tari_common::{
-    configuration::{CommonConfig, MultiaddrList},
-    network_check::set_network_if_choice_valid,
-};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use tari_common::{configuration::CommonConfig, network_check::set_network_if_choice_valid};
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_network::{identity, multiaddr::Multiaddr};
+use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_seeds, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
     pub name: String,
     pub port: u64,
     pub grpc_port: u64,
-    pub identity: NodeIdentity,
+    pub identity: identity::Keypair,
+    pub public_key: RistrettoPublicKey,
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
     pub seed_nodes: Vec<String>,
     pub config: BaseNodeConfig,
     pub kill_signal: Shutdown,
+}
+
+impl BaseNodeProcess {
+    pub fn get_listen_addr(&self) -> Multiaddr {
+        format!("/ip4/127.0.0.1/tcp/{}", self.port).parse().unwrap()
+    }
 }
 
 impl Drop for BaseNodeProcess {
@@ -98,12 +100,13 @@ pub async fn spawn_base_node_with_config(
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
-    let base_node_identity: NodeIdentity;
-
+    let base_node_identity: identity::Keypair;
+    let base_node_identity_path;
     if let Some(node_ps) = world.base_nodes.get(&bn_name) {
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
         temp_dir_path = node_ps.temp_dir_path.clone();
+        base_node_identity_path = temp_dir_path.join("base_node_key.bin");
         base_node_config = node_ps.config.clone();
 
         base_node_identity = node_ps.identity.clone();
@@ -118,21 +121,27 @@ pub async fn spawn_base_node_with_config(
             .expect("Base dir on world")
             .join("base_nodes")
             .join(format!("{}_grpc_port_{}", bn_name.clone(), grpc_port));
+        base_node_identity_path = temp_dir_path.join("base_node_key.bin");
 
-        let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-        base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
-        save_as_json(temp_dir_path.join("base_node.json"), &base_node_identity).unwrap();
+        base_node_identity = identity::Keypair::generate_sr25519();
+        save_identity(&base_node_identity_path, &base_node_identity).unwrap();
     };
 
-    println!("Base node identity: {}", base_node_identity);
-    let identity = base_node_identity.clone();
+    println!("Base node peer id: {}", base_node_identity.public().to_peer_id());
 
     let shutdown = Shutdown::new();
     let process = BaseNodeProcess {
         name: bn_name.clone(),
         port,
         grpc_port,
-        identity,
+        identity: base_node_identity.clone(),
+        public_key: base_node_identity
+            .public()
+            .clone()
+            .try_into_sr25519()
+            .unwrap()
+            .inner_key()
+            .clone(),
         temp_dir_path: temp_dir_path.clone(),
         is_seed_node,
         seed_nodes: peers.clone(),
@@ -142,7 +151,7 @@ pub async fn spawn_base_node_with_config(
 
     let name_cloned = bn_name.clone();
 
-    let peer_addresses = get_peer_addresses(world, &peers).await;
+    let peer_seeds = get_peer_seeds(world, &peers).await;
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
@@ -153,7 +162,7 @@ pub async fn spawn_base_node_with_config(
             base_node: base_node_config,
             metrics: MetricsConfig::default(),
             peer_seeds: PeerSeedsConfig {
-                peer_seeds: peer_addresses.into(),
+                peer_seeds: peer_seeds.into(),
                 dns_seeds_use_dnssec: false,
                 ..Default::default()
             },
@@ -167,25 +176,16 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(15);
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
-        base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
-        base_node_config.base_node.tor_identity_file = PathBuf::from("base_node_tor_id.json");
+        base_node_config.base_node.identity_file = base_node_identity_path;
+        // base_node_config.base_node.tor_identity_file = PathBuf::from("base_node_tor_id.json");
         base_node_config.base_node.max_randomx_vms = 1;
+        base_node_config.base_node.p2p.enable_mdns = false;
+        base_node_config.base_node.p2p.enable_relay = false;
 
         base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
-        base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
-        base_node_config.base_node.p2p.transport.tcp.listener_address =
-            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
-        base_node_config.base_node.p2p.public_addresses = MultiaddrList::from(vec![base_node_config
-            .base_node
-            .p2p
-            .transport
-            .tcp
-            .listener_address
-            .clone()]);
-        base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
-        base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
-        base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
-        base_node_config.base_node.p2p.allow_test_addresses = true;
+        base_node_config.base_node.p2p.listen_addresses =
+            vec![format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()].into();
+        base_node_config.base_node.p2p.public_addresses = base_node_config.base_node.p2p.listen_addresses.clone();
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;

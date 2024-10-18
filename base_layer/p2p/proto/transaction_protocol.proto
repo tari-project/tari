@@ -1,0 +1,85 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "common/transaction.proto";
+import "common/types.proto";
+
+package tari.transaction_protocol;
+
+// This is the message containing the public data that the Receiver will send back to the Sender
+message RecipientSignedMessage {
+  uint64 tx_id = 1;
+  tari.common.TransactionOutput output = 2;
+  bytes public_spend_key = 3;
+  tari.common.Signature partial_signature = 4;
+  // The transaction metadata
+  TransactionMetadata metadata = 5;
+  // offset from recipient
+  bytes offset = 6;
+}
+
+message TransactionCancelledMessage {
+  // The transaction id for the cancelled transaction
+  uint64 tx_id = 1;
+}
+
+message TransactionFinalizedMessage {
+  // The transaction id for the recipient
+  uint64 tx_id = 1;
+  // The actual transaction;
+  tari.common.Transaction transaction = 2;
+}
+
+message TransactionMetadata {
+  // The absolute fee for the transaction
+  uint64 fee = 1;
+  // The earliest block this transaction can be mined
+  uint64 lock_height = 2;
+  // features of the kernel for this transaction
+  uint32 kernel_features = 3;
+  // optional burn commitment if present
+  tari.common.Commitment burned_commitment = 4;
+}
+
+message SingleRoundSenderData {
+  // The transaction id for the recipient
+  uint64 tx_id = 1;
+  // The amount, in µT, being sent to the recipient
+  uint64 amount = 2;
+  // The offset public excess for this transaction
+  bytes public_excess = 3;
+  // The sender's public nonce
+  bytes public_nonce = 4;
+  // The transaction metadata
+  TransactionMetadata metadata = 5;
+  // Plain text message to receiver
+  string message = 6;
+  // Tari script serialised script
+  bytes script = 7;
+  // Tari script offset pubkey, K_O
+  bytes sender_offset_public_key = 8;
+  // The sender's ephemeral public nonce
+  bytes ephemeral_public_nonce = 9;
+  // Output features
+  tari.common.OutputFeatures features = 10;
+  // Covenant
+  bytes covenant = 11;
+  // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
+  uint64 minimum_value_promise = 12;
+  // The version of this transaction output
+  uint32 output_version = 13;
+  // The version of this transaction kernel
+  uint32 kernel_version = 14;
+  // the sender address
+  string sender_address = 15;
+}
+
+message TransactionSenderMessage {
+  oneof message {
+    bool None = 1;
+    SingleRoundSenderData single = 2;
+    bool Multiple = 3;
+  }
+}

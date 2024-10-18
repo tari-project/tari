@@ -4,17 +4,16 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
 version = "1.7.0-pre.2"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
+tari_network = { workspace = true }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "tari_mmr",
     "transactions",
 ] }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
-tari_comms = { path = "../../comms/core", features = ["c_integration"] }
-tari_comms_dht = { path = "../../comms/dht", default-features = false }
 tari_crypto = { version = "0.21.0" }
 tari_key_manager = { path = "../key_manager" }
 tari_p2p = { path = "../p2p" }
@@ -55,9 +54,7 @@ tari_key_manager = { path = "../key_manager" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_test_utils = { path = "../../infrastructure/test_utils" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
-tari_core = { path = "../../base_layer/core", default-features = false, features = [
-    "base_node",
-] }
+tari_core = { path = "../../base_layer/core", default-features = false, features = ["base_node"] }
 borsh = "1.5"
 env_logger = "0.7.1"
 

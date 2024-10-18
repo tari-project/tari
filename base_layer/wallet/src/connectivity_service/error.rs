@@ -21,14 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::channel::{mpsc, oneshot};
-use tari_comms::connectivity::ConnectivityError;
+use tari_network::{DialError, NetworkError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum WalletConnectivityError {
     #[error("Base node has not been set")]
     BaseNodeNotSet,
-    #[error("Connectivity error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] NetworkError),
+    #[error("Dial failed: {0}")]
+    DialError(#[from] DialError),
     #[error("Service is terminated and can no longer response to requests")]
     ServiceTerminated,
     #[error("Preferred peer index is out of bounds: {0}")]

@@ -24,7 +24,7 @@ use std::{cmp::Ordering, time::Instant};
 
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
+use tari_network::identity::PeerId;
 
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
@@ -71,8 +71,8 @@ impl HeaderSyncState {
         self.sync_peers
     }
 
-    fn remove_sync_peer(&mut self, node_id: &NodeId) {
-        if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
+    fn remove_sync_peer(&mut self, peer_id: &PeerId) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.peer_id() == peer_id) {
             self.sync_peers.remove(pos);
         }
     }
@@ -93,7 +93,7 @@ impl HeaderSyncState {
                     if sync_peer.claimed_chain_metadata().accumulated_difficulty() <=
                         best_block_metadata.accumulated_difficulty()
                     {
-                        remove.push(sync_peer.node_id().clone());
+                        remove.push(*sync_peer.peer_id());
                     }
                 }
                 for node_id in remove {
@@ -111,7 +111,7 @@ impl HeaderSyncState {
             shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
             shared.consensus_rules.clone(),
-            shared.connectivity.clone(),
+            shared.network.clone(),
             &mut self.sync_peers,
             shared.randomx_factory.clone(),
             &self.local_metadata,

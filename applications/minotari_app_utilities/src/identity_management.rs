@@ -20,17 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, io, path::Path, sync::Arc};
+use std::{fs, fs::File, io, io::Write, path::Path, sync::Arc};
 
 use log::*;
-use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_common::{
     configuration::bootstrap::prompt,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity, NodeIdentity};
-use tari_utilities::hex::Hex;
+use tari_network::identity;
 
 pub const LOG_TARGET: &str = "minotari_application";
 
@@ -49,18 +47,10 @@ const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
 pub fn setup_node_identity<P: AsRef<Path>>(
     identity_file: P,
-    public_addresses: Vec<Multiaddr>,
     create_id: bool,
-    peer_features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitError> {
-    match load_node_identity(&identity_file) {
-        Ok(mut id) => {
-            id.set_peer_features(peer_features);
-            for public_address in public_addresses {
-                id.add_public_address(public_address.clone());
-            }
-            Ok(Arc::new(id))
-        },
+) -> Result<Arc<identity::Keypair>, ExitError> {
+    match load_key_pair(&identity_file) {
+        Ok(id) => Ok(Arc::new(id)),
         Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
             ExitCode::ConfigError,
             format!(
@@ -93,25 +83,15 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 
             debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
-            match create_new_node_identity(&identity_file, public_addresses, peer_features) {
-                Ok(id) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "New node identity [{}] with public key {} has been created at {}.",
-                        id.node_id(),
-                        id.public_key(),
-                        identity_file.as_ref().to_str().unwrap_or("?"),
-                    );
-                    Ok(Arc::new(id))
-                },
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
-                    Err(ExitError::new(
-                        ExitCode::ConfigError,
-                        format!("Could not create new node id. {}.", e),
-                    ))
-                },
-            }
+            let id = identity::Keypair::generate_sr25519();
+            save_identity(identity_file.as_ref(), &id).map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+            info!(
+                target: LOG_TARGET,
+                "New node identity [{}] has been created at {}.",
+                id.public().to_peer_id(),
+                identity_file.as_ref().to_str().unwrap_or("?"),
+            );
+            Ok(Arc::new(id))
         },
     }
 }
@@ -124,40 +104,13 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing a NodeIdentity on success, string indicates the reason on failure
-fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityError> {
+fn load_key_pair<P: AsRef<Path>>(path: P) -> Result<identity::Keypair, IdentityError> {
     check_identity_file(&path)?;
 
-    let id_str = fs::read_to_string(path.as_ref())?;
-    let id = json5::from_str::<NodeIdentity>(&id_str)?;
-    // Check whether the previous version has a signature and sign if necessary
-    if !id.is_signed() {
-        id.sign();
-    }
-    debug!(
-        "Node ID loaded with public key {} and Node id {}",
-        id.public_key().to_hex(),
-        id.node_id().to_hex()
-    );
+    let bytes = fs::read(path.as_ref())?;
+    let id = identity::Keypair::from_protobuf_encoding(&bytes)?;
+    debug!("Keypair {} loaded", id.public().to_peer_id(),);
     Ok(id)
-}
-
-/// Create a new node id and save it to disk
-///
-/// ## Parameters
-/// `path` - Reference to path to save the file
-/// `public_addr` - Network address of the base node
-/// `peer_features` - The features enabled for the base node
-///
-/// ## Returns
-/// Result containing the node identity, string will indicate reason on error
-fn create_new_node_identity<P: AsRef<Path>>(
-    path: P,
-    public_addresses: Vec<Multiaddr>,
-    features: PeerFeatures,
-) -> Result<NodeIdentity, IdentityError> {
-    let node_identity = NodeIdentity::random_multiple_addresses(&mut OsRng, public_addresses, features);
-    save_as_json(&path, &node_identity)?;
-    Ok(node_identity)
 }
 
 /// Loads the node identity from json at the given path
@@ -175,19 +128,6 @@ pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Op
     let contents = fs::read_to_string(path)?;
     let object = json5::from_str(&contents)?;
     Ok(Some(object))
-}
-
-/// Attempts to load the TorIdentity from the JSON file at the given path.
-///
-/// ## Parameters
-/// `path` - Path to the `TorIdentity` JSON file
-///
-/// ## Returns
-/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist,
-pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>, IdentityError> {
-    check_identity_file(&path)?;
-    let identity = load_from_json(path)?;
-    Ok(identity)
 }
 
 /// Saves the identity as json at a given path with 0600 file permissions (UNIX-only), creating it if it does not
@@ -211,6 +151,25 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
         json
     );
     fs::write(path.as_ref(), json_with_comment.as_bytes())?;
+    set_permissions(path, REQUIRED_IDENTITY_PERMS)?;
+    Ok(())
+}
+
+/// Writes bytes to the provided file.
+fn write_bytes_to_file<P: AsRef<Path>>(path: P, bytes: &[u8]) -> Result<(), IdentityError> {
+    let mut file = File::create(path)?;
+    file.write_all(bytes)?;
+    Ok(())
+}
+
+pub fn save_identity<P: AsRef<Path>>(path: P, identity: &identity::Keypair) -> Result<(), IdentityError> {
+    if let Some(p) = path.as_ref().parent() {
+        if !p.exists() {
+            fs::create_dir_all(p)?;
+        }
+    }
+    // TODO: some kind of standard encoding (e.g. pem, der) would be nice
+    write_bytes_to_file(path.as_ref(), &identity.to_protobuf_encoding()?)?;
     set_permissions(path, REQUIRED_IDENTITY_PERMS)?;
     Ok(())
 }
@@ -271,4 +230,6 @@ pub enum IdentityError {
     JsonError(#[from] json5::Error),
     #[error(transparent)]
     Io(#[from] io::Error),
+    #[error("Decoding error: {0}")]
+    DecodingError(#[from] identity::DecodingError),
 }

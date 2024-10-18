@@ -45,7 +45,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_core::{blocks::Block, transactions::aggregated_body::AggregateBody};
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
-    get_peer_addresses,
+    get_peer_seeds,
     miner::mine_block_before_submit,
     world::NodeClient,
     TariWorld,
@@ -923,7 +923,7 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
 
         let mut base_node_config = BaseNodeConfig::default();
         let peers = vec![node.clone()];
-        base_node_config.force_sync_peers = get_peer_addresses(world, &peers).await.into();
+        base_node_config.force_sync_peers = get_peer_seeds(world, &peers).await.into();
         base_node_config.storage.pruning_horizon = horizon;
 
         spawn_base_node_with_config(world, false, node_name, peers, base_node_config).await;
@@ -936,18 +936,11 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
     let mut last_num_of_peers = 0;
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        last_num_of_peers = 0;
+        let resp = client.list_connected_peers(grpc::Empty {}).await.unwrap().into_inner();
 
-        let mut peers_stream = client.get_peers(grpc::GetPeersRequest {}).await.unwrap().into_inner();
-
-        while let Some(resp) = peers_stream.next().await {
-            if let Ok(resp) = resp {
-                if let Some(_peer) = resp.peer {
-                    last_num_of_peers += 1
-                }
-            }
-        }
-
+        // TODO: This potentially includes multiple connections to the same peer. This step is mostly no longer
+        // applicable because we do not have a persistent peer list
+        last_num_of_peers = resp.connected_peers.len();
         if last_num_of_peers >= usize::try_from(num_peers).unwrap() {
             return;
         }

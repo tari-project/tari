@@ -34,10 +34,10 @@ use std::{
 };
 
 use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
+use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::transaction_components::RangeProofType;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -154,9 +154,8 @@ mod test {
     use std::str::FromStr;
 
     use tari_common::DefaultConfigLoader;
-    use tari_comms::multiaddr::Multiaddr;
 
-    use crate::config::MinerConfig;
+    use super::*;
 
     #[test]
     fn miner_configuration() {

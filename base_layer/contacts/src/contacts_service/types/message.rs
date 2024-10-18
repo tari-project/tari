@@ -26,12 +26,9 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use tari_common_types::tari_address::TariAddress;
-use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_max_size::MaxSizeBytes;
-use tari_p2p::tari_message::TariMessageType;
+use tari_p2p::proto::chat as proto;
 use tari_utilities::ByteArray;
-
-use crate::contacts_service::proto;
 
 pub(crate) const MAX_MESSAGE_ID_SIZE: usize = 36;
 pub type MessageId = MaxSizeBytes<MAX_MESSAGE_ID_SIZE>;
@@ -136,12 +133,6 @@ impl From<Message> for proto::Message {
             direction: i32::from(message.direction.as_byte()),
             message_id: message.message_id.to_vec(),
         }
-    }
-}
-
-impl From<Message> for OutboundDomainMessage<proto::Message> {
-    fn from(message: Message) -> Self {
-        Self::new(&TariMessageType::Chat, message.into())
     }
 }
 

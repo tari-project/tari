@@ -1,0 +1,60 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "common/types.proto";
+
+package tari.common;
+
+message SideChainFeature {
+  oneof side_chain_feature {
+    ValidatorNodeRegistration validator_node_registration = 1;
+    TemplateRegistration template_registration = 2;
+    ConfidentialOutputData confidential_output = 3;
+  }
+}
+
+message ValidatorNodeRegistration {
+  bytes public_key = 1;
+  Signature signature = 2;
+}
+
+message TemplateRegistration {
+  bytes author_public_key = 1;
+  Signature author_signature = 2;
+  string template_name = 3;
+  uint32 template_version = 4;
+  TemplateType template_type = 5;
+  BuildInfo build_info = 6;
+  bytes binary_sha = 7;
+  string binary_url = 8;
+}
+
+message ConfidentialOutputData {
+  bytes claim_public_key = 1;
+}
+
+message TemplateType {
+  oneof template_type {
+    WasmInfo wasm = 1;
+    FlowInfo flow = 2;
+    ManifestInfo manifest = 3;
+  }
+}
+message WasmInfo {
+  uint32 abi_version = 1;
+}
+
+message FlowInfo {
+
+}
+
+message ManifestInfo {
+
+}
+
+message BuildInfo {
+  string repo_url = 1;
+  bytes commit_hash = 2;
+}

@@ -1,9 +1,0 @@
-{
-  "node_id": "62bb030909d58160624e52af48",
-  "public_key": "d4b5066214a8568cb636cb8b734117f213a59336a73ce3fc012eaf858a3fda38",
-  "features": {
-    "bits": 3
-  },
-  "secret_key": "019388b67c5bfba732b6441f8cc5118a5547f8dea85e110da4fdd4c19936970a",
-  "public_address": "/ip4/127.0.0.1/tcp/33445"
-}
