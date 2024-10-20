@@ -90,8 +90,8 @@ impl BlockTemplateProtocol<'_> {
     ) -> Result<FinalBlockTemplateData, MmProxyError> {
         let best_block_hash = self.get_current_best_block_hash().await?;
         let existing_block_template = block_templates.blocks_contains(best_block_hash).await;
-
         let mut final_block_template = existing_block_template;
+
         let mut loop_count = 0;
         loop {
             if loop_count >= 10 {
@@ -101,6 +101,7 @@ impl BlockTemplateProtocol<'_> {
                     loop_count
                 )));
             }
+            // Invalidate the cached template as the tip is not the same anymore; force creating a new template
             if loop_count == 1 && final_block_template.is_some() {
                 final_block_template = None;
             }
@@ -210,10 +211,12 @@ impl BlockTemplateProtocol<'_> {
                 .remove_new_block_template(best_block_hash.to_vec())
                 .await;
 
-            if !self.check_expected_tip(block_height).await? {
+            if !self.check_expected_tip_and_parent(best_block_hash.as_slice()).await? {
                 debug!(
                     target: LOG_TARGET,
-                    "Chain tip has progressed past template height {}. Fetching a new block template (try {}).", block_height, loop_count
+                    "Template (height {}) not based on current chain tip anymore (with hash {}), fetching a new block \
+                    template (try {}).",
+                    block_height, best_block_hash.to_hex(), loop_count
                 );
                 continue;
             }
@@ -224,7 +227,8 @@ impl BlockTemplateProtocol<'_> {
                     .header
                     .as_ref()
                     .map(|h| h.height)
-                    .unwrap_or_default(), loop_count,
+                    .unwrap_or_default(),
+                loop_count,
                 match final_template_data.template.tari_block.header.as_ref() {
                     Some(h) => h.hash.to_hex(),
                     None => "None".to_string(),
@@ -337,22 +341,27 @@ impl BlockTemplateProtocol<'_> {
         Ok(NewBlockTemplateData { template, miner_data })
     }
 
-    /// Check if the height is more than the actual tip. So if still makes sense to compute block for that height.
-    async fn check_expected_tip(&mut self, height: u64) -> Result<bool, MmProxyError> {
+    /// Check if the height and parent hash is still as expected, so that it still makes sense to compute the block for
+    /// that height.
+    async fn check_expected_tip_and_parent(&mut self, best_block_hash: &[u8]) -> Result<bool, MmProxyError> {
         let tip = self
             .base_node_client
             .clone()
             .get_tip_info(grpc::Empty {})
             .await?
             .into_inner();
-        let tip_height = tip.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0);
+        let tip_hash = tip
+            .metadata
+            .as_ref()
+            .map(|m| m.best_block_hash.clone())
+            .unwrap_or_default();
 
-        if height <= tip_height {
+        if tip_hash != best_block_hash {
             warn!(
                 target: LOG_TARGET,
-                "Base node received next block (height={}) that has invalidated the block template (height={})",
-                tip_height,
-                height
+                "Base node received next block (hash={}) that has invalidated the block template (hash={})",
+                tip_hash.to_hex(),
+                best_block_hash.to_vec().to_hex()
             );
             return Ok(false);
         }
@@ -426,7 +435,8 @@ fn add_monero_data(
         .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
 
     let aux_chain_hashes = AuxChainHashes::try_from(vec![monero::Hash::from_slice(merge_mining_hash.as_slice())])?;
-    let tari_difficulty = miner_data.target_difficulty;
+    let tari_target_difficulty = miner_data.tari_target_difficulty;
+    let p2pool_target_difficulty = miner_data.p2pool_target_difficulty.as_ref().map(|val| val.difficulty);
     let block_template_data = BlockTemplateDataBuilder::new()
         .tari_block(
             tari_block_result
@@ -436,7 +446,8 @@ fn add_monero_data(
         .tari_miner_data(miner_data)
         .monero_seed(monero_mining_data.seed_hash)
         .monero_difficulty(monero_mining_data.difficulty)
-        .tari_difficulty(tari_difficulty)
+        .tari_target_difficulty(tari_target_difficulty)
+        .p2pool_target_difficulty(p2pool_target_difficulty)
         .tari_merge_mining_hash(merge_mining_hash)
         .aux_hashes(aux_chain_hashes.clone())
         .build()?;
@@ -454,12 +465,19 @@ fn add_monero_data(
     let blockhashing_blob = monero_rx::create_blockhashing_blob_from_block(&monero_block)?;
     let blocktemplate_blob = monero_rx::serialize_monero_block_to_hex(&monero_block)?;
 
-    let monero_difficulty = monero_mining_data.difficulty;
-    let mining_difficulty = cmp::min(monero_difficulty, tari_difficulty);
+    let mining_difficulty = cmp::min(
+        monero_mining_data.difficulty,
+        if let Some(val) = p2pool_target_difficulty {
+            cmp::min(val, tari_target_difficulty)
+        } else {
+            tari_target_difficulty
+        },
+    );
     info!(
         target: LOG_TARGET,
-        "Difficulties: Minotari ({}), Monero({}), Selected({})",
-        tari_difficulty,
+        "Difficulties: Minotari ({}), P2Pool ({:?}), Monero ({}), Selected ({})",
+        tari_target_difficulty,
+        p2pool_target_difficulty,
         monero_mining_data.difficulty,
         mining_difficulty
     );

@@ -31,6 +31,7 @@ use minotari_app_grpc::{
         pow_algo::PowAlgos,
         sha_p2_pool_client::ShaP2PoolClient,
         Block,
+        Difficulty,
         GetNewBlockRequest,
         PowAlgo,
         SubmitBlockRequest,
@@ -361,7 +362,8 @@ async fn verify_base_node_responses(
 
 struct GetNewBlockResponse {
     block: Block,
-    target_difficulty: u64,
+    tari_target_difficulty: u64,
+    p2pool_target_difficulty: Option<u64>,
 }
 
 /// Gets a new block from base node or p2pool node if its enabled in config
@@ -450,13 +452,14 @@ async fn get_new_block_base_node(
     let grpc_output = GrpcTransactionOutput::try_from(coinbase_output.clone()).map_err(MinerError::Conversion)?;
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
-    let target_difficulty = miner_data.target_difficulty;
+    let tari_target_difficulty = miner_data.tari_target_difficulty;
 
     debug!(target: LOG_TARGET, "Asking base node to assemble the MMR roots");
     let block_result = base_node_client.get_new_block(block_template).await?.into_inner();
     Ok(GetNewBlockResponse {
         block: block_result.block.ok_or_else(|| err_empty("block"))?,
-        target_difficulty,
+        tari_target_difficulty,
+        p2pool_target_difficulty: None,
     })
 }
 
@@ -485,7 +488,8 @@ async fn get_new_block_p2pool_node(
     let block = new_block_result.block.ok_or_else(|| err_empty("block response"))?;
     Ok(GetNewBlockResponse {
         block,
-        target_difficulty: block_result.target_difficulty,
+        tari_target_difficulty: block_result.tari_target_difficulty,
+        p2pool_target_difficulty: Some(block_result.p2pool_target_difficulty),
     })
 }
 
@@ -493,27 +497,71 @@ async fn submit_block(
     config: &MinerConfig,
     base_node_client: &mut BaseNodeGrpcClient,
     sha_p2pool_client: Option<&mut ShaP2PoolGrpcClient>,
+    submit_to_base_node: bool,
     block: Block,
     wallet_payment_address: &TariAddress,
+    difficulty: u64,
 ) -> Result<SubmitBlockResponse, MinerError> {
-    if config.sha_p2pool_enabled {
-        if let Some(client) = sha_p2pool_client {
-            return Ok(client
-                .submit_block(SubmitBlockRequest {
-                    block: Some(block),
-                    wallet_payment_address: wallet_payment_address.to_hex(),
-                })
+    let height = block.header.clone().unwrap_or_default().height;
+    let (mut resp_bn, mut resp_p2p) = (None, None);
+    if submit_to_base_node {
+        debug!(target: LOG_TARGET, "Submitting to base node");
+        let bn_timer = Instant::now();
+        resp_bn = Some(
+            base_node_client
+                .submit_block(block.clone())
                 .await
                 .map_err(MinerError::GrpcStatus)?
-                .into_inner());
+                .into_inner(),
+        );
+        debug!(
+            target: LOG_TARGET,
+            "Submitted block #{} to Minotari node in {:.2?} (SubmitBlock)",
+            height,
+            bn_timer.elapsed(),
+        );
+    }
+    if config.sha_p2pool_enabled {
+        if let Some(client) = sha_p2pool_client {
+            let p2p_timer = Instant::now();
+            debug!(target: LOG_TARGET, "Submitting to p2pool");
+            resp_p2p = Some(
+                client
+                    .submit_block(SubmitBlockRequest {
+                        block: Some(block),
+                        wallet_payment_address: wallet_payment_address.to_hex(),
+                        achieved_difficulty: Some(Difficulty { difficulty }),
+                    })
+                    .await
+                    .map_err(MinerError::GrpcStatus)?
+                    .into_inner(),
+            );
+            debug!(
+                target: LOG_TARGET,
+                "Submitted block #{} to p2pool in {:.2?} (SubmitBlock)",
+                height,
+                p2p_timer.elapsed(),
+            );
+        } else {
+            error!(target: LOG_TARGET, "p2pool mode enabled, but no p2pool node to submit block to");
         }
     }
 
-    Ok(base_node_client
-        .submit_block(block)
-        .await
-        .map_err(MinerError::GrpcStatus)?
-        .into_inner())
+    match (resp_bn, resp_p2p) {
+        (Some(resp_1), Some(resp_2)) => {
+            if resp_1 != resp_2 {
+                return Err(MinerError::LogicalError(
+                    "Base node and p2pool node did not agree on block submission".to_string(),
+                ));
+            }
+            Ok(resp_1)
+        },
+        (Some(resp), None) => Ok(resp),
+        (None, Some(resp)) => Ok(resp),
+        (None, None) => Err(MinerError::LogicalError(
+            "No p2pool node or base node to submit block to".to_string(),
+        )),
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -543,7 +591,11 @@ async fn mining_cycle(
     debug!(target: LOG_TARGET, "Initializing miner");
     let mut reports = Miner::init_mining(
         header.clone(),
-        block_result.target_difficulty,
+        if let Some(val) = block_result.p2pool_target_difficulty {
+            val
+        } else {
+            block_result.tari_target_difficulty
+        },
         config.num_mining_threads,
         false,
     );
@@ -582,12 +634,19 @@ async fn mining_cycle(
                 let mut mined_block = block.clone();
                 mined_block.header = Some(header);
                 // 5. Sending block to the node
+                let submit_to_base_node = if block_result.p2pool_target_difficulty.is_some() {
+                    report.difficulty >= block_result.tari_target_difficulty
+                } else {
+                    true
+                };
                 submit_block(
                     config,
                     base_node_client,
                     sha_p2pool_client.lock().await.as_mut(),
+                    submit_to_base_node,
                     mined_block,
                     wallet_payment_address,
+                    report.difficulty,
                 )
                 .await?;
                 block_submitted = true;

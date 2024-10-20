@@ -191,13 +191,13 @@ message GetNewBlockTemplateWithCoinbasesRequest{
     PowAlgo algo = 1;
     //This field should be moved to optional once optional keyword is standard
     uint64 max_weight = 2;
-    repeated  NewBlockCoinbase coinbases = 3;
+    repeated NewBlockCoinbase coinbases = 3;
 }
 
-/// request  type of GetNewBlockWithCoinbasesRequest
+/// request type of GetNewBlockWithCoinbasesRequest
 message GetNewBlockWithCoinbasesRequest{
     NewBlockTemplate new_template = 1;
-    repeated  NewBlockCoinbase coinbases = 2;
+    repeated NewBlockCoinbase coinbases = 2;
 }
 
 message NewBlockCoinbase{
@@ -218,7 +218,7 @@ message NetworkDifficultyResponse {
     uint64 sha3x_estimated_hash_rate = 6;
     uint64 randomx_estimated_hash_rate = 7;
     uint64 num_coinbases = 8;
-    repeated  bytes coinbase_extras = 9;
+    repeated bytes coinbase_extras = 9;
 }
 
 // A generic single value response for a specific height
@@ -252,7 +252,7 @@ message BlockGroupRequest {
     CalcType calc_type = 4;
 }
 
-/// GetBlockSize / GetBlockFees  Response
+/// GetBlockSize / GetBlockFees Response
 message BlockGroupResponse {
     repeated double value = 1;
     CalcType calc_type = 2;
@@ -398,10 +398,16 @@ message GetNewBlockBlobResult{
 // This is mining data for the miner asking for a new block
 message MinerData{
     PowAlgo algo = 1;
-    uint64 target_difficulty = 2;
+    uint64 tari_target_difficulty = 2;
     uint64 reward = 3;
 //    bytes merge_mining_hash =4;
     uint64 total_fees = 5;
+    PoolDifficulty p2pool_target_difficulty = 6;
+}
+
+// Pool difficulty
+message PoolDifficulty {
+    uint64 difficulty = 1;
 }
 
 // This is the request type for the Search Kernels rpc
@@ -430,7 +436,7 @@ message GetPeersResponse{
 message GetPeersRequest{}
 
 message SubmitTransactionRequest {
-    Transaction transaction  = 1;
+    Transaction transaction = 1;
 }
 
 message SubmitTransactionResponse {
@@ -441,7 +447,7 @@ enum SubmitTransactionResult {
     NONE = 0;
     ACCEPTED = 1;
     NOT_PROCESSABLE_AT_THIS_TIME = 2;
-    ALREADY_MINED =  3;
+    ALREADY_MINED = 3;
     REJECTED = 4;
 
 }
@@ -455,7 +461,7 @@ message GetMempoolTransactionsResponse {
 }
 
 message TransactionStateRequest {
-    Signature excess_sig  = 1;
+    Signature excess_sig = 1;
 }
 
 message TransactionStateResponse {
