@@ -24,6 +24,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
@@ -35,7 +36,6 @@ use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
     transactions::{
-        fee::Fee,
         key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::*,
         transaction_components::{
@@ -102,6 +102,8 @@ pub(super) struct RawTransactionInfo {
     pub metadata: TransactionMetadata,
     /// A user message sent to the receiver
     pub text_message: String,
+    /// The senders address
+    pub sender_address: TariAddress,
 }
 
 impl RawTransactionInfo {
@@ -148,6 +150,8 @@ pub struct SingleRoundSenderData {
     pub output_version: TransactionOutputVersion,
     /// The version of this transaction kernel
     pub kernel_version: TransactionKernelVersion,
+    /// The senders address
+    pub sender_address: TariAddress,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -448,6 +452,7 @@ impl SenderTransactionProtocol {
                     minimum_value_promise: recipient_minimum_value_promise,
                     output_version,
                     kernel_version,
+                    sender_address: info.sender_address.clone(),
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -714,11 +719,6 @@ impl SenderTransactionProtocol {
     /// Performs sanity checks on the collected transaction pieces prior to building the final Transaction instance
     fn validate(&self) -> Result<(), TPE> {
         if let SenderState::Finalizing(info) = &self.state {
-            let fee = info.metadata.fee;
-            // The fee must be greater than MIN_FEE to prevent spam attacks
-            if fee < Fee::MINIMUM_TRANSACTION_FEE {
-                return Err(TPE::ValidationError("Fee is less than the minimum".into()));
-            }
             // Prevent overflow attacks by imposing sane limits on some key parameters
             if info.inputs.len() > MAX_TRANSACTION_INPUTS {
                 return Err(TPE::ValidationError("Too many inputs in transaction".into()));
@@ -870,7 +870,7 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PrivateKey;
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::PrivateKey};
     use tari_crypto::signatures::CommitmentAndPublicKeySignature;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -882,7 +882,7 @@ mod test {
         test_helpers::{create_consensus_constants, create_consensus_rules},
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
@@ -1061,6 +1061,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1112,7 +1113,7 @@ mod test {
         let bob_key = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let fee_per_gram = MicroMinotari(4);
@@ -1138,6 +1139,7 @@ mod test {
                 a_change_key.script_key_id,
                 a_change_key.commitment_mask_key_id,
                 Covenant::default(),
+                TariAddress::default(),
             );
         let mut alice = builder.build().await.unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -1210,6 +1212,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn single_recipient_with_change() {
         let rules = create_consensus_rules();
         let key_manager = create_memory_db_key_manager().unwrap();
@@ -1221,7 +1224,7 @@ mod test {
         let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![]).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let expected_fee = builder.fee().calculate(
             MicroMinotari(20),
             1,
@@ -1241,6 +1244,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1335,7 +1339,7 @@ mod test {
         let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![]).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
@@ -1346,6 +1350,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1439,7 +1444,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
         builder
@@ -1451,6 +1456,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1477,7 +1483,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
         builder
@@ -1489,6 +1495,7 @@ mod test {
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await
@@ -1519,7 +1526,7 @@ mod test {
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroMinotari(25000);
         let input = create_test_input(alice_value, 0, &key_manager_alice, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
 
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager_alice.clone());
@@ -1529,11 +1536,12 @@ mod test {
             .with_fee_per_gram(MicroMinotari(20))
             .with_change_data(
                 // "colour" this output so that we can find it later
-                script!(PushInt(1) Drop Nop),
+                script!(PushInt(1) Drop Nop).unwrap(),
                 inputs!(change_params.script_key_pk),
                 change_params.script_key_id.clone(),
                 change_params.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_input(input)
             .await

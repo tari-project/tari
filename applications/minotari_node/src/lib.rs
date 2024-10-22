@@ -32,15 +32,16 @@ pub mod cli;
 mod commands;
 pub mod config;
 mod grpc;
+mod grpc_method;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod recovery;
 mod utils;
-
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
+pub use grpc_method::GrpcMethod;
 use log::*;
 use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
@@ -77,7 +78,7 @@ pub async fn run_base_node(
             base_path: data_dir_str,
             config: config_path.into_os_string().into_string().unwrap(),
             log_config: None,
-            log_level: None,
+            log_path: None,
             network: None,
             config_property_overrides: vec![],
         },

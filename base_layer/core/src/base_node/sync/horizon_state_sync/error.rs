@@ -39,6 +39,7 @@ use crate::{
     common::{BanPeriod, BanReason},
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
+    MrHashError,
 };
 
 #[derive(Debug, Error)]
@@ -100,6 +101,8 @@ pub enum HorizonSyncError {
     SMTError(#[from] SMTError),
     #[error("ByteArrayError error: {0}")]
     ByteArrayError(String),
+    #[error("FixedHash size error: {0}")]
+    MrHashError(#[from] MrHashError),
 }
 
 impl From<ByteArrayError> for HorizonSyncError {
@@ -131,7 +134,8 @@ impl HorizonSyncError {
             HorizonSyncError::ConnectivityError(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
-            HorizonSyncError::JoinError(_) => None,
+            HorizonSyncError::JoinError(_) |
+            HorizonSyncError::MrHashError(_) => None,
 
             // short ban
             err @ HorizonSyncError::MaxLatencyExceeded { .. } |

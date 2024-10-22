@@ -48,14 +48,14 @@ impl MempoolHandle {
     pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetStats).await?? {
             MempoolResponse::Stats(response) => Ok(response),
-            _ => panic!("Incorrect response"),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }
 
     pub async fn get_state(&mut self) -> Result<StateResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetState).await?? {
             MempoolResponse::State(response) => Ok(response),
-            _ => panic!("Incorrect response"),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }
 
@@ -65,7 +65,7 @@ impl MempoolHandle {
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetTxStateByExcessSig(sig)).await?? {
             MempoolResponse::TxStorage(response) => Ok(response),
-            _ => panic!("Incorrect response"),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }
 
@@ -79,7 +79,7 @@ impl MempoolHandle {
             .await??
         {
             MempoolResponse::TxStorage(response) => Ok(response),
-            _ => panic!("Incorrect response"),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }
 
@@ -94,7 +94,7 @@ impl MempoolHandle {
             .await??
         {
             MempoolResponse::FeePerGramStats { response } => Ok(response),
-            _ => panic!("Incorrect response"),
+            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }
 }

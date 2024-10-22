@@ -41,6 +41,7 @@ use minotari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
         create_wallet_connectivity_mock,
+        BaseNodePeerManager,
         WalletConnectivityHandle,
         WalletConnectivityInitializer,
         WalletConnectivityInterface,
@@ -227,11 +228,12 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
-    let wallet_type = WalletType::ProvidedKeys(ProvidedKeysWallet {
+    let wallet_type = Arc::new(WalletType::ProvidedKeys(ProvidedKeysWallet {
         public_spend_key: PublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
-    });
+        private_comms_key: Some(node_identity.secret_key().clone()),
+    }));
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -248,7 +250,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             kms_backend,
             cipher,
             factories.clone(),
-            wallet_type,
+            wallet_type.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {
@@ -265,6 +267,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             consensus_manager,
             factories,
             db.clone(),
+            wallet_type,
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
@@ -359,7 +362,7 @@ async fn setup_transaction_service_no_comms(
 
     wallet_connectivity_service_mock
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut rpc_server_connection).await);
-    wallet_connectivity_service_mock.set_base_node(node_identity.to_peer());
+    wallet_connectivity_service_mock.set_base_node(BaseNodePeerManager::new(0, vec![node_identity.to_peer()]).unwrap());
     wallet_connectivity_service_mock.base_node_changed().await;
 
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -394,6 +397,7 @@ async fn setup_transaction_service_no_comms(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
+        Network::LocalNet,
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
     )
@@ -437,6 +441,7 @@ async fn setup_transaction_service_no_comms(
         factories,
         shutdown.to_signal(),
         base_node_service_handle,
+        key_manager.get_wallet_type().await,
     )
     .await
     .unwrap();
@@ -1798,7 +1803,7 @@ async fn recover_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.clone())
+        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -1806,7 +1811,10 @@ async fn recover_one_sided_transaction() {
     assert_eq!(value, recovered_outputs_1[0].output.value);
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+    let recovered_outputs_2 = bob_oms
+        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
+        .await
+        .unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
@@ -1922,7 +1930,7 @@ async fn recover_stealth_one_sided_transaction() {
     let outputs = completed_tx.transaction.body.outputs().clone();
 
     let recovered_outputs_1 = bob_oms
-        .scan_outputs_for_one_sided_payments(outputs.clone())
+        .scan_outputs_for_one_sided_payments(outputs.iter().map(|o| (o.clone(), None)).collect())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
@@ -1930,7 +1938,10 @@ async fn recover_stealth_one_sided_transaction() {
     assert_eq!(value, recovered_outputs_1[0].output.value);
 
     // Should ignore already existing outputs
-    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+    let recovered_outputs_2 = bob_oms
+        .scan_outputs_for_one_sided_payments(outputs.into_iter().map(|o| (o, None)).collect())
+        .await
+        .unwrap();
     assert!(recovered_outputs_2.is_empty());
 }
 
@@ -2110,7 +2121,6 @@ async fn manage_multiple_transactions() {
 
     let database_path = temp_dir.path().to_str().unwrap().to_string();
 
-    // TODO: When using a memory type db connection this test fails at `assert_eq!(tx_reply, 3, "Need 3 replies");`
     let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
     let (carol_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
@@ -2550,7 +2560,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
             MicroMinotari::from(25),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -2679,7 +2689,7 @@ async fn finalize_tx_with_missing_output() {
             MicroMinotari::from(20),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -3070,11 +3080,13 @@ async fn test_power_mode_updates() {
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_ts_interface.base_node_identity.to_peer()]).unwrap());
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .notify_base_node_set(alice_ts_interface.base_node_identity.to_peer());
+        .notify_base_node_set(
+            BaseNodePeerManager::new(0, vec![alice_ts_interface.base_node_identity.to_peer()]).unwrap(),
+        );
 
     alice_ts_interface
         .base_node_rpc_mock_state
@@ -3313,7 +3325,7 @@ async fn test_transaction_cancellation() {
 
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -3335,14 +3347,15 @@ async fn test_transaction_cancellation() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -3400,7 +3413,7 @@ async fn test_transaction_cancellation() {
 
     // Lets cancel the last one using a Comms stack message
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
         MicroMinotari::from(100_000),
@@ -3420,14 +3433,15 @@ async fn test_transaction_cancellation() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -4191,7 +4205,7 @@ async fn test_restarting_transaction_protocols() {
         .await
         .unwrap()
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -4200,11 +4214,12 @@ async fn test_restarting_transaction_protocols() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         );
     let mut bob_stp = builder.build().await.unwrap();
     let msg = bob_stp.build_single_round_message(&key_manager).await.unwrap();
@@ -4288,7 +4303,7 @@ async fn test_restarting_transaction_protocols() {
 
     bob_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![base_node_identity.to_peer()]).unwrap());
     assert!(bob_ts_interface
         .transaction_service_handle
         .restart_transaction_protocols()
@@ -4328,7 +4343,7 @@ async fn test_restarting_transaction_protocols() {
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![base_node_identity.to_peer()]).unwrap());
 
     assert!(alice_ts_interface
         .transaction_service_handle
@@ -4600,7 +4615,7 @@ async fn test_resend_on_startup() {
     // First we will check the Send Tranasction message
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -4621,14 +4636,15 @@ async fn test_resend_on_startup() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -4685,7 +4701,7 @@ async fn test_resend_on_startup() {
     // Need to set something for alices base node, doesn't matter what
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(alice_ts_interface
         .transaction_service_handle
@@ -4735,7 +4751,7 @@ async fn test_resend_on_startup() {
     // Need to set something for alices base node, doesn't matter what
     alice2_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(alice2_ts_interface
         .transaction_service_handle
@@ -4819,7 +4835,7 @@ async fn test_resend_on_startup() {
     // Need to set something for bobs base node, doesn't matter what
     bob_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(bob_ts_interface
         .transaction_service_handle
@@ -4866,7 +4882,7 @@ async fn test_resend_on_startup() {
     // Need to set something for bobs base node, doesn't matter what
     bob2_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_node_identity.to_peer()]).unwrap());
 
     assert!(bob2_ts_interface
         .transaction_service_handle
@@ -5128,7 +5144,7 @@ async fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -5149,14 +5165,15 @@ async fn test_transaction_timeout_cancellation() {
         .await
         .unwrap()
         .with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(change.script_key_pk),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         )
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -5217,7 +5234,7 @@ async fn test_transaction_timeout_cancellation() {
     // Need to set something for bobs base node, doesn't matter what
     bob_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(bob_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![bob_node_identity.to_peer()]).unwrap());
     assert!(bob_ts_interface
         .transaction_service_handle
         .restart_broadcast_protocols()
@@ -5323,7 +5340,7 @@ async fn transaction_service_tx_broadcast() {
 
     alice_ts_interface
         .wallet_connectivity_service_mock
-        .set_base_node(alice_ts_interface.base_node_identity.to_peer());
+        .set_base_node(BaseNodePeerManager::new(0, vec![alice_ts_interface.base_node_identity.to_peer()]).unwrap());
 
     let connection2 = make_wallet_database_memory_connection();
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection2, None).await;

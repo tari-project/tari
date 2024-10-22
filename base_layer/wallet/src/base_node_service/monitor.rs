@@ -130,13 +130,9 @@ where
                 .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
-            trace!(
-                target: LOG_TARGET,
-                "Obtain RPC client {} ms",
-                timer.elapsed().as_millis()
-            );
+            trace!(target: LOG_TARGET, "Obtain RPC client {} ms", timer.elapsed().as_millis());
 
-            let base_node_id = match self.wallet_connectivity.get_current_base_node_id() {
+            let base_node_id = match self.wallet_connectivity.get_current_base_node_peer_node_id() {
                 Some(n) => n,
                 None => continue,
             };
@@ -155,22 +151,14 @@ where
                 .and_then(|metadata| {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
-            trace!(
-                target: LOG_TARGET,
-                "Obtain tip info in {} ms",
-                timer.elapsed().as_millis()
-            );
+            trace!(target: LOG_TARGET, "Obtain tip info in {} ms", timer.elapsed().as_millis());
 
             let timer = Instant::now();
             let latency = match client.get_last_request_latency() {
                 Some(latency) => latency,
                 None => continue,
             };
-            trace!(
-                target: LOG_TARGET,
-                "Obtain latency info in {} ms",
-                timer.elapsed().as_millis()
-            );
+            trace!(target: LOG_TARGET, "Obtain latency info in {} ms", timer.elapsed().as_millis());
 
             self.db.set_chain_metadata(chain_metadata.clone())?;
 
@@ -187,7 +175,7 @@ where
                 })
                 .await;
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Base node {} Tip: {} ({}) Latency: {} ms",
                 base_node_id,

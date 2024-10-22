@@ -25,6 +25,7 @@ use std::io::stdout;
 use clap::Parser;
 use crossterm::{execute, terminal::SetTitle};
 use log::*;
+use minotari_app_utilities::consts;
 use run_miner::start_miner;
 use tari_common::{exit_codes::ExitError, initialize_logging};
 
@@ -44,7 +45,7 @@ mod stratum;
 /// Application entry point
 #[tokio::main]
 async fn main() {
-    let terminal_title = format!("Minotari Miner - Version {}", env!("CARGO_PKG_VERSION"));
+    let terminal_title = format!("Minotari Miner - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }
@@ -66,5 +67,10 @@ async fn main_inner() -> Result<(), ExitError> {
         &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
+    info!(
+        target: LOG_TARGET,
+        "Starting Minotari Miner version: {}",
+        consts::APP_VERSION
+    );
     start_miner(cli).await
 }

@@ -103,7 +103,7 @@ impl OutputManagerServiceMock {
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
-                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.0.commitment) {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
                                 tx_id: TxId::new_random(),
@@ -127,7 +127,7 @@ impl OutputManagerServiceMock {
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
-                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.0.commitment) {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
                                 tx_id: TxId::new_random(),

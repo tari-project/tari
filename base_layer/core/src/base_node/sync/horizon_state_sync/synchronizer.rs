@@ -51,6 +51,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
     common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
+    output_mr_hash_from_smt,
     proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::transaction_components::{
         transaction_output::batch_verify_range_proofs,
@@ -783,7 +784,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     // Helper function to check the output SMT root hash against the expected root hash.
     fn check_output_smt_root_hash(output_smt: &mut OutputSmt, header: &BlockHeader) -> Result<(), HorizonSyncError> {
-        let root = FixedHash::try_from(output_smt.hash().as_slice())?;
+        let root = output_mr_hash_from_smt(output_smt)?;
         if root != header.output_mr {
             warn!(
                 target: LOG_TARGET,

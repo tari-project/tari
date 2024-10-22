@@ -25,13 +25,14 @@ use std::{marker::PhantomData, sync::Arc};
 use futures::{Stream, StreamExt};
 use log::*;
 use tari_common::configuration::Network;
+use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+        key_manager::TransactionKeyManagerInterface,
         transaction_protocol::proto::protocol as proto,
         CryptoFactories,
     },
@@ -90,6 +91,7 @@ where
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
+    wallet_type: Arc<WalletType>,
     _phantom_data: PhantomData<TKeyManagerInterface>,
 }
 
@@ -108,6 +110,7 @@ where
         consensus_manager: ConsensusManager,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<W>,
+        wallet_type: Arc<WalletType>,
     ) -> Self {
         Self {
             config,
@@ -118,6 +121,7 @@ where
             consensus_manager,
             factories,
             wallet_database: Some(wallet_database),
+            wallet_type,
             _phantom_data: Default::default(),
         }
     }
@@ -199,7 +203,7 @@ impl<T, W, TKeyManagerInterface> ServiceInitializer for TransactionServiceInitia
 where
     T: TransactionBackend + 'static,
     W: WalletBackend + 'static,
-    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -230,6 +234,7 @@ where
         let consensus_manager = self.consensus_manager.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
+        let wallet_type = self.wallet_type.clone();
         let network = self.network;
 
         context.spawn_when_ready(move |handles| async move {
@@ -260,6 +265,7 @@ where
                 factories,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
+                wallet_type,
             )
             .await
             .expect("Could not initialize Transaction Manager Service")

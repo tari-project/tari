@@ -28,7 +28,7 @@ use tari_chat_client::{
     networking::Multiaddr,
 };
 use tari_common::configuration::{MultiaddrList, Network, StringList};
-use tari_p2p::{PeerSeedsConfig, TransportConfig, TransportType, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{PeerSeedsConfig, TransportConfig, TransportType};
 
 use crate::error::{InterfaceError, LibChatError};
 
@@ -73,6 +73,7 @@ pub unsafe extern "C" fn create_chat_config(
     let mut bad_network = |e| {
         error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        ptr::null_mut::<ApplicationConfig>()
     };
 
     let network = if network_str.is_null() {
@@ -198,7 +199,6 @@ pub unsafe extern "C" fn create_chat_config(
         chat_client: chat_client_config,
         peer_seeds: PeerSeedsConfig {
             dns_seeds_use_dnssec: false,
-            dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
             dns_seeds: StringList::from(vec![format!("seeds.{}.tari.com", network.as_key_str())]),
             ..PeerSeedsConfig::default()
         },

@@ -28,9 +28,11 @@ use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
         base_node_client::BaseNodeClient,
+        pow_algo::PowAlgos,
         sha_p2_pool_client::ShaP2PoolClient,
         Block,
         GetNewBlockRequest,
+        PowAlgo,
         SubmitBlockRequest,
         SubmitBlockResponse,
         TransactionOutput as GrpcTransactionOutput,
@@ -57,7 +59,7 @@ use tari_core::{
         generate_coinbase,
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
-        transaction_components::encrypted_data::PaymentId,
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra},
     },
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
@@ -79,7 +81,13 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::main";
 #[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, cli.non_interactive_mode, &cli)?;
+    let cfg = load_configuration(
+        config_path.as_path(),
+        true,
+        cli.non_interactive_mode,
+        &cli,
+        cli.common.network,
+    )?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
 
@@ -114,18 +122,24 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", config.mining_worker_name);
         }
-        let mut mc = Controller::new(config.num_mining_threads).unwrap_or_else(|e| {
+        let mut mc = Controller::new(config.num_mining_threads).map_err(|e| {
             debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {}", e);
-            panic!("Error loading mining controller: {}", e);
-        });
+            ExitError::new(
+                ExitCode::UnknownError,
+                format!("Error loading mining controller: {}", e),
+            )
+        })?;
         let cc = crate::stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone())
-            .unwrap_or_else(|e| {
+            .map_err(|e| {
                 debug!(
                     target: LOG_TARGET_FILE,
                     "Error loading stratum client controller: {:?}", e
                 );
-                panic!("Error loading stratum client controller: {:?}", e);
-            });
+                ExitError::new(
+                    ExitCode::UnknownError,
+                    format!("Error loading mining controller: {}", e),
+                )
+            })?;
         mc.set_client_tx(cc.tx.clone());
 
         let _join_handle = thread::Builder::new()
@@ -362,7 +376,7 @@ async fn get_new_block(
 ) -> Result<GetNewBlockResponse, MinerError> {
     if config.sha_p2pool_enabled {
         if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
-            return get_new_block_p2pool_node(client).await;
+            return get_new_block_p2pool_node(config, client, wallet_payment_address).await;
         }
     }
 
@@ -416,7 +430,7 @@ async fn get_new_block_base_node(
         fee,
         reward,
         height,
-        config.coinbase_extra.as_bytes(),
+        &CoinBaseExtra::try_from(config.coinbase_extra.as_bytes().to_vec())?,
         key_manager,
         wallet_payment_address,
         true,
@@ -447,10 +461,24 @@ async fn get_new_block_base_node(
 }
 
 async fn get_new_block_p2pool_node(
+    config: &MinerConfig,
     sha_p2pool_client: &mut ShaP2PoolGrpcClient,
+    wallet_payment_address: &TariAddress,
 ) -> Result<GetNewBlockResponse, MinerError> {
+    let pow_algo = PowAlgo {
+        pow_algo: PowAlgos::Sha3x.into(),
+    };
+    let coinbase_extra = if config.coinbase_extra.trim().is_empty() {
+        String::new()
+    } else {
+        config.coinbase_extra.clone()
+    };
     let block_result = sha_p2pool_client
-        .get_new_block(GetNewBlockRequest::default())
+        .get_new_block(GetNewBlockRequest {
+            pow: Some(pow_algo),
+            coinbase_extra,
+            wallet_payment_address: wallet_payment_address.to_base58(),
+        })
         .await?
         .into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;

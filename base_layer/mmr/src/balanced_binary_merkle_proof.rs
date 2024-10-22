@@ -29,7 +29,6 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common::DomainDigest;
 use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
@@ -47,7 +46,7 @@ pub struct BalancedBinaryMerkleProof<D> {
 }
 
 impl<D> BalancedBinaryMerkleProof<D>
-where D: Digest + DomainDigest
+where D: Digest
 {
     #[must_use = "Must use the result of the proof verification"]
     pub fn verify(&self, root: &Hash, leaf_hash: Hash) -> bool {
@@ -137,7 +136,7 @@ pub struct MergedBalancedBinaryMerkleProof<D> {
 }
 
 impl<D> MergedBalancedBinaryMerkleProof<D>
-where D: Digest + DomainDigest
+where D: Digest
 {
     pub fn create_from_proofs(proofs: &[BalancedBinaryMerkleProof<D>]) -> Result<Self, BalancedBinaryMerkleProofError> {
         let heights = proofs

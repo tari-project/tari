@@ -86,6 +86,10 @@ impl OutputType {
             OutputType::ValidatorNodeRegistration | OutputType::CodeTemplateRegistration | OutputType::Burn
         )
     }
+
+    pub fn is_template_registration(&self) -> bool {
+        matches!(self, OutputType::CodeTemplateRegistration)
+    }
 }
 
 impl Default for OutputType {

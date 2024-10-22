@@ -39,6 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
         transaction_components::{
+            CoinBaseExtra,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -56,7 +57,6 @@ use crate::{
         },
     },
 };
-
 //---------------------------------- TransactionKernel --------------------------------------------//
 
 impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
@@ -362,7 +362,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            features.coinbase_extra,
+            CoinBaseExtra::try_from(features.coinbase_extra).map_err(|e| e.to_string())?,
             sidechain_feature,
             RangeProofType::from_byte(range_proof_type)
                 .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
@@ -375,7 +375,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
         Self {
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
-            coinbase_extra: features.coinbase_extra,
+            coinbase_extra: features.coinbase_extra.to_vec(),
             version: features.version as u32,
             sidechain_feature: features.sidechain_feature.map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-const SAFETY_HEIGHT_MARGIN: u64 = 1000;
+const SAFETY_HEIGHT_MARGIN: u64 = 3000;
 
 use std::sync::Arc;
 
@@ -52,11 +52,12 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     // height or current tip height with safety margin to determine if these should be returned
     let last_mined_transaction = db.fetch_last_mined_transaction().unwrap_or_default();
 
-    let height_with_margin = tip_height.saturating_sub(SAFETY_HEIGHT_MARGIN);
     let check_height = if let Some(tx) = last_mined_transaction {
-        tx.mined_height.unwrap_or(height_with_margin)
+        tx.mined_height
+            .unwrap_or(tip_height)
+            .saturating_sub(SAFETY_HEIGHT_MARGIN)
     } else {
-        height_with_margin
+        tip_height.saturating_sub(SAFETY_HEIGHT_MARGIN)
     };
 
     let mut all_detected_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
@@ -78,7 +79,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     };
     all_detected_transactions.append(&mut unconfirmed_detected);
 
-    let mut unmined_coinbases_detected = match db.get_unmined_coinbase_transactions(height_with_margin) {
+    let mut unmined_coinbases_detected = match db.get_unmined_coinbase_transactions(check_height) {
         Ok(txs) => txs,
         Err(e) => {
             error!(
@@ -145,17 +146,18 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
         let num_confirmations = tip_height.saturating_sub(mined_height);
-        debug!(
-            target: LOG_TARGET,
+
+        let log_msg = format!(
             "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \
              output_status({}), is_valid({})",
-            tx.tx_id,
-            mined_height,
-            must_be_confirmed,
-            num_confirmations,
-            output_status,
-            is_valid,
+            tx.tx_id, mined_height, must_be_confirmed, num_confirmations, output_status, is_valid
         );
+        if num_confirmations <= 5 {
+            debug!(target: LOG_TARGET, "{}", log_msg);
+        } else {
+            trace!(target: LOG_TARGET, "{}", log_msg);
+        }
+
         let result = db.set_transaction_mined_height(
             tx.tx_id,
             mined_height,

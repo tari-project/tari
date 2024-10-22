@@ -1,2 +1,0 @@
-Generated using [get_root_ksks.rs](https://github.com/bluejekyll/trust-dns/blob/main/util/src/get_root_ksks.rs)
-See [here](https://github.com/bluejekyll/trust-dns/blob/main/crates/proto/src/rr/dnssec/roots/README.md) for more info.

@@ -59,6 +59,10 @@ impl AccumulatedDifficulty {
         self.0.checked_add(u128::from(d.as_u64())).map(AccumulatedDifficulty)
     }
 
+    pub fn checked_sub_difficulty(&self, d: Difficulty) -> Option<AccumulatedDifficulty> {
+        self.0.checked_sub(u128::from(d.as_u64())).map(AccumulatedDifficulty)
+    }
+
     pub fn to_be_bytes(&self) -> Vec<u8> {
         self.0.to_be_bytes().to_vec()
     }

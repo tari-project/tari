@@ -119,6 +119,7 @@ where
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
+        let network = self.network.as_network();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -133,6 +134,7 @@ where
                 constants,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
+                network,
                 connectivity,
                 key_manager,
             )

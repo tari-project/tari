@@ -3,27 +3,34 @@ name = "tari_chat_client"
 authors = ["The Tari Development Community"]
 description = "Tari cucumber chat client"
 license = "BSD-3-Clause"
-version.workspace = true
+version = "1.7.0-pre.3"
 
-edition.workspace = true
+edition = "2018"
 
 [dependencies]
-minotari_app_utilities = { workspace = true }
-tari_common = { workspace = true }
-tari_common_sqlite = { workspace = true }
-tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
-tari_comms_dht = { workspace = true }
-tari_contacts = { workspace = true }
-tari_p2p = { workspace = true }
-tari_service_framework = { workspace = true }
-tari_shutdown = { workspace = true }
-tari_storage = { workspace = true }
+minotari_app_utilities = { path = "../../../../applications/minotari_app_utilities" }
+tari_common = { path = "../../../../common" }
+tari_common_sqlite = { path = "../../../../common_sqlite" }
+tari_common_types = { path = "../../../common_types" }
+tari_comms = { path = "../../../../comms/core" }
+tari_comms_dht = { path = "../../../../comms/dht" }
+tari_contacts = { path = "../../../contacts" }
+tari_max_size = { path = "../../../../infrastructure/max_size" }
+tari_p2p = { path = "../../../p2p" }
+tari_service_framework = { path = "../../../service_framework" }
+tari_shutdown = { path = "../../../../infrastructure/shutdown" }
+tari_storage = { path = "../../../../infrastructure/storage" }
 
 anyhow = "1.0.41"
 async-trait = "0.1.52"
 config = { version = "0.14.0" }
-diesel = { version = "2.0.3", features = ["sqlite", "r2d2", "serde_json", "chrono", "64-column-tables"] }
+diesel = { version = "2.2.4", features = [
+    "sqlite",
+    "r2d2",
+    "serde_json",
+    "chrono",
+    "64-column-tables",
+] }
 lmdb-zero = "0.4.4"
 log = "0.4.17"
 rand = "0.8"

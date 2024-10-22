@@ -6,8 +6,8 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version.workspace = true
-edition.workspace = true
+version = "1.7.0-pre.3"
+edition = "2018"
 
 [lib]
 proc-macro = true
@@ -19,10 +19,10 @@ quote = "1.0.7"
 syn = { version = "1.0.38", features = ["fold", "full", "extra-traits"] }
 
 [dev-dependencies]
-tari_comms = { workspace = true, features = ["rpc"] }
-tari_test_utils = { workspace = true }
+tari_comms = { path = "../core", features = ["rpc"] }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 futures = "0.3.5"
-prost = "0.11.9"
+prost = "0.13.3"
 tokio = { version = "1", features = ["macros"] }
 tower-service = "0.3"

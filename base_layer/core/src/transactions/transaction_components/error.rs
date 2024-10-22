@@ -78,12 +78,14 @@ pub enum TransactionError {
     #[cfg(feature = "ledger")]
     #[error("Ledger device error: {0}")]
     LedgerDeviceError(#[from] LedgerDeviceError),
-    #[error("Ledger is not supported")]
-    LedgerNotSupported,
+    #[error("Ledger is not supported: {0}")]
+    LedgerNotSupported(String),
     #[error("Transaction has a zero weight, not possible")]
     ZeroWeight,
     #[error("Output with commitment {0} not found in transaction body")]
     OutputNotFound(String),
+    #[error("Unsupported TariKeyId: `{0}`")]
+    UnsupportedTariKeyId(String),
 }
 
 impl From<KeyManagerServiceError> for TransactionError {

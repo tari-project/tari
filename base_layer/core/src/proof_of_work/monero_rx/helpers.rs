@@ -43,6 +43,7 @@ use super::{
 };
 use crate::{
     blocks::BlockHeader,
+    common::AuxChainHashes,
     consensus::ConsensusManager,
     proof_of_work::{
         monero_rx::merkle_tree_parameters::MerkleTreeParameters,
@@ -52,6 +53,7 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
+
 ///  Calculates the achieved Monero difficulty for the `BlockHeader`. An error is returned if the BlockHeader does not
 /// contain valid Monero PoW data.
 pub fn randomx_difficulty(
@@ -61,9 +63,9 @@ pub fn randomx_difficulty(
     consensus: &ConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
-    debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
+    trace!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
-    let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
+    let vm = randomx_factory.create(monero_pow_data.randomx_key(), None, None)?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
 }
 
@@ -234,7 +236,7 @@ pub fn serialize_monero_block_to_hex(obj: &monero::Block) -> Result<String, Merg
 pub fn construct_monero_data(
     block: monero::Block,
     seed: FixedByteArray,
-    ordered_aux_chain_hashes: Vec<monero::Hash>,
+    ordered_aux_chain_hashes: AuxChainHashes,
     tari_hash: FixedHash,
 ) -> Result<MoneroPowData, MergeMineError> {
     let hashes = create_ordered_transaction_hashes_from_block(&block);
@@ -403,7 +405,7 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{PowAlgorithm, ProofOfWork};
+    use crate::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -596,7 +598,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
         MoneroPowData::from_header(&block_header, &rules).unwrap();
@@ -704,7 +706,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
 
@@ -775,7 +777,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
         let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
@@ -851,7 +853,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
         let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
@@ -947,7 +949,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
 
@@ -1083,7 +1085,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
         let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
@@ -1140,7 +1142,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
         let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
@@ -1216,7 +1218,7 @@ mod test {
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::RandomX,
-            pow_data: serialized,
+            pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
         let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
@@ -1243,7 +1245,7 @@ mod test {
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
         let rx = RandomXFactory::default();
 
-        let (difficulty, hash) = get_random_x_difficulty(&input, &rx.create(&key).unwrap()).unwrap();
+        let (difficulty, hash) = get_random_x_difficulty(&input, &rx.create(&key, None, None).unwrap()).unwrap();
         assert_eq!(
             hash.to_hex(),
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"

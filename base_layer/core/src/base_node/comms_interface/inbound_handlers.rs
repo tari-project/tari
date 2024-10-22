@@ -119,7 +119,7 @@ where B: BlockchainBackend + 'static
     /// Handle inbound node comms requests from remote nodes and local services.
     #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
-        debug!(target: LOG_TARGET, "Handling remote request {}", request);
+        trace!(target: LOG_TARGET, "Handling remote request {}", request);
         match request {
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
@@ -261,10 +261,15 @@ where B: BlockchainBackend + 'static
                 if last_seen_hash != FixedHash::default() && best_block_header.hash() != &last_seen_hash {
                     warn!(
                         target: LOG_TARGET,
-                        "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'.",
+                        "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'. This condition \
+                         should auto correct with the next block template request",
                         last_seen_hash, best_block_header.hash()
                     );
-                    return Err(CommsInterfaceError::InternalError("Mempool out of sync".to_string()));
+                    return Err(CommsInterfaceError::InternalError(
+                        "Mempool out of sync, blockchain db advanced passed current tip in mempool storage; this \
+                         should auto correct with the next block template request"
+                            .to_string(),
+                    ));
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);

@@ -224,7 +224,8 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             destination,
             message_signature: header.message_signature,
             ephemeral_public_key,
-            message_type: DhtMessageType::from_i32(header.message_type).ok_or(DhtMessageError::InvalidMessageType)?,
+            message_type: DhtMessageType::try_from(header.message_type)
+                .map_err(|_| DhtMessageError::InvalidMessageType)?,
             flags: DhtMessageFlags::from_bits(header.flags).ok_or(DhtMessageError::InvalidMessageFlags)?,
             message_tag: MessageTag::from(header.message_tag),
             expires,

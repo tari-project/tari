@@ -121,6 +121,7 @@ pub unsafe extern "C" fn create_chat_client(
     let mut bad_identity = |e| {
         error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        ptr::null_mut::<ChatClient>()
     };
 
     let identity = match setup_node_identity(

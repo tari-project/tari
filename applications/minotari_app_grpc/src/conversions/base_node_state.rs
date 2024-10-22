@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::borrow::Borrow;
-
 use tari_core::base_node::state_machine_service::states::{
     StateInfo,
     StateInfo::{BlockSync, Connecting, HeaderSync, HorizonSync, Listening, StartUp, SyncFailed},
@@ -29,9 +27,9 @@ use tari_core::base_node::state_machine_service::states::{
 
 use crate::tari_rpc as grpc;
 
-impl<T: Borrow<StateInfo>> From<T> for grpc::BaseNodeState {
-    fn from(info: T) -> Self {
-        match info.borrow() {
+impl From<&StateInfo> for grpc::BaseNodeState {
+    fn from(info: &StateInfo) -> Self {
+        match info {
             StartUp => grpc::BaseNodeState::HeaderSync,
             HeaderSync(_) => grpc::BaseNodeState::HeaderSync,
             HorizonSync(_) => grpc::BaseNodeState::HorizonSync,

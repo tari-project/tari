@@ -24,6 +24,7 @@ use std::process;
 
 use clap::Parser;
 use log::*;
+use minotari_app_utilities::consts;
 use minotari_console_wallet::{run_wallet_with_cli, ApplicationConfig, Cli};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
@@ -69,12 +70,24 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
-
-    let cfg = load_configuration(cli.common.config_path(), true, cli.non_interactive_mode, &cli)?;
+    let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("wallet"),
-        &cli.common.get_base_path(),
+        cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
+    )?;
+    info!(
+        target: LOG_TARGET,
+        "Starting Minotari Console Wallet version: {}",
+        consts::APP_VERSION
+    );
+
+    let cfg = load_configuration(
+        cli.common.config_path(),
+        true,
+        cli.non_interactive_mode,
+        &cli,
+        cli.common.network,
     )?;
 
     if cli.profile_with_tokio_console {

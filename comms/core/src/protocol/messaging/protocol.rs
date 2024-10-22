@@ -295,11 +295,11 @@ impl MessagingProtocol {
             }
         };
 
-        debug!(target: LOG_TARGET, "Sending message {}", out_msg);
+        trace!(target: LOG_TARGET, "Sending message {}", out_msg);
         let tag = out_msg.tag;
         match sender.send(out_msg) {
             Ok(_) => {
-                debug!(target: LOG_TARGET, "Message ({}) dispatched to outbound handler", tag,);
+                trace!(target: LOG_TARGET, "Message ({}) dispatched to outbound handler", tag,);
                 Ok(())
             },
             Err(err) => {
@@ -361,7 +361,7 @@ impl MessagingProtocol {
         match notification.event {
             // Peer negotiated to speak the messaging protocol with us
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "NewInboundSubstream for peer '{}'",
                     node_id.short_str()

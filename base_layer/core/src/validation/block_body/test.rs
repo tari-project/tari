@@ -22,7 +22,7 @@
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
@@ -37,7 +37,7 @@ use crate::{
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     transactions::{
         aggregated_body::AggregateBody,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch},
+        key_manager::TariKeyId,
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
@@ -363,10 +363,7 @@ async fn it_checks_input_maturity() {
         err,
         ValidationError::TransactionError(TransactionError::InputMaturity)
     ));
-    assert!(matches!(
-        err,
-        ValidationError::TransactionError(TransactionError::InputMaturity)
-    ));
+    unpack_enum!(ValidationError::TransactionError(TransactionError::InputMaturity) = err);
 }
 
 #[tokio::test]
@@ -410,7 +407,7 @@ async fn it_limits_the_script_byte_size() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-    schema1.script = script!(Nop Nop Nop);
+    schema1.script = script!(Nop Nop Nop).unwrap();
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
@@ -436,11 +433,11 @@ async fn it_limits_the_encrypted_data_byte_size() {
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
 
     let mut schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
-    schema1.script = script!(Nop Nop Nop);
+    schema1.script = script!(Nop Nop Nop).unwrap();
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
-    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 257]);
+    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]);
     txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 

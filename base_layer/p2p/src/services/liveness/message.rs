@@ -47,6 +47,6 @@ impl PingPongMessage {
 
     /// Return the kind of PingPong message. Either a ping or pong.
     pub fn kind(&self) -> Option<PingPong> {
-        PingPong::from_i32(self.ping_pong)
+        PingPong::try_from(self.ping_pong).ok()
     }
 }

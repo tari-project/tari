@@ -24,7 +24,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    connectivity_service::{create_wallet_connectivity_mock, BaseNodePeerManager, WalletConnectivityMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -42,7 +42,10 @@ use minotari_wallet::{
     transaction_service::handle::TransactionServiceHandle,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, FixedHash, PublicKey},
 };
@@ -59,13 +62,7 @@ use tari_core::{
     proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
-        },
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
@@ -138,7 +135,8 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
-    wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity_mock
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     wallet_connectivity_mock.base_node_changed().await;
 
     let service = BaseNodeWalletRpcMockService::new();
@@ -169,6 +167,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
+        Network::LocalNet,
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
     )
@@ -232,6 +231,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
+        Network::LocalNet,
         connectivity,
         key_manager.clone(),
     )
@@ -264,7 +264,7 @@ async fn generate_sender_transaction_message(
         .await
         .unwrap()
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -275,11 +275,12 @@ async fn generate_sender_transaction_message(
 
     let change = TestParams::new(key_manager).await;
     builder.with_change_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         inputs!(change.script_key_pk),
         change.script_key_id,
         change.commitment_mask_key_id,
         Covenant::default(),
+        TariAddress::default(),
     );
 
     let mut stp = builder.build().await.unwrap();
@@ -400,7 +401,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -436,7 +437,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             String::new(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -530,7 +531,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -612,7 +613,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -640,7 +641,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -735,7 +736,7 @@ async fn test_utxo_selection_with_tx_priority() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -781,7 +782,7 @@ async fn send_not_enough_funds() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -810,7 +811,7 @@ async fn send_no_change() {
     );
     let value1 = 5000;
     let uo_1 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         MicroMinotari::from(value1),
@@ -825,7 +826,7 @@ async fn send_no_change() {
         .unwrap();
     let value2 = 8000;
     let uo_2 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         MicroMinotari::from(value2),
@@ -877,7 +878,7 @@ async fn send_not_enough_for_change() {
     let fee_without_change = Fee::new(*constants.transaction_weight_params()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = MicroMinotari(500);
     let uo_1 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         value1,
@@ -891,7 +892,7 @@ async fn send_not_enough_for_change() {
         .unwrap();
     let value2 = MicroMinotari(800);
     let uo_2 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&oms.key_manager_handle).await,
         value2,
@@ -914,7 +915,7 @@ async fn send_not_enough_for_change() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -955,7 +956,7 @@ async fn cancel_transaction() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1060,7 +1061,7 @@ async fn test_get_balance() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1131,7 +1132,7 @@ async fn sending_transaction_persisted_while_offline() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1164,7 +1165,7 @@ async fn sending_transaction_persisted_while_offline() {
             MicroMinotari::from(4),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1371,6 +1372,7 @@ async fn test_txo_validation() {
         &oms.key_manager_handle,
     )
     .await;
+    let output3_tx_output = output3.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(3u64), output3.clone(), None)
@@ -1391,7 +1393,7 @@ async fn test_txo_validation() {
     block_headers.insert(4, block4_header.clone());
     oms.base_node_wallet_rpc_mock_state.set_blocks(block_headers.clone());
 
-    // These responses will mark outputs 1 and 2 and mined confirmed
+    // These responses will mark outputs 1,2,3 and mined confirmed
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
@@ -1407,6 +1409,13 @@ async fn test_txo_validation() {
             output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
+        UtxoQueryResponse {
+            output: Some(output3_tx_output.clone().try_into().unwrap()),
+            mined_at_height: 1,
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output3_tx_output.hash().to_vec(),
+            mined_timestamp: 0,
+        },
     ];
 
     let utxo_query_responses = UtxoQueryResponses {
@@ -1418,11 +1427,17 @@ async fn test_txo_validation() {
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses.clone());
 
-    // This response sets output1 and output2 as mined, not spent
+    // This response sets output1 and output2, output3 as mined, not spent
     let query_deleted_response = QueryDeletedResponse {
         best_block_hash: block4_header.hash().to_vec(),
         best_block_height: 4,
         data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
             QueryDeletedData {
                 mined_at_height: 1,
                 block_mined_in: block1_header.hash().to_vec(),
@@ -1516,7 +1531,7 @@ async fn test_txo_validation() {
 
     // Output 1:    Spent in Block 5 - Unconfirmed
     // Output 2:    Mined block 1   Confirmed Block 4
-    // Output 3:    Imported so will have Unspent status.
+    // Output 3:    Mined block 1   Confirmed Block 4.
     // Output 4:    Received in Block 5 - Unconfirmed - Change from spending Output 1
     // Output 5:    Received in Block 5 - Unconfirmed
     // Output 6:    Coinbase from Block 5 - Unconfirmed
@@ -1539,6 +1554,13 @@ async fn test_txo_validation() {
             mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
+            mined_timestamp: 0,
+        },
+        UtxoQueryResponse {
+            output: Some(output3_tx_output.clone().try_into().unwrap()),
+            mined_at_height: 1,
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output3_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
@@ -1584,6 +1606,12 @@ async fn test_txo_validation() {
                 block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
                 mined_at_height: 5,
                 block_mined_in: block5_header.hash().to_vec(),
                 height_deleted_at: 0,
@@ -1615,14 +1643,14 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    assert_eq!(utxo_query_calls[0].len(), 3);
+    assert_eq!(utxo_query_calls[0].len(), 2);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].hashes.len(), 4);
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1662,7 +1690,7 @@ async fn test_txo_validation() {
         .unwrap();
 
     // The spent transaction is not checked during this second validation
-    assert_eq!(utxo_query_calls[0].len(), 3);
+    assert_eq!(utxo_query_calls[0].len(), 2);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
@@ -1670,7 +1698,7 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    assert_eq!(query_deleted_calls[0].hashes.len(), 4);
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1683,26 +1711,6 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(1000000));
     assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));
     assert_eq!(MicroMinotari::from(0), balance.time_locked_balance.unwrap());
-
-    // Trigger another validation and only Output3 should be checked
-    oms.output_manager_handle.validate_txos().await.unwrap();
-
-    let utxo_query_calls = oms
-        .base_node_wallet_rpc_mock_state
-        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-    assert_eq!(utxo_query_calls.len(), 1);
-    assert_eq!(utxo_query_calls[0].len(), 1);
-    assert_eq!(
-        utxo_query_calls[0][0],
-        output3
-            .to_transaction_output(&oms.key_manager_handle)
-            .await
-            .unwrap()
-            .hash()
-            .to_vec()
-    );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
     // Output 1:    Spent in Block 5 - Unconfirmed
@@ -1736,6 +1744,13 @@ async fn test_txo_validation() {
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
+            output: Some(output3_tx_output.clone().try_into().unwrap()),
+            mined_at_height: 1,
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output3_tx_output.hash().to_vec(),
+            mined_timestamp: 0,
+        },
+        UtxoQueryResponse {
             output: Some(output4_tx_output.clone().try_into().unwrap()),
             mined_at_height: 5,
             mined_in_block: block5_header_reorg.hash().to_vec(),
@@ -1763,6 +1778,12 @@ async fn test_txo_validation() {
                 block_mined_in: block1_header.hash().to_vec(),
                 height_deleted_at: 5,
                 block_deleted_in: block5_header_reorg.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
                 mined_at_height: 1,
@@ -1922,7 +1943,7 @@ async fn test_txo_revalidation() {
     let output1_value = 1_000_000;
     let key_manager = create_memory_db_key_manager().unwrap();
     let output1 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(output1_value),
@@ -1938,7 +1959,7 @@ async fn test_txo_revalidation() {
 
     let output2_value = 2_000_000;
     let output2 = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(output2_value),
@@ -2164,9 +2185,7 @@ async fn scan_for_recovery_test() {
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask_key.key_id.managed_index().unwrap(),
+            key: (&commitment_mask_key.key_id).into(),
         };
         let public_script_key = oms
             .key_manager_handle
@@ -2186,7 +2205,7 @@ async fn scan_for_recovery_test() {
             MicroMinotari::from(amount),
             commitment_mask_key.key_id,
             features,
-            script!(Nop),
+            script!(Nop).unwrap(),
             inputs!(public_script_key),
             script_key_id,
             PublicKey::default(),
@@ -2218,12 +2237,18 @@ async fn scan_for_recovery_test() {
     }
     let mut recoverable_outputs = Vec::new();
     for output in &recoverable_wallet_outputs {
-        recoverable_outputs.push(output.to_transaction_output(&oms.key_manager_handle).await.unwrap());
+        recoverable_outputs.push((
+            output.to_transaction_output(&oms.key_manager_handle).await.unwrap(),
+            None,
+        ));
     }
 
     let mut non_recoverable_outputs = Vec::new();
     for output in non_recoverable_wallet_outputs {
-        non_recoverable_outputs.push(output.to_transaction_output(&oms.key_manager_handle).await.unwrap());
+        non_recoverable_outputs.push((
+            output.to_transaction_output(&oms.key_manager_handle).await.unwrap(),
+            None,
+        ));
     }
 
     oms.output_manager_handle
@@ -2238,7 +2263,7 @@ async fn scan_for_recovery_test() {
                 .clone()
                 .into_iter()
                 .chain(non_recoverable_outputs.clone().into_iter())
-                .collect::<Vec<TransactionOutput>>(),
+                .collect::<Vec<(TransactionOutput, Option<TxId>)>>(),
         )
         .await
         .unwrap();
@@ -2273,7 +2298,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let result = oms
         .output_manager_handle
-        .scan_for_recoverable_outputs(vec![rewindable_output])
+        .scan_for_recoverable_outputs(vec![(rewindable_output, None)])
         .await;
     assert!(
         matches!(result.as_deref(), Ok([])),

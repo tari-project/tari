@@ -49,7 +49,7 @@ pub fn pubsub_connector(buf_size: usize) -> (PubsubDomainConnector, Subscription
         wrappers::ReceiverStream::new(receiver)
             // Map DomainMessage into a TopicPayload
             .filter_map(move |msg: Arc<PeerMessage>| {
-                let opt = match TariMessageType::from_i32(msg.message_header.message_type) {
+                let opt = match TariMessageType::try_from(msg.message_header.message_type).ok() {
                     Some(msg_type) => {
                         let message_tag_trace = msg.dht_header.message_tag;
                         let payload = TopicPayload::new(msg_type, msg);

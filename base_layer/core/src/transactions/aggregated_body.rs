@@ -265,6 +265,16 @@ impl AggregateBody {
         Ok(fee)
     }
 
+    pub fn get_coinbase_outputs(&self) -> Vec<&TransactionOutput> {
+        let mut outputs = vec![];
+        for utxo in self.outputs() {
+            if utxo.features.output_type == OutputType::Coinbase {
+                outputs.push(utxo);
+            }
+        }
+        outputs
+    }
+
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
     /// 1. The coinbase output's maturity is correctly set
@@ -423,6 +433,18 @@ impl AggregateBody {
             outputs: self.outputs.clone(),
             kernels: self.kernels.clone(),
         }
+    }
+
+    // Searches though all outputs to see if it contains a burned feature flag
+    pub fn contains_burn(&self) -> bool {
+        self.outputs.iter().any(|k| k.features.output_type == OutputType::Burn)
+    }
+
+    // Searches though all outputs to see if it contains a coinbase feature flag
+    pub fn contains_coinbase(&self) -> bool {
+        self.outputs
+            .iter()
+            .any(|k| k.features.output_type == OutputType::Coinbase)
     }
 }
 

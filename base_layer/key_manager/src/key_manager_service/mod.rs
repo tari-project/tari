@@ -49,6 +49,6 @@ mod service;
 pub use service::KeyManagerInner;
 
 mod interface;
-pub use interface::KeyId;
+pub use interface::{KeyId, SerializedKeyString};
 pub mod storage;
 pub use interface::{AddResult, KeyAndId, KeyManagerBranch, KeyManagerInterface};

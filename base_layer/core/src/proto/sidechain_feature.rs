@@ -25,10 +25,10 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{PublicKey, Signature};
+use tari_max_size::MaxSizeString;
 use tari_utilities::ByteArray;
 
 use crate::{
-    consensus::MaxSizeString,
     proto,
     transactions::transaction_components::{
         BuildInfo,
@@ -278,7 +278,7 @@ impl From<BuildInfo> for proto::types::BuildInfo {
     fn from(value: BuildInfo) -> Self {
         Self {
             repo_url: value.repo_url.into_string(),
-            commit_hash: value.commit_hash.into_vec(),
+            commit_hash: value.commit_hash.to_vec(),
         }
     }
 }

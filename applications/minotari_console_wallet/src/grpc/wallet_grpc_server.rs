@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+};
 
 use futures::{
     channel::mpsc::{self, Sender},
@@ -221,13 +224,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
-        let address = self
+        let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        let one_sided_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetAddressResponse {
-            address: address.to_vec(),
+            interactive_address: interactive_address.to_vec(),
+            one_sided_address: one_sided_address.to_vec(),
         }))
     }
 
@@ -247,7 +256,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         println!("{}::{}", public_key, net_address);
         let mut wallet = self.wallet.clone();
         wallet
-            .set_base_node_peer(public_key.clone(), Some(net_address.clone()))
+            .set_base_node_peer(public_key.clone(), Some(net_address.clone()), None)
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
@@ -328,7 +337,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_inner()
             .recipient
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
-        let address = TariAddress::from_base58(&message.address)
+        let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
 
         let mut transaction_service = self.get_transaction_service();
@@ -489,7 +498,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
-                let address = TariAddress::from_base58(&dest.address)
+                let address = TariAddress::from_str(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
                     dest.address,
@@ -782,6 +791,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .get_signature()
                             .to_vec(),
                         message: txn.message.clone(),
+                        payment_id: txn.payment_id.as_ref().map(|id| id.to_bytes()).unwrap_or_default(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -959,7 +969,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let (tx_id, template_address) = transaction_service
             .register_code_template(
-                message.template_name.clone(),
+                message
+                    .template_name
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
                 message
                     .template_version
                     .try_into()
@@ -980,7 +993,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .binary_sha
                     .try_into()
                     .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
-                message.binary_url,
+                message
+                    .binary_url
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
                 fee_per_gram,
                 if message.sidechain_deployment_key.is_empty() {
                     None
@@ -1007,7 +1023,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
-            .map_err(|_| Status::invalid_argument("Validator node address is malformed"))?;
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let validator_node_signature = request
             .validator_node_signature
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
@@ -1107,6 +1123,7 @@ fn simple_event(event: &str) -> TransactionEvent {
         direction: event.to_string(),
         amount: 0,
         message: String::default(),
+        payment_id: vec![],
     }
 }
 
@@ -1128,6 +1145,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
             message: tx.message,
+            payment_id: vec![],
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1141,6 +1159,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
             message: tx.message,
+            payment_id: vec![],
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1158,6 +1177,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
             message: tx.message,
+            payment_id: tx.payment_id.map(|id| id.to_bytes()).unwrap_or_default(),
         },
     }
 }

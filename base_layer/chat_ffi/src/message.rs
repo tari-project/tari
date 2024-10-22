@@ -25,7 +25,7 @@ use std::{convert::TryFrom, ffi::CStr, ptr};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
-use tari_contacts::contacts_service::types::{Message, MessageBuilder, MessageMetadata};
+use tari_contacts::contacts_service::types::{Message, MessageBuilder, MessageId, MessageMetadata};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -60,10 +60,12 @@ pub unsafe extern "C" fn create_chat_message(
     if receiver.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
     if sender.is_null() {
         error = LibChatError::from(InterfaceError::NullError("sender".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let message_str = match CStr::from_ptr(message).to_str() {
@@ -75,11 +77,18 @@ pub unsafe extern "C" fn create_chat_message(
         },
     };
 
-    let message_out = MessageBuilder::new()
+    let message_out = match MessageBuilder::new()
         .receiver_address((*receiver).clone())
         .sender_address((*sender).clone())
         .message(message_str)
-        .build();
+    {
+        Ok(val) => val.build(),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
     Box::into_raw(Box::new(message_out))
 }
@@ -127,16 +136,26 @@ pub unsafe extern "C" fn get_chat_message(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     if message_id.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message_id".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let id = process_vector(message_id, error_out);
+    let message_id = match MessageId::try_from(id) {
+        Ok(val) => val,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ConversionError(format!("message_id ({})", e))).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
-    let result = (*client).runtime.block_on((*client).client.get_message(&id));
+    let result = (*client).runtime.block_on((*client).client.get_message(&message_id));
 
     match result {
         Ok(message) => Box::into_raw(Box::new(message)),
@@ -168,11 +187,13 @@ pub unsafe extern "C" fn send_chat_message(client: *mut ChatClient, message: *mu
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     if message.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
 
     let result = (*client)
@@ -563,7 +584,7 @@ mod test {
                 message_id.push(chat_byte_vector_get_at(message_byte_vector, i, error_out));
             }
 
-            assert_eq!(message.message_id, message_id);
+            assert_eq!(message.message_id.to_vec(), message_id);
 
             destroy_chat_message(message_ptr);
             chat_byte_vector_destroy(message_byte_vector);
@@ -575,7 +596,7 @@ mod test {
     fn test_reading_message_body() {
         let body = "Hey there!";
         let body_bytes = body.as_bytes();
-        let message = MessageBuilder::new().message(body.into()).build();
+        let message = MessageBuilder::new().message(body.into()).unwrap().build();
 
         let message_ptr = Box::into_raw(Box::new(message));
         let error_out = Box::into_raw(Box::new(0));

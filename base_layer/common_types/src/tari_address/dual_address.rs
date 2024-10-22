@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, panic};
+use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
@@ -30,7 +30,13 @@ use tari_utilities::hex::{from_hex, Hex};
 use crate::{
     dammsum::{compute_checksum, validate_checksum},
     emoji::{EMOJI, REVERSE_EMOJI},
-    tari_address::{TariAddressError, TariAddressFeatures, INTERNAL_DUAL_SIZE},
+    tari_address::{
+        TariAddressError,
+        TariAddressFeatures,
+        INTERNAL_DUAL_BASE58_MAX_SIZE,
+        INTERNAL_DUAL_BASE58_MIN_SIZE,
+        TARI_ADDRESS_INTERNAL_DUAL_SIZE,
+    },
     types::PublicKey,
 };
 
@@ -71,12 +77,12 @@ impl DualAddress {
     /// helper function to convert emojis to u8
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
-        if emoji.chars().count() != INTERNAL_DUAL_SIZE {
+        if emoji.chars().count() != TARI_ADDRESS_INTERNAL_DUAL_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
 
         // Convert the emoji string to a byte array
-        let mut bytes = Vec::<u8>::with_capacity(INTERNAL_DUAL_SIZE);
+        let mut bytes = Vec::<u8>::with_capacity(TARI_ADDRESS_INTERNAL_DUAL_SIZE);
         for c in emoji.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
                 bytes.push(*i);
@@ -124,7 +130,7 @@ impl DualAddress {
     /// Construct Tari Address from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
-        if bytes.len() != INTERNAL_DUAL_SIZE {
+        if bytes.len() != TARI_ADDRESS_INTERNAL_DUAL_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
         if validate_checksum(bytes).is_err() {
@@ -145,8 +151,8 @@ impl DualAddress {
     }
 
     /// Convert Tari Address to bytes
-    pub fn to_bytes(&self) -> [u8; INTERNAL_DUAL_SIZE] {
-        let mut buf = [0u8; INTERNAL_DUAL_SIZE];
+    pub fn to_bytes(&self) -> [u8; TARI_ADDRESS_INTERNAL_DUAL_SIZE] {
+        let mut buf = [0u8; TARI_ADDRESS_INTERNAL_DUAL_SIZE];
         buf[0] = self.network.as_byte();
         buf[1] = self.features.0;
         buf[2..34].copy_from_slice(self.public_view_key.as_bytes());
@@ -159,21 +165,12 @@ impl DualAddress {
     /// Construct Tari Address from Base58
     pub fn from_base58(hex_str: &str) -> Result<Self, TariAddressError> {
         // Due to the byte length, it can be encoded as 90 or 91
-        if hex_str.len() != 90 && hex_str.len() != 91 {
+        if hex_str.len() < INTERNAL_DUAL_BASE58_MIN_SIZE || hex_str.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
-        let result = panic::catch_unwind(|| hex_str.split_at(2));
-        let (first, rest) = match result {
-            Ok((first, rest)) => (first, rest),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        let result = panic::catch_unwind(|| first.split_at(1));
-        let (network, features) = match result {
-            Ok((network, features)) => (network, features),
-            Err(_) => return Err(TariAddressError::InvalidCharacter),
-        };
-        // let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
-        // let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
+
+        let (first, rest) = hex_str.split_at_checked(2).ok_or(TariAddressError::InvalidCharacter)?;
+        let (network, features) = first.split_at_checked(1).ok_or(TariAddressError::InvalidCharacter)?;
         let mut result = bs58::decode(network)
             .into_vec()
             .map_err(|_| TariAddressError::CannotRecoverNetwork)?;
@@ -191,12 +188,11 @@ impl DualAddress {
     /// Convert Tari Address to Base58 string
     pub fn to_base58(&self) -> String {
         let bytes = self.to_bytes();
-        let mut network = bs58::encode(&bytes[0..1]).into_string();
-        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
-        let rest = bs58::encode(&bytes[2..]).into_string();
-        network.push_str(&features);
-        network.push_str(&rest);
-        network
+        let mut base58 = "".to_string();
+        base58.push_str(&bs58::encode(&bytes[0..1]).into_string());
+        base58.push_str(&bs58::encode(&bytes[1..2].to_vec()).into_string());
+        base58.push_str(&bs58::encode(&bytes[2..]).into_string());
+        base58
     }
 
     /// Convert Tari dual Address to hex
@@ -235,7 +231,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_DUAL_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
 
         let features = emoji_id_from_public_key.features();
         assert_eq!(features, TariAddressFeatures::create_interactive_and_one_sided());
@@ -263,7 +259,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_DUAL_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
 
         let features = emoji_id_from_public_key.features();
         assert_eq!(features, TariAddressFeatures::create_interactive_only());
@@ -292,7 +288,7 @@ mod test {
 
         // Check the size of the corresponding emoji string
         let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), INTERNAL_DUAL_SIZE);
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
 
         let features = emoji_id_from_public_key.features();
         assert_eq!(features, TariAddressFeatures::create_one_sided_only());
@@ -426,7 +422,6 @@ mod test {
         assert_eq!(address_emoji.network(), address.network());
         assert_eq!(address_emoji.features(), address.features());
     }
-
     #[test]
     /// Test invalid size
     fn invalid_size() {

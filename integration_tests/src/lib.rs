@@ -59,7 +59,7 @@ pub fn get_base_dir() -> PathBuf {
 pub async fn wait_for_service(port: u64) {
     // The idea is that if the port is taken it means the service is running.
     // If the port is not taken the service hasn't come up yet
-    let max_tries = 40;
+    let max_tries = 4 * 60;
     let mut attempts = 0;
 
     loop {

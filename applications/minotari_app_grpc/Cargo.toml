@@ -8,31 +8,32 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
-tari_core = { workspace = true, features = ["base_node"] }
-tari_crypto = { workspace = true }
-tari_script = { workspace = true }
-tari_utilities = { workspace = true }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_comms = { path = "../../comms/core" }
+tari_core = { path = "../../base_layer/core" }
+tari_crypto = { version = "0.21.0" }
+tari_script = { path = "../../infrastructure/tari_script" }
+tari_max_size = { path = "../../infrastructure/max_size" }
+tari_utilities = { version = "0.8" }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
-borsh = "1.2"
+borsh = "1.5"
 chrono = { version = "0.4.19", default-features = false }
 log = "0.4"
-prost = "0.11.9"
-prost-types = "0.11.9"
+prost = "0.13.3"
+prost-types = "0.13.3"
 rand = "0.8"
-rcgen = "0.11.3"
+rcgen = "0.12.1"
 subtle = "2.5.0"
 thiserror = "1"
 tokio = { version = "1.36", features = ["fs"] }
-tonic = { version = "0.8.3", features = ["tls"] }
+tonic = { version = "0.12.3", features = ["tls"] }
 zeroize = "1"
 
 [build-dependencies]
-tari_features = { workspace = true }
-tonic-build = "0.8.4"
+tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.3" }
+tonic-build = "0.12.3"
 
 [package.metadata.cargo-machete]
 ignored = ["prost"] # this is so we can run cargo machete without getting false positive about macro dependancies

@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use minotari_app_grpc::authentication::BasicAuthError;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
+use tari_max_size::MaxSizeBytesError;
 use thiserror::Error;
 use tonic::codegen::http::uri::InvalidUri;
 
@@ -56,6 +57,8 @@ pub enum MinerError {
     ParseInputError(#[from] ParseInputError),
     #[error("Base node not responding to gRPC requests: {0}")]
     BaseNodeNotResponding(String),
+    #[error("Limit error {0}")]
+    MaxSizeBytesError(#[from] MaxSizeBytesError),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

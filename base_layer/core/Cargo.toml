@@ -6,8 +6,8 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version.workspace = true
-edition.workspace = true
+version = "1.7.0-pre.3"
+edition = "2018"
 
 [features]
 default = ["base_node"]
@@ -23,39 +23,38 @@ base_node = [
 ]
 base_node_proto = []
 benches = ["base_node"]
-ledger = [
-    "minotari_ledger_wallet_comms",
-]
+ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
 
 [dependencies]
-minotari_ledger_wallet_comms = { workspace = true, optional = true }
-tari_common = { workspace = true }
-tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
-tari_comms_dht = { workspace = true }
-tari_comms_rpc_macros = { workspace = true }
-tari_crypto = { workspace = true, features = ["borsh"] }
-tari_metrics = { workspace = true, optional = true }
-tari_mmr = { workspace = true, optional = true }
-tari_p2p = { workspace = true }
-tari_script = { workspace = true }
-tari_service_framework = { workspace = true }
-tari_shutdown = { workspace = true }
-tari_storage = { workspace = true }
-tari_test_utils = { workspace = true }
-tari_utilities = { workspace = true, features = ["borsh"] }
-tari_key_manager = { workspace = true, features = [
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.7.0-pre.3", optional = true }
+tari_common = { path = "../../common", version = "1.7.0-pre.3" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.7.0-pre.3" }
+tari_comms = { path = "../../comms/core", version = "1.7.0-pre.3" }
+tari_comms_dht = { path = "../../comms/dht", version = "1.7.0-pre.3" }
+tari_comms_rpc_macros = { path = "../../comms/rpc_macros", version = "1.7.0-pre.3" }
+tari_crypto = { version = "0.21.0", features = ["borsh"] }
+tari_max_size = { path = "../../infrastructure/max_size" }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.7.0-pre.3" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.7.0-pre.3" }
+tari_p2p = { path = "../../base_layer/p2p", version = "1.7.0-pre.3" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.7.0-pre.3" }
+tari_service_framework = { path = "../service_framework", version = "1.7.0-pre.3" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.7.0-pre.3" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.7.0-pre.3" }
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.7.0-pre.3" }
+tari_utilities = { version = "0.8", features = ["borsh"] }
+tari_key_manager = { path = "../key_manager", features = [
     "key_manager_service",
-] }
-tari_common_sqlite = { workspace = true }
-tari_hashing = { workspace = true }
+], version = "1.7.0-pre.3" }
+tari_common_sqlite = { path = "../../common_sqlite" }
+tari_hashing = { path = "../../hashing" }
 
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
-borsh = { version = "1.2", features = ["derive"] }
+borsh = { version = "1.5", features = ["derive"] }
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
@@ -75,7 +74,7 @@ num-traits = "0.2.15"
 num-derive = "0.4.2"
 num-format = "0.4.0"
 once_cell = "1.8.0"
-prost = "0.11.9"
+prost = "0.13.3"
 rand = "0.8"
 randomx-rs = { version = "1.3", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
@@ -93,11 +92,12 @@ primitive-types = { version = "0.12", features = ["serde"] }
 tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }
+dirs-next = "1.0.2"
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }
-tari_p2p = { workspace = true, features = ["test-mocks"] }
-tari_test_utils = { workspace = true }
+tari_p2p = { path = "../../base_layer/p2p", features = ["test-mocks"] }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.14.0" }
@@ -105,14 +105,21 @@ env_logger = "0.7.0"
 tempfile = "3.1.0"
 toml = { version = "0.5" }
 quickcheck = "1.0"
+serial_test = "0.5"
 
 [build-dependencies]
-tari_common = { workspace = true, features = ["build"] }
-tari_features = { workspace = true }
+tari_common = { path = "../../common", features = [
+    "build",
+], version = "1.7.0-pre.3" }
+tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.3" }
 
 [[bench]]
 name = "mempool"
 harness = false
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tari_target_network_mainnet)', 'cfg(tari_target_network_nextnet)', 'cfg(tari_target_network_testnet)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(tari_target_network_mainnet)',
+    'cfg(tari_target_network_nextnet)',
+    'cfg(tari_target_network_testnet)',
+] }

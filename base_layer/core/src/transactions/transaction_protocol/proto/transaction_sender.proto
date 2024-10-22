@@ -38,6 +38,8 @@ message SingleRoundSenderData {
     uint32 output_version = 13;
     // The version of this transaction kernel
     uint32 kernel_version = 14;
+    // the sender address
+    string sender_address = 15;
 }
 
 message TransactionSenderMessage {

@@ -39,7 +39,7 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_crypto::tari_utilities::Hidden;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, SafePassword};
 use tokio::{runtime::Runtime, sync::broadcast};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -77,9 +77,12 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
 }
 
 /// Return seed matching the seed words.
-pub fn get_seed_from_seed_words(seed_words: &SeedWords) -> Result<CipherSeed, ExitError> {
+pub fn get_seed_from_seed_words(
+    seed_words: &SeedWords,
+    passphrase: Option<SafePassword>,
+) -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Return seed derived from the provided seed words");
-    match CipherSeed::from_mnemonic(seed_words, None) {
+    match CipherSeed::from_mnemonic(seed_words, passphrase) {
         Ok(seed) => Ok(seed),
         Err(e) => {
             let err_msg = format!("MnemonicError parsing seed words: {}", e);

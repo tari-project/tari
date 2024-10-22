@@ -48,7 +48,7 @@ pub use block_header::{BlockHeader, BlockHeaderValidationError};
 pub mod genesis_block;
 
 #[cfg(feature = "base_node")]
-mod faucets;
+pub mod pre_mine;
 
 #[cfg(feature = "base_node")]
 mod historical_block;

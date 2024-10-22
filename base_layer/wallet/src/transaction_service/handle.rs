@@ -52,6 +52,7 @@ use tari_core::{
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
+use tari_max_size::MaxSizeString;
 use tari_script::CheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -59,7 +60,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
-    output_manager_service::UtxoSelectionCriteria,
+    output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -102,24 +103,22 @@ pub enum TransactionServiceRequest {
         claim_public_key: Option<PublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
     },
-    CreateNMUtxo {
-        amount: MicroMinotari,
-        fee_per_gram: MicroMinotari,
-        n: u8,
-        m: u8,
-        public_keys: Vec<PublicKey>,
-        message: [u8; 32],
-        maturity: u64,
-    },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
         sender_offset_public_key_shares: Vec<PublicKey>,
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
+        recipient_address: TariAddress,
+        original_maturity: u64,
+        use_output: UseOutput,
+    },
+    SpendBackupPreMineUtxo {
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
         recipient_address: TariAddress,
     },
     FetchUnspentOutputs {
@@ -142,12 +141,12 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     RegisterCodeTemplate {
-        template_name: String,
+        template_name: MaxSizeString<32>,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
         binary_sha: FixedHash,
-        binary_url: String,
+        binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
     },
@@ -168,6 +167,10 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         message: String,
         payment_id: PaymentId,
+    },
+    ScrapeWallet {
+        destination: TariAddress,
+        fee_per_gram: MicroMinotari,
     },
     SendShaAtomicSwapTransaction(TariAddress, MicroMinotari, UtxoSelectionCriteria, MicroMinotari, String),
     CancelTransaction(TxId),
@@ -209,6 +212,16 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => write!(f, "GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({})", t),
+            Self::ScrapeWallet {
+                destination,
+                fee_per_gram,
+            } => {
+                write!(
+                    f,
+                    "ScrapeWallet (destination: {}, fee_per_gram: {})",
+                    destination, fee_per_gram
+                )
+            },
             Self::SendTransaction {
                 destination,
                 amount,
@@ -220,21 +233,21 @@ impl fmt::Display for TransactionServiceRequest {
                 amount, destination, message
             ),
             Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
-            Self::CreateNMUtxo {
-                amount,
-                fee_per_gram: _,
-                n,
-                m,
-                public_keys: _,
-                message: _,
-                maturity: _,
+            Self::SpendBackupPreMineUtxo {
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address,
             } => f.write_str(&format!(
-                "Creating a new n-of-m aggregate uxto with: amount = {}, n = {}, m = {}",
-                amount, n, m
+                "Spending backup pre-mine utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, recipient \
+                 = {}",
+                fee_per_gram,
+                output_hash,
+                expected_commitment.to_hex(),
+                recipient_address,
             )),
             Self::EncumberAggregateUtxo {
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -242,41 +255,51 @@ impl fmt::Display for TransactionServiceRequest {
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
+                original_maturity,
+                use_output,
                 ..
-            } => f.write_str(&format!(
-                "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, \
-                 script_input_shares = {:?},, script_signature_shares = {:?}, sender_offset_public_key_shares = {:?}, \
-                 metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, recipient_address = {}",
-                fee_per_gram,
-                output_hash,
-                expected_commitment.to_hex(),
-                script_input_shares
-                    .iter()
-                    .map(|v| format!(
-                        "(public_key: {}, sig: {}, nonce: {})",
-                        v.0.to_hex(),
-                        v.1.get_signature().to_hex(),
-                        v.1.get_public_nonce().to_hex()
-                    ))
-                    .collect::<Vec<String>>(),
-                script_signature_public_nonces
-                    .iter()
-                    .map(|v| format!("(public nonce: {})", v.to_hex(),))
-                    .collect::<Vec<String>>(),
-                sender_offset_public_key_shares
-                    .iter()
-                    .map(|v| v.to_hex())
-                    .collect::<Vec<String>>(),
-                metadata_ephemeral_public_key_shares
-                    .iter()
-                    .map(|v| v.to_hex())
-                    .collect::<Vec<String>>(),
-                dh_shared_secret_shares
-                    .iter()
-                    .map(|v| v.to_hex())
-                    .collect::<Vec<String>>(),
-                recipient_address,
-            )),
+            } => {
+                let output_hash = match use_output {
+                    UseOutput::FromBlockchain(hash) => *hash,
+                    UseOutput::AsProvided(output) => output.hash(),
+                };
+                f.write_str(&format!(
+                    "Creating encumber n-of-m utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, \
+                     script_input_shares = {:?}, script_signature_shares = {:?}, sender_offset_public_key_shares = \
+                     {:?}, metadata_ephemeral_public_key_shares = {:?}, dh_shared_secret_shares = {:?}, \
+                     recipient_address = {}, original_maturity: {}",
+                    fee_per_gram,
+                    output_hash,
+                    expected_commitment.to_hex(),
+                    script_input_shares
+                        .iter()
+                        .map(|v| format!(
+                            "(public_key: {}, sig: {}, nonce: {})",
+                            v.0.to_hex(),
+                            v.1.get_signature().to_hex(),
+                            v.1.get_public_nonce().to_hex()
+                        ))
+                        .collect::<Vec<String>>(),
+                    script_signature_public_nonces
+                        .iter()
+                        .map(|v| format!("(public nonce: {})", v.to_hex(),))
+                        .collect::<Vec<String>>(),
+                    sender_offset_public_key_shares
+                        .iter()
+                        .map(|v| v.to_hex())
+                        .collect::<Vec<String>>(),
+                    metadata_ephemeral_public_key_shares
+                        .iter()
+                        .map(|v| v.to_hex())
+                        .collect::<Vec<String>>(),
+                    dh_shared_secret_shares
+                        .iter()
+                        .map(|v| v.to_hex())
+                        .collect::<Vec<String>>(),
+                    recipient_address,
+                    original_maturity,
+                ))
+            },
             Self::FetchUnspentOutputs { output_hashes } => {
                 write!(
                     f,
@@ -368,7 +391,14 @@ impl fmt::Display for TransactionServiceRequest {
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionSentWithOutputHash(TxId, FixedHash),
-    EncumberAggregateUtxo(TxId, Box<Transaction>, Box<PublicKey>, Box<PublicKey>, Box<PublicKey>),
+    EncumberAggregateUtxo(
+        TxId,
+        Box<Transaction>,
+        Box<PublicKey>,
+        Box<PublicKey>,
+        Box<PublicKey>,
+        Box<PublicKey>,
+    ),
     UnspentOutputs(Vec<TransactionOutput>),
     TransactionImported(TxId),
     BurntTransactionSent {
@@ -603,6 +633,24 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn scrape_wallet(
+        &mut self,
+        destination: TariAddress,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ScrapeWallet {
+                destination,
+                fee_per_gram,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn register_validator_node(
         &mut self,
         amount: MicroMinotari,
@@ -635,12 +683,12 @@ impl TransactionServiceHandle {
 
     pub async fn register_code_template(
         &mut self,
-        template_name: String,
+        template_name: MaxSizeString<32>,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
         binary_sha: FixedHash,
-        binary_url: String,
+        binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
     ) -> Result<(TxId, FixedHash), TransactionServiceError> {
@@ -721,39 +769,10 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn create_aggregate_signature_utxo(
-        &mut self,
-        amount: MicroMinotari,
-        fee_per_gram: MicroMinotari,
-        n: u8,
-        m: u8,
-        public_keys: Vec<PublicKey>,
-        message: [u8; 32],
-        maturity: u64,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::CreateNMUtxo {
-                amount,
-                fee_per_gram,
-                n,
-                m,
-                public_keys,
-                message,
-                maturity,
-            })
-            .await??
-        {
-            TransactionServiceResponse::TransactionSentWithOutputHash(tx_id, output_hash) => Ok((tx_id, output_hash)),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
     #[allow(clippy::mutable_key_type)]
     pub async fn encumber_aggregate_utxo(
         &mut self,
         fee_per_gram: MicroMinotari,
-        output_hash: HashOutput,
         expected_commitment: PedersenCommitment,
         script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
         script_signature_public_nonces: Vec<PublicKey>,
@@ -761,12 +780,13 @@ impl TransactionServiceHandle {
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
+        original_maturity: u64,
+        use_output: UseOutput,
+    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
                 fee_per_gram,
-                output_hash,
                 expected_commitment,
                 script_input_shares,
                 script_signature_public_nonces,
@@ -774,6 +794,8 @@ impl TransactionServiceHandle {
                 metadata_ephemeral_public_key_shares,
                 dh_shared_secret_shares,
                 recipient_address,
+                original_maturity,
+                use_output,
             })
             .await??
         {
@@ -783,13 +805,37 @@ impl TransactionServiceHandle {
                 total_script_key,
                 total_metadata_ephemeral_public_key,
                 total_script_nonce,
+                shared_secret,
             ) => Ok((
                 tx_id,
                 *transaction,
                 *total_script_key,
                 *total_metadata_ephemeral_public_key,
                 *total_script_nonce,
+                *shared_secret,
             )),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn spend_backup_pre_mine_utxo(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        output_hash: HashOutput,
+        expected_commitment: PedersenCommitment,
+        recipient_address: TariAddress,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SpendBackupPreMineUtxo {
+                fee_per_gram,
+                output_hash,
+                expected_commitment,
+                recipient_address,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

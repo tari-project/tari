@@ -20,11 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod bytes;
 mod hashing;
-mod string;
 
 pub use hashing::DomainSeparatedConsensusHasher;
-pub use string::MaxSizeString;
-
-pub use self::bytes::MaxSizeBytes;

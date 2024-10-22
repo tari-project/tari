@@ -34,7 +34,10 @@ use monero::{
     cryptonote::hash::Hashable,
     util::ringct::{RctSigBase, RctType},
 };
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::{
+    hex::{to_hex, Hex},
+    ByteArray,
+};
 use tiny_keccak::{Hasher, Keccak};
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
@@ -44,7 +47,7 @@ use crate::{
     proof_of_work::monero_rx::helpers::create_block_hashing_blob,
 };
 
-/// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
+/// This is a struct to deserialize the data from the pow field into data required for the randomX Monero merged mine
 /// pow.
 #[derive(Clone, Debug)]
 pub struct MoneroPowData {
@@ -113,7 +116,7 @@ impl MoneroPowData {
         tari_header: &BlockHeader,
         consensus: &ConsensusManager,
     ) -> Result<MoneroPowData, MergeMineError> {
-        let mut v = tari_header.pow.pow_data.as_slice();
+        let mut v = tari_header.pow.pow_data.as_bytes();
         let pow_data: MoneroPowData =
             BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
         if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size()
@@ -139,7 +142,7 @@ impl MoneroPowData {
         // multiple pow_data that generate the same randomx difficulty could be a problem.
         BorshSerialize::serialize(&pow_data, &mut test_serialized_data)
             .map_err(|e| MergeMineError::SerializeError(format!("{:?}", e)))?;
-        if test_serialized_data != tari_header.pow.pow_data {
+        if test_serialized_data != tari_header.pow.pow_data.to_vec() {
             return Err(MergeMineError::SerializedPowDataDoesNotMatch(
                 "Serialized pow data does not match original pow data".to_string(),
             ));
@@ -200,12 +203,22 @@ impl Display for MoneroPowData {
 #[cfg(test)]
 mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
-    use monero::{consensus::Encodable, BlockHeader, Hash, VarInt};
+    use chacha20poly1305::aead::OsRng;
+    use monero::{blockdata::transaction::RawExtraField, consensus::Encodable, BlockHeader, Hash, VarInt};
+    use tari_common::configuration::Network;
+    use tari_common_types::types::PrivateKey;
+    use tari_crypto::keys::SecretKey;
     use tari_utilities::ByteArray;
     use tiny_keccak::{Hasher, Keccak};
 
     use super::MoneroPowData;
-    use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
+    use crate::{
+        consensus::NetworkConsensus,
+        proof_of_work::{
+            monero_rx::{merkle_tree::MerkleProof, FixedByteArray},
+            PowData,
+        },
+    };
 
     #[test]
     fn test_borsh_de_serialization() {
@@ -245,5 +258,52 @@ mod test {
         let buf = &mut buf.as_slice();
         MoneroPowData::deserialize(buf).unwrap();
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn max_monero_pow_data_bytes_fits_inside_proof_of_work_pow_data() {
+        let coinbase: monero::Transaction = Default::default();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::LocalNet,
+            Network::NextNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            for consensus_constants in NetworkConsensus::from(network).create_consensus_constants() {
+                let monero_pow_data = MoneroPowData {
+                    header: BlockHeader {
+                        major_version: VarInt(u64::MAX),
+                        minor_version: VarInt(u64::MAX),
+                        timestamp: VarInt(u64::MAX),
+                        prev_id: Hash::new(PrivateKey::random(&mut OsRng).to_vec()),
+                        nonce: u32::MAX,
+                    },
+                    randomx_key: FixedByteArray::default(),
+                    transaction_count: u16::MAX,
+                    merkle_root: Hash::new(PrivateKey::random(&mut OsRng).to_vec()),
+                    coinbase_merkle_proof: MerkleProof::default(),
+                    coinbase_tx_extra: RawExtraField(vec![1u8; consensus_constants.max_extra_field_size()]),
+                    coinbase_tx_hasher: keccak.clone(),
+                    aux_chain_merkle_proof: MerkleProof::default(),
+                };
+                let mut buf = Vec::new();
+                monero_pow_data.serialize(&mut buf).unwrap();
+                assert!(buf.len() <= PowData::default().max_size());
+            }
+        }
     }
 }

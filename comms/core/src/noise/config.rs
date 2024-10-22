@@ -87,11 +87,11 @@ impl NoiseConfig {
 
             match direction {
                 ConnectionDirection::Outbound => {
-                    debug!(target: LOG_TARGET, "Starting noise initiator handshake ");
+                    trace!(target: LOG_TARGET, "Starting noise initiator handshake ");
                     builder.build_initiator()?
                 },
                 ConnectionDirection::Inbound => {
-                    debug!(target: LOG_TARGET, "Starting noise responder handshake");
+                    trace!(target: LOG_TARGET, "Starting noise responder handshake");
                     builder.build_responder()?
                 },
             }

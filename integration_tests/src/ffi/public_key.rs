@@ -50,6 +50,7 @@ impl PublicKey {
             ptr = ffi_import::public_key_create(bytes.get_ptr(), &mut error);
             if error > 0 {
                 println!("public_key_create error {}", error);
+                panic!("public_key_create error");
             }
         }
         Self { ptr }
@@ -63,6 +64,7 @@ impl PublicKey {
             ptr = ffi_import::public_key_from_private_key(private_key.get_ptr(), &mut error);
             if error > 0 {
                 println!("public_key_from_private_key error {}", error);
+                panic!("public_key_from_private_key error");
             }
         }
         Self { ptr }
@@ -75,6 +77,7 @@ impl PublicKey {
             ptr = ffi_import::public_key_from_hex(CString::new(key).unwrap().into_raw(), &mut error);
             if error > 0 {
                 println!("public_key_from_private_key error {}", error);
+                panic!("public_key_from_private_key error");
             }
         }
         Self { ptr }
@@ -91,6 +94,7 @@ impl PublicKey {
             ptr = ffi_import::public_key_get_bytes(self.ptr, &mut error);
             if error > 0 {
                 println!("public_key_get_bytes error {}", error);
+                panic!("public_key_get_bytes error");
             }
         }
         FFIBytes::from_ptr(ptr)

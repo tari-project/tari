@@ -1,0 +1,18 @@
+[package]
+name = "tari_max_size"
+version = "1.7.0-pre.3"
+edition = "2021"
+description = "Tari max size library"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+categories = ["cryptography"]
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+
+[dependencies]
+tari_utilities = { version = "0.8" }
+
+borsh = "1.5"
+serde = { version = "1.0.136", features = ["derive"] }
+thiserror = "1.0.30"

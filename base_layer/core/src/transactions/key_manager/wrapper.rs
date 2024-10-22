@@ -25,6 +25,7 @@ use std::sync::Arc;
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_common_types::{
+    tari_address::TariAddress,
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
@@ -40,7 +41,7 @@ use tari_key_manager::{
         KeyManagerServiceError,
     },
 };
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::{CheckSigSchnorrSignature, TariScript};
 use tokio::sync::RwLock;
 
 use crate::transactions::{
@@ -85,7 +86,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-        wallet_type: WalletType,
+        wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
             transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerInner::new(
@@ -95,6 +96,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 wallet_type,
             )?)),
         })
+    }
+
+    /// Get the wallet type
+    pub async fn get_wallet_type(&self) -> Arc<WalletType> {
+        self.transaction_key_manager_inner.read().await.get_wallet_type()
     }
 }
 
@@ -206,6 +212,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.transaction_key_manager_inner.read().await.get_view_key().await
     }
 
+    async fn get_private_view_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_private_view_key()
+            .await
+    }
+
     async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_spend_key().await
     }
@@ -257,18 +271,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .get_diffie_hellman_stealth_domain_hasher(secret_key_id, public_key)
-            .await
-    }
-
-    async fn import_add_offset_to_private_key(
-        &self,
-        secret_key_id: &TariKeyId,
-        offset: PrivateKey,
-    ) -> Result<TariKeyId, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .import_add_offset_to_private_key(secret_key_id, offset)
             .await
     }
 
@@ -461,6 +463,33 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn get_one_sided_metadata_signature(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        value: MicroMinotari,
+        sender_offset_key_id: &TariKeyId,
+        txo_version: &TransactionOutputVersion,
+        metadata_signature_message_common: &[u8; 32],
+        range_proof_type: RangeProofType,
+        script: &TariScript,
+        receiver_address: &TariAddress,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_one_sided_metadata_signature(
+                commitment_mask_key_id,
+                value,
+                sender_offset_key_id,
+                txo_version,
+                metadata_signature_message_common,
+                range_proof_type,
+                script,
+                receiver_address,
+            )
+            .await
+    }
+
     async fn sign_script_message(
         &self,
         private_key_id: &TariKeyId,
@@ -473,7 +502,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn sign_with_nonce_and_message(
+    async fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
@@ -482,7 +511,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.transaction_key_manager_inner
             .read()
             .await
-            .sign_with_nonce_and_message(private_key_id, nonce, challenge)
+            .sign_with_nonce_and_challenge(private_key_id, nonce, challenge)
             .await
     }
 
@@ -547,6 +576,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .read()
             .await
             .generate_burn_proof(spending_key, amount, claim_public_key)
+            .await
+    }
+
+    async fn stealth_address_script_spending_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+        spend_key: &PublicKey,
+    ) -> Result<PublicKey, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
             .await
     }
 }

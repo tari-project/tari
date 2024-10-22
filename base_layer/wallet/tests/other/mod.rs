@@ -729,7 +729,7 @@ async fn test_import_utxo() {
     .unwrap();
     let key = PrivateKey::random(&mut OsRng);
     let claim = PublicKey::from_secret_key(&key);
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let input = inputs!(claim);
     let temp_features = OutputFeatures::create_coinbase(50, None, RangeProofType::BulletProofPlus);
 

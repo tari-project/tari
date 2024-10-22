@@ -26,18 +26,25 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
+use tari_mmr::{
+    pruned_hashset::PrunedHashSet,
+    sparse_merkle_tree::{NodeKey, ValueHash},
+};
 use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, ProofOfWork},
-    transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_mmr,
+    output_mr_hash_from_smt,
+    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    },
     OutputSmt,
+    PrunedInputMmr,
 };
-
-// This can be adjusted as required, but must be limited
-const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -52,22 +59,27 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     }
 }
 
-fn add_faucet_utxos_to_genesis_block(file: &str, block: &mut Block) {
-    let mut utxos = Vec::new();
-    let mut counter = 1;
-    let lines_count = file.lines().count();
+fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
+    let mut outputs = Vec::new();
+    let mut inputs = Vec::new();
     for line in file.lines() {
-        if counter < lines_count {
-            let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
-            utxos.push(utxo);
-        } else {
-            block.body.add_kernel(serde_json::from_str(line).unwrap());
+        if let Ok(output) = serde_json::from_str::<TransactionOutput>(line) {
+            outputs.push(output);
+        } else if let Ok(input) = serde_json::from_str::<TransactionInput>(line) {
+            inputs.push(input);
+        } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
+            block.body.add_kernel(kernel);
             block.header.kernel_mmr_size += 1;
+        } else if let Ok(excess) = serde_json::from_str::<PrivateKey>(line) {
+            block.header.total_kernel_offset = &block.header.total_kernel_offset + &excess;
+        } else {
+            panic!("Error: Could not deserialize line: {} in file: {}", line, file);
         }
-        counter += 1;
     }
-    block.header.output_smt_size += utxos.len() as u64;
-    block.body.add_outputs(utxos);
+    block.header.output_smt_size += outputs.len() as u64;
+    block.header.output_smt_size -= inputs.len() as u64;
+    block.body.add_outputs(outputs);
+    block.body.add_inputs(inputs);
     block.body.sort();
 }
 
@@ -75,12 +87,12 @@ fn print_mr_values(block: &mut Block, print: bool) {
     if !print {
         return;
     }
+    use std::convert::TryFrom;
 
     use crate::{chain_storage::calculate_validator_node_mr, KernelMmr};
 
     let mut kernel_mmr = KernelMmr::new(Vec::new());
     for k in block.body.kernels() {
-        println!("k: {}", k);
         kernel_mmr.push(k.hash().to_vec()).unwrap();
     }
 
@@ -91,27 +103,38 @@ fn print_mr_values(block: &mut Block, print: bool) {
         let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
         output_smt.insert(smt_key, smt_node).unwrap();
     }
+    for i in block.body.inputs() {
+        let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+        output_smt.delete(&smt_key).unwrap();
+    }
     let vn_mmr = calculate_validator_node_mr(&[]).unwrap();
 
-    block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    block.header.output_mr = FixedHash::try_from(output_smt.hash().as_slice()).unwrap();
-    block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
+    let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+    for input in block.body.inputs() {
+        input_mmr.push(input.canonical_hash().to_vec()).unwrap();
+    }
+
+    block.header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr).unwrap();
+    block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
+    block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
+    block.header.validator_node_mr = vn_mmr;
     println!();
-    println!("kernel mr: {}", block.header.kernel_mr.to_hex());
-    println!("output mr: {}", block.header.output_mr.to_hex());
-    println!("vn mr: {}", block.header.validator_node_mr.to_hex());
+    println!("kernel mr: {}", block.header.kernel_mr);
+    println!("input mr: {}", block.header.input_mr);
+    println!("output mr: {}", block.header.output_mr);
+    println!("vn mr: {}", block.header.validator_node_mr);
 }
 
 pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {pre_mine_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/stagenet_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+        let file_contents = include_str!("pre_mine/stagenet_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -119,9 +142,12 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
-        block.header.validator_node_mr = FixedHash::zero();
+        block.header.validator_node_mr =
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -150,19 +176,29 @@ fn get_stagenet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    // TODO: Fix this hack with the next nextnet reset!!
+    block.header.input_mr =
+        FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
+
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {pre_mine_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/nextnet_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+        let file_contents = include_str!("pre_mine/nextnet_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -170,9 +206,12 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("36881d87e25183f5189d2dca5f7da450c399e7006dafd9bd9240f73a5fb3f0ad").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
-        block.header.validator_node_mr = FixedHash::zero()
+        block.header.validator_node_mr =
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -189,7 +228,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Sep 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -202,24 +241,81 @@ fn get_nextnet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
-    unimplemented!()
+    let mut block = get_mainnet_genesis_block_raw();
+
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = true;
+    if add_pre_mine_utxos {
+        // NB: `mainnet_genesis_sanity_check` must pass
+        let file_contents = include_str!("pre_mine/mainnet_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
+        // Enable print only if you need to generate new Merkle roots, then disable it again
+        let print_values = false;
+        print_mr_values(&mut block, print_values);
+
+        // Hardcode the Merkle roots once they've been computed above
+        block.header.kernel_mr =
+            FixedHash::from_hex("f73daf81a3672d9e290adecb77f6071c82b7095f34bfcdfcfafe8c2148b54fad").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("b7b38b76f5832b5b63691a8334dfa67d8c762b77b2b4aa4f648c4eb1dfb25c1e").unwrap();
+        block.header.output_mr =
+            FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
+        block.header.validator_node_mr =
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+    }
+
+    let accumulated_data = BlockHeaderAccumulatedData {
+        hash: block.hash(),
+        total_kernel_offset: block.header.total_kernel_offset.clone(),
+        achieved_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+        target_difficulty: Difficulty::min(),
+    };
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
+}
+
+fn get_mainnet_genesis_block_raw() -> Block {
+    // Set genesis timestamp
+    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
+    let not_before_proof = b"I am the standin mainnet genesis block, \
+        \
+       I am not the real mainnet block \
+        \
+        I am only a standin \
+        \
+       Do not take me for the real one. I am only a placeholder for the real one";
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_igor_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_igor_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = false;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {pre_mine_value: ?}' with total value
         // NB: `igor_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/igor_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+        let file_contents = include_str!("pre_mine/igor_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
@@ -227,9 +323,12 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("bc5d677b0b8349adc9d7e4a18ace7406986fc7017866f4fd351ecb0f35d6da5e").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
-        block.header.validator_node_mr = FixedHash::zero();
+        block.header.validator_node_mr =
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -259,29 +358,37 @@ fn get_igor_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_esmeralda_genesis_block_raw();
 
-    // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
-    if add_faucet_utxos {
-        // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
-        // NB: `esmeralda_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json");
-        add_faucet_utxos_to_genesis_block(file_contents, &mut block);
+    // Add pre-mine utxos - enable/disable as required
+    let add_pre_mine_utxos = true;
+    if add_pre_mine_utxos {
+        // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {pre_mine_value: ?}' with total
+        // value NB: `esmeralda_genesis_sanity_check` must pass
+        let file_contents = include_str!("pre_mine/esmeralda_pre_mine.json");
+        add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
         print_mr_values(&mut block, print_values);
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("b97afb0f165fc41e47d5a6bea4e651a16ffab2ecc6259814b42084aeac8fb959").unwrap();
+            FixedHash::from_hex("91402b11319114845dd7ce5e5c191dab86f886147515437cb1549ec8c082060e").unwrap();
+        block.header.input_mr =
+            FixedHash::from_hex("16a4ad34eccac12cbafe3ab448ca2c0d0dfcccd23098667bc6530da30526fb3d").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("a2bbf7770db43bb1ad57c20d7737870f290618376f8b156019414abb494c23a8").unwrap();
+            FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -300,7 +407,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("12 Jul 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Oct 2024 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -314,7 +421,13 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
 pub fn get_localnet_genesis_block() -> ChainBlock {
@@ -348,15 +461,18 @@ fn get_localnet_genesis_block_raw() -> Block {
         consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
         pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
         est laborum.";
-    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
+    if not_before_proof.len() > PowData::default().max_size() {
+        panic!(
+            "Not-before-proof data is too large, exceeds limit by '{}' bytes",
+            not_before_proof.len() - PowData::default().max_size()
+        );
+    }
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
 }
 
-fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[u8]) -> Block {
+fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &PowData) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
-
-    let mut not_before_proof = not_before_proof.to_vec();
-    not_before_proof.truncate(NOT_BEFORE_PROOF_BYTES_SIZE);
 
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis_timestamp.timestamp() as u64;
@@ -366,13 +482,14 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::zero(),
+            output_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::zero(),
+            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
+                .unwrap(),
             validator_node_size: 0,
-            input_mr: FixedHash::zero(),
+            input_mr: FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
@@ -384,26 +501,27 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3x,
-                pow_data: not_before_proof,
+                pow_data: not_before_proof.clone(),
             },
         },
         body: AggregateBody::new(vec![], vec![], vec![]),
     }
 }
 
+// Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
 
-    use tari_common_types::{epoch::VnEpoch, types::Commitment};
+    use serial_test::serial;
+    use tari_common_types::types::Commitment;
 
     use super::*;
     use crate::{
-        chain_storage::{calculate_validator_node_mr, ValidatorNodeRegistrationInfo},
+        chain_storage::calculate_validator_node_mr,
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
+            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
@@ -411,64 +529,117 @@ mod test {
     };
 
     #[test]
-    #[cfg(tari_target_network_testnet)]
-    fn esme_genesis_sanity_check() {
+    #[serial]
+    fn esmeralda_genesis_sanity_check() {
+        let network = Network::Esmeralda;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('esmeralda_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 20, 1);
+        check_block(network, &block, 313, 794, 314);
+        remove_network_env_var();
     }
 
     #[test]
-    #[cfg(tari_target_network_nextnet)]
+    #[serial]
     fn nextnet_genesis_sanity_check() {
+        let network = Network::NextNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('nextnet_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
+        remove_network_env_var();
     }
 
     #[test]
-    #[cfg(tari_target_network_mainnet)]
+    #[serial]
+    fn mainnet_genesis_sanity_check() {
+        let network = Network::MainNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('mainnet_genesis_sanity_check()')");
+        }
+        // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
+        // if consensus values change, e.g. new pre_mine or other
+        let block = get_mainnet_genesis_block();
+        check_block(network, &block, 253, 674, 254);
+        remove_network_env_var();
+    }
+
+    #[test]
+    #[serial]
     fn stagenet_genesis_sanity_check() {
-        Network::set_current(Network::StageNet).unwrap();
+        let network = Network::StageNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('stagenet_genesis_sanity_check()')");
+        }
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
+        // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
+        remove_network_env_var();
     }
 
     #[test]
+    #[serial]
     fn igor_genesis_sanity_check() {
+        let network = Network::Igor;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('igor_genesis_sanity_check()')");
+        }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
+        remove_network_env_var();
     }
 
     #[test]
+    #[serial]
     fn localnet_genesis_sanity_check() {
+        let network = Network::LocalNet;
+        set_network_by_env_var_or_force_set(network);
+        if !network_matches(network) {
+            panic!("Network could not be set ('localnet_genesis_sanity_check()')");
+        }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
-        check_block(Network::LocalNet, &block, 0, 0);
+        check_block(network, &block, 0, 0, 0);
+        remove_network_env_var();
     }
 
-    fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
-        assert!(block.block().body.inputs().is_empty());
+    #[allow(clippy::too_many_lines)]
+    fn check_block(
+        network: Network,
+        block: &ChainBlock,
+        expected_inputs: usize,
+        expected_outputs: usize,
+        expected_kernels: usize,
+    ) {
         assert_eq!(block.block().body.kernels().len(), expected_kernels);
         assert_eq!(block.block().body.outputs().len(), expected_outputs);
+        assert_eq!(block.block().body.inputs().len(), expected_inputs);
 
         let factories = CryptoFactories::default();
         let some_output_is_coinbase = block.block().body.outputs().iter().any(|o| o.is_coinbase());
         assert!(!some_output_is_coinbase);
         let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
         batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
-        // Coinbase and faucet kernel
+        // Coinbase and pre_mine kernel
         assert_eq!(
             block.block().body.kernels().len() as u64,
             block.header().kernel_mmr_size
         );
         assert_eq!(
-            block.block().body.outputs().len() as u64,
+            block.block().body.outputs().len() as u64 - block.block().body.inputs().len() as u64,
             block.header().output_smt_size
         );
 
@@ -490,50 +661,129 @@ mod test {
         }
         let mut output_smt = OutputSmt::new();
 
-        let mut vn_nodes = Vec::new();
-        for o in block.block().body.outputs() {
-            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
-            output_smt.insert(smt_key, smt_node).unwrap();
-            o.verify_metadata_signature().unwrap();
-            if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
-                let reg = o
-                    .features
-                    .sidechain_feature
-                    .as_ref()
-                    .and_then(|f| f.validator_node_registration())
-                    .unwrap();
-                vn_nodes.push(ValidatorNodeRegistrationInfo {
-                    public_key: reg.public_key().clone(),
-                    sidechain_id: None,
-                    shard_key: reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                });
-            }
+        let vn_nodes = Vec::new();
+        // We currently don't have validator nodes in a genesis block so this code (currently broken) isn't needed.
+        // Keeping it in case we need it.
+        //
+        // for o in block.block().body.outputs() {
+        //     let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+        //     let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
+        //     output_smt.insert(smt_key, smt_node).unwrap();
+        //     o.verify_metadata_signature().unwrap();
+        //     if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
+        //         let reg = o
+        //             .features
+        //             .sidechain_feature
+        //             .as_ref()
+        //             .and_then(|f| f.validator_node_registration())
+        //             .unwrap();
+        //         vn_nodes.push(reg.clone());
+        //     }
+        // }
+        // for i in block.block().body.inputs() {
+        //     let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+        //     output_smt.delete(&smt_key).unwrap();
+        //     if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+        //         let reg = i
+        //             .features()
+        //             .unwrap()
+        //             .sidechain_feature
+        //             .as_ref()
+        //             .and_then(|f| f.validator_node_registration())
+        //             .unwrap();
+        //         let pos = vn_nodes.iter().position(|v| v == reg).unwrap();
+        //         vn_nodes.remove(pos);
+        //     }
+        // }
+
+        let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+        for input in block.block().body.inputs() {
+            input_mmr.push(input.canonical_hash().to_vec()).unwrap();
         }
 
-        assert_eq!(&vn_nodes, &vec![]);
-
-        assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(
-            FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
-            block.header().output_mr,
+            kernel_mr_hash_from_mmr(&kernel_mmr).unwrap().to_vec().to_hex(),
+            block.header().kernel_mr.to_vec().to_hex()
         );
+        assert_eq!(
+            output_mr_hash_from_smt(&mut output_smt).unwrap().to_vec().to_hex(),
+            block.header().output_mr.to_vec().to_hex(),
+        );
+        if network == Network::NextNet {
+            // TODO: Fix this hack with the next nextnet reset!!
+            assert_eq!(
+                FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                block.header().input_mr,
+            );
+        } else {
+            assert_eq!(
+                input_mr_hash_from_pruned_mmr(&input_mmr).unwrap(),
+                block.header().input_mr,
+            );
+        }
         assert_eq!(
             calculate_validator_node_mr(&vn_nodes).unwrap(),
             block.header().validator_node_mr,
         );
 
-        // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
-        // is correct)
+        // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
+        // kernel is correct)
 
-        let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
+        let input_sum = block
+            .block()
+            .body
+            .inputs()
+            .iter()
+            .map(|o| o.commitment().unwrap())
+            .sum::<Commitment>();
+        let output_sum = block
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .map(|o| &o.commitment)
+            .sum::<Commitment>();
+        let total_utxo_sum = &output_sum - &input_sum;
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
+            .validate(&*lock, 0, &total_utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
+    }
+
+    fn set_network_by_env_var_or_force_set(network: Network) {
+        set_network_by_env_var(network);
+        if Network::get_current_or_user_setting_or_default() != network {
+            let _ = Network::set_current(network);
+        }
+    }
+
+    // Targeted network compilations will override inferred network hashes; this has effect only if
+    // `Network::set_current(<NETWORK>)` has not been called.
+    fn set_network_by_env_var(network: Network) {
+        // Do not override the env_var if network is already set; another test may fail
+        if std::env::var("TARI_NETWORK").is_err() {
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+        }
+    }
+
+    fn remove_network_env_var() {
+        std::env::remove_var("TARI_NETWORK");
+    }
+
+    fn network_matches(network: Network) -> bool {
+        let current_network = Network::get_current_or_user_setting_or_default();
+        if current_network == network {
+            true
+        } else {
+            println!(
+                "\nNetwork mismatch!! Required: {:?}, current: {:?}.\n",
+                network, current_network
+            );
+            false
+        }
     }
 }

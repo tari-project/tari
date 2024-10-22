@@ -156,7 +156,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     }
                 },
                 DbKeyValuePair::Contact(k, c) => {
-                    if ContactSql::find_by_address_and_update(&mut conn, &k.to_vec(), UpdateContact {
+                    if ContactSql::find_by_node_id_and_update(&mut conn, &c.node_id.to_vec(), UpdateContact {
                         alias: Some(c.clone().alias),
                         last_seen: None,
                         latency: None,
@@ -165,6 +165,13 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     .is_err()
                     {
                         ContactSql::from(c).commit(&mut conn)?;
+                    } else {
+                        let stored_contact = ContactSql::find_by_node_id(&c.node_id.to_vec(), &mut conn)?;
+                        let stored_address = TariAddress::from_bytes(stored_contact.address.as_slice())
+                            .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+                        let new_address = TariAddress::combine_addresses(&stored_address, &k)
+                            .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+                        ContactSql::set_address_of_node_id(&c.node_id.to_vec(), &new_address.to_vec(), &mut conn)?;
                     }
                 },
                 DbKeyValuePair::LastSeen(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
@@ -274,7 +281,7 @@ mod test {
                 .iter()
                 .any(|v| v == &ContactSql::from(contacts[0].clone())));
 
-            let _c = ContactSql::find_by_address_and_update(&mut conn, &contacts[1].address.to_vec(), UpdateContact {
+            let _c = ContactSql::find_by_node_id_and_update(&mut conn, &contacts[1].node_id.to_vec(), UpdateContact {
                 alias: Some("Fred".to_string()),
                 last_seen: None,
                 latency: None,

@@ -25,13 +25,16 @@ env:
   TS_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy"]'
   TS_FEATURES: "default, safe"
   TS_LIBRARIES: "minotari_mining_helper_ffi"
+  # For debug builds
+  # TS_BUILD: "debug"
+  TS_BUILD: "release"
   TARI_NETWORK_DIR: testnet
   toolchain: nightly-2024-07-07
   matrix-json-file: ".github/workflows/build_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
   CARGO: cargo
-  CARGO_OPTIONS: "--release"
+  CARGO_OPTIONS: "--locked"
   CARGO_CACHE: true
 
 concurrency:
@@ -207,6 +210,11 @@ jobs:
           brew install zip coreutils automake protobuf
           rustup target add ${{ matrix.builds.target }}
 
+      - name: Install macOS-14 missing dependencies - hack
+        if: ${{ startsWith(runner.os,'macOS') && startsWith(runner.arch,'ARM64') }}
+        run: |
+          brew install libtool
+
       - name: Install Windows dependencies
         if: startsWith(runner.os,'Windows')
         run: |
@@ -219,6 +227,7 @@ jobs:
           # Should already be installed
           # choco upgrade strawberryperl -y
           choco upgrade protoc -y
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Set environment variables - Nix
         if: ${{ ! startsWith(runner.os,'Windows') }}
@@ -288,13 +297,21 @@ jobs:
           echo "CARGO=cross" >> $GITHUB_ENV
 
       - name: Install and setup cargo-auditable
-        if: ${{ false }}
+        # if: ${{ ( startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) }}
+        if: ${{ ( ! matrix.builds.cross ) }}
+        shell: bash
+        run: |
+          cargo install cargo-auditable cargo-audit
+          echo "CARGO=${{ env.CARGO }} auditable" >> $GITHUB_ENV
+
+      - name: Build release targets
         # if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          cargo install cargo-auditable
-          echo "CARGO=${{ env.CARGO }} auditable" >> $GITHUB_ENV
-          echo "CARGO_OPTIONS=${{ env.CARGO_OPTIONS }} --release" >> $GITHUB_ENV
+          # echo "TS_BUILD=release" >> $GITHUB_ENV
+          if [[ "${{ env.TS_BUILD }}" == "release" ]]; then
+            echo "CARGO_OPTIONS=${{ env.CARGO_OPTIONS }} --${{ env.TS_BUILD }}" >> $GITHUB_ENV
+          fi
 
       - name: Show command used for Cargo
         shell: bash
@@ -310,7 +327,7 @@ jobs:
             --target ${{ matrix.builds.target }} \
             --features "${{ env.BUILD_FEATURES }}" \
             ${{ env.TARGET_BINS }} \
-            ${{ matrix.builds.flags }} --locked
+            ${{ matrix.builds.flags }}
 
       - name: Build release libraries
         shell: bash
@@ -318,7 +335,7 @@ jobs:
           ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
             --target ${{ matrix.builds.target }} \
             --lib ${{ env.TARGET_LIBS }} \
-            ${{ matrix.builds.flags }} --locked
+            ${{ matrix.builds.flags }}
 
       - name: Copy binaries to folder for archiving
         shell: bash
@@ -330,12 +347,12 @@ jobs:
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
           echo "MTS_SOURCE=$(pwd)" >> $GITHUB_ENV
-          ls -alht "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
+          ls -alht "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/"
           ARRAY_FILES=( $(echo ${TS_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
           for FILE in "${ARRAY_FILES[@]}"; do
             echo "checking for file - ${FILE}${TS_EXT}"
-            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/${FILE}${TS_EXT}" ]; then
-              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/${FILE}${TS_EXT}" .
+            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}${TS_EXT}" ]; then
+              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}${TS_EXT}" .
             fi
           done
           if [[ "${{ matrix.builds.target_libs }}" == "" ]]; then
@@ -346,12 +363,12 @@ jobs:
           for FILE in "${ARRAY_LIBS[@]}"; do
             echo "checking for file - ${FILE}${TS_EXT}"
             # Check on Nix for libs
-            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/lib${FILE}${LIB_EXT}" ]; then
-              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/lib${FILE}${LIB_EXT}" .
+            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/lib${FILE}${LIB_EXT}" ]; then
+              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/lib${FILE}${LIB_EXT}" .
             fi
             # Check on Windows libs
-            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/${FILE}${LIB_EXT}" ]; then
-              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/release/${FILE}${LIB_EXT}" .
+            if [ -f "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}${LIB_EXT}" ]; then
+              cp -vf "${GITHUB_WORKSPACE}/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/${FILE}${LIB_EXT}" .
             fi
           done
           if [ -f "${GITHUB_WORKSPACE}/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
@@ -367,8 +384,8 @@ jobs:
             --target ${{ matrix.builds.target }} \
             --features "${{ env.BUILD_FEATURES }}, metrics" \
             --bin minotari_node \
-            ${{ matrix.builds.flags }} --locked
-          cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/minotari_node${TS_EXT}" \
+            ${{ matrix.builds.flags }}
+          cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/minotari_node${TS_EXT}" \
             "${{ env.MTS_SOURCE }}/minotari_node-metrics${TS_EXT}"
 
       - name: Build targeted miners
@@ -384,8 +401,8 @@ jobs:
               --target ${{ matrix.builds.target }} \
               --features "${{ env.BUILD_FEATURES }}" \
               --bin minotari_miner \
-              ${{ matrix.builds.flags }} --locked
-            cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/minotari_miner" \
+              ${{ matrix.builds.flags }}
+            cp -vf "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/minotari_miner" \
               "${{ env.MTS_SOURCE }}/minotari_miner-${CPU_TARGET}"
           done
 
@@ -427,7 +444,7 @@ jobs:
             OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
           fi
           cd buildtools
-          export target_release="target/${{ matrix.builds.target }}/release"
+          export target_release="target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}"
           mkdir -p "${{ runner.temp }}/osxpkg"
           export tarball_parent="${{ runner.temp }}/osxpkg"
           export tarball_source="${{ env.TARI_NETWORK_DIR }}"
@@ -503,14 +520,55 @@ jobs:
           name: ${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}*.pkg*"
 
+      - name: Sign files with Trusted Signing (windows binaries)
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        uses: azure/trusted-signing-action@v0.4.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: Tari
+          certificate-profile-name: Tarilabs
+          files-folder: ${{ github.workspace }}${{ env.TS_DIST }}/
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Build the Windows installer
         if: startsWith(runner.os,'Windows')
         shell: cmd
         run: |
           cd buildtools
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TS_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TS_DIST }}" "windows_inno_installer.iss"
-          cd Output
-          echo "Compute archive shasum"
+
+      - name: Sign files with Trusted Signing (windows installer)
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        uses: azure/trusted-signing-action@v0.4.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: Tari
+          certificate-profile-name: Tarilabs
+          files-folder: ${{ github.workspace }}/buildtools/Output/
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Windows installer Compute archive checksum
+        if: startsWith(runner.os,'Windows')
+        shell: cmd
+        run: |
+          cd buildtools\Output
+          echo "Compute archive checksum"
           ${{ env.SHARUN }} "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Show the shasum"
           cat "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
@@ -523,6 +581,15 @@ jobs:
         with:
           name: "${{ env.TS_FILENAME }}_windows_installer"
           path: "${{ github.workspace }}/buildtools/Output/*"
+
+      - name: Audit tree and feedback for binaries
+        # if: ${{ ( ! matrix.builds.cross ) }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          cd "${{ env.MTS_SOURCE }}"
+          echo "Audit binaries ..."
+          cargo audit bin *minotari*
 
       - name: Archive and Checksum Binaries
         shell: bash
@@ -556,7 +623,7 @@ jobs:
           mkdir -p "${{ env.MTS_SOURCE }}-diag-utils"
           cd "${{ env.MTS_SOURCE }}-diag-utils"
           # Find RandomX built tools for testing
-          find "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/" \
+          find "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}/" \
             -name "randomx-*${{ env.TS_EXT}}" -type f -perm -+x -exec cp -vf {} . \;
           echo "Compute diag utils shasum"
           ${SHARUN} * \
@@ -676,7 +743,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
           OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
           cd buildtools
-          # export target_release="target/${{ matrix.builds.target }}/release"
+          # export target_release="target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}"
           # matrix.builds.target=macos-universal
           # matrix.builds.name=macos-universal
           export target_release="osxuni/macos-universal"

@@ -4,18 +4,21 @@ authors = ["The Tari Development Community"]
 description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version.workspace = true
-edition.workspace = true
+version = "1.7.0-pre.3"
+edition = "2018"
 
 [dependencies]
-tari_core = { workspace = true, default-features = false }
-tari_common = { workspace = true }
-tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
-minotari_app_utilities = { workspace = true, features = ["miner_input"] }
-minotari_app_grpc = { workspace = true }
-tari_crypto = { workspace = true }
-tari_utilities = { workspace = true }
+tari_core = { path = "../../base_layer/core", default-features = false }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_comms = { path = "../../comms/core" }
+tari_max_size = { path = "../../infrastructure/max_size" }
+minotari_app_utilities = { path = "../minotari_app_utilities", features = [
+    "miner_input",
+] }
+minotari_app_grpc = { path = "../minotari_app_grpc" }
+tari_crypto = { version = "0.21.0" }
+tari_utilities = { version = "0.8" }
 
 base64 = "0.13.0"
 borsh = "1.2"
@@ -28,23 +31,34 @@ derivative = "2.2.0"
 futures = "0.3"
 hex = "0.4.2"
 log = { version = "0.4", features = ["std"] }
-log4rs = { version = "1.3.0", default-features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
+log4rs = { version = "1.3.0", default-features = false, features = [
+    "config_parsing",
+    "threshold_filter",
+    "yaml_format",
+    "console_appender",
+    "rolling_file_appender",
+    "compound_policy",
+    "size_trigger",
+    "fixed_window_roller",
+] }
 native-tls = "0.2"
 num_cpus = "1.13"
 rand = "0.8"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0"
-tokio = { version = "1.36", default-features = false, features = ["rt-multi-thread"] }
-tonic = { version = "0.8.3", features = ["tls", "tls-roots"] }
+tokio = { version = "1.36", default-features = false, features = [
+    "rt-multi-thread",
+] }
+tonic = { version = "0.12.3", features = ["tls", "tls-roots"] }
 
 [dev-dependencies]
-prost-types = "0.11.9"
+prost-types = "0.13.3"
 chrono = { version = "0.4.19", default-features = false }
 config = "0.14.0"
 
 [package.metadata.cargo-machete]
 ignored = [
     # We need to specify extra features for log4rs even though it is not used directly in this crate
-    "log4rs"
+    "log4rs",
 ]

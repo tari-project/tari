@@ -33,7 +33,7 @@ pub use op_codes::{
     OpcodeVersion,
     ScalarValue,
 };
-pub use script::TariScript;
+pub use script::{ScriptOpcodes, TariScript};
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};
 use tari_crypto::{
@@ -49,5 +49,5 @@ pub type CheckSigSchnorrSignature = SchnorrSignature<RistrettoPublicKey, Ristret
 
 /// The standard payment script to be used for one-sided payment to public addresses
 pub fn push_pubkey_script(destination_public_key: &RistrettoPublicKey) -> TariScript {
-    script!(PushPubKey(Box::new(destination_public_key.clone())))
+    script!(PushPubKey(Box::new(destination_public_key.clone()))).expect("single opcode will not fail")
 }

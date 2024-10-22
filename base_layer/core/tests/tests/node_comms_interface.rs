@@ -23,6 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use tari_common::configuration::Network;
+use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -41,13 +42,7 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
-        },
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
@@ -211,7 +206,7 @@ async fn inbound_fetch_utxos() {
         MicroMinotari(10_000),
         &key_manager,
         &Default::default(),
-        &script!(Nop),
+        &script!(Nop).unwrap(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -286,11 +281,12 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         .with_lock_height(txn_schema.lock_height)
         .with_fee_per_gram(txn_schema.fee)
         .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))),
+            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
             ExecutionStack::default(),
             change.script_key_id,
             change.commitment_mask_key_id,
             Covenant::default(),
+            TariAddress::default(),
         );
 
     for tx_input in &txn_schema.from {
@@ -307,9 +303,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .unwrap();
 
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask_key.key_id.managed_index().unwrap(),
+            key: (&commitment_mask_key.key_id).into(),
         };
 
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
@@ -368,7 +362,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
 #[tokio::test]
 async fn test_sender_transaction_protocol_for_overflow() {
     let key_manager = create_memory_db_key_manager().unwrap();
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let amount = MicroMinotari(u64::MAX); // This is the adversary's attack!
     let output_features = OutputFeatures::default();
     let covenant = Covenant::default();

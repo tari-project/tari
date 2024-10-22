@@ -42,6 +42,7 @@ use minotari_wallet::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
@@ -49,12 +50,7 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::{
-            create_memory_db_key_manager,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
-        },
+        key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
@@ -81,7 +77,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -101,7 +97,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .await
         .unwrap()
         .with_recipient_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             Covenant::default(),
             MicroMinotari::zero(),
@@ -111,11 +107,12 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     let change = TestParams::new(&key_manager).await;
     builder.with_change_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         inputs!(change.script_key_pk),
         change.script_key_id.clone(),
         change.commitment_mask_key_id.clone(),
         Covenant::default(),
+        TariAddress::default(),
     );
 
     let stp = builder.build().await.unwrap();
@@ -186,10 +183,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .await
         .unwrap();
     let script_key_id = KeyId::Derived {
-        branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-        label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-        index: commitment_mask_key.key_id.managed_index().unwrap(),
+        key: (&commitment_mask_key.key_id).into(),
     };
+
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
 
     let encrypted_data = key_manager

@@ -90,7 +90,7 @@ impl NewOutputSql {
             script: output.wallet_output.script.to_bytes(),
             input_data: output.wallet_output.input_data.to_bytes(),
             script_private_key: output.wallet_output.script_key_id.to_string(),
-            coinbase_extra: Some(output.wallet_output.features.coinbase_extra.clone()),
+            coinbase_extra: Some(output.wallet_output.features.coinbase_extra.to_vec().clone()),
             sender_offset_public_key: output.wallet_output.sender_offset_public_key.to_vec(),
             metadata_signature_ephemeral_commitment: output
                 .wallet_output

@@ -35,6 +35,7 @@ use log::*;
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
+    net_address::MultiaddrRange,
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
     types::CommsPublicKey,
     PeerConnection,
@@ -88,6 +89,8 @@ pub enum DhtActorError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Connectivity event stream closed")]
     ConnectivityEventStreamClosed,
+    #[error("All peer addresses are excluded")]
+    AllPeerAddressesAreExcluded,
 }
 
 impl<T> From<mpsc::error::SendError<T>> for DhtActorError {
@@ -381,6 +384,28 @@ impl DhtActor {
         }
     }
 
+    // Helper function to check if all peer addresses are excluded
+    async fn check_if_addresses_excluded(
+        excluded_dial_addresses: Vec<MultiaddrRange>,
+        peer_manager: &PeerManager,
+        node_id: NodeId,
+    ) -> Result<(), DhtActorError> {
+        if !excluded_dial_addresses.is_empty() {
+            let addresses = peer_manager.get_peer_multi_addresses(&node_id).await?;
+            if addresses
+                .iter()
+                .all(|addr| excluded_dial_addresses.iter().any(|v| v.contains(addr.address())))
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "All peer addresses are excluded. Not broadcasting join message."
+                );
+                return Err(DhtActorError::AllPeerAddressesAreExcluded);
+            }
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_lines)]
     fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'static, Result<(), DhtActorError>> {
         #[allow(clippy::enum_glob_use)]
@@ -388,8 +413,15 @@ impl DhtActor {
         match request {
             SendJoin => {
                 let node_identity = Arc::clone(&self.node_identity);
+                let peer_manager = Arc::clone(&self.peer_manager);
                 let outbound_requester = self.outbound_requester.clone();
-                Box::pin(Self::broadcast_join(node_identity, outbound_requester))
+                let excluded_dial_addresses = self.config.excluded_dial_addresses.clone();
+                Box::pin(Self::broadcast_join(
+                    node_identity,
+                    peer_manager,
+                    excluded_dial_addresses.into_vec(),
+                    outbound_requester,
+                ))
             },
             MsgHashCacheInsert {
                 message_hash,
@@ -465,7 +497,16 @@ impl DhtActor {
                 let connectivity = self.connectivity.clone();
                 let discovery = self.discovery.clone();
                 let peer_manager = self.peer_manager.clone();
+                let node_identity = self.node_identity.clone();
+                let excluded_dial_addresses = self.config.excluded_dial_addresses.clone();
+
                 Box::pin(async move {
+                    DhtActor::check_if_addresses_excluded(
+                        excluded_dial_addresses.into_vec(),
+                        &peer_manager,
+                        node_identity.node_id().clone(),
+                    )
+                    .await?;
                     let mut task = DiscoveryDialTask::new(connectivity, peer_manager, discovery);
                     let result = task.run(public_key).await;
                     let _result = reply.send(result);
@@ -491,8 +532,16 @@ impl DhtActor {
 
     async fn broadcast_join(
         node_identity: Arc<NodeIdentity>,
+        peer_manager: Arc<PeerManager>,
+        excluded_dial_addresses: Vec<MultiaddrRange>,
         mut outbound_requester: OutboundMessageRequester,
     ) -> Result<(), DhtActorError> {
+        DhtActor::check_if_addresses_excluded(
+            excluded_dial_addresses,
+            peer_manager.as_ref(),
+            node_identity.node_id().clone(),
+        )
+        .await?;
         let message = JoinMessage::from(&node_identity);
 
         debug!(target: LOG_TARGET, "Sending Join message to closest peers");
@@ -524,14 +573,14 @@ impl DhtActor {
     ) -> Result<Vec<NodeId>, DhtActorError> {
         #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
-        match broadcast_strategy {
+        let peers = match broadcast_strategy {
             DirectNodeId(node_id) => {
                 // Send to a particular peer matching the given node ID
                 peer_manager
                     .direct_identity_node_id(&node_id)
                     .await
                     .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
-                    .map_err(Into::into)
+                    .map_err(Into::<DhtActorError>::into)?
             },
             DirectPublicKey(public_key) => {
                 // Send to a particular peer matching the given node ID
@@ -539,16 +588,16 @@ impl DhtActor {
                     .direct_identity_public_key(&public_key)
                     .await
                     .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
-                    .map_err(Into::into)
+                    .map_err(Into::<DhtActorError>::into)?
             },
             Flood(exclude) => {
                 let peers = connectivity
                     .select_connections(ConnectivitySelection::all_nodes(exclude))
                     .await?;
-                Ok(peers.into_iter().map(|p| p.peer_node_id().clone()).collect())
+                peers.into_iter().map(|p| p.peer_node_id().clone()).collect()
             },
             ClosestNodes(closest_request) => {
-                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager).await
+                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone()).await?
             },
             DirectOrClosestNodes(closest_request) => {
                 // First check if a direct connection exists
@@ -557,20 +606,22 @@ impl DhtActor {
                     .await?
                     .is_some()
                 {
-                    return Ok(vec![closest_request.node_id.clone()]);
+                    vec![closest_request.node_id.clone()]
+                } else {
+                    Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager.clone())
+                        .await?
                 }
-                Self::select_closest_node_connected(closest_request, config, connectivity, peer_manager).await
             },
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
-                Ok(peer_manager
+                peer_manager
                     .random_peers(n, &excluded)
                     .await?
                     .into_iter()
                     .map(|p| p.node_id)
-                    .collect())
+                    .collect()
             },
-            SelectedPeers(peers) => Ok(peers),
+            SelectedPeers(peers) => peers,
             Broadcast(exclude) => {
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(
@@ -597,7 +648,7 @@ impl DhtActor {
                     candidates.len()
                 );
 
-                Ok(candidates)
+                candidates
             },
             Propagate(destination, exclude) => {
                 let dest_node_id = destination.to_derived_node_id();
@@ -687,8 +738,36 @@ impl DhtActor {
                     candidates.iter().map(|n| n.short_str()).collect::<Vec<_>>().join(", ")
                 );
 
-                Ok(candidates)
+                candidates
             },
+        };
+        if config.excluded_dial_addresses.is_empty() {
+            return Ok(peers);
+        };
+
+        let mut filtered_peers = Vec::with_capacity(peers.len());
+        for id in &peers {
+            let addresses = peer_manager.get_peer_multi_addresses(id).await?;
+            if addresses.iter().all(|addr| {
+                config
+                    .excluded_dial_addresses
+                    .iter()
+                    .any(|v| v.contains(addr.address()))
+            }) {
+                trace!(target: LOG_TARGET, "Peer '{}' has only excluded addresses. Skipping.", id);
+            } else {
+                filtered_peers.push(id.clone());
+            }
+        }
+
+        if filtered_peers.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "All selected peers have only excluded addresses. No peers will be selected."
+            );
+            Err(DhtActorError::AllPeerAddressesAreExcluded)
+        } else {
+            Ok(filtered_peers)
         }
     }
 
@@ -918,7 +997,7 @@ mod test {
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             node_identity,
             peer_manager,
@@ -962,7 +1041,7 @@ mod test {
             let discovery_mock = mock.get_shared_state();
             mock.spawn();
             DhtActor::new(
-                Default::default(),
+                Arc::new(DhtConfig::default_local_test()),
                 db_connection().await,
                 node_identity.clone(),
                 peer_manager.clone(),
@@ -1037,7 +1116,7 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             node_identity,
             peer_manager,
@@ -1085,6 +1164,7 @@ mod test {
         let actor = DhtActor::new(
             Arc::new(DhtConfig {
                 dedup_cache_capacity: capacity,
+                excluded_dial_addresses: vec![].into(),
                 ..Default::default()
             }),
             db_connection().await,
@@ -1181,7 +1261,7 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             Arc::clone(&node_identity),
             peer_manager,
@@ -1282,7 +1362,7 @@ mod test {
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let mut shutdown = Shutdown::new();
         let actor = DhtActor::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             db_connection().await,
             node_identity,
             peer_manager,

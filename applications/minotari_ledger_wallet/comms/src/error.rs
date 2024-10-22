@@ -30,9 +30,15 @@ pub enum LedgerDeviceError {
     /// HID API error
     #[error("HID API error `{0}`")]
     HidApi(String),
+    /// HID API error
+    #[error("HID API error refresh `{0}`")]
+    HidApiRefresh(String),
     /// Native HID transport error
     #[error("Native HID transport error `{0}`")]
     NativeTransport(String),
+    /// HID transport exchange error
+    #[error("Native HID transport exchange error `{0}`")]
+    NativeTransportExchange(String),
     /// Ledger application not started
     #[error("Ledger application not started")]
     ApplicationNotStarted,
@@ -44,14 +50,22 @@ pub enum LedgerDeviceError {
     Processing(String),
     /// Conversion error to or from ledger
     #[error("Conversion failed: {0}")]
-    ByteArrayError(String),
+    ConversionError(String),
     /// Not yet supported
     #[error("Ledger is not fully supported")]
     NotSupported,
+    #[error("User cancelled the transaction")]
+    UserCancelled,
 }
 
 impl From<ByteArrayError> for LedgerDeviceError {
     fn from(e: ByteArrayError) -> Self {
-        LedgerDeviceError::ByteArrayError(e.to_string())
+        LedgerDeviceError::ConversionError(e.to_string())
+    }
+}
+
+impl From<String> for LedgerDeviceError {
+    fn from(e: String) -> Self {
+        LedgerDeviceError::Processing(e)
     }
 }

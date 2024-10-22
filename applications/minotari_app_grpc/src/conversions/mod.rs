@@ -20,26 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod aggregate_body;
-mod base_node_state;
-mod block;
-mod block_header;
-mod chain_metadata;
-mod com_and_pub_signature;
-mod commitment_signature;
-mod consensus_constants;
-mod historical_block;
-mod new_block_template;
-mod output_features;
-mod peer;
-mod proof_of_work;
-mod sidechain_feature;
-mod signature;
-mod transaction;
-mod transaction_input;
-mod transaction_kernel;
-mod transaction_output;
-mod unblinded_output;
+pub mod aggregate_body;
+pub mod base_node_state;
+pub mod block;
+pub mod block_header;
+pub mod chain_metadata;
+pub mod com_and_pub_signature;
+pub mod commitment_signature;
+pub mod consensus_constants;
+pub mod historical_block;
+pub mod new_block_template;
+pub mod output_features;
+pub mod peer;
+pub mod proof_of_work;
+pub mod sidechain_feature;
+pub mod signature;
+pub mod transaction;
+pub mod transaction_input;
+pub mod transaction_kernel;
+pub mod transaction_output;
+pub mod unblinded_output;
 
 use prost_types::Timestamp;
 

@@ -45,13 +45,16 @@ pub const LOG_TARGET: &str = "c::val::header_full_validator";
 pub struct HeaderFullValidator {
     rules: ConsensusManager,
     difficulty_calculator: DifficultyCalculator,
+    gen_hash: FixedHash,
 }
 
 impl HeaderFullValidator {
     pub fn new(rules: ConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
+        let gen_hash = *rules.get_genesis_block().hash();
         Self {
             rules,
             difficulty_calculator,
+            gen_hash,
         }
     }
 }
@@ -77,14 +80,13 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header, &self.rules, db)?;
-        let gen_hash = *self.rules.get_genesis_block().hash();
 
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
                 header,
                 target,
                 &self.difficulty_calculator.randomx_factory,
-                &gen_hash,
+                &self.gen_hash,
                 &self.rules,
             )?
         } else {

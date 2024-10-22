@@ -24,7 +24,7 @@ mod contact;
 pub use contact::Contact;
 
 mod message;
-pub use message::{Direction, Message, MessageMetadata};
+pub use message::{ChatBody, Direction, Message, MessageId, MessageMetadata, MetadataData, MetadataKey};
 
 mod message_builder;
 pub use message_builder::MessageBuilder;

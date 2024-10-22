@@ -243,6 +243,7 @@ pub fn test_message_pagination() {
         for num in 0..8 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
+                .unwrap()
                 .receiver_address(address.clone())
                 .sender_address(address.clone())
                 .build();
@@ -274,6 +275,7 @@ pub fn test_message_pagination() {
         for num in 0..3000 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
+                .unwrap()
                 .receiver_address(address.clone())
                 .sender_address(address.clone())
                 .build();

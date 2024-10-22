@@ -1497,6 +1497,25 @@ void output_features_destroy(TariOutputFeatures *output_features);
 struct TariSeedWords *seed_words_create(void);
 
 /**
+ * Create an instance of TariSeedWords from optionally encrypted cipher seed
+ *
+ * ## Arguments
+ * `cipher_bytes`: base58 encoded string pointer of the cipher bytes
+ * `passphrase`: optional passphrase to decrypt the cipher bytes
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `TariSeedWords` - Returns an  TariSeedWords instance
+ *
+ * # Safety
+ * Tari seed words need to be destroyed
+ */
+struct TariSeedWords *seed_words_create_from_cipher(const char *cipher_bytes,
+                                                    const char *passphrase,
+                                                    int *error_out);
+
+/**
  * Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
  *
  * ## Arguments
@@ -1564,6 +1583,7 @@ char *seed_words_get_at(struct TariSeedWords *seed_words,
  * ## Returns
  * 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
  * word, if the push was successful and whether the push was successful and completed the full Seed Phrase.
+ * `passphrase` - Optional passphrase to use when generating the seed phrase
  *  `seed_words` is only modified in the event of a `SuccessfulPush`.
  *     '0' -> InvalidSeedWord
  *     '1' -> SuccessfulPush
@@ -1575,6 +1595,7 @@ char *seed_words_get_at(struct TariSeedWords *seed_words,
  */
 unsigned char seed_words_push_word(struct TariSeedWords *seed_words,
                                    const char *word,
+                                   const char *passphrase,
                                    int *error_out);
 
 /**
@@ -2194,6 +2215,24 @@ const char *completed_transaction_get_message(TariCompletedTransaction *transact
                                               int *error_out);
 
 /**
+ * Gets the payment id of a TariCompletedTransaction
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+ * to an empty char array if transaction is null
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+ */
+const char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction,
+                                                 int *error_out);
+
+/**
  * This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
  *
  * ## Arguments
@@ -2740,6 +2779,7 @@ void transport_config_destroy(TariTransportConfig *transport);
  * `database_path` - The database path char array pointer which. This is the folder path where the
  * database files will be created and the application has write access to
  * `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
+ * `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -2756,6 +2796,7 @@ TariCommsConfig *comms_config_create(const char *public_address,
                                      const char *datastore_path,
                                      unsigned long long discovery_timeout_in_secs,
                                      unsigned long long saf_message_duration_in_secs,
+                                     bool exclude_dial_test_addresses,
                                      int *error_out);
 
 /**
@@ -2827,6 +2868,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * Creates a TariWallet
  *
  * ## Arguments
+ * Context - a pointer to some context used by all the callbacks
  * `config` - The TariCommsConfig pointer
  * `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
  * pointer.
@@ -2844,8 +2886,11 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * `passphrase` - An optional string that represents the passphrase used to
  * encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
  * encrypted then the correct passphrase is required or this function will fail.
+ * `seed_passphrase` - an optional string, if present this will derypt the seed words
  * `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
  * If this is null, then a new master key is created for the wallet.
+ * `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
+ * `use_dns_sec` - Use DNSSEC when querying the DNS servers.
  * `callback_received_transaction` - The callback function pointer matching the function signature. This will be
  * called when an inbound transaction is received.
  * `callback_received_transaction_reply` - The callback function
@@ -2924,37 +2969,57 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * # Safety
  * The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
  */
-struct TariWallet *wallet_create(TariCommsConfig *config,
+struct TariWallet *wallet_create(void *context,
+                                 TariCommsConfig *config,
                                  const char *log_path,
                                  int log_verbosity,
                                  unsigned int num_rolling_log_files,
                                  unsigned int size_per_log_file_bytes,
                                  const char *passphrase,
+                                 const char *seed_passphrase,
                                  const struct TariSeedWords *seed_words,
                                  const char *network_str,
-                                 const char *peer_seed_str,
-                                 bool dns_sec,
-                                 void (*callback_received_transaction)(TariPendingInboundTransaction*),
-                                 void (*callback_received_transaction_reply)(TariCompletedTransaction*),
-                                 void (*callback_received_finalized_transaction)(TariCompletedTransaction*),
-                                 void (*callback_transaction_broadcast)(TariCompletedTransaction*),
-                                 void (*callback_transaction_mined)(TariCompletedTransaction*),
-                                 void (*callback_transaction_mined_unconfirmed)(TariCompletedTransaction*,
+                                 const char *dns_seeds_str,
+                                 const char *dns_seed_name_servers_str,
+                                 bool use_dns_sec,
+                                 void (*callback_received_transaction)(void *context,
+                                                                       TariPendingInboundTransaction*),
+                                 void (*callback_received_transaction_reply)(void *context,
+                                                                             TariCompletedTransaction*),
+                                 void (*callback_received_finalized_transaction)(void *context,
+                                                                                 TariCompletedTransaction*),
+                                 void (*callback_transaction_broadcast)(void *context,
+                                                                        TariCompletedTransaction*),
+                                 void (*callback_transaction_mined)(void *context,
+                                                                    TariCompletedTransaction*),
+                                 void (*callback_transaction_mined_unconfirmed)(void *context,
+                                                                                TariCompletedTransaction*,
                                                                                 uint64_t),
-                                 void (*callback_faux_transaction_confirmed)(TariCompletedTransaction*),
-                                 void (*callback_faux_transaction_unconfirmed)(TariCompletedTransaction*,
+                                 void (*callback_faux_transaction_confirmed)(void *context,
+                                                                             TariCompletedTransaction*),
+                                 void (*callback_faux_transaction_unconfirmed)(void *context,
+                                                                               TariCompletedTransaction*,
                                                                                uint64_t),
-                                 void (*callback_transaction_send_result)(unsigned long long,
+                                 void (*callback_transaction_send_result)(void *context,
+                                                                          unsigned long long,
                                                                           TariTransactionSendStatus*),
-                                 void (*callback_transaction_cancellation)(TariCompletedTransaction*,
+                                 void (*callback_transaction_cancellation)(void *context,
+                                                                           TariCompletedTransaction*,
                                                                            uint64_t),
-                                 void (*callback_txo_validation_complete)(uint64_t, uint64_t),
-                                 void (*callback_contacts_liveness_data_updated)(TariContactsLivenessData*),
-                                 void (*callback_balance_updated)(TariBalance*),
-                                 void (*callback_transaction_validation_complete)(uint64_t, uint64_t),
-                                 void (*callback_saf_messages_received)(void),
-                                 void (*callback_connectivity_status)(uint64_t),
-                                 void (*callback_base_node_state)(struct TariBaseNodeState*),
+                                 void (*callback_txo_validation_complete)(void *context,
+                                                                          uint64_t,
+                                                                          uint64_t),
+                                 void (*callback_contacts_liveness_data_updated)(void *context,
+                                                                                 TariContactsLivenessData*),
+                                 void (*callback_balance_updated)(void *context, TariBalance*),
+                                 void (*callback_transaction_validation_complete)(void *context,
+                                                                                  uint64_t,
+                                                                                  uint64_t),
+                                 void (*callback_saf_messages_received)(void *context),
+                                 void (*callback_connectivity_status)(void *context, uint64_t),
+                                 void (*callback_wallet_scanned_height)(void *context, uint64_t),
+                                 void (*callback_base_node_state)(void *context,
+                                                                  struct TariBaseNodeState*),
                                  bool *recovery_in_progress,
                                  int *error_out);
 
@@ -3395,6 +3460,27 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            int *error_out);
 
 /**
+ * Sends a TariPendingOutboundTransaction
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `destination` - The TariWalletAddress pointer of the peer
+ * `fee_per_gram` - The transaction fee
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
+ *
+ * # Safety
+ * None
+ */
+unsigned long long scrape_wallet(struct TariWallet *wallet,
+                                 TariWalletAddress *destination,
+                                 unsigned long long fee_per_gram,
+                                 int *error_out);
+
+/**
  * Gets a fee estimate for an amount
  *
  * ## Arguments
@@ -3643,7 +3729,7 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
                                                                  int *error_out);
 
 /**
- * Get the TariWalletAddress from a TariWallet
+ * Get the interactive TariWalletAddress from a TariWallet
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
@@ -3657,8 +3743,26 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *wallet_get_tari_address(struct TariWallet *wallet,
-                                           int *error_out);
+TariWalletAddress *wallet_get_tari_interactive_address(struct TariWallet *wallet,
+                                                       int *error_out);
+
+/**
+ * Get the one_sided only TariWalletAddress from a TariWallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariWalletAddress` - returns the address, note that ptr::null_mut() is returned
+ * if wc is null
+ *
+ * # Safety
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ */
+TariWalletAddress *wallet_get_tari_one_sided_address(struct TariWallet *wallet,
+                                                     int *error_out);
 
 /**
  * Cancel a Pending Transaction
@@ -3864,7 +3968,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer.
- * `base_node_public_key` - The TariPublicKey pointer of the Base Node the recovery process will use
+ * `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
  * `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
  * progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
  * ```
@@ -3917,8 +4021,11 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  * None
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
-                           TariPublicKey *base_node_public_key,
-                           void (*recovery_progress_callback)(uint8_t, uint64_t, uint64_t),
+                           struct TariPublicKeys *base_node_public_keys,
+                           void (*recovery_progress_callback)(void *context,
+                                                              uint8_t,
+                                                              uint64_t,
+                                                              uint64_t),
                            const char *recovered_output_message,
                            int *error_out);
 

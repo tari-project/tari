@@ -119,8 +119,10 @@ impl RpcError {
 pub enum HandshakeRejectReason {
     #[error("protocol version not supported")]
     UnsupportedVersion,
-    #[error("no more RPC sessions available")]
-    NoSessionsAvailable,
+    #[error("no more RPC server sessions available: {0}")]
+    NoServerSessionsAvailable(&'static str),
+    #[error("no more RPC client sessions available: {0}")]
+    NoClientSessionsAvailable(&'static str),
     #[error("protocol not supported")]
     ProtocolNotSupported,
     #[error("unknown protocol error: {0}")]
@@ -133,7 +135,9 @@ impl HandshakeRejectReason {
     }
 
     pub fn from_i32(v: i32) -> Option<Self> {
-        rpc_proto::rpc_session_reply::HandshakeRejectReason::from_i32(v).map(Into::into)
+        rpc_proto::rpc_session_reply::HandshakeRejectReason::try_from(v)
+            .map(Into::into)
+            .ok()
     }
 }
 
@@ -143,7 +147,8 @@ impl From<rpc_proto::rpc_session_reply::HandshakeRejectReason> for HandshakeReje
         use rpc_proto::rpc_session_reply::HandshakeRejectReason::*;
         match reason {
             UnsupportedVersion => HandshakeRejectReason::UnsupportedVersion,
-            NoSessionsAvailable => HandshakeRejectReason::NoSessionsAvailable,
+            NoServerSessionsAvailable => HandshakeRejectReason::NoServerSessionsAvailable("session limit reached"),
+            NoClientSessionsAvailable => HandshakeRejectReason::NoClientSessionsAvailable("session limit reached"),
             ProtocolNotSupported => HandshakeRejectReason::ProtocolNotSupported,
             Unknown => HandshakeRejectReason::Unknown("reject reason is not known"),
         }
@@ -156,7 +161,8 @@ impl From<HandshakeRejectReason> for rpc_proto::rpc_session_reply::HandshakeReje
         use rpc_proto::rpc_session_reply::HandshakeRejectReason::*;
         match reason {
             HandshakeRejectReason::UnsupportedVersion => UnsupportedVersion,
-            HandshakeRejectReason::NoSessionsAvailable => NoSessionsAvailable,
+            HandshakeRejectReason::NoServerSessionsAvailable(_) => NoServerSessionsAvailable,
+            HandshakeRejectReason::NoClientSessionsAvailable(_) => NoClientSessionsAvailable,
             HandshakeRejectReason::ProtocolNotSupported => ProtocolNotSupported,
             HandshakeRejectReason::Unknown(_) => Unknown,
         }

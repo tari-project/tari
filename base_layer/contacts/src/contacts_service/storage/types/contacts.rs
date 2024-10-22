@@ -80,18 +80,16 @@ impl ContactSql {
             .first::<ContactSql>(conn)?)
     }
 
-    /// Find a particular Contact by their address, and update it if it exists, returning the affected record
-    pub fn find_by_address_and_update(
-        conn: &mut SqliteConnection,
+    /// updates the address field of the contact
+    pub fn set_address_of_node_id(
+        node_id: &[u8],
         address: &[u8],
-        updated_contact: UpdateContact,
-    ) -> Result<ContactSql, ContactsServiceStorageError> {
-        // Note: `get_result` not implemented for SQLite
-        diesel::update(contacts::table.filter(contacts::address.eq(address)))
-            .set(updated_contact)
-            .execute(conn)
-            .num_rows_affected_or_not_found(1)?;
-        ContactSql::find_by_address(address, conn)
+        conn: &mut SqliteConnection,
+    ) -> Result<(), ContactsServiceStorageError> {
+        diesel::update(contacts::table.filter(contacts::node_id.eq(node_id)))
+            .set(contacts::address.eq(address))
+            .execute(conn)?;
+        Ok(())
     }
 
     /// Find a particular Contact by their address, and delete it if it exists, returning the affected record

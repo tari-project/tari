@@ -43,13 +43,17 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         key_manager::create_memory_db_key_manager,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::runtime::Runtime;
 
 use crate::error::{InterfaceError, MiningHelperError};
+mod consts {
+    // Import the auto-generated const values from the Manifest and Git
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}
 
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 #[derive(Debug, PartialEq, Clone)]
@@ -326,10 +330,22 @@ pub unsafe extern "C" fn inject_coinbase(
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     };
-    let coinbase_extra_string = CString::from_raw(coinbase_extra as *mut i8)
-        .to_str()
-        .unwrap()
-        .to_owned();
+    let coinbase_extra_bytes = match CString::from_raw(coinbase_extra as *mut i8).to_str() {
+        Ok(v) => v.to_owned().as_bytes().to_vec(),
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+    let coinbase_extra = match CoinBaseExtra::try_from(coinbase_extra_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
     let mut bytes = (*block_template_bytes).0.as_slice();
     let mut block_template: NewBlockTemplate = match BorshDeserialize::deserialize(&mut bytes) {
         Ok(v) => v,
@@ -377,7 +393,7 @@ pub unsafe extern "C" fn inject_coinbase(
             0.into(),
             coibase_value.into(),
             height,
-            coinbase_extra_string.as_bytes(),
+            &coinbase_extra,
             &key_manager,
             &wallet_address,
             stealth_payment,
@@ -604,57 +620,39 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        #[cfg(tari_target_network_mainnet)]
-        let (nonce, difficulty, network) = match Network::get_current_or_user_setting_or_default() {
-            Network::MainNet => (
-                3145418102407526886,
-                Difficulty::from_u64(1505).unwrap(),
-                Network::MainNet,
-            ),
-            Network::StageNet => (
-                5024328429923549037,
-                Difficulty::from_u64(2065).unwrap(),
-                Network::StageNet,
-            ),
-            _ => panic!("Invalid network for mainnet target"),
-        };
-        #[cfg(tari_target_network_nextnet)]
-        let (nonce, difficulty, network) = (
-            10034243937442353464,
-            Difficulty::from_u64(1190).unwrap(),
-            Network::NextNet,
-        );
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        let (nonce, difficulty, network) = (
-            9571285381070445492,
-            Difficulty::from_u64(2412).unwrap(),
-            Network::Esmeralda,
-        );
-        unsafe {
-            set_network_if_choice_valid(network).unwrap();
-            let mut error = -1;
-            let error_ptr = &mut error as *mut c_int;
-            let block = create_test_block();
-            let header_bytes = borsh::to_vec(&block.header).unwrap();
-            #[allow(clippy::cast_possible_truncation)]
-            let len = header_bytes.len() as u32;
-            let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-            inject_nonce(byte_vec, nonce, error_ptr);
-            assert_eq!(error, 0);
-            let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
-            if result != difficulty.as_u64() {
-                // Use this to generate new NONCE and DIFFICULTY
-                // Use ONLY if you know encoding has changed
-                let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                eprintln!("network = {network:?}");
-                eprintln!("nonce = {:?}", nonce);
-                eprintln!("difficulty = {:?}", difficulty);
-                panic!(
-                    "detect_change_in_consensus_encoding has failed. This might be a change in consensus encoding \
-                     which requires an update to the pool miner code."
-                )
+        {
+            let (nonce, difficulty, network) = (
+                1209310303936924941,
+                Difficulty::from_u64(1634).unwrap(),
+                Network::Esmeralda,
+            );
+            unsafe {
+                set_network_if_choice_valid(network).unwrap();
+                let mut error = -1;
+                let error_ptr = &mut error as *mut c_int;
+                let block = create_test_block();
+                let header_bytes = borsh::to_vec(&block.header).unwrap();
+                #[allow(clippy::cast_possible_truncation)]
+                let len = header_bytes.len() as u32;
+                let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
+                inject_nonce(byte_vec, nonce, error_ptr);
+                assert_eq!(error, 0);
+                let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
+                if result != difficulty.as_u64() {
+                    // Use this to generate new NONCE and DIFFICULTY
+                    // Use ONLY if you know encoding has changed
+                    let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
+                    eprintln!("network = {network:?}");
+                    eprintln!("nonce = {:?}", nonce);
+                    eprintln!("difficulty = {:?}", difficulty);
+                    panic!(
+                        "detect_change_in_consensus_encoding has failed. This might be a change in consensus encoding \
+                         which requires an update to the pool miner code."
+                    )
+                }
+                byte_vector_destroy(byte_vec);
             }
-            byte_vector_destroy(byte_vec);
         }
     }
 
@@ -838,7 +836,7 @@ mod tests {
             assert_eq!(block_temp.body.kernels().len(), 1);
             assert_eq!(block_temp.body.outputs().len(), 1);
             assert!(block_temp.body.outputs()[0].features.is_coinbase());
-            assert_eq!(block_temp.body.outputs()[0].features.coinbase_extra, vec![97]);
+            assert_eq!(block_temp.body.outputs()[0].features.coinbase_extra.to_vec(), vec![97]);
             assert_eq!(block_temp.body.outputs()[0].minimum_value_promise, MicroMinotari(100));
         }
     }

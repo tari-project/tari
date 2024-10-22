@@ -25,6 +25,8 @@ use std::fmt::{Debug, Error, Formatter};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
@@ -37,7 +39,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -65,6 +67,7 @@ pub(super) struct ChangeDetails {
     change_input_data: ExecutionStack,
     change_script_key_id: TariKeyId,
     change_covenant: Covenant,
+    own_address: TariAddress,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -101,6 +104,7 @@ pub struct SenderTransactionInitializer<KM> {
     burn_commitment: Option<Commitment>,
     fee: Fee,
     key_manager: KM,
+    sender_address: TariAddress,
 }
 
 pub struct BuildError<KM> {
@@ -131,6 +135,7 @@ where KM: TransactionKeyManagerInterface
             kernel_features: KernelFeatures::empty(),
             burn_commitment: None,
             tx_id: None,
+            sender_address: TariAddress::default(),
             key_manager,
         }
     }
@@ -139,6 +144,12 @@ where KM: TransactionKeyManagerInterface
     /// absolute fee is calculated from the fee-per-gram value.
     pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
+        self
+    }
+
+    /// Set the sender's address
+    pub fn with_sender_address(&mut self, sender_address: TariAddress) -> &mut Self {
+        self.sender_address = sender_address;
         self
     }
 
@@ -222,6 +233,7 @@ where KM: TransactionKeyManagerInterface
         change_script_key_id: TariKeyId,
         change_commitment_mask_key_id: TariKeyId,
         change_covenant: Covenant,
+        own_address: TariAddress,
     ) -> &mut Self {
         let details = ChangeDetails {
             change_commitment_mask_key_id,
@@ -229,6 +241,7 @@ where KM: TransactionKeyManagerInterface
             change_input_data,
             change_script_key_id,
             change_covenant,
+            own_address,
         };
         self.change = Some(details);
         self
@@ -382,10 +395,18 @@ where KM: TransactionKeyManagerInterface
                             .ok_or("Change covenant was not provided")?
                             .change_covenant
                             .clone();
+                        let address = self
+                            .change
+                            .as_ref()
+                            .ok_or("address was not provided")?
+                            .own_address
+                            .clone();
+
+                        let payment_id = PaymentId::Address(address);
 
                         let encrypted_data = self
                             .key_manager
-                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), PaymentId::Empty)
+                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64(), payment_id.clone())
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -429,7 +450,7 @@ where KM: TransactionKeyManagerInterface
                             covenant,
                             encrypted_data,
                             minimum_value_promise,
-                            PaymentId::Empty,
+                            payment_id,
                             &self.key_manager,
                         )
                         .await
@@ -499,10 +520,6 @@ where KM: TransactionKeyManagerInterface
             target: LOG_TARGET,
             "Build transaction with Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
         );
-        // Some checks on the fee
-        if total_fee < Fee::MINIMUM_TRANSACTION_FEE {
-            return self.build_err("Fee is less than the minimum");
-        }
 
         let change_output_pair = match change_output {
             Some((output, sender_offset_key_id)) => {
@@ -573,6 +590,7 @@ where KM: TransactionKeyManagerInterface
             inputs: self.inputs,
             outputs: self.sender_custom_outputs,
             text_message: self.recipient_text_message.unwrap_or_default(),
+            sender_address: self.sender_address.clone(),
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));
@@ -587,6 +605,7 @@ where KM: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::tari_address::TariAddress;
     use tari_script::{inputs, script};
 
     use crate::{
@@ -611,7 +630,7 @@ mod test {
         // Start the builder
         let builder = SenderTransactionInitializer::new(&create_consensus_constants(0), key_manager.clone());
         let err = builder.build().await.unwrap_err();
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(err.message, "Missing Lock Height,Missing Fee per gram");
 
@@ -658,11 +677,12 @@ mod test {
         let mut builder = err.builder;
         let change = TestParams::new(&key_manager).await;
         builder.with_change_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             Default::default(),
             change.script_key_id.clone(),
             change.commitment_mask_key_id.clone(),
             Covenant::default(),
+            TariAddress::default(),
         );
         let result = builder.build().await.unwrap();
         // Peek inside and check the results
@@ -697,7 +717,7 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &p,
             MicroMinotari(5000) - expected_fee,
@@ -793,7 +813,7 @@ mod test {
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
-            script!(Nop),
+            script!(Nop).unwrap(),
             OutputFeatures::default(),
             &p,
             MicroMinotari(500),
@@ -819,12 +839,13 @@ mod test {
     }
 
     #[tokio::test]
-    async fn fee_too_low() {
+    async fn zero_fee_allowed() {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
+        let fee_per_gram = MicroMinotari(0);
         let tx_fee = p.fee().calculate(
-            MicroMinotari(1),
+            fee_per_gram,
             1,
             1,
             1,
@@ -832,7 +853,7 @@ mod test {
                 .expect("Failed to borsh serialized size"),
         );
         let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
@@ -843,13 +864,14 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
-            .with_fee_per_gram(MicroMinotari(1))
+            .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
                 script,
                 Default::default(),
@@ -859,8 +881,7 @@ mod test {
             )
             .await
             .unwrap();
-        let err = builder.build().await.unwrap_err();
-        assert_eq!(err.message, "Fee is less than the minimum");
+        assert!(builder.build().await.is_ok(), "Zero fee should be allowed");
     }
 
     #[tokio::test]
@@ -869,7 +890,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
@@ -892,11 +913,12 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_fee_per_gram(MicroMinotari(1))
             .with_recipient_data(
@@ -924,7 +946,7 @@ mod test {
         let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;
         let fee_per_gram = MicroMinotari(6);
 
-        let script = script!(Nop);
+        let script = script!(Nop).unwrap();
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             fee_per_gram,
@@ -958,11 +980,12 @@ mod test {
             .await
             .unwrap()
             .with_change_data(
-                script!(Nop),
+                script!(Nop).unwrap(),
                 inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.commitment_mask_key_id.clone(),
                 Covenant::default(),
+                TariAddress::default(),
             )
             .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(

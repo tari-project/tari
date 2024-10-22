@@ -458,7 +458,7 @@ impl StoreAndForwardService {
 
     async fn request_stored_messages_from_peer(&mut self, node_id: &NodeId) -> SafResult<()> {
         let request = self.get_saf_request().await?;
-        info!(
+        trace!(
             target: LOG_TARGET,
             "Sending store and forward request to peer '{}' (Since = {:?})", node_id, request.since
         );

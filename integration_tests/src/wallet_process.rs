@@ -71,7 +71,7 @@ pub async fn spawn_wallet(
     let port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
-    let wallet_config: WalletConfig;
+    let mut wallet_config: WalletConfig;
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
         port = wallet_ps.port;
@@ -91,6 +91,9 @@ pub async fn spawn_wallet(
             .join(format!("{}_grpc_port_{}", wallet_name.clone(), grpc_port));
 
         wallet_config = WalletConfig::default();
+        wallet_config
+            .base_node_service_config
+            .base_node_monitor_max_refresh_interval = Duration::from_secs(5);
     };
 
     let base_node = base_node_name.map(|name| {
@@ -212,7 +215,7 @@ pub fn get_default_cli() -> Cli {
             base_path: Default::default(),
             config: Default::default(),
             log_config: None,
-            log_level: None,
+            log_path: None,
             network: None,
             config_property_overrides: vec![],
         },
@@ -230,6 +233,8 @@ pub fn get_default_cli() -> Cli {
         grpc_address: None,
         command2: None,
         profile_with_tokio_console: false,
+        view_private_key: None,
+        spend_key: None,
     }
 }
 

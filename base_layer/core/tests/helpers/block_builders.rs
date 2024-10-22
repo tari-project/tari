@@ -22,7 +22,10 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::{Commitment, FixedHash};
+use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    types::{Commitment, FixedHash},
+};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{
@@ -33,12 +36,17 @@ use tari_core::{
         ChainStorageError,
     },
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_mmr,
+    kernel_mr_hash_from_pruned_mmr,
+    output_mr_hash_from_smt,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        key_manager::{MemoryDbKeyManager, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{
+            CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -52,16 +60,21 @@ use tari_core::{
     },
     KernelMmr,
     OutputSmt,
+    PrunedInputMmr,
+    PrunedKernelMmr,
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
+use tari_mmr::{
+    pruned_hashset::PrunedHashSet,
+    sparse_merkle_tree::{NodeKey, ValueHash},
+};
 use tari_script::script;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::ByteArray;
 
 pub async fn create_coinbase(
     value: MicroMinotari,
     maturity_height: u64,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     key_manager: &MemoryDbKeyManager,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let p = TestParams::new(key_manager).await;
@@ -105,7 +118,7 @@ pub async fn create_coinbase(
         .unwrap();
 
     let wallet_output = create_wallet_output_with_data(
-        script!(Nop),
+        script!(Nop).unwrap(),
         OutputFeatures::create_coinbase(maturity_height, extra, RangeProofType::BulletProofPlus),
         &p,
         value,
@@ -127,7 +140,7 @@ async fn genesis_template(
     let (utxo, kernel, output) = create_coinbase(
         coinbase_value,
         consensus_constants.coinbase_min_maturity(),
-        Some(b"The big bang".to_vec()),
+        Some(CoinBaseExtra::try_from(b"The big bang".to_vec()).unwrap()),
         key_manager,
     )
     .await;
@@ -142,24 +155,27 @@ async fn genesis_template(
 
 #[test]
 fn print_new_genesis_block_values() {
-    let vn_mr = calculate_validator_node_mr(&[]).unwrap();
-    let validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
+    let validator_node_mr = calculate_validator_node_mr(&[]).unwrap();
 
     // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
-    let kernel_mr = KernelMmr::new(Vec::new()).get_merkle_root().unwrap();
-    let output_mr = FixedHash::try_from(OutputSmt::new().hash().as_slice()).unwrap();
+    let kernel_mr = kernel_mr_hash_from_mmr(&KernelMmr::new(Vec::new())).unwrap();
+    let kernel_mr_pruned = kernel_mr_hash_from_pruned_mmr(&PrunedKernelMmr::new(PrunedHashSet::default())).unwrap();
+    assert_eq!(kernel_mr, kernel_mr_pruned);
+    let input_mr = input_mr_hash_from_pruned_mmr(&PrunedInputMmr::new(PrunedHashSet::default())).unwrap();
+    let output_mr = output_mr_hash_from_smt(&mut OutputSmt::new()).unwrap();
 
     // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
     println!();
     println!("Genesis block constants");
     println!();
-    println!("header output_mr:           {}", output_mr.to_hex());
+    println!("header output_mr:           {}", output_mr);
     println!("header output_mmr_size:     0");
-    println!("header kernel_mr:           {}", kernel_mr.to_hex());
+    println!("header kernel_mr:           {}", kernel_mr);
     println!("header kernel_mmr_size:     0");
-    println!("header validator_node_mr:   {}", validator_node_mr.to_hex());
-    println!("header total_kernel_offset: {}", FixedHash::zero().to_hex());
-    println!("header total_script_offset: {}", FixedHash::zero().to_hex());
+    println!("header validator_node_mr:   {}", validator_node_mr);
+    println!("header input_mr:            {}", input_mr);
+    println!("header total_kernel_offset: {}", FixedHash::zero());
+    println!("header total_script_offset: {}", FixedHash::zero());
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo
@@ -187,7 +203,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
 
     let mut header = BlockHeader::from(header);
     let kernel_mmr = KernelMmr::new(kernel_hashes);
-    header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root()?).unwrap();
+    header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr)?;
     let mut mmr = OutputSmt::new();
     for output in body.outputs() {
         let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
@@ -234,7 +250,7 @@ pub async fn create_genesis_block_with_utxos(
     key_manager: &MemoryDbKeyManager,
 ) -> (ChainBlock, Vec<WalletOutput>) {
     let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let output_features = OutputFeatures::default();
     let mut outputs = Vec::new();
     outputs.push(coinbase);
@@ -327,7 +343,7 @@ pub async fn chain_block_with_new_coinbase(
     prev_block: &ChainBlock,
     transactions: Vec<Transaction>,
     consensus_manager: &ConsensusManager,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     key_manager: &MemoryDbKeyManager,
 ) -> (NewBlockTemplate, WalletOutput) {
     let height = prev_block.height() + 1;

@@ -7,14 +7,15 @@
 #  $2 = amount,
 #  $3 = tx_id
 #  $4 = message
-#  $5 = source address public key
-#  $6 = destination address public key
-#  $7 = status
-#  $8 = excess,
-#  $9 = public_nonce,
-# $10 = signature,
-# $11 = number of confirmations (if applicable, otherwise empty string)
-# $12 = direction
+#  $5 = payment_id
+#  $6 = source address public key
+#  $7 = destination address public key
+#  $8 = status
+#  $9 = excess,
+#  $10 = public_nonce,
+#  $11 = signature,
+#  $12 = number of confirmations (if applicable, otherwise empty string)
+#  $13 = direction
 
 # 2.
 # For transaction "sent" event, we only have the pending outbound transaction:

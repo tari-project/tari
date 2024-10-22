@@ -27,6 +27,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::{VarIntReader, VarIntWriter};
+use tari_max_size::MaxSizeVec;
 
 use super::decoder::CovenantDecodeError;
 use crate::{
@@ -45,11 +46,13 @@ use crate::{
 
 const MAX_COVENANT_BYTES: usize = 4096;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) type CovenantTokens = MaxSizeVec<CovenantToken, 128>;
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 /// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
 /// See https://rfc.tari.com/RFC-0250_Covenants.html for details.
 pub struct Covenant {
-    tokens: Vec<CovenantToken>,
+    tokens: CovenantTokens,
 }
 
 impl BorshSerialize for Covenant {
@@ -85,7 +88,9 @@ impl BorshDeserialize for Covenant {
 
 impl Covenant {
     pub fn new() -> Self {
-        Self { tokens: Vec::new() }
+        Self {
+            tokens: CovenantTokens::default(),
+        }
     }
 
     /// Produces a new `Covenant` instance, out of a byte buffer. It errors
@@ -110,7 +115,7 @@ impl Covenant {
 
     /// Writes a `Covenant` instance byte to a writer.
     pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        CovenantTokenEncoder::new(self.tokens.as_slice()).write_to(writer)
+        CovenantTokenEncoder::new(&self.tokens).write_to(writer)
     }
 
     /// Gets the byte lenght of the underlying byte buffer
@@ -149,8 +154,8 @@ impl Covenant {
     }
 
     /// Adds a new `CovenantToken` to the current `tokens` vector field.
-    pub fn push_token(&mut self, token: CovenantToken) {
-        self.tokens.push(token);
+    pub fn push_token(&mut self, token: CovenantToken) -> Result<(), CovenantError> {
+        Ok(self.tokens.push(token)?)
     }
 
     #[cfg(test)]
@@ -197,7 +202,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         let input = create_input(&key_manager).await;
-        let covenant = covenant!();
+        let covenant = covenant!().unwrap();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 10);
     }
@@ -214,7 +219,8 @@ mod test {
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,
             @field::features_maturity))
-        );
+        )
+        .unwrap();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
     }
@@ -231,7 +237,8 @@ mod test {
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,
             @field::features_maturity))
-        );
+        )
+        .unwrap();
         let mut buf = Vec::new();
         covenant.serialize(&mut buf).unwrap();
         buf.extend_from_slice(&[1, 2, 3]);

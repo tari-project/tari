@@ -40,24 +40,30 @@ use std::io::stdout;
 use clap::Parser;
 use crossterm::{execute, terminal::SetTitle};
 use log::*;
+use minotari_app_utilities::consts;
 use tari_common::initialize_logging;
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let terminal_title = format!("Minotari Merge Mining Proxy - Version {}", env!("CARGO_PKG_VERSION"));
+    let terminal_title = format!("Minotari Merge Mining Proxy - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }
 
     let cli = Cli::parse();
-
+    let base_path = cli.common.get_base_path();
     initialize_logging(
         &cli.common.log_config_path("proxy"),
-        &cli.common.get_base_path(),
+        cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
     )?;
+    info!(
+        target: LOG_TARGET,
+        "Starting Minotari Merge Mining Proxy version: {}",
+        consts::APP_VERSION
+    );
     match run_merge_miner::start_merge_miner(cli).await {
         Ok(_) => Ok(()),
         Err(err) => {

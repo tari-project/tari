@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use trust_dns_client::{error::ClientError, proto::error::ProtoError};
+use std::io;
+
+use hickory_client::{error::ClientError, proto::error::ProtoError};
+use hickory_resolver::error::ResolveError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DnsClientError {
@@ -32,6 +35,14 @@ pub enum DnsClientError {
     Timeout,
     #[error("Failed to parse name server string")]
     NameServerParseFailed,
-    #[error("No record data present")]
-    NoRecordDataPresent,
+    #[error("Resolve error: {0}")]
+    ResolveError(#[from] ResolveError),
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+    #[error("System config has no DNS servers configured")]
+    SystemHasNoDnsServers,
+    #[error("DNS server name was not provided for DNSSEC connection e.g.1.1.1.1:853/cloudflare-dns.com")]
+    DnsNameRequiredForDnsSec,
+    #[error("Connection error: {0}")]
+    Connection(String),
 }

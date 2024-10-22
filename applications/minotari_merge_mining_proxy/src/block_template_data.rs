@@ -29,7 +29,7 @@ use chrono::Duration;
 use chrono::{DateTime, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
-use tari_core::proof_of_work::monero_rx::FixedByteArray;
+use tari_core::{proof_of_work::monero_rx::FixedByteArray, AuxChainHashes};
 use tokio::sync::RwLock;
 use tracing::trace;
 
@@ -104,15 +104,7 @@ impl BlockTemplateRepository {
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
     pub async fn get_final_template<T: AsRef<[u8]>>(&self, merge_mining_hash: T) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
-        b.get(merge_mining_hash.as_ref()).map(|item| {
-            trace!(
-                target: LOG_TARGET,
-                "Retrieving block template at height #{} with merge mining hash: {:?}",
-                item.data.clone().template.new_block_template.header.unwrap_or_default().height,
-                hex::encode(merge_mining_hash.as_ref())
-            );
-            item.data.clone()
-        })
+        b.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
@@ -165,7 +157,7 @@ impl BlockTemplateRepository {
         let b = self.blocks.read().await;
         b.values()
             .find(|item| {
-                let header = item.data.template.new_block_template.header.clone().unwrap_or_default();
+                let header = item.data.template.tari_block.header.clone().unwrap_or_default();
                 FixedHash::try_from(header.prev_hash).unwrap_or(FixedHash::default()) == current_best_block_hash
             })
             .map(|val| val.data.clone())
@@ -222,8 +214,7 @@ pub struct BlockTemplateData {
     pub tari_difficulty: u64,
     pub tari_merge_mining_hash: FixedHash,
     #[allow(dead_code)]
-    pub aux_chain_hashes: Vec<monero::Hash>,
-    pub new_block_template: grpc::NewBlockTemplate,
+    pub aux_chain_hashes: AuxChainHashes,
 }
 
 impl BlockTemplateData {}
@@ -237,8 +228,7 @@ pub struct BlockTemplateDataBuilder {
     monero_difficulty: Option<u64>,
     tari_difficulty: Option<u64>,
     tari_merge_mining_hash: Option<FixedHash>,
-    aux_chain_hashes: Vec<monero::Hash>,
-    new_block_template: Option<grpc::NewBlockTemplate>,
+    aux_chain_hashes: AuxChainHashes,
 }
 
 impl BlockTemplateDataBuilder {
@@ -276,13 +266,8 @@ impl BlockTemplateDataBuilder {
         self
     }
 
-    pub fn aux_hashes(mut self, aux_chain_hashes: Vec<monero::Hash>) -> Self {
+    pub fn aux_hashes(mut self, aux_chain_hashes: AuxChainHashes) -> Self {
         self.aux_chain_hashes = aux_chain_hashes;
-        self
-    }
-
-    pub fn new_block_template(mut self, template: grpc::NewBlockTemplate) -> Self {
-        self.new_block_template = Some(template);
         self
     }
 
@@ -313,9 +298,6 @@ impl BlockTemplateDataBuilder {
         if self.aux_chain_hashes.is_empty() {
             return Err(MmProxyError::MissingDataError("aux chain hashes are empty".to_string()));
         };
-        let new_block_template = self
-            .new_block_template
-            .ok_or_else(|| MmProxyError::MissingDataError("new_block_template not provided".to_string()))?;
 
         Ok(BlockTemplateData {
             monero_seed,
@@ -325,7 +307,6 @@ impl BlockTemplateDataBuilder {
             tari_difficulty,
             tari_merge_mining_hash,
             aux_chain_hashes: self.aux_chain_hashes,
-            new_block_template,
         })
     }
 }
@@ -342,6 +323,7 @@ pub mod test {
     use tari_utilities::ByteArray;
 
     use super::*;
+    use crate::block_template_protocol::AuxChainMr;
 
     fn create_block_template_data() -> FinalBlockTemplateData {
         let header = BlockHeader::new(100);
@@ -354,7 +336,6 @@ pub mod test {
             total_fees: 100,
             algo: Some(grpc::PowAlgo { pow_algo: 0 }),
         };
-        let new_block_template = grpc::NewBlockTemplate::default();
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.try_into().unwrap())
@@ -362,16 +343,15 @@ pub mod test {
             .monero_difficulty(123456)
             .tari_difficulty(12345)
             .tari_merge_mining_hash(hash)
-            .aux_hashes(vec![monero::Hash::from_slice(hash.as_slice())])
-            .new_block_template(new_block_template);
+            .aux_hashes(AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap());
         let block_template_data = btdb.build().unwrap();
         FinalBlockTemplateData {
             template: block_template_data,
             target_difficulty: Difficulty::from_u64(12345).unwrap(),
             blockhashing_blob: "no blockhashing_blob data".to_string(),
             blocktemplate_blob: "no blocktemplate_blob data".to_string(),
-            aux_chain_hashes: vec![monero::Hash::from_slice(hash.as_slice())],
-            aux_chain_mr: hash.to_vec(),
+            aux_chain_hashes: AuxChainHashes::try_from(vec![monero::Hash::from_slice(hash.as_slice())]).unwrap(),
+            aux_chain_mr: AuxChainMr::try_from(hash.to_vec()).unwrap(),
         }
     }
 
@@ -425,7 +405,7 @@ pub mod test {
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.clone().try_into().unwrap())
-            .tari_miner_data(miner_data.clone());
+            .tari_miner_data(miner_data);
         assert!(
             matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"monero_difficulty not provided")
         );

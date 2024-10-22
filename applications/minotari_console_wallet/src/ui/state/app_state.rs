@@ -39,6 +39,7 @@ use minotari_wallet::{
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
     util::wallet_identity::WalletIdentity,
+    utxo_scanner_service::handle::UtxoScannerHandle,
     WalletConfig,
     WalletSqlite,
 };
@@ -48,6 +49,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
+    wallet_types::WalletType,
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -184,6 +186,13 @@ impl AppState {
         Ok(())
     }
 
+    pub fn toggle_abandoned_coinbase_filter(&mut self) {
+        self.completed_tx_filter = match self.completed_tx_filter {
+            TransactionFilter::AbandonedCoinbases => TransactionFilter::None,
+            TransactionFilter::None => TransactionFilter::AbandonedCoinbases,
+        };
+    }
+
     pub async fn update_cache(&mut self) {
         let update = match self.cache_update_cooldown {
             Some(last_update) => last_update.elapsed() > self.config.cache_update_cooldown,
@@ -236,8 +245,10 @@ impl AppState {
     }
 
     // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, address: &TariAddress) -> String {
-        let address_string = address.to_base58();
+    pub fn get_alias(&self, address_string: String) -> String {
+        if address_string == TariAddress::default().to_base58() {
+            return "Offline payment".to_string();
+        }
 
         match self
             .cached_data
@@ -323,10 +334,8 @@ impl AppState {
         let payment_id = if payment_id_str.is_empty() {
             PaymentId::Empty
         } else {
-            let payment_id_u64: u64 = payment_id_str
-                .parse::<u64>()
-                .map_err(|_| UiError::HexError("Could not convert payment_id to bytes".to_string()))?;
-            PaymentId::U64(payment_id_u64)
+            let bytes = payment_id_str.as_bytes().to_vec();
+            PaymentId::Open(bytes)
         };
 
         let output_features = OutputFeatures { ..Default::default() };
@@ -565,6 +574,10 @@ impl AppState {
         &self.cached_data.base_node_state
     }
 
+    pub fn get_wallet_scanned_height(&self) -> u64 {
+        self.cached_data.wallet_scanned_height
+    }
+
     pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
         self.wallet_connectivity.clone()
     }
@@ -654,6 +667,11 @@ impl AppState {
     pub async fn get_network(&self) -> Network {
         self.inner.read().await.get_network()
     }
+
+    pub async fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+        let inner = self.inner.write().await;
+        inner.get_wallet_type()
+    }
 }
 pub struct AppStateInner {
     updated: bool,
@@ -675,6 +693,14 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn get_wallet_type(&self) -> Result<WalletType, UiError> {
+        self.wallet
+            .db
+            .get_wallet_type()
+            .map_err(UiError::WalletStorageError)
+            .and_then(|opt| opt.ok_or(UiError::WalletTypeError))
     }
 
     pub fn get_network(&self) -> Network {
@@ -930,6 +956,7 @@ impl AppStateInner {
                 .join(", "),
             qr_code: image,
             node_id: wallet_id.node_identity.node_id().to_string(),
+            public_key: wallet_id.node_identity.public_key().to_string(),
         };
         self.data.my_identity = identity;
         self.updated = true;
@@ -977,7 +1004,12 @@ impl AppStateInner {
     pub async fn refresh_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
         self.data.base_node_selected = peer;
         self.updated = true;
+        Ok(())
+    }
 
+    pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64) -> Result<(), UiError> {
+        self.data.wallet_scanned_height = height;
+        self.updated = true;
         Ok(())
     }
 
@@ -1005,6 +1037,10 @@ impl AppStateInner {
         self.wallet.wallet_connectivity.clone()
     }
 
+    pub fn get_wallet_utxo_scanner(&self) -> UtxoScannerHandle {
+        self.wallet.utxo_scanner_service.clone()
+    }
+
     pub fn get_base_node_event_stream(&self) -> BaseNodeEventReceiver {
         self.wallet.base_node_service.get_event_stream()
     }
@@ -1014,6 +1050,7 @@ impl AppStateInner {
             .set_base_node_peer(
                 peer.public_key.clone(),
                 Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                None,
             )
             .await?;
 
@@ -1039,6 +1076,7 @@ impl AppStateInner {
             .set_base_node_peer(
                 peer.public_key.clone(),
                 Some(peer.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                None,
             )
             .await?;
 
@@ -1077,6 +1115,7 @@ impl AppStateInner {
             .set_base_node_peer(
                 previous.public_key.clone(),
                 Some(previous.addresses.best().ok_or(UiError::NoAddress)?.address().clone()),
+                None,
             )
             .await?;
 
@@ -1167,6 +1206,8 @@ pub struct CompletedTransactionInfo {
     pub inputs_count: usize,
     pub outputs_count: usize,
     pub payment_id: Option<PaymentId>,
+    pub coinbase: bool,
+    pub burn: bool,
 }
 
 impl CompletedTransactionInfo {
@@ -1174,14 +1215,22 @@ impl CompletedTransactionInfo {
         tx: CompletedTransaction,
         transaction_weighting: &TransactionWeight,
     ) -> Result<Self, TransactionError> {
-        let excess_signature = tx
-            .transaction
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_default();
+        let excess_signature = format!(
+            "{},{}",
+            tx.transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_default(),
+            tx.transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_public_nonce().to_hex())
+                .unwrap_or_default()
+        );
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
+        let coinbase = tx.transaction.body.contains_coinbase();
+        let burn = tx.transaction.body.contains_burn();
 
         Ok(Self {
             tx_id: tx.tx_id,
@@ -1208,6 +1257,8 @@ impl CompletedTransactionInfo {
             inputs_count,
             outputs_count,
             payment_id: tx.payment_id,
+            coinbase,
+            burn,
         })
     }
 }
@@ -1230,6 +1281,7 @@ struct AppStateData {
     all_events: VecDeque<EventListItem>,
     notifications: Vec<(DateTime<Local>, String)>,
     new_notification_count: u32,
+    wallet_scanned_height: u64,
 }
 
 #[derive(Clone)]
@@ -1267,6 +1319,7 @@ impl AppStateData {
                 .join(", "),
             qr_code: image,
             node_id: wallet_identity.node_identity.node_id().to_string(),
+            public_key: wallet_identity.node_identity.public_key().to_string(),
         };
         let base_node_previous = base_node_selected.clone();
 
@@ -1308,6 +1361,7 @@ impl AppStateData {
             all_events: VecDeque::new(),
             notifications: Vec::new(),
             new_notification_count: 0,
+            wallet_scanned_height: 0,
         }
     }
 }
@@ -1319,6 +1373,7 @@ pub struct MyIdentity {
     pub network_address: String,
     pub qr_code: String,
     pub node_id: String,
+    pub public_key: String,
 }
 
 #[derive(Clone, Debug)]
@@ -1354,5 +1409,6 @@ impl Default for AppStateConfig {
 
 #[derive(Clone, PartialEq)]
 pub enum TransactionFilter {
+    None,
     AbandonedCoinbases,
 }

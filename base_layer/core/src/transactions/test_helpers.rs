@@ -20,17 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
+    tari_address::TariAddress,
+    types::{Commitment, PrivateKey, PublicKey, Signature},
+};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
-use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
+use super::transaction_components::{CoinBaseExtra, TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     borsh::SerializedSize,
     consensus::ConsensusManager,
@@ -42,9 +46,7 @@ use crate::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TariKeyId,
-            TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
-            TransactionKeyManagerLabel,
             TransactionKeyManagerWrapper,
             TxoStage,
         },
@@ -83,7 +85,7 @@ pub async fn create_test_input<
                 value: amount,
                 features: OutputFeatures {
                     maturity,
-                    coinbase_extra,
+                    coinbase_extra: CoinBaseExtra::try_from(coinbase_extra).unwrap(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -201,7 +203,8 @@ impl TestParams {
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
         let output_features = OutputFeatures { ..Default::default() };
         Ok(self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].get_serialized_size()? + output_features.get_serialized_size()?,
+            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
+                output_features.get_serialized_size()?,
         ) * num_outputs)
     }
 }
@@ -230,7 +233,7 @@ impl Default for UtxoTestParams {
     fn default() -> Self {
         Self {
             value: 10.into(),
-            script: script![Nop],
+            script: script![Nop].unwrap(),
             features: OutputFeatures::default(),
             input_data: None,
             covenant: Covenant::default(),
@@ -327,7 +330,7 @@ pub fn create_consensus_manager() -> ConsensusManager {
 pub async fn create_coinbase_wallet_output(
     test_params: &TestParams,
     height: u64,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     range_proof_type: RangeProofType,
 ) -> WalletOutput {
     let rules = create_consensus_manager();
@@ -436,7 +439,7 @@ macro_rules! txn_schema {
             fee: $fee,
             lock_height: $lock,
             features: $features.clone(),
-            script: tari_script::script![Nop],
+            script: tari_script::script![Nop].unwrap(),
             covenant: Default::default(),
             input_data: None,
             input_version: $input_version.clone(),
@@ -538,7 +541,7 @@ pub async fn create_tx(
         output_count,
         fee_per_gram,
         &output_features,
-        &script![Nop],
+        &script![Nop].unwrap(),
         &Default::default(),
         key_manager,
     )
@@ -649,6 +652,7 @@ pub async fn create_transaction_with(
             change.script_key_id,
             change.commitment_mask_key_id,
             Covenant::default(),
+            TariAddress::default(),
         );
     for input in inputs {
         stx_builder.with_input(input).await.unwrap();
@@ -714,11 +718,12 @@ pub async fn create_stx_protocol_internal(
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
         .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))),
+            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
             ExecutionStack::default(),
             change.script_key_id,
             change.commitment_mask_key_id,
             Covenant::default(),
+            TariAddress::default(),
         );
 
     for tx_input in &schema.from {
@@ -734,9 +739,7 @@ pub async fn create_stx_protocol_internal(
             .await
             .unwrap();
         let script_key_id = KeyId::Derived {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-            index: commitment_mask.key_id.managed_index().unwrap(),
+            key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
         let input_data = match &schema.input_data {

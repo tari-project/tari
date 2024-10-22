@@ -367,6 +367,7 @@ extern "C" {
         datastore_path: *const c_char,
         discovery_timeout_in_secs: c_ulonglong,
         saf_message_duration_in_secs: c_ulonglong,
+        exclude_dial_test_addresses: bool,
         error_out: *mut c_int,
     ) -> *mut TariCommsConfig;
     pub fn comms_config_destroy(wc: *mut TariCommsConfig);
@@ -378,33 +379,59 @@ extern "C" {
         error_out: *mut c_int,
     ) -> *mut TariPublicKey;
     pub fn wallet_create(
+        context: *mut c_void,
         config: *mut TariCommsConfig,
         log_path: *const c_char,
         log_level: c_int,
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,
+        seed_passphrase: *const c_char,
         seed_words: *const TariSeedWords,
         network_str: *const c_char,
-        peer_seed_str: *const c_char,
-        dns_sec: bool,
-        callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
-        callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
-        callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
-        callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
-        callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
-        callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-        callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
-        callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-        callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
-        callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-        callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
-        callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
-        callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
-        callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
-        callback_saf_messages_received: unsafe extern "C" fn(),
-        callback_connectivity_status: unsafe extern "C" fn(u64),
-        callback_base_node_state_updated: unsafe extern "C" fn(*mut TariBaseNodeState),
+        dns_seeds_str: *const c_char,
+        dns_seed_name_servers_str: *const c_char,
+        use_dns_sec: bool,
+        callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
+        callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+        callback_received_finalized_transaction: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut TariCompletedTransaction,
+        ),
+        callback_transaction_broadcast: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+        callback_transaction_mined: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+        callback_transaction_mined_unconfirmed: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut TariCompletedTransaction,
+            u64,
+        ),
+        callback_faux_transaction_confirmed: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
+        callback_faux_transaction_unconfirmed: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut TariCompletedTransaction,
+            u64,
+        ),
+        callback_transaction_send_result: unsafe extern "C" fn(
+            context: *mut c_void,
+            c_ulonglong,
+            *mut TariTransactionSendStatus,
+        ),
+        callback_transaction_cancellation: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut TariCompletedTransaction,
+            u64,
+        ),
+        callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
+        callback_contacts_liveness_data_updated: unsafe extern "C" fn(
+            context: *mut c_void,
+            *mut TariContactsLivenessData,
+        ),
+        callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
+        callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
+        callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
+        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+        callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
+        callback_base_node_state_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,
     ) -> *mut TariWallet;
@@ -525,7 +552,11 @@ extern "C" {
         transaction_id: c_ulonglong,
         error_out: *mut c_int,
     ) -> *mut TariCompletedTransaction;
-    pub fn wallet_get_tari_address(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariWalletAddress;
+    pub fn wallet_get_tari_interactive_address(
+        wallet: *mut TariWallet,
+        error_out: *mut c_int,
+    ) -> *mut TariWalletAddress;
+    pub fn wallet_get_tari_one_sided_address(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariWalletAddress;
     pub fn wallet_cancel_pending_transaction(
         wallet: *mut TariWallet,
         transaction_id: c_ulonglong,
@@ -548,8 +579,8 @@ extern "C" {
     pub fn wallet_is_recovery_in_progress(wallet: *mut TariWallet, error_out: *mut c_int) -> bool;
     pub fn wallet_start_recovery(
         wallet: *mut TariWallet,
-        base_node_public_key: *mut TariPublicKey,
-        recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
+        base_node_public_keys: *mut TariPublicKeys,
+        recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
         recovered_output_message: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
