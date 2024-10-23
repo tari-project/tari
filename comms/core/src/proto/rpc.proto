@@ -40,6 +40,8 @@ message RpcResponse {
 message RpcSession {
     // The RPC versions supported by the client
     repeated uint32 supported_versions = 1;
+    // Drop old connections for the incoming peer RPC connection
+    bool drop_old_connections = 2;
 }
 
 message RpcSessionReply {

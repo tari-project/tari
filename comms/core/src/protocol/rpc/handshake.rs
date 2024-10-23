@@ -61,6 +61,7 @@ pub enum RpcHandshakeError {
 pub struct Handshake<'a, T> {
     framed: &'a mut CanonicalFraming<T>,
     timeout: Option<Duration>,
+    drop_old_connections: bool,
 }
 
 impl<'a, T> Handshake<'a, T>
@@ -68,7 +69,11 @@ where T: AsyncRead + AsyncWrite + Unpin
 {
     /// Create a Handshake using the given framing and no timeout. To set a timeout, use `with_timeout`.
     pub fn new(framed: &'a mut CanonicalFraming<T>) -> Self {
-        Self { framed, timeout: None }
+        Self {
+            framed,
+            timeout: None,
+            drop_old_connections: false,
+        }
     }
 
     /// Set the length of time that a client/server should wait for the other side to respond before timing out.
@@ -77,8 +82,14 @@ where T: AsyncRead + AsyncWrite + Unpin
         self
     }
 
+    /// Old RPC connections will be dropped when a new connection is established.
+    pub fn with_drop_old_connections(mut self, drop_old_connections: bool) -> Self {
+        self.drop_old_connections = drop_old_connections;
+        self
+    }
+
     /// Server-side handshake protocol
-    pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
+    pub async fn perform_server_handshake(&mut self) -> Result<(u32, bool), RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
@@ -96,7 +107,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                         .send(reply.to_encoded_bytes().into())
                         .instrument(span)
                         .await?;
-                    return Ok(*version);
+                    return Ok((*version, msg.drop_old_connections));
                 }
 
                 let span = span!(Level::INFO, "rpc::server::handshake::send_rejection");
@@ -135,6 +146,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     pub async fn perform_client_handshake(&mut self) -> Result<(), RpcHandshakeError> {
         let msg = proto::rpc::RpcSession {
             supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
+            drop_old_connections: self.drop_old_connections,
         };
         let payload = msg.to_encoded_bytes();
         debug!(target: LOG_TARGET, "Sending client handshake ({} bytes)", payload.len());

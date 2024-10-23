@@ -12730,7 +12730,7 @@ mod test {
                         .block_on(
                             alice_wallet_comms
                                 .connectivity()
-                                .dial_peer(bob_node_identity.node_id().clone()),
+                                .dial_peer(bob_node_identity.node_id().clone(), false),
                         )
                         .is_ok();
                 }
@@ -12739,7 +12739,7 @@ mod test {
                         .block_on(
                             bob_wallet_comms
                                 .connectivity()
-                                .dial_peer(alice_node_identity.node_id().clone()),
+                                .dial_peer(alice_node_identity.node_id().clone(), false),
                         )
                         .is_ok();
                 }
@@ -12810,7 +12810,7 @@ mod test {
             let bob_comms_dial_peer = bob_wallet_runtime.block_on(
                 bob_wallet_comms
                     .connectivity()
-                    .dial_peer(alice_node_identity.node_id().clone()),
+                    .dial_peer(alice_node_identity.node_id().clone(), false),
             );
             if let Ok(mut connection_to_alice) = bob_comms_dial_peer {
                 if bob_wallet_runtime

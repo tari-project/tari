@@ -406,6 +406,7 @@ impl GreetingClient {
             Default::default(),
             framed,
             Self::PROTOCOL_NAME.into(),
+            Default::default(),
         )
         .await?;
         Ok(Self { inner })

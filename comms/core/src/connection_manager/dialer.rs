@@ -81,6 +81,7 @@ pub(crate) enum DialerRequest {
     Dial(
         Box<Peer>,
         Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        bool,
     ),
     CancelPendingDial(NodeId),
     NotifyNewInboundConnection(Box<PeerConnection>),
@@ -176,8 +177,8 @@ where
         debug!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
 
         match request {
-            Dial(peer, reply_tx) => {
-                self.handle_dial_peer_request(pending_dials, peer, reply_tx);
+            Dial(peer, reply_tx, drop_old_connections) => {
+                self.handle_dial_peer_request(pending_dials, peer, reply_tx, drop_old_connections);
             },
             CancelPendingDial(peer_id) => {
                 self.cancel_dial(&peer_id);
@@ -318,6 +319,7 @@ where
         pending_dials: &mut DialFuturesUnordered,
         peer: Box<Peer>,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        drop_old_connections: bool,
     ) {
         if self.is_pending_dial(&peer.node_id) {
             debug!(
@@ -371,6 +373,7 @@ where
                     let result = Self::perform_socket_upgrade_procedure(
                         &peer_manager,
                         &node_identity,
+                        drop_old_connections,
                         socket,
                         addr.clone(),
                         authenticated_public_key,
@@ -421,6 +424,7 @@ where
     async fn perform_socket_upgrade_procedure(
         peer_manager: &PeerManager,
         node_identity: &NodeIdentity,
+        drop_old_connections: bool,
         mut socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
         authenticated_public_key: CommsPublicKey,
@@ -474,6 +478,7 @@ where
             muxer,
             dialed_addr,
             NodeId::from_public_key(&authenticated_public_key),
+            drop_old_connections,
             peer_identity.claim.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,

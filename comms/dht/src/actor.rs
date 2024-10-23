@@ -912,7 +912,7 @@ impl DiscoveryDialTask {
     pub async fn run(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
         if self.peer_manager.exists(&public_key).await {
             let node_id = NodeId::from_public_key(&public_key);
-            match self.connectivity.dial_peer(node_id).await {
+            match self.connectivity.dial_peer(node_id, false).await {
                 Ok(conn) => Ok(conn),
                 Err(ConnectivityError::ConnectionFailed(err)) => match err {
                     ConnectionManagerError::ConnectFailedMaximumAttemptsReached |
@@ -949,7 +949,7 @@ impl DiscoveryDialTask {
             node_id,
             timer.elapsed()
         );
-        let conn = self.connectivity.dial_peer(node_id).await?;
+        let conn = self.connectivity.dial_peer(node_id, false).await?;
         Ok(conn)
     }
 }
