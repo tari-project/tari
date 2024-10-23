@@ -1,5 +1,5 @@
 [workspace.package]
-version = "1.0.0-dan.16"
+version = "1.7.0-pre.3"
 edition = "2021"
 authors = ["The Tari Development Community"]
 

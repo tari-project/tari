@@ -3560,7 +3560,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "1.0.0-dan.16"
+version = "1.7.0-pre.3"
 dependencies = [
  "argon2",
  "base64 0.13.1",
@@ -3589,7 +3589,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "1.0.0-dan.16"
+version = "1.7.0-pre.3"
 dependencies = [
  "clap 3.2.25",
  "dialoguer 0.10.4",
@@ -3636,7 +3636,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "1.0.0-dan.16"
+version = "1.7.0-pre.3"
 dependencies = [
  "blake2",
  "chrono",
@@ -3868,7 +3868,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_grpc_client"
-version = "1.0.0-dan.16"
+version = "1.7.0-pre.3"
 dependencies = [
  "minotari_app_grpc",
  "tokio",
@@ -3968,7 +3968,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_grpc_client"
-version = "1.0.0-dan.16"
+version = "1.7.0-pre.3"
 dependencies = [
  "minotari_app_grpc",
  "tari_common_types",
