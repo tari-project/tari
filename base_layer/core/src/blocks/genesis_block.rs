@@ -147,7 +147,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -211,7 +211,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -271,7 +271,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -390,7 +390,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -486,7 +486,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
+            validator_node_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
                 .unwrap(),
             validator_node_size: 0,
             input_mr: FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap(),
@@ -511,6 +511,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 // Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
 
     use serial_test::serial;
     use tari_common_types::types::Commitment;
@@ -662,39 +663,38 @@ mod test {
         let mut output_smt = OutputSmt::new();
 
         let vn_nodes = Vec::new();
-        // We currently don't have validator nodes in a genesis block so this code (currently broken) isn't needed.
-        // Keeping it in case we need it.
-        //
-        // for o in block.block().body.outputs() {
-        //     let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-        //     let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
-        //     output_smt.insert(smt_key, smt_node).unwrap();
-        //     o.verify_metadata_signature().unwrap();
-        //     if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
-        //         let reg = o
-        //             .features
-        //             .sidechain_feature
-        //             .as_ref()
-        //             .and_then(|f| f.validator_node_registration())
-        //             .unwrap();
-        //         vn_nodes.push(reg.clone());
-        //     }
-        // }
-        // for i in block.block().body.inputs() {
-        //     let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-        //     output_smt.delete(&smt_key).unwrap();
-        //     if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
-        //         let reg = i
-        //             .features()
-        //             .unwrap()
-        //             .sidechain_feature
-        //             .as_ref()
-        //             .and_then(|f| f.validator_node_registration())
-        //             .unwrap();
-        //         let pos = vn_nodes.iter().position(|v| v == reg).unwrap();
-        //         vn_nodes.remove(pos);
-        //     }
-        // }
+        for o in block.block().body.outputs() {
+            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
+            output_smt.insert(smt_key, smt_node).unwrap();
+            o.verify_metadata_signature().unwrap();
+            // We currently don't have validator nodes in a genesis block so this code (currently broken) isn't needed.
+            // Keeping it in case we need it.
+            // if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = o
+            //         .features
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     vn_nodes.push(reg.clone());
+            // }
+        }
+        for i in block.block().body.inputs() {
+            let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+            output_smt.delete(&smt_key).unwrap();
+            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = i
+            //         .features()
+            //         .unwrap()
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     let pos = vn_nodes.iter().position(|v| v == reg).unwrap();
+            //     vn_nodes.remove(pos);
+            // }
+        }
 
         let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
         for input in block.block().body.inputs() {
