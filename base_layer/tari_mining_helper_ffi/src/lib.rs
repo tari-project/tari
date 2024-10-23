@@ -623,9 +623,9 @@ mod tests {
         #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
         {
             let (nonce, difficulty, network) = (
-                1209310303936924941,
-                Difficulty::from_u64(1634).unwrap(),
-                Network::Esmeralda,
+                5834438254978142398,
+                Difficulty::from_u64(2174).unwrap(),
+                Network::LocalNet,
             );
             unsafe {
                 set_network_if_choice_valid(network).unwrap();
