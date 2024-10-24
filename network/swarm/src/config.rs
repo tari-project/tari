@@ -21,6 +21,7 @@ pub struct Config {
     pub relay_circuit_limits: RelayCircuitLimits,
     pub relay_reservation_limits: RelayReservationLimits,
     pub identify_interval: Duration,
+    pub gossipsub_max_message_size: usize,
 }
 
 impl Default for Config {
@@ -39,6 +40,8 @@ impl Default for Config {
             relay_reservation_limits: RelayReservationLimits::default(),
             // This is the default for identify
             identify_interval: Duration::from_secs(5 * 60),
+            // Double the libp2p default
+            gossipsub_max_message_size: 128 * 1024,
         }
     }
 }
