@@ -211,9 +211,9 @@ impl EncryptedData {
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
         let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
-        bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
-        bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
-        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&payment_id.to_bytes());
+        bytes[..SIZE_VALUE].copy_from_slice(value.as_u64().to_le_bytes().as_ref());
+        bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].copy_from_slice(mask.as_bytes());
+        bytes[SIZE_VALUE + SIZE_MASK..].copy_from_slice(&payment_id.to_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -227,10 +227,10 @@ impl EncryptedData {
 
         // Put everything together: nonce, ciphertext, tag
         let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + payment_id.get_size()];
-        data[..SIZE_TAG].clone_from_slice(&tag);
-        data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
+        data[..SIZE_TAG].copy_from_slice(&tag);
+        data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].copy_from_slice(&nonce);
         data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
-            .clone_from_slice(bytes.as_slice());
+            .copy_from_slice(bytes.as_slice());
 
         Ok(Self {
             data: MaxSizeBytes::try_from(data)
@@ -257,7 +257,7 @@ impl EncryptedData {
                 .saturating_sub(SIZE_TAG)
                 .saturating_sub(SIZE_NONCE)
         ]);
-        bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_TAG + SIZE_NONCE..]);
+        bytes.copy_from_slice(&encrypted_data.as_bytes()[SIZE_TAG + SIZE_NONCE..]);
 
         // Set up the AEAD
         let aead_key = kdf_aead(encryption_key, commitment);
@@ -268,7 +268,7 @@ impl EncryptedData {
 
         // Decode the value and mask
         let mut value_bytes = [0u8; SIZE_VALUE];
-        value_bytes.clone_from_slice(&bytes[0..SIZE_VALUE]);
+        value_bytes.copy_from_slice(&bytes[0..SIZE_VALUE]);
         Ok((
             u64::from_le_bytes(value_bytes).into(),
             PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK])?,
@@ -301,6 +301,11 @@ impl EncryptedData {
     /// Get a byte vector with the encrypted data contents
     pub fn to_byte_vec(&self) -> Vec<u8> {
         self.data.clone().into()
+    }
+
+    /// Get a byte vector with the encrypted data contents consuming this struct
+    pub fn into_byte_vec(self) -> Vec<u8> {
+        self.data.into_vec()
     }
 
     /// Get a byte slice with the encrypted data contents
@@ -340,7 +345,7 @@ impl Hex for EncryptedData {
     }
 
     fn to_hex(&self) -> String {
-        to_hex(&self.to_byte_vec())
+        to_hex(self.as_bytes())
     }
 }
 impl Default for EncryptedData {

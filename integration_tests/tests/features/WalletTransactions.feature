@@ -211,7 +211,7 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
 
-    @missing-steps
+  @missing-steps
   # Scenario: Wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:
@@ -264,7 +264,7 @@ Feature: Wallet Transactions
   #   When I mine 6 blocks on NODE_C
   #   Then all nodes are at height 16
 
-   @missing-steps
+  @missing-steps
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
     When I have wallet WALLET_A connected to seed node SEED
@@ -291,7 +291,7 @@ Feature: Wallet Transactions
     #Then wallet WALLET_B detects all transactions are at least Pending
 
 
-      @missing-steps
+  @missing-steps
   # Scenario: Short wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:

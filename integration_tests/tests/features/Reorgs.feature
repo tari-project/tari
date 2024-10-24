@@ -249,9 +249,9 @@ Feature: Reorgs
 
     @long-running
     Examples:
-        | X1     | Y1     | X2    | Y2   |
-        | 100    | 125    | 150   | 175  |
-        | 1010   | 1110   | 1210  | 1310 |
+      | X1   | Y1   | X2   | Y2   |
+      | 100  | 125  | 150  | 175  |
+      | 1010 | 1110 | 1210 | 1310 |
 
   @reorg @missing-steps
   Scenario: Full block sync with small reorg
