@@ -23,6 +23,7 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use tari_common::configuration::Network;
+use tari_common_types::epoch::VnEpoch;
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
@@ -108,6 +109,51 @@ impl ConsensusManager {
             constants = c
         }
         constants
+    }
+
+    /// Returns the current epoch number as calculated from the given height
+    pub fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
+        let mut epoch = 0;
+        let mut leftover_height = 0;
+        let mut active_effective_height = 0;
+        let mut active_epoch_length = self.inner.consensus_constants[0].epoch_length();
+        for c in &self.inner.consensus_constants[1..] {
+            if c.effective_from_height() > height {
+                break;
+            }
+            epoch += (c.effective_from_height() - active_effective_height + leftover_height) / active_epoch_length;
+            leftover_height = std::cmp::min(
+                c.epoch_length(),
+                (c.effective_from_height() - active_effective_height + leftover_height) % active_epoch_length,
+            );
+            active_effective_height = c.effective_from_height();
+            active_epoch_length = c.epoch_length();
+        }
+        epoch += (height - active_effective_height + leftover_height) / active_epoch_length;
+        VnEpoch(epoch)
+    }
+
+    /// Returns the block height of the start of the given epoch number
+    pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
+        let mut cur_epoch = 0;
+        let mut leftover_height = 0;
+        let mut active_effective_height = 0;
+        let mut active_epoch_length = self.inner.consensus_constants[0].epoch_length();
+        for c in &self.inner.consensus_constants[1..] {
+            if cur_epoch + (c.effective_from_height() - active_effective_height + leftover_height) / active_epoch_length >
+                epoch.as_u64()
+            {
+                break;
+            }
+            cur_epoch += (c.effective_from_height() - active_effective_height + leftover_height) / active_epoch_length;
+            leftover_height = std::cmp::min(
+                c.epoch_length(),
+                (c.effective_from_height() - active_effective_height + leftover_height) % active_epoch_length,
+            );
+            active_effective_height = c.effective_from_height();
+            active_epoch_length = c.epoch_length();
+        }
+        (epoch.as_u64() - cur_epoch) * active_epoch_length + active_effective_height - leftover_height
     }
 
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
@@ -270,4 +316,79 @@ impl ConsensusManagerBuilder {
 pub enum ConsensusBuilderError {
     #[error("Cannot set a genesis block with a network other than LocalNet")]
     CannotSetGenesisBlock,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::consensus::ConsensusConstantsBuilder;
+
+    fn create_manager() -> ConsensusManager {
+        ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_effective_height(0)
+                    .with_vn_epoch_length(15)
+                    .build(),
+            )
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_effective_height(100)
+                    .with_vn_epoch_length(6)
+                    .build(),
+            )
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_effective_height(200)
+                    .with_vn_epoch_length(8)
+                    .build(),
+            )
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_effective_height(300)
+                    .with_vn_epoch_length(13)
+                    .build(),
+            )
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_effective_height(400)
+                    .with_vn_epoch_length(17)
+                    .build(),
+            )
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_effective_height(500)
+                    .with_vn_epoch_length(7)
+                    .build(),
+            )
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_epoch_to_height_and_back() {
+        let manager = create_manager();
+        assert_eq!(manager.block_height_to_epoch(99), VnEpoch(6)); // The next epoch should change at 105
+        assert_eq!(manager.block_height_to_epoch(100), VnEpoch(7)); // But with the new length the epoch should change right away
+        assert_eq!(manager.block_height_to_epoch(199), VnEpoch(23)); // The next epoch should change at 202
+        assert_eq!(manager.block_height_to_epoch(202), VnEpoch(23)); // But we have new length with size +2 so the epoch change will happen at 204
+        assert_eq!(manager.block_height_to_epoch(204), VnEpoch(24));
+        // Now test couple more back and forth
+        for epoch in 0..=100 {
+            assert_eq!(
+                manager.block_height_to_epoch(manager.epoch_to_block_height(VnEpoch(epoch))),
+                VnEpoch(epoch)
+            );
+        }
+    }
+
+    #[test]
+    fn test_epoch_is_non_decreasing() {
+        let manager = create_manager();
+        let mut epoch = manager.block_height_to_epoch(0).as_u64();
+        for height in 0..600 {
+            assert!(manager.block_height_to_epoch(height).as_u64() >= epoch);
+            epoch = manager.block_height_to_epoch(height).as_u64();
+        }
+    }
 }
